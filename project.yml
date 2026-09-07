@@ -1,0 +1,78 @@
+name: Jot
+options:
+  bundleIdPrefix: space.jot
+  deploymentTarget:
+    macOS: '14.0'
+packages:
+  DevFeedback:
+    path: Vendor/DevFeedback
+  FluidAudio:
+    url: https://github.com/FluidInference/FluidAudio.git
+    revision: 5c19d5e12320e22bbfb7a1877b089d2665a69add
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    MACOSX_DEPLOYMENT_TARGET: '14.0'
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: '-'
+    ENABLE_HARDENED_RUNTIME: YES
+    ARCHS: arm64
+targets:
+  JotCore:
+    type: framework
+    platform: macOS
+    sources: [Sources/JotCore]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: space.jot.core
+    dependencies:
+      - sdk: libsqlite3.tbd
+  JotCLI:
+    type: tool
+    platform: macOS
+    sources: [Sources/JotCLI]
+    settings:
+      base:
+        PRODUCT_NAME: jot
+        LD_RUNPATH_SEARCH_PATHS: '@executable_path/../Frameworks'
+    dependencies:
+      - target: JotCore
+  Jot:
+    type: application
+    platform: macOS
+    sources: [Sources/Jot]
+    info:
+      path: Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Jot
+        CFBundleShortVersionString: '0.1.0'
+        CFBundleVersion: '1'
+        LSUIElement: true
+        NSMicrophoneUsageDescription: Jot transcribes your microphone locally for dictation and ambient transcripts. Audio is not saved.
+        NSHighResolutionCapable: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: space.jot.app
+        PRODUCT_NAME: Jot
+        CODE_SIGN_ENTITLEMENTS: Resources/Jot.entitlements
+    dependencies:
+      - target: JotCore
+      - package: FluidAudio
+      - package: DevFeedback
+      - target: JotCLI
+        embed: false
+    postBuildScripts:
+      - name: Bundle agent CLI
+        script: |
+          mkdir -p "$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers"
+          cp "$BUILT_PRODUCTS_DIR/jot" "$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/jot"
+        inputFiles:
+          - $(BUILT_PRODUCTS_DIR)/jot
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/jot
+schemes:
+  Jot:
+    build:
+      targets:
+        Jot: all

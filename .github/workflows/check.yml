@@ -1,0 +1,16 @@
+name: Core checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  core:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Storage and local transport tests
+        run: swift test
+      - name: Feedback persistence and export tests
+        run: swift test --package-path Vendor/DevFeedback
+      - name: Feedback release no-op build
+        run: swift build --package-path Vendor/DevFeedback -c release

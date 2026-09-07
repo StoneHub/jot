@@ -1,0 +1,680 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		09AFFFF3AF1BE6A912FA1BA0 /* DictationInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82A3D8CCC3D071ABC0F5EE69 /* DictationInput.swift */; };
+		289C368E513B52686DE68A8B /* TranscriptionTuning.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF9B1EC9EF58D7AA79B27628 /* TranscriptionTuning.swift */; };
+		2D62FA2C153FEDA91143654A /* LocalService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1812288F51560118033D92A /* LocalService.swift */; };
+		48A035BE8890396E0ED43AAE /* JotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBA0F84BDC3CF425D094A331 /* JotApp.swift */; };
+		6689C56E5F2476BAEFBA6523 /* JotCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D2E098CDE7120087F5C947F0 /* JotCore.framework */; };
+		6E92D801CF7E0C6D4471E466 /* AudioPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1724E7761CB8156A220EF24 /* AudioPipeline.swift */; };
+		987B92C586EF2356FE9B3BBC /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */; };
+		A3267595B1A8F60F403F04CB /* JotCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D0BF24005EE0C2BB76EEAC0 /* JotCLI.swift */; };
+		A84D2F3520652FB64F16B110 /* TranscriptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBDB9C8F81FE456A8328BCE4 /* TranscriptStore.swift */; };
+		B3AB2422EE65311C8F9EEEEA /* ResourceStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75A2B17AAF1631913D5A8DCC /* ResourceStats.swift */; };
+		C4A3067F86EC76FBB07066E5 /* ServiceLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87AE9B1836DA9D504389E51A /* ServiceLifecycle.swift */; };
+		CB99DD1789813FB24F791413 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = CDE54F5568B2E1009E317C26 /* libsqlite3.tbd */; };
+		D283C88CF89D912165283C80 /* JotCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D2E098CDE7120087F5C947F0 /* JotCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D5D8145305034318CEFA19C7 /* ModelUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D08CE824AF0B228F66A9DE7F /* ModelUpdate.swift */; };
+		E627399561B1AC9DAB0B0408 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 9B4DFBF48C95EF86F6CFAB88 /* FluidAudio */; };
+		F39E2781C6B2CA0959B89114 /* JotCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D2E098CDE7120087F5C947F0 /* JotCore.framework */; };
+		F42913969834EBA50B2F3166 /* DevFeedback in Frameworks */ = {isa = PBXBuildFile; productRef = EBC71813CAEC75F70AB67AA1 /* DevFeedback */; };
+		F8582FACF33F73EA96F027A9 /* SelectableHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF4F7EA10A696D822E25FABC /* SelectableHistory.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		044E948A06574F8FBB49C546 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5729D6C2EC45B150D2A5B40B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BCFD8FABA83FE0B14C12D0C1;
+			remoteInfo = JotCore;
+		};
+		4D4719C7AC50409BF97A6E35 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5729D6C2EC45B150D2A5B40B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BCFD8FABA83FE0B14C12D0C1;
+			remoteInfo = JotCore;
+		};
+		E3C7F9FF32EA92E4FAB394F2 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5729D6C2EC45B150D2A5B40B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3F3C802B5B316E1F2CF65158;
+			remoteInfo = JotCLI;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		3241435958C595129A4CCE95 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				D283C88CF89D912165283C80 /* JotCore.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechService.swift; sourceTree = "<group>"; };
+		5D0BF24005EE0C2BB76EEAC0 /* JotCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JotCLI.swift; sourceTree = "<group>"; };
+		75A2B17AAF1631913D5A8DCC /* ResourceStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResourceStats.swift; sourceTree = "<group>"; };
+		7F8706CA0A472D88DA09E8DC /* Jot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Jot.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		82A3D8CCC3D071ABC0F5EE69 /* DictationInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationInput.swift; sourceTree = "<group>"; };
+		87AE9B1836DA9D504389E51A /* ServiceLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceLifecycle.swift; sourceTree = "<group>"; };
+		A1724E7761CB8156A220EF24 /* AudioPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPipeline.swift; sourceTree = "<group>"; };
+		BEA152FD6CE42C79DFBF0AC3 /* DevFeedback */ = {isa = PBXFileReference; lastKnownFileType = folder; name = DevFeedback; path = Vendor/DevFeedback; sourceTree = SOURCE_ROOT; };
+		CBDB9C8F81FE456A8328BCE4 /* TranscriptStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStore.swift; sourceTree = "<group>"; };
+		CDE54F5568B2E1009E317C26 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
+		D08CE824AF0B228F66A9DE7F /* ModelUpdate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelUpdate.swift; sourceTree = "<group>"; };
+		D1812288F51560118033D92A /* LocalService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalService.swift; sourceTree = "<group>"; };
+		D2E098CDE7120087F5C947F0 /* JotCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = JotCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		DF4F7EA10A696D822E25FABC /* SelectableHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectableHistory.swift; sourceTree = "<group>"; };
+		EBA0F84BDC3CF425D094A331 /* JotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JotApp.swift; sourceTree = "<group>"; };
+		FDE6F4ADB49011C1E67086A3 /* JotCLI */ = {isa = PBXFileReference; includeInIndex = 0; path = JotCLI; sourceTree = BUILT_PRODUCTS_DIR; };
+		FF9B1EC9EF58D7AA79B27628 /* TranscriptionTuning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionTuning.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		48DF1907E02DF43DAB8D8A7B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F39E2781C6B2CA0959B89114 /* JotCore.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BF2074D35B7263EC726A2D23 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CB99DD1789813FB24F791413 /* libsqlite3.tbd in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CECC998285A097708CD1845D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6689C56E5F2476BAEFBA6523 /* JotCore.framework in Frameworks */,
+				E627399561B1AC9DAB0B0408 /* FluidAudio in Frameworks */,
+				F42913969834EBA50B2F3166 /* DevFeedback in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		2662DB7F70702632B0247607 /* Jot */ = {
+			isa = PBXGroup;
+			children = (
+				A1724E7761CB8156A220EF24 /* AudioPipeline.swift */,
+				82A3D8CCC3D071ABC0F5EE69 /* DictationInput.swift */,
+				EBA0F84BDC3CF425D094A331 /* JotApp.swift */,
+				75A2B17AAF1631913D5A8DCC /* ResourceStats.swift */,
+				DF4F7EA10A696D822E25FABC /* SelectableHistory.swift */,
+				2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */,
+			);
+			name = Jot;
+			path = Sources/Jot;
+			sourceTree = "<group>";
+		};
+		6E53C37D5E2365B4F3839C63 = {
+			isa = PBXGroup;
+			children = (
+				2662DB7F70702632B0247607 /* Jot */,
+				DAED3F62949CD7FDFB9AB122 /* JotCLI */,
+				C1DEE3EB4427813127E7E1D0 /* JotCore */,
+				C0D6E39DC9E61AB97A03A598 /* Packages */,
+				9EAFF92D7689097233BB0737 /* Frameworks */,
+				CC1E4E01C7217031616028C3 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		9EAFF92D7689097233BB0737 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				CDE54F5568B2E1009E317C26 /* libsqlite3.tbd */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		C0D6E39DC9E61AB97A03A598 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				BEA152FD6CE42C79DFBF0AC3 /* DevFeedback */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		C1DEE3EB4427813127E7E1D0 /* JotCore */ = {
+			isa = PBXGroup;
+			children = (
+				D1812288F51560118033D92A /* LocalService.swift */,
+				D08CE824AF0B228F66A9DE7F /* ModelUpdate.swift */,
+				87AE9B1836DA9D504389E51A /* ServiceLifecycle.swift */,
+				FF9B1EC9EF58D7AA79B27628 /* TranscriptionTuning.swift */,
+				CBDB9C8F81FE456A8328BCE4 /* TranscriptStore.swift */,
+			);
+			name = JotCore;
+			path = Sources/JotCore;
+			sourceTree = "<group>";
+		};
+		CC1E4E01C7217031616028C3 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				7F8706CA0A472D88DA09E8DC /* Jot.app */,
+				FDE6F4ADB49011C1E67086A3 /* JotCLI */,
+				D2E098CDE7120087F5C947F0 /* JotCore.framework */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		DAED3F62949CD7FDFB9AB122 /* JotCLI */ = {
+			isa = PBXGroup;
+			children = (
+				5D0BF24005EE0C2BB76EEAC0 /* JotCLI.swift */,
+			);
+			name = JotCLI;
+			path = Sources/JotCLI;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		3F3C802B5B316E1F2CF65158 /* JotCLI */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6B13FE64CDCB35220738139D /* Build configuration list for PBXNativeTarget "JotCLI" */;
+			buildPhases = (
+				18FA50DB861A1F5D06E5F147 /* Sources */,
+				48DF1907E02DF43DAB8D8A7B /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AFC0799D5E6582BEB35A9B52 /* PBXTargetDependency */,
+			);
+			name = JotCLI;
+			packageProductDependencies = (
+			);
+			productName = JotCLI;
+			productReference = FDE6F4ADB49011C1E67086A3 /* JotCLI */;
+			productType = "com.apple.product-type.tool";
+		};
+		B0C2456737C67D0846A9A98E /* Jot */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D19C9A8BD450B596109DFFC9 /* Build configuration list for PBXNativeTarget "Jot" */;
+			buildPhases = (
+				3DD6E63B2DEC370C8F73FEFC /* Sources */,
+				CECC998285A097708CD1845D /* Frameworks */,
+				3241435958C595129A4CCE95 /* Embed Frameworks */,
+				D71C074258D6E5D3FE6117F2 /* Bundle agent CLI */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7CBCB8059E1EE4C9701B27FE /* PBXTargetDependency */,
+				C2C478DC6A4E792DED73CC16 /* PBXTargetDependency */,
+			);
+			name = Jot;
+			packageProductDependencies = (
+				9B4DFBF48C95EF86F6CFAB88 /* FluidAudio */,
+				EBC71813CAEC75F70AB67AA1 /* DevFeedback */,
+			);
+			productName = Jot;
+			productReference = 7F8706CA0A472D88DA09E8DC /* Jot.app */;
+			productType = "com.apple.product-type.application";
+		};
+		BCFD8FABA83FE0B14C12D0C1 /* JotCore */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 760431D20F6238373FC088D8 /* Build configuration list for PBXNativeTarget "JotCore" */;
+			buildPhases = (
+				673E5B43EF6AA7D65B06ACEE /* Sources */,
+				BF2074D35B7263EC726A2D23 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = JotCore;
+			packageProductDependencies = (
+			);
+			productName = JotCore;
+			productReference = D2E098CDE7120087F5C947F0 /* JotCore.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		5729D6C2EC45B150D2A5B40B /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					3F3C802B5B316E1F2CF65158 = {
+						ProvisioningStyle = Manual;
+					};
+					B0C2456737C67D0846A9A98E = {
+						ProvisioningStyle = Manual;
+					};
+					BCFD8FABA83FE0B14C12D0C1 = {
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = A78ABDA566FE326AC6161014 /* Build configuration list for PBXProject "Jot" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 6E53C37D5E2365B4F3839C63;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				469DC1BBB30D99516E1567A4 /* XCRemoteSwiftPackageReference "FluidAudio" */,
+				92EE25EC452AB8ACFD581868 /* XCLocalSwiftPackageReference "Vendor/DevFeedback" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = CC1E4E01C7217031616028C3 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				BCFD8FABA83FE0B14C12D0C1 /* JotCore */,
+				3F3C802B5B316E1F2CF65158 /* JotCLI */,
+				B0C2456737C67D0846A9A98E /* Jot */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		D71C074258D6E5D3FE6117F2 /* Bundle agent CLI */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/jot",
+			);
+			name = "Bundle agent CLI";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/jot",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "mkdir -p \"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers\"\ncp \"$BUILT_PRODUCTS_DIR/jot\" \"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/jot\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		18FA50DB861A1F5D06E5F147 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A3267595B1A8F60F403F04CB /* JotCLI.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3DD6E63B2DEC370C8F73FEFC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6E92D801CF7E0C6D4471E466 /* AudioPipeline.swift in Sources */,
+				09AFFFF3AF1BE6A912FA1BA0 /* DictationInput.swift in Sources */,
+				48A035BE8890396E0ED43AAE /* JotApp.swift in Sources */,
+				B3AB2422EE65311C8F9EEEEA /* ResourceStats.swift in Sources */,
+				F8582FACF33F73EA96F027A9 /* SelectableHistory.swift in Sources */,
+				987B92C586EF2356FE9B3BBC /* SpeechService.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		673E5B43EF6AA7D65B06ACEE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2D62FA2C153FEDA91143654A /* LocalService.swift in Sources */,
+				D5D8145305034318CEFA19C7 /* ModelUpdate.swift in Sources */,
+				C4A3067F86EC76FBB07066E5 /* ServiceLifecycle.swift in Sources */,
+				A84D2F3520652FB64F16B110 /* TranscriptStore.swift in Sources */,
+				289C368E513B52686DE68A8B /* TranscriptionTuning.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		7CBCB8059E1EE4C9701B27FE /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BCFD8FABA83FE0B14C12D0C1 /* JotCore */;
+			targetProxy = 4D4719C7AC50409BF97A6E35 /* PBXContainerItemProxy */;
+		};
+		AFC0799D5E6582BEB35A9B52 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BCFD8FABA83FE0B14C12D0C1 /* JotCore */;
+			targetProxy = 044E948A06574F8FBB49C546 /* PBXContainerItemProxy */;
+		};
+		C2C478DC6A4E792DED73CC16 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3F3C802B5B316E1F2CF65158 /* JotCLI */;
+			targetProxy = E3C7F9FF32EA92E4FAB394F2 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		10812DA83C667A24F16A2E4D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		15A88B315EEDDA64E738E71B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = space.jot.JotCLI;
+				PRODUCT_NAME = jot;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		2DF28970C925F0D0EF47A1F3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Resources/Jot.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = space.jot.app;
+				PRODUCT_NAME = Jot;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		7120B7BA1035FA69E8A5FB17 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Resources/Jot.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = space.jot.app;
+				PRODUCT_NAME = Jot;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		8499841DB162270D03AB7FB2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = space.jot.JotCLI;
+				PRODUCT_NAME = jot;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		A549A324554EF04A31B56EA8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = space.jot.core;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
+		AEFFBA5284C2E545784A6AAE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = space.jot.core;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		D80594AAB568B0213375232C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		6B13FE64CDCB35220738139D /* Build configuration list for PBXNativeTarget "JotCLI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				15A88B315EEDDA64E738E71B /* Debug */,
+				8499841DB162270D03AB7FB2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		760431D20F6238373FC088D8 /* Build configuration list for PBXNativeTarget "JotCore" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AEFFBA5284C2E545784A6AAE /* Debug */,
+				A549A324554EF04A31B56EA8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A78ABDA566FE326AC6161014 /* Build configuration list for PBXProject "Jot" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				10812DA83C667A24F16A2E4D /* Debug */,
+				D80594AAB568B0213375232C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D19C9A8BD450B596109DFFC9 /* Build configuration list for PBXNativeTarget "Jot" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7120B7BA1035FA69E8A5FB17 /* Debug */,
+				2DF28970C925F0D0EF47A1F3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		92EE25EC452AB8ACFD581868 /* XCLocalSwiftPackageReference "Vendor/DevFeedback" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Vendor/DevFeedback;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		469DC1BBB30D99516E1567A4 /* XCRemoteSwiftPackageReference "FluidAudio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/FluidInference/FluidAudio.git";
+			requirement = {
+				kind = revision;
+				revision = 5c19d5e12320e22bbfb7a1877b089d2665a69add;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		9B4DFBF48C95EF86F6CFAB88 /* FluidAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 469DC1BBB30D99516E1567A4 /* XCRemoteSwiftPackageReference "FluidAudio" */;
+			productName = FluidAudio;
+		};
+		EBC71813CAEC75F70AB67AA1 /* DevFeedback */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = DevFeedback;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 5729D6C2EC45B150D2A5B40B /* Project object */;
+}
