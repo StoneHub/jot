@@ -41,11 +41,15 @@ targets:
   Jot:
     type: application
     platform: macOS
-    sources: [Sources/Jot]
+    sources:
+      - Sources/Jot
+      - path: Resources/Jot.icns
+        buildPhase: resources
     info:
       path: Resources/Info.plist
       properties:
         CFBundleDisplayName: Jot
+        CFBundleIconFile: Jot
         CFBundleShortVersionString: '0.1.0'
         CFBundleVersion: '1'
         LSUIElement: true
