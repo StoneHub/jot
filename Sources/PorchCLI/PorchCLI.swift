@@ -22,7 +22,9 @@ struct PorchCLI {
 
     porch status                         Listening state and system impact
     porch start                          Start ambient transcription
-    porch pause                          Pause microphone capture
+    porch pause                          Pause all speech work and unload models
+    porch resume                         Reload models and resume selected features
+    porch ambient-off                    Turn off ambient capture; keep Fn available
     porch stop                           Stop the current capture session
     porch search <query> [--limit N] [--offset N]
     porch recent [--limit N] [--offset N]
@@ -32,6 +34,7 @@ struct PorchCLI {
     porch label <session-id> <speaker-id> <name>
     porch doctor                         Permissions, models, and service health
     porch models prepare                 Download/prepare local speech models
+    porch models check                   Check published model revisions (no download)
     porch transcribe-file <path>          Diagnostic file inference; no persistence
     porch mcp                            MCP JSON-RPC over stdio (no TCP)
 
@@ -41,12 +44,15 @@ struct PorchCLI {
     private static func command(_ args: [String]) throws -> (String, [String: Any]) {
         guard let first = args.first else { throw CLIError.usage(usage) }
         switch first {
-        case "status", "start", "pause", "stop", "doctor":
+        case "status", "start", "pause", "resume", "stop", "doctor":
             guard args.count == 1 else { throw CLIError.usage("Unexpected arguments for \(first)") }
             return ("speech." + first, [:])
+        case "ambient-off":
+            guard args.count == 1 else { throw CLIError.usage("Use: porch ambient-off") }
+            return ("speech.ambient_off", [:])
         case "models":
-            guard args == ["models", "prepare"] else { throw CLIError.usage("Use: porch models prepare") }
-            return ("models.prepare", [:])
+            guard args.count == 2, ["prepare", "check"].contains(args[1]) else { throw CLIError.usage("Use: porch models prepare|check") }
+            return ("models." + args[1], [:])
         case "transcribe-file":
             guard args.count == 2 else { throw CLIError.usage("Use: porch transcribe-file <path>") }
             let path = URL(fileURLWithPath: (args[1] as NSString).expandingTildeInPath).standardizedFileURL.path
@@ -111,7 +117,10 @@ private struct MCPServer {
     private static let tools: [(String, String, String, [String: Any], [String])] = [
         ("speech_status", "speech.status", "Get capture state, model state, and current system impact statistics.", [:], []),
         ("speech_start", "speech.start", "Start ambient microphone transcription when the user explicitly requests listening.", [:], []),
-        ("speech_pause", "speech.pause", "Pause microphone capture.", [:], []),
+        ("speech_pause", "speech.pause", "Pause all speech work, discard unfinished audio, and unload models. Poll status until servicePhase is paused.", [:], []),
+        ("speech_resume", "speech.resume", "Reload models and resume the selected Fn/ambient features.", [:], []),
+        ("speech_ambient_off", "speech.ambient_off", "Switch off ambient capture while keeping Fn dictation available.", [:], []),
+        ("models_check", "models.check", "Check published model repository revisions. Does not download updates or establish installed cache provenance.", [:], []),
         ("speech_stop", "speech.stop", "Stop capture and end the current session.", [:], []),
         ("speech_doctor", "speech.doctor", "Inspect service health, permissions, and model readiness.", [:], []),
         ("models_prepare", "models.prepare", "Begin downloading and preparing local FluidAudio models; poll speech_status for readiness.", [:], []),

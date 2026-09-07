@@ -38,7 +38,9 @@ actor SpeechPipeline {
             try await manager.loadModels(models)
             asr = manager
         }
+        try Task.checkCancellation()
         if vad == nil { vad = try await VadManager() }
+        try Task.checkCancellation()
         if diarizer == nil {
             let config = SortformerConfig.default
             let models = try await SortformerModels.loadFromHuggingFace(config: config, computeUnits: .cpuAndNeuralEngine)
@@ -51,6 +53,12 @@ actor SpeechPipeline {
         }
     }
 
+    func unload() {
+        asr = nil; vad = nil; diarizer = nil
+        probabilities.removeAll(keepingCapacity: false)
+        sessionID = ""; expectedOffset = 0; baseOffset = 0
+    }
+
     func testFile(_ url: URL) async throws -> SpeechOutput {
         let file = try AVAudioFile(forReading: url)
         guard Double(file.length) / file.processingFormat.sampleRate <= 60 else { throw PorchError.message("Diagnostic files must be at most 60 seconds.") }
@@ -60,6 +68,7 @@ actor SpeechPipeline {
 
     func infer(_ job: AudioJob) async throws -> SpeechOutput {
         guard let asr, let vad, let diarizer else { throw PorchError.message("Prepare models before listening.") }
+        try Task.checkCancellation()
         let begin = Date()
         if job.mode == "ambient" {
             if sessionID != job.sessionID || abs(job.offset - expectedOffset) > 0.02 {
@@ -68,6 +77,7 @@ actor SpeechPipeline {
             expectedOffset = job.offset + Double(job.samples.count) / 16000
             diarizer.addAudio(job.samples)
             while let update = try diarizer.process() {
+                try Task.checkCancellation()
                 let chunk = update.chunkResult
                 for frame in 0..<chunk.finalizedFrameCount {
                     probabilities[chunk.startFrame + frame] = (0..<4).map { chunk.probability(speaker: $0, frame: frame, numSpeakers: 4) }
@@ -84,8 +94,10 @@ actor SpeechPipeline {
         guard activity.contains(where: { $0.probability >= 0.20 }) else {
             return SpeechOutput(transcripts: [], text: "", processingSeconds: Date().timeIntervalSince(begin))
         }
+        try Task.checkCancellation()
         var state = try TdtDecoderState()
         let result = try await asr.transcribe(job.samples, decoderState: &state)
+        try Task.checkCancellation()
         let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return SpeechOutput(transcripts: [], text: "", processingSeconds: Date().timeIntervalSince(begin)) }
         var segments: [Transcript] = []
@@ -179,6 +191,11 @@ final class MicrophoneCapture: @unchecked Sendable {
         let result = (pending, dropped, lastAudio, rms)
         pending = []; dropped = 0
         return result
+    }
+
+    func discardBufferedAudio() {
+        lock.lock(); defer { lock.unlock() }
+        pending.removeAll(keepingCapacity: false); dropped = 0; rms = 0
     }
 
     func stop() {

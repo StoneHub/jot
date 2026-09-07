@@ -8,8 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		05BBC94C4ECDB5DEB6E1BDE4 /* TranscriptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 208DBC7A05881EDF2B5F4AE7 /* TranscriptStore.swift */; };
+		2C9CC7775CB99FE41975B03F /* ServiceLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23084DDB5072F1E5615A10DC /* ServiceLifecycle.swift */; };
 		5F6E8D6C63AF79E4C225DFAD /* ResourceStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE30D3859A25467D29C362E8 /* ResourceStats.swift */; };
 		5FFD7497BBD4FBE6ECFF1CD9 /* PorchCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 98DA00B0901667BB1401CF1D /* PorchCore.framework */; };
+		672767AB77C46069688F2645 /* ModelUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AC710063003D3CEEDA7050A /* ModelUpdate.swift */; };
 		75FF1600405FF77088302299 /* PorchSpeechApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC075DF329E2DBB1072298D6 /* PorchSpeechApp.swift */; };
 		847C5CBA6C08F6C5D066519E /* DictationInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = D80FBE4657C1324BB0527DD7 /* DictationInput.swift */; };
 		8C1B630F9DBDF40693C937E4 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 764F091F2D51F7793C08E0F5 /* FluidAudio */; };
@@ -63,9 +65,11 @@
 /* Begin PBXFileReference section */
 		0856DB6E27EE2E20BA406F52 /* LocalService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalService.swift; sourceTree = "<group>"; };
 		208DBC7A05881EDF2B5F4AE7 /* TranscriptStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStore.swift; sourceTree = "<group>"; };
+		23084DDB5072F1E5615A10DC /* ServiceLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceLifecycle.swift; sourceTree = "<group>"; };
 		47B69063088BFFB0E388C2F8 /* PorchCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PorchCLI.swift; sourceTree = "<group>"; };
 		6D21CECE395C274E6D3F9F11 /* SpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechService.swift; sourceTree = "<group>"; };
 		98DA00B0901667BB1401CF1D /* PorchCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = PorchCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		9AC710063003D3CEEDA7050A /* ModelUpdate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelUpdate.swift; sourceTree = "<group>"; };
 		AE30D3859A25467D29C362E8 /* ResourceStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResourceStats.swift; sourceTree = "<group>"; };
 		D80FBE4657C1324BB0527DD7 /* DictationInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationInput.swift; sourceTree = "<group>"; };
 		F40F1E78638453609FF257C3 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
@@ -159,6 +163,8 @@
 			isa = PBXGroup;
 			children = (
 				0856DB6E27EE2E20BA406F52 /* LocalService.swift */,
+				9AC710063003D3CEEDA7050A /* ModelUpdate.swift */,
+				23084DDB5072F1E5615A10DC /* ServiceLifecycle.swift */,
 				208DBC7A05881EDF2B5F4AE7 /* TranscriptStore.swift */,
 			);
 			name = PorchCore;
@@ -309,6 +315,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				B20FC2B6608C7853CDD82D3B /* LocalService.swift in Sources */,
+				672767AB77C46069688F2645 /* ModelUpdate.swift in Sources */,
+				2C9CC7775CB99FE41975B03F /* ServiceLifecycle.swift in Sources */,
 				05BBC94C4ECDB5DEB6E1BDE4 /* TranscriptStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -7,10 +7,22 @@ import FluidAudio
 
 @MainActor
 final class SpeechService: ObservableObject {
-    @Published var mode = "idle"
+    @Published var lifecycle = ServiceLifecycle()
+    @Published var fnRequested = UserDefaults.standard.bool(forKey: "fnRequested")
+    @Published var ambientRequested = false
+    @Published private(set) var ambientEnabled = false
+    @Published var mode = "paused"
     @Published var modelState = "not loaded"
     @Published var notice = "Prepare models, then enable Fn dictation or start ambient listening."
     @Published var recent: [Transcript] = []
+    @Published var history: [Transcript] = []
+    @Published var events: [CaptureEvent] = []
+    @Published var hasMoreHistory = false
+    @Published var modelUpdates = ModelUpdate.defaults
+    @Published var checkingModels = false
+    private var modelCheck: Task<Void, Never>?
+    private var historyQuery = ""
+    private var historyLimit = 50
     @Published var resources = ResourceSnapshot()
     @Published var level: Float = 0
     @Published var fnEnabled = false
@@ -29,6 +41,9 @@ final class SpeechService: ObservableObject {
     private var server: LocalServiceServer?
     private var timer: Timer?
     private var diagnosticActive = false
+    private var preparation: Task<Void, Never>?
+    private var pausing: Task<Void, Never>?
+    private var diagnostic: Task<SpeechOutput, Error>?
     private var tickCount = 0
     private var sessionID = UUID().uuidString
     private var sessionStarted = Date()
@@ -42,14 +57,13 @@ final class SpeechService: ObservableObject {
     private var dictationStarted = Date()
     private var jobs: [AudioJob] = []
     private var processing: Task<Void, Never>?
-    private var ambientEnabled = false
     private var observers: [NSObjectProtocol] = []
     private var lastStatsTime = Date.distantPast
     private lazy var input: DictationInput = {
         let result = DictationInput(onStart: { [weak self] in self?.beginDictation() }, onStop: { [weak self] in self?.endDictation() })
         result.canStart = { [weak self] in
             guard let self else { return false }
-            return self.modelState == "ready" && !self.dictationPending && !self.dictationActive && !self.diagnosticActive
+            return self.lifecycle.phase == .ready && self.modelState == "ready" && !self.dictationPending && !self.dictationActive && !self.diagnosticActive
         }
         result.onError = { [weak self] error in
             self?.notice = error.localizedDescription
@@ -67,38 +81,66 @@ final class SpeechService: ObservableObject {
             }
             try service.start(); server = service
             refreshRecent()
-            if UserDefaults.standard.bool(forKey: "modelsPrepared") { prepare() }
+            if let data = UserDefaults.standard.data(forKey: "modelUpdateChecks"),
+               let saved = try? JSONDecoder().decode([ModelUpdate].self, from: data) { modelUpdates = saved }
+            if UserDefaults.standard.bool(forKey: "modelsPrepared"), !UserDefaults.standard.bool(forKey: "servicePaused") { prepare() }
         } catch { notice = "Service startup: \(error.localizedDescription)" }
-        timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.tick() }
-        }
+        scheduleTimer()
         let center = NSWorkspace.shared.notificationCenter
         observers.append(center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
-                self?.recordEvent("sleep", "Capture paused because the Mac is sleeping."); self?.pause(); self?.notice = "Paused for sleep. Resume ambient listening when ready; this is a capture gap."
+                self?.recordEvent("sleep", "Capture paused because the Mac is sleeping."); self?.pause(); self?.notice = "Paused for sleep."
             }
         })
         observers.append(NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.ambientEnabled || self.dictationActive else { return }
-                self.recordEvent("device_change", "Audio input configuration changed."); self.pause(); self.notice = "Audio device changed. Resume to use the current input; capture gap recorded."
+                self.recordEvent("device_change", "Audio input configuration changed."); self.pause(); self.notice = "Audio input changed. Resume when ready."
             }
         })
     }
 
+    var isPaused: Bool { lifecycle.phase == .paused || lifecycle.phase == .pausing || lifecycle.phase == .failed }
+    var isTransitioning: Bool { lifecycle.phase == .starting || lifecycle.phase == .pausing }
+
+    private func scheduleTimer() {
+        timer?.invalidate()
+        let interval = lifecycle.phase == .ready ? 0.2 : 5.0
+        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.tick() }
+        }
+        timer?.tolerance = interval / 5
+    }
+
+    private func updateMode() {
+        switch lifecycle.phase {
+        case .ready: mode = dictationActive ? "dictation" : (ambientEnabled ? "ambient" : "ready")
+        default: mode = lifecycle.phase.rawValue
+        }
+    }
+
     func prepare() {
-        guard !preparing, modelState != "ready" else { return }
-        preparing = true; modelState = "preparing"
-        notice = "Downloading/loading local Parakeet, Silero VAD, and Sortformer. First setup can take several minutes."
-        Task {
+        guard let token = lifecycle.beginStart() else { return }
+        UserDefaults.standard.set(false, forKey: "servicePaused")
+        preparing = true; modelState = "preparing"; updateMode()
+        notice = "Loading models…"
+        preparation = Task {
             do {
                 try await pipeline.prepare()
-                modelState = "ready"; notice = "Local models ready. Fn dictation and ambient listening are available."
+                try Task.checkCancellation()
+                guard lifecycle.finishStart(token, succeeded: true) else { return }
+                modelState = "ready"
                 UserDefaults.standard.set(true, forKey: "modelsPrepared")
-                if UserDefaults.standard.bool(forKey: "fnRequested"), DictationInput.accessibilityGranted,
-                   AVCaptureDevice.authorizationStatus(for: .audio) == .authorized { await enableFn() }
-            } catch { modelState = "failed"; notice = "Model setup failed: \(error.localizedDescription)" }
-            preparing = false
+                if fnRequested { await enableFn() }
+                if ambientRequested { try await activateAmbient() }
+                if lifecycle.acceptsWork(token) { notice = "" }
+            } catch {
+                if lifecycle.finishStart(token, succeeded: false) {
+                    modelState = "failed"; notice = error.localizedDescription
+                    await pipeline.unload()
+                } else if lifecycle.acceptsWork(token) { notice = error.localizedDescription }
+            }
+            preparing = false; preparation = nil; updateMode(); scheduleTimer()
         }
     }
 
@@ -113,54 +155,95 @@ final class SpeechService: ObservableObject {
     }
 
     func enableFn() async {
-        guard await requestMic() else { return }
+        fnRequested = true; UserDefaults.standard.set(true, forKey: "fnRequested")
+        let token = lifecycle.generation
+        guard lifecycle.acceptsWork(token) else { return }
+        guard await requestMic(), lifecycle.acceptsWork(token), fnRequested else { return }
         if !DictationInput.accessibilityGranted { input.requestAccessibility() }
         fnEnabled = input.enable()
-        UserDefaults.standard.set(fnEnabled, forKey: "fnRequested")
-        notice = fnEnabled ? "Hold Fn in a text field. Release to insert; messages are never submitted." : "Enable Porch Speech in Accessibility, then click Enable Fn again. Set the macOS Fn/Globe action to Do Nothing if it conflicts."
+        if !fnEnabled { notice = "Enable Accessibility access in System Settings, then switch Fn dictation on again." }
     }
 
     func disableFn() {
-        input.disable(); fnEnabled = false; cancelDictation()
-        UserDefaults.standard.set(false, forKey: "fnRequested")
-        notice = "Fn dictation disabled."
+        fnRequested = false; UserDefaults.standard.set(false, forKey: "fnRequested")
+        cancelDictation(); input.disable(); fnEnabled = false; notice = ""
     }
 
-    func startAmbient() async throws {
-        guard modelState == "ready" else { throw PorchError.message("Models are not ready. Run models prepare first.") }
-        guard await requestMic() else { throw PorchError.message("Microphone permission is required in macOS.") }
-        guard !diagnosticActive else { throw PorchError.message("A diagnostic transcription is running.") }
+    func setAmbient(_ enabled: Bool) async {
+        ambientRequested = enabled
+        guard lifecycle.phase == .ready else { return }
+        if enabled {
+            do { try await activateAmbient() }
+            catch { ambientRequested = false; notice = error.localizedDescription }
+        } else {
+            if !dictationActive { capture.stop() }
+            drainAudio()
+            if ambientEnabled { flushAmbient(); recordEvent("ambient_off", "Ambient transcription switched off.") }
+            ambientEnabled = false; updateMode(); level = 0; kickWorker()
+        }
+    }
+
+    private func activateAmbient() async throws {
+        let token = lifecycle.generation
+        guard lifecycle.acceptsWork(token), !diagnosticActive else { throw PorchError.message("Resume the service before listening.") }
+        guard await requestMic() else { throw PorchError.message("Microphone permission is required.") }
+        guard lifecycle.acceptsWork(token), ambientRequested else { return }
         guard !ambientEnabled else { return }
         if !capture.running { lastAudioAt = Date() }
         try capture.start()
         sessionID = UUID().uuidString; sessionStarted = Date(); ambientOffset = 0
-        ambient = []; silentSeconds = 0; ambientEnabled = true; mode = "ambient"
-        recordEvent("started", "Ambient microphone capture started.")
-        notice = "Listening locally. Transcript only; speaker names are manual. Pause for private or work-only conversations."
+        ambient = []; silentSeconds = 0; ambientEnabled = true; updateMode()
+        recordEvent("started", "Ambient microphone capture started."); notice = ""
     }
 
+    func startAmbient() async throws {
+        ambientRequested = true
+        if lifecycle.phase == .paused || lifecycle.phase == .failed { prepare() }
+        if let preparation { await preparation.value }
+        guard lifecycle.phase == .ready else { throw PorchError.message("The service is not ready. Wait for Pause to finish, then Resume.") }
+        try await activateAmbient()
+    }
+
+    /// Stop all speech work immediately, then release models when any active prediction returns.
     func pause() {
+        guard let token = lifecycle.beginPause() else { return }
+        UserDefaults.standard.set(true, forKey: "servicePaused")
         capture.stop()
-        drainAudio()
-        if ambientEnabled { flushAmbient(); recordEvent("paused", "Ambient capture paused; resume starts a new session.") }
+        let packet = capture.drain()
+        let discarded = Double(packet.samples.count + packet.dropped + ambient.count + dictation.count + jobs.reduce(0) { $0 + $1.samples.count }) / 16000
+        if discarded > 0 { recordEvent("audio_discarded", "Unfinished audio discarded by Pause.") }
+        if ambientEnabled { recordEvent("paused", "Service paused.") }
         ambientEnabled = false
-        cancelDictation()
-        capture.stop()
-        mode = "paused"; level = 0
-        notice = "Microphone paused. Finishing already captured transcript segments."
-        kickWorker()
+        cancelDictation(); input.disable(); fnEnabled = false
+        ambient.removeAll(keepingCapacity: false); jobs.removeAll(keepingCapacity: false)
+        capture.discardBufferedAudio(); queuedSeconds = 0; level = 0
+        let loadingTask = preparation, worker = processing, fileTask = diagnostic
+        loadingTask?.cancel(); worker?.cancel(); fileTask?.cancel()
+        modelState = "unloading"; updateMode(); notice = "Releasing models…"
+        scheduleTimer()
+        pausing = Task {
+            await loadingTask?.value
+            await worker?.value
+            _ = try? await fileTask?.value
+            await pipeline.unload()
+            if lifecycle.finishPause(token) {
+                modelState = "unloaded"; preparing = false; preparation = nil; notice = ""; updateMode()
+                resources = sampler.sample(); scheduleTimer()
+            }
+            pausing = nil
+        }
     }
 
-    func stop() { pause(); mode = "idle"; notice = "Listening stopped. Saved transcripts remain searchable." }
+    func stop() { ambientRequested = false; pause() }
 
     func beginDictation() {
-        guard modelState == "ready", !dictationPending else { return }
+        guard lifecycle.phase == .ready, modelState == "ready", !dictationPending else { return }
         drainAudio()
         do {
             if !capture.running { lastAudioAt = Date() }
             try capture.start()
             dictation = []; dictationStarted = Date(); dictationTicket = UUID(); dictationActive = true
-            mode = ambientEnabled ? "ambient + dictation" : "dictation"
+            updateMode()
             notice = "Listening for dictation… release Fn to insert."
         } catch { cancelDictation(); notice = error.localizedDescription }
     }
@@ -172,7 +255,7 @@ final class SpeechService: ObservableObject {
         guard dictationActive else { return }
         dictationActive = false
         level = 0
-        mode = ambientEnabled ? "ambient" : "idle"
+        updateMode()
         guard dictation.count >= 3200 else { dictation = []; input.discardTarget(); notice = "Too little audio to transcribe."; return }
         dictationPending = true
         let job = AudioJob(sessionID: UUID().uuidString, startedAt: dictationStarted, offset: 0,
@@ -185,11 +268,11 @@ final class SpeechService: ObservableObject {
         dictationActive = false; dictationPending = false; dictationTicket = UUID(); dictation = []
         jobs.removeAll { $0.mode == "dictation" }
         if !ambientEnabled { capture.stop() }
-        mode = ambientEnabled ? "ambient" : "idle"
+        updateMode()
     }
 
     private func tick() {
-        drainAudio()
+        if lifecycle.phase == .ready { drainAudio() }
         tickCount += 1
         if Date().timeIntervalSince(lastStatsTime) >= 1 {
             resources = sampler.sample(); lastStatsTime = Date()
@@ -241,11 +324,14 @@ final class SpeechService: ObservableObject {
     }
 
     private func kickWorker() {
-        guard processing == nil, !jobs.isEmpty else { return }
+        guard lifecycle.phase == .ready, processing == nil, !jobs.isEmpty else { return }
         let job = jobs.removeFirst()
+        let generation = lifecycle.generation
         processing = Task {
             do {
                 let output = try await pipeline.infer(job)
+                try Task.checkCancellation()
+                guard lifecycle.acceptsWork(generation) else { throw CancellationError() }
                 lastInferenceSeconds = output.processingSeconds
                 processedAudioSeconds += Double(job.samples.count) / 16000
                 lagSeconds = max(0, Date().timeIntervalSince(job.startedAt) - job.offset - Double(job.samples.count) / 16000)
@@ -261,8 +347,8 @@ final class SpeechService: ObservableObject {
                     }
                 }
             } catch {
-                recordEvent("processing_error", error.localizedDescription, session: job.sessionID)
-                if job.mode != "dictation" || job.ticket == dictationTicket {
+                if !(error is CancellationError) { recordEvent("processing_error", error.localizedDescription, session: job.sessionID) }
+                if lifecycle.acceptsWork(generation), job.mode != "dictation" || job.ticket == dictationTicket {
                     notice = "\(job.mode.capitalized): \(error.localizedDescription). Transcript insertion was not completed."
                 }
             }
@@ -273,15 +359,54 @@ final class SpeechService: ObservableObject {
     }
 
     private func recordEvent(_ kind: String, _ detail: String, duration: Double? = nil, session: String? = nil) {
-        do { try store?.appendEvent(CaptureEvent(sessionID: session ?? sessionID, kind: kind, detail: detail, durationSeconds: duration)) }
+        do { try store?.appendEvent(CaptureEvent(sessionID: session ?? sessionID, kind: kind, detail: detail, durationSeconds: duration)); events = try store?.events(limit: 50) ?? [] }
         catch { notice = "Could not save capture event: \(error.localizedDescription)" }
     }
 
-    func refreshRecent() { do { recent = try store?.recent(limit: 20) ?? [] } catch { notice = error.localizedDescription } }
+    func refreshRecent() {
+        do { recent = try store?.recent(limit: 20) ?? []; events = try store?.events(limit: 50) ?? []; refreshHistory() }
+        catch { notice = error.localizedDescription }
+    }
+    func searchHistory(_ query: String) { historyQuery = query; historyLimit = 50; refreshHistory() }
+    func loadMoreHistory() { historyLimit += 50; refreshHistory() }
+    private func refreshHistory() {
+        do {
+            // Store limits each request to 200; page so the UI can browse its whole history.
+            var found: [Transcript] = []
+            while found.count < historyLimit + 1 {
+                let count = min(200, historyLimit + 1 - found.count)
+                let page = try historyQuery.isEmpty ? store?.recent(limit: count, offset: found.count) : store?.search(historyQuery, limit: count, offset: found.count)
+                let items = page ?? []; found.append(contentsOf: items)
+                if items.count < count { break }
+            }
+            hasMoreHistory = found.count > historyLimit; history = Array(found.prefix(historyLimit))
+        } catch { notice = error.localizedDescription }
+    }
+    func labelSpeaker(session: String, speaker: String, name: String) {
+        do { try store?.label(sessionID: session, speakerID: speaker, name: name); refreshRecent() }
+        catch { notice = error.localizedDescription }
+    }
+    func checkModelUpdates() {
+        guard !checkingModels else { return }
+        checkingModels = true
+        let current = modelUpdates
+        modelCheck = Task {
+            let results = await withTaskGroup(of: (Int, ModelUpdate).self) { group in
+                for (index, model) in current.enumerated() { group.addTask { (index, await model.check()) } }
+                var rows: [(Int, ModelUpdate)] = []
+                for await row in group { rows.append(row) }
+                return rows.sorted { $0.0 < $1.0 }.map(\.1)
+            }
+            modelUpdates = results
+            if let data = try? JSONEncoder().encode(results) { UserDefaults.standard.set(data, forKey: "modelUpdateChecks") }
+            checkingModels = false; modelCheck = nil
+        }
+    }
 
     func shutdown() {
         if ambientEnabled { recordEvent("stopped", "Application quit; capture ended.") }
-        timer?.invalidate(); input.disable(); capture.stop(); server?.stop()
+        modelCheck?.cancel(); preparation?.cancel(); processing?.cancel(); diagnostic?.cancel(); pausing?.cancel()
+        timer?.invalidate(); cancelDictation(); input.disable(); capture.stop(); server?.stop()
         for observer in observers { NSWorkspace.shared.notificationCenter.removeObserver(observer); NotificationCenter.default.removeObserver(observer) }
     }
 
@@ -295,6 +420,7 @@ final class SpeechService: ObservableObject {
         var result: [String: Any] = ["mode": mode, "models": modelState, "microphoneRunning": capture.running,
             "microphonePermission": AVCaptureDevice.authorizationStatus(for: .audio).rawValue,
             "accessibilityGranted": DictationInput.accessibilityGranted, "fnEnabled": fnEnabled,
+            "fnRequested": fnRequested, "ambientRequested": ambientRequested, "ambientEnabled": ambientEnabled, "servicePhase": lifecycle.phase.rawValue,
             "notice": notice, "sessionID": sessionID, "inferenceRunning": processing != nil || diagnosticActive, "resources": try object(resources),
             "droppedAudioSeconds": droppedSeconds, "queuedAudioSeconds": pendingAudioSeconds, "processingLagSeconds": lagSeconds,
             "lastInferenceSeconds": lastInferenceSeconds, "processedAudioSeconds": processedAudioSeconds,
@@ -317,8 +443,11 @@ final class SpeechService: ObservableObject {
             switch method {
             case "speech.status", "speech.doctor": result = try status()
             case "models.prepare": prepare(); result = ["state": modelState]
+            case "models.check": checkModelUpdates(); if let modelCheck { await modelCheck.value }; result = try object(modelUpdates)
             case "speech.start": try await startAmbient(); result = try status()
             case "speech.pause": pause(); result = try status()
+            case "speech.resume": prepare(); result = try status()
+            case "speech.ambient_off": await setAmbient(false); result = try status()
             case "speech.stop": stop(); result = try status()
             case "transcripts.search": result = try object(store?.search(params["query"] as? String ?? "", limit: limit, offset: offset) ?? [])
             case "transcripts.recent": result = try object(store?.recent(limit: limit, offset: offset) ?? [])
@@ -332,7 +461,12 @@ final class SpeechService: ObservableObject {
                 guard let path = params["path"] as? String else { throw PorchError.message("path is required") }
                 diagnosticActive = true
                 defer { diagnosticActive = false }
-                let output = try await pipeline.testFile(URL(fileURLWithPath: path))
+                let token = lifecycle.generation
+                let fileTask = Task { try await pipeline.testFile(URL(fileURLWithPath: path)) }
+                diagnostic = fileTask
+                defer { diagnostic = nil }
+                let output = try await fileTask.value
+                guard lifecycle.acceptsWork(token) else { throw CancellationError() }
                 result = ["text": output.text, "transcripts": try object(output.transcripts), "processingSeconds": output.processingSeconds, "persisted": false]
             case "speakers.label":
                 guard let session = params["sessionID"] as? String, let speaker = params["speakerID"] as? String, let name = params["name"] as? String else { throw PorchError.message("sessionID, speakerID and name are required") }

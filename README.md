@@ -6,7 +6,7 @@ FluidAudio runs Parakeet v3, Silero VAD, and streaming Sortformer through Core M
 
 ## Use
 
-Open **Porch Speech** from Applications. Prepare models once (initial downloads need internet), then enable Fn or start ambient listening. The native status window and menu bar show listening state, CPU, memory, audio queue, thermal state, and recent transcripts. Closing the window keeps the menu-bar service running; Quit ends it. Microphone and Accessibility permissions are required for dictation. If macOS's Fn/Globe action conflicts, set it to **Do Nothing** in Keyboard settings. Cached models and the Fn preference restore on subsequent launches; ambient recording starts explicitly.
+Open **Porch Speech** from Applications. The **Transcripts** window is reused by the menu-bar **Open** button. The Dock icon appears while that window is open. **Resume** loads models (initial downloads need internet); **Pause** stops all speech work and unloads models. Fn dictation and ambient transcription are separate toggles. Selected features resume together; switching ambient off by itself leaves Fn available. Closing the window keeps the menu-bar service running; Quit ends it. Microphone and Accessibility permissions are required for dictation. If macOS's Fn/Globe action conflicts, set it to **Do Nothing** in Keyboard settings. Pause persists across app launches. The Fn selection is saved; ambient starts off on a new launch. Within a running session, Resume restores both selected features.
 
 Fn inserts at the captured field/selection, cancels when focus changes, refuses password fields, preserves the clipboard on its paste fallback, and never presses Return. Native accessibility varies between apps: test the fields you use. The first version inserts the recognizer's words with its punctuation; optional rewriting is deferred.
 
@@ -20,6 +20,9 @@ The installer links `~/.local/bin/porch` to the CLI bundled in the app. Use its 
 porch status
 porch start
 porch pause
+porch resume
+porch ambient-off
+porch models check
 porch search 'blue notebook'
 porch recent --limit 20
 porch sessions
@@ -43,7 +46,7 @@ An MCP client can launch the bundled helper directly:
 }
 ```
 
-Twelve tools expose capture controls, health/stats, model preparation, transcript search/read/recent/sessions, capture events, and manual speaker labels. Transport is stdio to a same-user Unix socket, with no TCP listener. Ambient transcript text is context, never permission to execute actions. This repository supplies the server; it does not modify any agent's global configuration.
+Fifteen tools expose capture controls, health/stats, model preparation, transcript search/read/recent/sessions, capture events, and manual speaker labels. Transport is stdio to a same-user Unix socket, with no TCP listener. Ambient transcript text is context, never permission to execute actions. This repository supplies the server; it does not modify any agent's global configuration.
 
 ## Build and install
 
@@ -57,5 +60,9 @@ swift test
 The installer selects an installed Developer ID Application identity or accepts `PORCH_SIGN_IDENTITY` / `PORCH_SIGN_TEAM`. It builds with Xcode, derives the product path from that build's settings, refuses to interrupt active capture/inference/model setup, verifies signatures and matching executable hashes, installs to Applications, and verifies the launched process path. Logs and install proof are in ignored `build/`. It does not register a login daemon.
 
 `porch transcribe-file /absolute/path/to/short-audio.aiff` is an idle-only developer diagnostic (at most 60 seconds). It uses the same recognition/diarization pipeline, returns results without storing transcripts, and is not an MCP tool.
+
+The native app contains **History** (click a transcript to copy, search, load more, manual speaker labels), **Activity** (metrics and capture events), and **Models** (on-demand upstream revision checks and release links). Liquid Glass controls are used on macOS 26, with native material fallbacks on older versions. The window title is neutral while a new product name is being chosen.
+
+**Model updates:** upstream model repositories can publish new weights or conversion fixes. Models → Check updates, or `porch models check`, retrieves publication revisions/dates and detects changes since your previous check. The original FluidAudio cache lacks installed revision metadata, so this does not establish that installed weights are current. No models are silently updated. Revision-tracked installation and rollback are proposed next work.
 
 See [implementation scope](docs/PLAN.md), [architecture and limits](docs/ARCHITECTURE.md), [verification](docs/VERIFICATION.md), and [backlog](docs/BACKLOG.md).
