@@ -1,0 +1,10 @@
+.build/
+build/
+.DS_Store
+*.xcuserstate
+xcuserdata/
+work/
+*.wav
+*.aiff
+*.caf
+*.sqlite*
