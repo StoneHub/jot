@@ -1,10 +1,10 @@
 import XCTest
-@testable import PorchCore
+@testable import JotCore
 
 final class TranscriptStoreTests: XCTestCase {
     private var directory: URL!
     override func setUpWithError() throws {
-        directory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("porch-store-" + UUID().uuidString)
+        directory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("jot-store-" + UUID().uuidString)
     }
     override func tearDownWithError() throws { try? FileManager.default.removeItem(at: directory) }
 

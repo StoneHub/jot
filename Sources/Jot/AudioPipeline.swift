@@ -2,7 +2,7 @@ import Foundation
 import AVFoundation
 import CoreML
 import FluidAudio
-import PorchCore
+import JotCore
 
 struct AudioJob: Sendable {
     let sessionID: String
@@ -61,13 +61,13 @@ actor SpeechPipeline {
 
     func testFile(_ url: URL, tuning: TranscriptionTuning = .init()) async throws -> SpeechOutput {
         let file = try AVAudioFile(forReading: url)
-        guard Double(file.length) / file.processingFormat.sampleRate <= 60 else { throw PorchError.message("Diagnostic files must be at most 60 seconds.") }
+        guard Double(file.length) / file.processingFormat.sampleRate <= 60 else { throw JotError.message("Diagnostic files must be at most 60 seconds.") }
         let samples = try AudioConverter().resampleAudioFile(url)
         return try await infer(AudioJob(sessionID: UUID().uuidString, startedAt: Date(), offset: 0, samples: samples, mode: "ambient", ticket: UUID()), tuning: tuning)
     }
 
     func infer(_ job: AudioJob, tuning: TranscriptionTuning = .init()) async throws -> SpeechOutput {
-        guard let asr, let vad, let diarizer else { throw PorchError.message("Prepare models before listening.") }
+        guard let asr, let vad, let diarizer else { throw JotError.message("Prepare models before listening.") }
         try Task.checkCancellation()
         let begin = Date()
         if job.mode == "ambient" {
@@ -121,7 +121,7 @@ actor SpeechPipeline {
     }
 }
 
-enum PorchError: LocalizedError {
+enum JotError: LocalizedError {
     case message(String)
     var errorDescription: String? { if case .message(let text) = self { return text }; return nil }
 }
@@ -146,7 +146,7 @@ final class MicrophoneCapture: @unchecked Sendable {
         guard source.sampleRate > 0, source.channelCount > 0,
               let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),
               let converter = AVAudioConverter(from: source, to: target) else {
-            throw PorchError.message("No usable microphone input. Check the macOS input device.")
+            throw JotError.message("No usable microphone input. Check the macOS input device.")
         }
         lock.lock(); pending.removeAll(); dropped = 0; lock.unlock()
         input.installTap(onBus: 0, bufferSize: 4096, format: source) { [weak self] buffer, _ in

@@ -1,6 +1,6 @@
 import AppKit
 
-/// Run with SelectableHistory.swift and the built PorchCore framework. No window or microphone is opened.
+/// Run with SelectableHistory.swift and the built JotCore framework. No window or microphone is opened.
 @main
 struct HistorySelectionChecks {
     static func main() {

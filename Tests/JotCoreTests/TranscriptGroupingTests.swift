@@ -1,5 +1,5 @@
 import XCTest
-@testable import PorchCore
+@testable import JotCore
 final class TranscriptGroupingTests: XCTestCase {
     func testHesitationDoesNotCreateSpeakerOrStatement() {
         let words = [AttributedWord(text:"I think",start:0,end:1,probabilities:[0.9,0.1]),

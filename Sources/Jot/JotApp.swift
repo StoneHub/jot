@@ -1,13 +1,13 @@
 import SwiftUI
 import AppKit
-import PorchCore
+import JotCore
 import DevFeedback
 
 @main
-struct PorchSpeechApp: App {
-    @NSApplicationDelegateAdaptor(PorchDelegate.self) var delegate
+struct JotApp: App {
+    @NSApplicationDelegateAdaptor(JotDelegate.self) var delegate
     var body: some Scene {
-        Window("Transcripts", id: "main") {
+        Window("Jot", id: "main") {
             TranscriptView(service: delegate.service, delegate: delegate)
                 .frame(minWidth: 760, minHeight: 620)
         }
@@ -17,13 +17,13 @@ struct PorchSpeechApp: App {
             MenuControls(service: delegate.service, delegate: delegate)
         } label: {
             Image(systemName: delegate.service.isPaused ? "pause.circle" : (delegate.service.ambientEnabled ? "waveform.circle.fill" : "waveform.circle"))
-                .accessibilityLabel("Speech controls")
+                .accessibilityLabel("Jot controls")
         }.menuBarExtraStyle(.window)
     }
 }
 
 @MainActor
-final class PorchDelegate: NSObject, NSApplicationDelegate {
+final class JotDelegate: NSObject, NSApplicationDelegate {
     let service = SpeechService()
     weak var mainWindow: NSWindow?
     var openAction: (() -> Void)?
@@ -34,7 +34,7 @@ final class PorchDelegate: NSObject, NSApplicationDelegate {
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
-        NSApp.applicationIconImage = NSImage(systemSymbolName: "waveform.circle.fill", accessibilityDescription: "Speech")
+        NSApp.applicationIconImage = NSImage(systemSymbolName: "waveform.circle.fill", accessibilityDescription: "Jot")
         service.launch()
     }
     func attach(_ window: NSWindow) {
@@ -143,7 +143,7 @@ private struct ServiceControls: View {
 
 struct MenuControls: View {
     @ObservedObject var service: SpeechService
-    let delegate: PorchDelegate
+    let delegate: JotDelegate
     @Environment(\.openWindow) private var openWindow
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -169,7 +169,7 @@ struct MenuControls: View {
 
 struct TranscriptView: View {
     @ObservedObject var service: SpeechService
-    let delegate: PorchDelegate
+    let delegate: JotDelegate
     @Environment(\.openWindow) private var openWindow
     @State private var selected: Transcript?
     @State private var label = ""
@@ -221,10 +221,10 @@ struct TranscriptView: View {
                     Spacer()
                     if section == "History" {
                         Button("Open History in Finder", systemImage: "folder") {
-                            NSWorkspace.shared.activateFileViewerSelecting([PorchPaths.directory.appendingPathComponent("transcripts.sqlite3")])
+                            NSWorkspace.shared.activateFileViewerSelecting([JotPaths.directory.appendingPathComponent("transcripts.sqlite3")])
                         }
                         .modifier(GlassButton())
-                        .help("Shows the transcript database. Quit Porch Speech before moving history files to Trash.")
+                        .help("Shows the transcript database. Quit Jot before moving history files to Trash.")
                         .feedbackTarget("history.finder", label: "Open History in Finder")
                         Button(showHistory ? "Hide" : "Show", systemImage: showHistory ? "eye.slash" : "eye") { showHistory.toggle() }
                             .modifier(GlassButton())
@@ -246,7 +246,7 @@ struct TranscriptView: View {
         .background(WindowAttachment(attach: delegate.attach))
         .onAppear { delegate.openAction = { openWindow(id: "main") } }
         .onDisappear { copyReset?.cancel() }
-        .feedbackOverlay(appID: "porch-speech", screen: section.lowercased())
+        .feedbackOverlay(appID: "jot", screen: section.lowercased())
         .sheet(isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } })) {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Name speaker").font(.headline)

@@ -1,10 +1,10 @@
 // swift-tools-version: 5.9
 import PackageDescription
-let package = Package(name: "PorchCore", platforms: [.macOS(.v14)], products: [
-    .library(name: "PorchCore", targets: ["PorchCore"]),
-    .executable(name: "porch", targets: ["PorchCLI"])
+let package = Package(name: "JotCore", platforms: [.macOS(.v14)], products: [
+    .library(name: "JotCore", targets: ["JotCore"]),
+    .executable(name: "jot", targets: ["JotCLI"])
 ], targets: [
-    .target(name: "PorchCore", linkerSettings: [.linkedLibrary("sqlite3")]),
-    .executableTarget(name: "PorchCLI", dependencies: ["PorchCore"]),
-    .testTarget(name: "PorchCoreTests", dependencies: ["PorchCore"])
+    .target(name: "JotCore", linkerSettings: [.linkedLibrary("sqlite3")]),
+    .executableTarget(name: "JotCLI", dependencies: ["JotCore"]),
+    .testTarget(name: "JotCoreTests", dependencies: ["JotCore"])
 ])

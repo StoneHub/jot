@@ -9,7 +9,7 @@ Open **Tuning** in the native app. Start with Balanced, or use Steadier speakers
 | Pause between paragraphs | Groups nearby words and same-speaker rows | Longer values create fewer, longer rows and can delay ambient results |
 | Hide filler-only rows | Hides isolated um/uh/hmm rows in history | Original text remains in SQLite and CLI/MCP; fillers within sentences remain visible |
 
-Speaker settings apply to new audio. History presentation changes immediately for paragraph grouping and filler visibility. This does not rerun old audio: recordings are not retained. Source words are not rewritten or deleted. Settings persist and are reported by `porch status` / MCP status.
+Speaker settings apply to new audio. History presentation changes immediately for paragraph grouping and filler visibility. This does not rerun old audio: recordings are not retained. Source words are not rewritten or deleted. Settings persist and are reported by `jot status` / MCP status.
 
 ## A short comparison
 

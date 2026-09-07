@@ -1,4 +1,4 @@
-# SwiftUI feedback in Porch Speech
+# SwiftUI feedback in Jot
 
 Debug builds include an in-app feedback picker. The main Transcripts window is tagged by screen and by meaningful controls: service actions, navigation, history search/visibility, resource metrics, tuning controls, and model checks.
 
@@ -20,4 +20,4 @@ Keep test notes clearly marked as test data. Saving local feedback is separate f
 
 ## Transcript history in Finder
 
-History → Open History in Finder selects `~/Library/Application Support/PorchSpeech/transcripts.sqlite3`. Quit Porch Speech before moving the database and any matching `-wal` / `-shm` files to Trash; Pause unloads models but keeps the database open. The next launch creates an empty database if the previous one was removed. This action only reveals files; it does not delete anything or open transcript contents.
+History → Open History in Finder selects `~/Library/Application Support/Jot/transcripts.sqlite3`. Quit Jot before moving the database and any matching `-wal` / `-shm` files to Trash; Pause unloads models but keeps the database open. The next launch creates an empty database if the previous one was removed. This action only reveals files; it does not delete anything or open transcript contents.

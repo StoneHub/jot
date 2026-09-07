@@ -1,6 +1,6 @@
 # Architecture
 
-One SwiftUI menu-bar application owns the microphone and model lifecycle. A shared PorchCore module owns SQLite and the Unix socket protocol; the bundled `porch` helper provides CLI/MCP entry points. There is no web service.
+One SwiftUI menu-bar application owns the microphone and model lifecycle. A shared JotCore module owns SQLite and the Unix socket protocol; the bundled `jot` helper provides CLI/MCP entry points. There is no web service.
 
 AVAudioEngine → mono 16 kHz float samples → bounded capture queue → serialized speech worker → SQLite transcripts. Dictation gets queue priority and a focus-bound delivery ticket. Ambient and dictation can share capture; when both are enabled the same utterance can appear in both histories.
 
@@ -24,6 +24,6 @@ Fn is observed by a listen-only event tap. It does not reconfigure macOS or supp
 
 SQLite operations are serialized. The application-support directory is user-only and the socket is mode 0600; the server checks peer UID, bounds requests/responses, limits concurrent clients, and enforces input deadlines. A second service does not take over a live socket. No audio file is created by capture; diagnostics read an explicitly selected existing file.
 
-No model inference sends microphone content to a remote provider. Model preparation downloads model artifacts; future agent reads are separate disclosure decisions. Third-party code and model terms remain their authors' terms: [FluidAudio](https://github.com/FluidInference/FluidAudio), [Parakeet v3 model](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), and FluidAudio's referenced converted model repositories. This private implementation does not relicense those artifacts.
+No model inference sends microphone content to a remote provider. Model preparation downloads model artifacts; future agent reads are separate disclosure decisions. Third-party code and model terms remain their authors' terms: [FluidAudio](https://github.com/FluidInference/FluidAudio), [Parakeet v3 model](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), and FluidAudio's referenced converted model repositories. This implementation does not relicense those artifacts.
 
 The SwiftUI app uses a single `Window` scene, disables automatic tabbing, and switches activation policy between regular (Dock visible) and accessory (window closed). The menu-bar popover and window share the same service controls. Published model metadata is separate from installed-cache provenance.

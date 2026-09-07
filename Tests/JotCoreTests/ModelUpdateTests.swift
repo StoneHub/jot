@@ -1,5 +1,5 @@
 import XCTest
-@testable import PorchCore
+@testable import JotCore
 final class ModelUpdateTests: XCTestCase {
     func testInitialCheckDoesNotClaimInstalledModelsAreCurrent() throws {
         let model = ModelUpdate.defaults[0]

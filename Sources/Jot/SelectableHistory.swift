@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import PorchCore
+import JotCore
 
 /// One text document permits native selection across statement boundaries.
 struct SelectableHistory: NSViewRepresentable {

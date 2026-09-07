@@ -83,7 +83,7 @@ private func sendLine(_ data: Data, fd: Int32) throws {
 /// One request per connection. Both ends validate the peer UID; no TCP listener exists.
 public struct LocalServiceClient: Sendable {
     public let socketURL: URL
-    public init(socketURL: URL = PorchPaths.socketURL) { self.socketURL = socketURL }
+    public init(socketURL: URL = JotPaths.socketURL) { self.socketURL = socketURL }
     public func request(method: String, params: [String: Any] = [:]) throws -> Data {
         let request = try JSONSerialization.data(withJSONObject: ["method": method, "params": params], options: [.sortedKeys])
         guard request.count <= maxRequestBytes else { throw LocalServiceError.invalid("IPC request exceeds size limit") }
@@ -92,7 +92,7 @@ public struct LocalServiceClient: Sendable {
         defer { close(fd) }
         let timeout = ["models.prepare", "speech.transcribe_file"].contains(method) ? 600 : 30
         configure(fd, timeout: timeout)
-        guard try connectSocket(fd, socketURL) == 0 else { throw LocalServiceError.unavailable("Porch Speech is not running. Open Porch Speech.app, then retry. (\(String(cString: strerror(errno))))") }
+        guard try connectSocket(fd, socketURL) == 0 else { throw LocalServiceError.unavailable("Jot is not running. Open Jot.app, then retry. (\(String(cString: strerror(errno))))") }
         guard ownPeer(fd) else { throw LocalServiceError.invalid("Service peer belongs to a different user") }
         try sendLine(request, fd: fd)
         return try receiveLine(fd, limit: maxResponseBytes, timeout: TimeInterval(timeout))
@@ -110,7 +110,7 @@ public final class LocalServiceServer: @unchecked Sendable {
     private var inode: ino_t?
     private var generation = UUID()
 
-    public init(socketURL: URL = PorchPaths.socketURL, handler: @escaping Handler) {
+    public init(socketURL: URL = JotPaths.socketURL, handler: @escaping Handler) {
         self.socketURL = socketURL; self.handler = handler
     }
     deinit { stop() }
@@ -128,7 +128,7 @@ public final class LocalServiceServer: @unchecked Sendable {
             let result: Int32
             do { result = try connectSocket(probe, socketURL) } catch { close(probe); throw error }
             let savedErrno = errno; close(probe)
-            guard result != 0 else { throw LocalServiceError.invalid("Another Porch Speech service already owns this socket") }
+            guard result != 0 else { throw LocalServiceError.invalid("Another Jot service already owns this socket") }
             guard savedErrno == ECONNREFUSED else { throw LocalServiceError.invalid("Existing socket could not be safely identified as stale") }
             var current = stat()
             guard lstat(socketURL.path, &current) == 0, current.st_ino == info.st_ino, current.st_uid == getuid(), current.st_mode & S_IFMT == S_IFSOCK else { throw LocalServiceError.invalid("Service socket changed while checking ownership") }
@@ -149,7 +149,7 @@ public final class LocalServiceServer: @unchecked Sendable {
             guard chmod(socketURL.path, 0o600) == 0, listen(fd, 8) == 0 else { throw LocalServiceError.unavailable("Could not secure or listen on service socket") }
             listener = fd; generation = UUID()
             let run = generation
-            DispatchQueue(label: "PorchSpeech.local-service.accept", qos: .utility).async { [weak self] in self?.acceptConnections(fd, run: run) }
+            DispatchQueue(label: "Jot.local-service.accept", qos: .utility).async { [weak self] in self?.acceptConnections(fd, run: run) }
         } catch {
             close(fd); removeOwnedSocket(); throw error
         }

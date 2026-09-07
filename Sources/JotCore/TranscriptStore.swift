@@ -1,9 +1,9 @@
 import Foundation
 import SQLite3
 
-public enum PorchPaths {
+public enum JotPaths {
     public static var directory: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/PorchSpeech", isDirectory: true)
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Jot", isDirectory: true)
     }
     public static var socketURL: URL { directory.appendingPathComponent("service.sock") }
 }
@@ -72,7 +72,7 @@ public final class TranscriptStore: @unchecked Sendable {
     private let databaseURL: URL
     private let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-    public init(directory: URL = PorchPaths.directory) throws {
+    public init(directory: URL = JotPaths.directory) throws {
         try preparePrivateDirectory(directory)
         databaseURL = directory.appendingPathComponent("transcripts.sqlite3")
         if FileManager.default.fileExists(atPath: databaseURL.path) {

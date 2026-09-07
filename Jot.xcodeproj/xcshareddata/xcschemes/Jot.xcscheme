@@ -15,10 +15,10 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "C1E0F3D339A6C0F477432B72"
-               BuildableName = "PorchSpeech.app"
-               BlueprintName = "PorchSpeech"
-               ReferencedContainer = "container:PorchSpeech.xcodeproj">
+               BlueprintIdentifier = "B0C2456737C67D0846A9A98E"
+               BuildableName = "Jot.app"
+               BlueprintName = "Jot"
+               ReferencedContainer = "container:Jot.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -32,10 +32,10 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "C1E0F3D339A6C0F477432B72"
-            BuildableName = "PorchSpeech.app"
-            BlueprintName = "PorchSpeech"
-            ReferencedContainer = "container:PorchSpeech.xcodeproj">
+            BlueprintIdentifier = "B0C2456737C67D0846A9A98E"
+            BuildableName = "Jot.app"
+            BlueprintName = "Jot"
+            ReferencedContainer = "container:Jot.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
@@ -55,10 +55,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "C1E0F3D339A6C0F477432B72"
-            BuildableName = "PorchSpeech.app"
-            BlueprintName = "PorchSpeech"
-            ReferencedContainer = "container:PorchSpeech.xcodeproj">
+            BlueprintIdentifier = "B0C2456737C67D0846A9A98E"
+            BuildableName = "Jot.app"
+            BlueprintName = "Jot"
+            ReferencedContainer = "container:Jot.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -72,10 +72,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "C1E0F3D339A6C0F477432B72"
-            BuildableName = "PorchSpeech.app"
-            BlueprintName = "PorchSpeech"
-            ReferencedContainer = "container:PorchSpeech.xcodeproj">
+            BlueprintIdentifier = "B0C2456737C67D0846A9A98E"
+            BuildableName = "Jot.app"
+            BlueprintName = "Jot"
+            ReferencedContainer = "container:Jot.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

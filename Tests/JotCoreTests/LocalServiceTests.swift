@@ -1,12 +1,12 @@
 import XCTest
-@testable import PorchCore
+@testable import JotCore
 import Darwin
 
 final class LocalServiceTests: XCTestCase {
     private var directory: URL!
     override func setUpWithError() throws {
         // macOS Unix socket paths have a 104-byte capacity; NSTemporaryDirectory can be much longer.
-        directory = URL(fileURLWithPath: "/tmp").appendingPathComponent("porch-ipc-" + UUID().uuidString)
+        directory = URL(fileURLWithPath: "/tmp").appendingPathComponent("jot-ipc-" + UUID().uuidString)
     }
     override func tearDownWithError() throws { try? FileManager.default.removeItem(at: directory) }
 

@@ -2,7 +2,7 @@ import AppKit
 import AVFoundation
 import Combine
 import Foundation
-import PorchCore
+import JotCore
 import FluidAudio
 
 @MainActor
@@ -157,7 +157,7 @@ final class SpeechService: ObservableObject {
         case .authorized: return true
         case .notDetermined: return await AVCaptureDevice.requestAccess(for: .audio)
         default:
-            notice = "Microphone access is required. Enable Porch Speech in System Settings → Privacy & Security → Microphone."
+            notice = "Microphone access is required. Enable Jot in System Settings → Privacy & Security → Microphone."
             return false
         }
     }
@@ -193,8 +193,8 @@ final class SpeechService: ObservableObject {
 
     private func activateAmbient() async throws {
         let token = lifecycle.generation
-        guard lifecycle.acceptsWork(token), !diagnosticActive else { throw PorchError.message("Resume the service before listening.") }
-        guard await requestMic() else { throw PorchError.message("Microphone permission is required.") }
+        guard lifecycle.acceptsWork(token), !diagnosticActive else { throw JotError.message("Resume the service before listening.") }
+        guard await requestMic() else { throw JotError.message("Microphone permission is required.") }
         guard lifecycle.acceptsWork(token), ambientRequested else { return }
         guard !ambientEnabled else { return }
         if !capture.running { lastAudioAt = Date() }
@@ -208,7 +208,7 @@ final class SpeechService: ObservableObject {
         ambientRequested = true
         if lifecycle.phase == .paused || lifecycle.phase == .failed { prepare() }
         if let preparation { await preparation.value }
-        guard lifecycle.phase == .ready else { throw PorchError.message("The service is not ready. Wait for Pause to finish, then Resume.") }
+        guard lifecycle.phase == .ready else { throw JotError.message("The service is not ready. Wait for Pause to finish, then Resume.") }
         try await activateAmbient()
     }
 
@@ -443,7 +443,7 @@ final class SpeechService: ObservableObject {
 
     func handle(_ data: Data) async -> Data {
         do {
-            guard let request = try JSONSerialization.jsonObject(with: data) as? [String: Any], let method = request["method"] as? String else { throw PorchError.message("Invalid request") }
+            guard let request = try JSONSerialization.jsonObject(with: data) as? [String: Any], let method = request["method"] as? String else { throw JotError.message("Invalid request") }
             let params = request["params"] as? [String: Any] ?? [:]
             let limit = params["limit"] as? Int ?? 50
             let offset = params["offset"] as? Int ?? 0
@@ -462,11 +462,11 @@ final class SpeechService: ObservableObject {
             case "transcripts.events": result = try object(store?.events(sessionID: params["sessionID"] as? String, limit: limit, offset: offset) ?? [])
             case "transcripts.sessions": result = try object(store?.sessions(limit: limit) ?? [])
             case "transcripts.read":
-                guard let id = params["id"] as? String, let item = try store?.read(id: id) else { throw PorchError.message("Transcript not found") }
+                guard let id = params["id"] as? String, let item = try store?.read(id: id) else { throw JotError.message("Transcript not found") }
                 result = try object(item)
             case "speech.transcribe_file":
-                guard modelState == "ready", !capture.running, processing == nil, jobs.isEmpty, !diagnosticActive else { throw PorchError.message("Diagnostic transcription requires ready models and idle capture/inference.") }
-                guard let path = params["path"] as? String else { throw PorchError.message("path is required") }
+                guard modelState == "ready", !capture.running, processing == nil, jobs.isEmpty, !diagnosticActive else { throw JotError.message("Diagnostic transcription requires ready models and idle capture/inference.") }
+                guard let path = params["path"] as? String else { throw JotError.message("path is required") }
                 diagnosticActive = true
                 defer { diagnosticActive = false }
                 let token = lifecycle.generation
@@ -477,9 +477,9 @@ final class SpeechService: ObservableObject {
                 guard lifecycle.acceptsWork(token) else { throw CancellationError() }
                 result = ["text": output.text, "transcripts": try object(output.transcripts), "processingSeconds": output.processingSeconds, "persisted": false]
             case "speakers.label":
-                guard let session = params["sessionID"] as? String, let speaker = params["speakerID"] as? String, let name = params["name"] as? String else { throw PorchError.message("sessionID, speakerID and name are required") }
+                guard let session = params["sessionID"] as? String, let speaker = params["speakerID"] as? String, let name = params["name"] as? String else { throw JotError.message("sessionID, speakerID and name are required") }
                 try store?.label(sessionID: session, speakerID: speaker, name: name); refreshRecent(); result = ["updated": true]
-            default: throw PorchError.message("Unknown method: \(method)")
+            default: throw JotError.message("Unknown method: \(method)")
             }
             return try JSONSerialization.data(withJSONObject: ["ok": true, "result": result], options: [.sortedKeys])
         } catch {

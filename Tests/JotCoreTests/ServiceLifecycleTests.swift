@@ -1,5 +1,5 @@
 import XCTest
-@testable import PorchCore
+@testable import JotCore
 
 final class ServiceLifecycleTests: XCTestCase {
     func testPauseDuringModelLoadRejectsLateReady() throws {

@@ -6,7 +6,7 @@ Parallel streams: Fn press/release with focused-field insertion; local audio pip
 
 Ship resource statistics in the native app, CLI, and MCP. Verify microphone permissions, installation, inference, and source backup separately. CLI/MCP use one per-user local service, with no TCP/localhost server.
 
-Finish with a private GitHub PR, a checked installed Mac build, and an honest account of live tests and remaining user permission gates. Preserve original scope through dependency fixes.
+Finish with a GitHub PR, a checked installed Mac build, and an honest account of live tests and remaining user permission gates. Preserve original scope through dependency fixes.
 
 ## Native UX revision
 

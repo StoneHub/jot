@@ -61,3 +61,11 @@ Installed UI verification: clicking Steadier speakers changed the controls and C
 - The AppKit selection harness passed: an incoming update preserves selected text and its range, clearing the selection applies pending text, and a changed search replaces stale results/selection. No window or audio is opened by the harness. After building the host, run `swiftc -parse-as-library -F build/DerivedData/Build/Products/Debug -framework PorchCore -Xlinker -rpath -Xlinker "$PWD/build/DerivedData/Build/Products/Debug" Sources/PorchSpeech/SelectableHistory.swift scripts/check-history-selection.swift -o build/check-history-selection`, then `build/check-history-selection`.
 - The Mac was initially locked during UI verification. After unlocking, the user tried the installed drag-and-copy flow and confirmed it works. A passive accessibility read independently showed Text selected and one continuous native transcript text area. An after screenshot is omitted because current history contains private content.
 - Ambient listening and Fn were restored to their pre-install enabled state; installed status confirmed ready with microphone running.
+
+## Jot rename — 2026-09-07
+
+App, window, CLI/MCP identity, Swift modules, Xcode targets, bundle IDs, and current documentation now use Jot. Earlier records and screenshots above retain their historical names. The repository is public at https://github.com/StoneHub/jot.
+
+All 20 core tests pass. The signed Debug product resolved by Xcode was installed as `/Applications/Jot.app`; built and installed executable hashes match, and the running process is `/Applications/Jot.app/Contents/MacOS/Jot`. Native accessibility and a history-hidden screenshot confirmed the Jot window and app menu. CLI status and help respond under `jot`.
+
+Migration preserved all 596 transcripts across 7 sessions, Fn selection, tuning, and the feedback history file. The old app is archived under ignored `build/legacy-app-backup`. Jot remains paused. Its new bundle identity needs microphone and Accessibility permission; live dictation under the new identity has not been retested.

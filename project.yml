@@ -1,6 +1,6 @@
-name: PorchSpeech
+name: Jot
 options:
-  bundleIdPrefix: space.porchspeech
+  bundleIdPrefix: space.jot
   deploymentTarget:
     macOS: '14.0'
 packages:
@@ -18,61 +18,61 @@ settings:
     ENABLE_HARDENED_RUNTIME: YES
     ARCHS: arm64
 targets:
-  PorchCore:
+  JotCore:
     type: framework
     platform: macOS
-    sources: [Sources/PorchCore]
+    sources: [Sources/JotCore]
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
-        PRODUCT_BUNDLE_IDENTIFIER: space.porchspeech.core
+        PRODUCT_BUNDLE_IDENTIFIER: space.jot.core
     dependencies:
       - sdk: libsqlite3.tbd
-  PorchCLI:
+  JotCLI:
     type: tool
     platform: macOS
-    sources: [Sources/PorchCLI]
+    sources: [Sources/JotCLI]
     settings:
       base:
-        PRODUCT_NAME: porch
+        PRODUCT_NAME: jot
         LD_RUNPATH_SEARCH_PATHS: '@executable_path/../Frameworks'
     dependencies:
-      - target: PorchCore
-  PorchSpeech:
+      - target: JotCore
+  Jot:
     type: application
     platform: macOS
-    sources: [Sources/PorchSpeech]
+    sources: [Sources/Jot]
     info:
       path: Resources/Info.plist
       properties:
-        CFBundleDisplayName: Porch Speech
+        CFBundleDisplayName: Jot
         CFBundleShortVersionString: '0.1.0'
         CFBundleVersion: '1'
         LSUIElement: true
-        NSMicrophoneUsageDescription: Porch Speech transcribes your microphone locally for dictation and ambient transcripts. Audio is not saved.
+        NSMicrophoneUsageDescription: Jot transcribes your microphone locally for dictation and ambient transcripts. Audio is not saved.
         NSHighResolutionCapable: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: space.porchspeech.app
-        PRODUCT_NAME: Porch Speech
-        CODE_SIGN_ENTITLEMENTS: Resources/PorchSpeech.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: space.jot.app
+        PRODUCT_NAME: Jot
+        CODE_SIGN_ENTITLEMENTS: Resources/Jot.entitlements
     dependencies:
-      - target: PorchCore
+      - target: JotCore
       - package: FluidAudio
       - package: DevFeedback
-      - target: PorchCLI
+      - target: JotCLI
         embed: false
     postBuildScripts:
       - name: Bundle agent CLI
         script: |
           mkdir -p "$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers"
-          cp "$BUILT_PRODUCTS_DIR/porch" "$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/porch"
+          cp "$BUILT_PRODUCTS_DIR/jot" "$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/jot"
         inputFiles:
-          - $(BUILT_PRODUCTS_DIR)/porch
+          - $(BUILT_PRODUCTS_DIR)/jot
         outputFiles:
-          - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/porch
+          - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/jot
 schemes:
-  PorchSpeech:
+  Jot:
     build:
       targets:
-        PorchSpeech: all
+        Jot: all
