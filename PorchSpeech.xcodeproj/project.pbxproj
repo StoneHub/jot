@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		05BBC94C4ECDB5DEB6E1BDE4 /* TranscriptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 208DBC7A05881EDF2B5F4AE7 /* TranscriptStore.swift */; };
+		07AE480A6FCD0476E1D2C9F3 /* SelectableHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A6F58B754901A43E11BE1E2 /* SelectableHistory.swift */; };
 		2C9CC7775CB99FE41975B03F /* ServiceLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23084DDB5072F1E5615A10DC /* ServiceLifecycle.swift */; };
 		50DD26C222030600E87B4FB2 /* DevFeedback in Frameworks */ = {isa = PBXBuildFile; productRef = 3165372AF09AE5752B79F755 /* DevFeedback */; };
 		5F6E8D6C63AF79E4C225DFAD /* ResourceStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE30D3859A25467D29C362E8 /* ResourceStats.swift */; };
@@ -72,6 +73,7 @@
 		47B69063088BFFB0E388C2F8 /* PorchCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PorchCLI.swift; sourceTree = "<group>"; };
 		63549CEECDC88220C80CE00E /* DevFeedback */ = {isa = PBXFileReference; lastKnownFileType = folder; name = DevFeedback; path = Vendor/DevFeedback; sourceTree = SOURCE_ROOT; };
 		6D21CECE395C274E6D3F9F11 /* SpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechService.swift; sourceTree = "<group>"; };
+		7A6F58B754901A43E11BE1E2 /* SelectableHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectableHistory.swift; sourceTree = "<group>"; };
 		98DA00B0901667BB1401CF1D /* PorchCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = PorchCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		9AC710063003D3CEEDA7050A /* ModelUpdate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelUpdate.swift; sourceTree = "<group>"; };
 		AE30D3859A25467D29C362E8 /* ResourceStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResourceStats.swift; sourceTree = "<group>"; };
@@ -130,6 +132,7 @@
 				D80FBE4657C1324BB0527DD7 /* DictationInput.swift */,
 				FC075DF329E2DBB1072298D6 /* PorchSpeechApp.swift */,
 				AE30D3859A25467D29C362E8 /* ResourceStats.swift */,
+				7A6F58B754901A43E11BE1E2 /* SelectableHistory.swift */,
 				6D21CECE395C274E6D3F9F11 /* SpeechService.swift */,
 			);
 			name = PorchSpeech;
@@ -347,6 +350,7 @@
 				847C5CBA6C08F6C5D066519E /* DictationInput.swift in Sources */,
 				75FF1600405FF77088302299 /* PorchSpeechApp.swift in Sources */,
 				5F6E8D6C63AF79E4C225DFAD /* ResourceStats.swift in Sources */,
+				07AE480A6FCD0476E1D2C9F3 /* SelectableHistory.swift in Sources */,
 				B8F497E319E93EA0F290B822 /* SpeechService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

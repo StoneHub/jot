@@ -70,3 +70,5 @@ See [implementation scope](docs/PLAN.md), [architecture and limits](docs/ARCHITE
 [Human tuning guide](docs/TUNING.md): adjust speaker stability and paragraph grouping together using a short repeatable passage. The original transcript words remain stored.
 
 [SwiftUI feedback](docs/SWIFTUI-FEEDBACK.md): Debug builds include a local control picker, feedback history, and selected Markdown/JSON exports.
+
+**Copy multiple statements:** History defaults to Text view, where you can drag across statements and press ⌘C, or click the text and press ⌘A to select all loaded results. Text runs oldest to newest and includes speaker/time headings. Load more adds older results; search limits the displayed results. New history updates wait while text is selected. Cards keeps individual click-to-copy and speaker naming; the view choice is remembered.

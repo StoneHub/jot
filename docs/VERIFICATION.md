@@ -53,3 +53,11 @@ Installed UI verification: clicking Steadier speakers changed the controls and C
 ![Feedback history after app replacement](evidence/swiftui-feedback.png)
 
 [Synthetic selected JSON export](evidence/swiftui-feedback.json)
+
+## Selecting multiple history statements
+
+- Adds a native read-only NSTextView spanning all currently loaded statements, with Text/Cards selection remembered. Text is chronological; Cards retains individual copy and speaker naming. Search and Load more remain available.
+- Signed Debug build installed from the product resolved by current Xcode settings. Built/installed signatures and executable hash match: `fcd426522eaa2da6aa9e1fa6cc29502fa4f874d160912455ae95e8ede857a628`. Installed process PID 85759 ran `/Applications/Porch Speech.app/Contents/MacOS/Porch Speech` during verification.
+- The AppKit selection harness passed: an incoming update preserves selected text and its range, clearing the selection applies pending text, and a changed search replaces stale results/selection. No window or audio is opened by the harness. After building the host, run `swiftc -parse-as-library -F build/DerivedData/Build/Products/Debug -framework PorchCore -Xlinker -rpath -Xlinker "$PWD/build/DerivedData/Build/Products/Debug" Sources/PorchSpeech/SelectableHistory.swift scripts/check-history-selection.swift -o build/check-history-selection`, then `build/check-history-selection`.
+- The Mac was initially locked during UI verification. After unlocking, the user tried the installed drag-and-copy flow and confirmed it works. A passive accessibility read independently showed Text selected and one continuous native transcript text area. An after screenshot is omitted because current history contains private content.
+- Ambient listening and Fn were restored to their pre-install enabled state; installed status confirmed ready with microphone running.

@@ -175,6 +175,7 @@ struct TranscriptView: View {
     @State private var label = ""
     @State private var copiedID: String?
     @State private var showHistory = true
+    @AppStorage("historyTextView") private var historyTextView = true
     @State private var search = ""
     @State private var section = "History"
     @State private var copyReset: Task<Void, Never>?
@@ -269,10 +270,35 @@ struct TranscriptView: View {
                 .textFieldStyle(.roundedBorder)
                 .onChange(of: search) { _, value in service.searchHistory(value) }
                 .feedbackTarget("history.search", label: "Search transcripts")
+            if showHistory {
+                HStack {
+                    Picker("History view", selection: $historyTextView) {
+                        Text("Text").tag(true)
+                        Text("Cards").tag(false)
+                    }.pickerStyle(.segmented).frame(width: 150)
+                        .feedbackTarget("history.view", label: "Text or cards history")
+                    if historyTextView {
+                        Text("Drag to highlight, then ⌘C. ⌘A selects all loaded text.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
             if !showHistory {
                 empty("History hidden", symbol: "eye.slash")
             } else if service.history.isEmpty {
                 empty(search.isEmpty ? "No transcripts yet" : "No matches", symbol: "text.alignleft")
+            } else if historyTextView {
+                SelectableHistory(transcripts: service.history, search: search)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                HStack {
+                    Text("Oldest to newest · New updates wait while text is selected")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    if service.hasMoreHistory {
+                        Button("Load more") { service.loadMoreHistory() }
+                            .feedbackTarget("history.load-more", label: "Load more history")
+                    }
+                }
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 10) {
