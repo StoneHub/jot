@@ -16,10 +16,30 @@ struct JotApp: App {
         MenuBarExtra {
             MenuControls(service: delegate.service, delegate: delegate)
         } label: {
-            Image(systemName: delegate.service.isPaused ? "pause.circle" : (delegate.service.ambientEnabled ? "waveform.circle.fill" : "waveform.circle"))
+            Image(nsImage: JotMenuIcon.image)
                 .accessibilityLabel("Jot controls")
+                .help("Jot — open speech controls")
         }.menuBarExtraStyle(.window)
     }
+}
+
+/// The same five rounded waveform bars as the app icon, drawn as a native
+/// template so macOS supplies contrast against light and dark menu bars.
+private enum JotMenuIcon {
+    static let image: NSImage = {
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
+            NSColor.black.setFill()
+            for (index, height) in [5.0, 10, 16, 10, 5].enumerated() {
+                NSBezierPath(roundedRect: NSRect(x: 1 + Double(index) * 3.4,
+                    y: (18 - height) / 2, width: 2.5, height: height),
+                    xRadius: 1.25, yRadius: 1.25).fill()
+            }
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = "Jot"
+        return image
+    }()
 }
 
 @MainActor
@@ -340,6 +360,19 @@ struct TranscriptView: View {
                     GridRow { metric("Queued audio", String(format: "%.1f s", service.queuedSeconds)); metric("Last inference", String(format: "%.2f s", service.lastInferenceSeconds)) }
                     GridRow { metric("Transcript lag", String(format: "%.2f s", service.lagSeconds)); metric("Dropped audio", String(format: "%.1f s", service.droppedSeconds)) }
                 }
+                Divider()
+                Text("Battery").font(.headline)
+                Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 18) {
+                    GridRow {
+                        metric("Battery level", service.resources.battery.levelPercent.map { String(format: "%.0f%%", $0) } ?? "Unavailable")
+                        metric("Power source", service.resources.battery.powerSource)
+                    }
+                    GridRow {
+                        metric("Battery used · whole Mac", service.resources.battery.levelPercent == nil ? "Unavailable" : String(format: "%.1f percentage points", service.resources.battery.usedPercentagePoints))
+                    }
+                }
+                Text("Charge lost while on battery since Jot launched, including other apps and time paused. Resets when Jot quits. Charging and gaps without readings are excluded; this is not Jot’s individual energy use.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Divider()
                 Text("Capture events").font(.headline)
                 ForEach(service.events) { event in
