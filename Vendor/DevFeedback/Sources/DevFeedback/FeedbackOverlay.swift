@@ -2,12 +2,12 @@ import SwiftUI
 #if DEBUG
 import AppKit
 
-private struct TargetAnchor: Identifiable {
+struct TargetAnchor: Identifiable {
     let id = UUID()
     let target: FeedbackTarget
     let anchor: Anchor<CGRect>
 }
-private struct TargetPreference: PreferenceKey {
+struct TargetPreference: PreferenceKey {
     static var defaultValue: [TargetAnchor] = []
     static func reduce(value: inout [TargetAnchor], nextValue: () -> [TargetAnchor]) {
         value.append(contentsOf: nextValue())
@@ -54,21 +54,21 @@ private struct FeedbackOverlay: ViewModifier {
                             Text("Pick a highlighted view · \(targets.count) targets")
                             Button("Cancel") { session.picking = false; session.showPanel() }
                                 .keyboardShortcut(.cancelAction)
-                        } else {
-                            Button { session.showPanel() } label: {
-                                Label("Feedback", systemImage: "bubble.left.and.text.bubble.right")
-                            }.accessibilityIdentifier("dev-feedback.open")
                         }
-                        if duplicates > 0 {
+                        if session.picking && duplicates > 0 {
                             Text("\(duplicates) duplicate IDs").foregroundStyle(.red)
                                 .help("Give repeated instances distinct, non-sensitive feedback IDs.")
                         }
                     }
-                    .font(.caption).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-                    .padding(6)
+                    .font(.caption).padding(session.picking ? 8 : 0)
+                    .background {
+                        if session.picking { RoundedRectangle(cornerRadius: 8).fill(.regularMaterial) }
+                    }
+                    .padding(session.picking ? 6 : 0)
                 }
             }
         }
+        .focusedSceneValue(\.devFeedbackSession, session)
         .onChange(of: screen) { _, value in session.updateScreen(value) }
     }
 }
@@ -77,25 +77,28 @@ private struct FeedbackOverlay: ViewModifier {
 public extension View {
     /// Register a meaningful control or section. Use stable IDs and static labels, never user content.
     /// Repeated components should append a non-sensitive instance key. The source is this call site.
-    @ViewBuilder
+    #if DEBUG
     func feedbackTarget(_ id: String, label: String? = nil, file: String = #fileID, line: UInt = #line) -> some View {
-        #if DEBUG
-        anchorPreference(key: TargetPreference.self, value: .bounds) {
-            [TargetAnchor(target: FeedbackTarget(id: id, label: label ?? id, file: file, line: line), anchor: $0)]
+        transformAnchorPreference(key: TargetPreference.self, value: .bounds) { targets, anchor in
+            targets.append(TargetAnchor(target: FeedbackTarget(id: id, label: label ?? id, file: file, line: line), anchor: anchor))
         }
-        #else
-        self
-        #endif
     }
+    #else
+    @inlinable
+    func feedbackTarget(_ id: @autoclosure () -> String, label: @autoclosure () -> String? = nil,
+                        file: String = #fileID, line: UInt = #line) -> Self { self }
+    #endif
 
     /// Install once on each window's content, and separately on any sheet needing capture.
-    /// DEBUG builds show a Feedback button; Release builds return the original view.
-    @MainActor @ViewBuilder
+    /// Add FeedbackCommands to the scene to activate capture from its Developer menu.
+    /// Idle views have no injected controls; Release builds return the original view.
+    #if DEBUG
+    @MainActor
     func feedbackOverlay(appID: String, screen: String) -> some View {
-        #if DEBUG
         modifier(FeedbackOverlay(appID: appID, screen: screen))
-        #else
-        self
-        #endif
     }
+    #else
+    @MainActor @inlinable
+    func feedbackOverlay(appID: @autoclosure () -> String, screen: @autoclosure () -> String) -> Self { self }
+    #endif
 }

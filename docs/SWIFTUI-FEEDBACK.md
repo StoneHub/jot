@@ -1,23 +1,21 @@
-# SwiftUI feedback in Jot
+# UI feedback
 
-Debug builds include an in-app feedback picker. The main Transcripts window is tagged by screen and by meaningful controls: service actions, navigation, history search/visibility, resource metrics, tuning controls, and model checks.
+Debug builds provide **Developer → Pick UI for Feedback** (⌘⌥⇧F) and **Developer → Feedback History**. The picker has no persistent button or reserved space in the app. While picking, highlighted targets intercept clicks so ordinary controls do not activate.
 
-Pick mode selects a feedback target instead of activating the underlying control. Notes and acceptance checks are saved locally; selected notes can be exported as Markdown or JSON for a coding task. Target metadata uses stable control IDs, developer-written labels, and source file/line. The host does not pass transcript text, search terms, speaker names, or recording identifiers to the feedback package.
+Notes stay local. Review selected notes before exporting Markdown or JSON. The picker records static target labels, source locations, and bounds; it does not collect screenshots or view text.
 
-The overlay is attached once to the main window. The menu-bar popover keeps its normal controls. Release builds use the package's no-op modifiers.
+## Host integration
 
-`Vendor/DevFeedback` is an unchanged snapshot of the reusable package from the webDevFeedbackExt project. Its upstream revision and source path are recorded alongside the snapshot. Changes to the reusable package belong in that canonical project before refreshing the vendored copy.
+Keep `import DevFeedback` and `FeedbackCommands()` inside `#if DEBUG`. Attach `.feedbackOverlay(appID: "jot", screen: ...)` to the main scene content. Release uses local no-op modifier shims and does not generate row keys.
 
-## Manual check
+Tag search, view-mode selection, the text document, each card, mode/speaker label, timestamp, text body, copy indicator/action, and speaker-name action. Repeated cards use opaque per-view UUIDs, with transcript IDs used only as internal lookup keys. Labels stay static. Tags on containers must preserve child targets; verify both a child and parent whitespace pick.
 
-1. Open the native app and enter feedback pick mode.
-2. Pick Fn dictation; confirm the Fn toggle does not change.
-3. Add a test note and an acceptance check, save it, and reopen it from feedback History.
-4. Export only that note as Markdown and JSON. Confirm the control ID, source location, note, and acceptance check are present, without transcript content.
-5. Exit pick mode and confirm ordinary navigation and controls work again.
+The package is an unchanged snapshot from the committed revision in `Vendor/DevFeedback/UPSTREAM.md`. Make reusable fixes upstream, then refresh it. Run the package tests and Release build after a refresh.
 
-Keep test notes clearly marked as test data. Saving local feedback is separate from asking an agent to act on it; exports are input for a user-directed task.
+## Release check
 
-## Transcript history in Finder
+`./scripts/build-install.py --configuration Release --build-only` builds and verifies a signed product without interrupting the installed app. It rejects `DEBUG` and known feedback UI, storage, and target-metadata markers in bundled Mach-O binaries. Evidence is written to `build/release-proof.json`. This is a development-tool exclusion check, not notarization or proof of installation on another Mac.
 
-History → Open History in Finder selects `~/Library/Application Support/Jot/transcripts.sqlite3`. Quit Jot before moving the database and any matching `-wal` / `-shm` files to Trash; Pause unloads models but keeps the database open. The next launch creates an empty database if the previous one was removed. This action only reveals files; it does not delete anything or open transcript contents.
+## History in Finder
+
+History's folder button selects `~/Library/Application Support/Jot/transcripts.sqlite3`. Quit Jot before moving the database and its matching `-wal` / `-shm` files. The next launch creates an empty database if it was removed. The button only reveals the file.
