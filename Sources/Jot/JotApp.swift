@@ -361,6 +361,19 @@ struct TranscriptView: View {
                     GridRow { metric("Transcript lag", String(format: "%.2f s", service.lagSeconds)); metric("Dropped audio", String(format: "%.1f s", service.droppedSeconds)) }
                 }
                 Divider()
+                Text("Battery").font(.headline)
+                Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 18) {
+                    GridRow {
+                        metric("Battery level", service.resources.battery.levelPercent.map { String(format: "%.0f%%", $0) } ?? "Unavailable")
+                        metric("Power source", service.resources.battery.powerSource)
+                    }
+                    GridRow {
+                        metric("Battery used · whole Mac", service.resources.battery.levelPercent == nil ? "Unavailable" : String(format: "%.1f percentage points", service.resources.battery.usedPercentagePoints))
+                    }
+                }
+                Text("Charge lost while on battery since Jot launched, including other apps and time paused. Resets when Jot quits. Charging and gaps without readings are excluded; this is not Jot’s individual energy use.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Divider()
                 Text("Capture events").font(.headline)
                 ForEach(service.events) { event in
                     HStack(alignment: .top) {

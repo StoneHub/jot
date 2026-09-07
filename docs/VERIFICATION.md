@@ -69,3 +69,13 @@ App, window, CLI/MCP identity, Swift modules, Xcode targets, bundle IDs, and cur
 All 20 core tests pass. The signed Debug product resolved by Xcode was installed as `/Applications/Jot.app`; built and installed executable hashes match, and the running process is `/Applications/Jot.app/Contents/MacOS/Jot`. Native accessibility and a history-hidden screenshot confirmed the Jot window and app menu. CLI status and help respond under `jot`.
 
 Migration preserved all 596 transcripts across 7 sessions, Fn selection, tuning, and the feedback history file. The old app is archived under ignored `build/legacy-app-backup`. Jot remains paused. Its new bundle identity needs microphone and Accessibility permission; live dictation under the new identity has not been retested.
+
+## Activity battery use
+
+Activity now shows battery level, power source, and cumulative net percentage-point loss across observed battery-powered periods since launch. Values cover the whole Mac, including other apps and time paused; they do not attribute energy to Jot. The counter resets at quit. Charging and unavailable readings break observation intervals. Short power-source changes between samples can be missed. CLI/MCP status includes the same battery snapshot.
+
+All 23 core tests pass, including discharge/recharge cycles, gauge bounce, and unavailable readings. Signed Debug installation passed with matching executable hashes and verified installed process path. Native Activity showed the real battery source and 27% charge, matching CLI status; the new counter began at zero. No long discharge test was performed.
+
+![Activity before battery metrics](evidence/activity-before-battery.png)
+
+![Activity with battery metrics](evidence/activity-battery.png)

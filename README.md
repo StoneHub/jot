@@ -14,7 +14,7 @@ Open **Jot** from Applications and grant microphone and Accessibility access. If
 
 Dictation supports up to 60 seconds per hold. It cancels if focus changes, skips password fields, and never presses Return. Text insertion depends on the target app's Accessibility support.
 
-In **History**, search transcripts, select text across statements, and press ⌘C to copy. **Load more** adds older results. Cards view supports individual copying and speaker naming. **Activity** shows resource use and capture events. **Tuning** adjusts speaker grouping and paragraph breaks; see the [tuning guide](docs/TUNING.md).
+In **History**, search transcripts, select text across statements, and press ⌘C to copy. **Load more** adds older results. Cards view supports individual copying and speaker naming. **Activity** shows resource use, capture events, and whole-Mac battery loss during observed battery-powered periods since Jot launched. Battery figures include other apps and reset when Jot quits. **Tuning** adjusts speaker grouping and paragraph breaks; see the [tuning guide](docs/TUNING.md).
 
 **Models → Check updates** checks published model revisions. It does not download updates or verify that your cached weights match the latest release.
 
