@@ -8,7 +8,7 @@ Notes stay local. Review selected notes before exporting Markdown or JSON. The p
 
 Keep `import DevFeedback` and `FeedbackCommands()` inside `#if DEBUG`. Attach `.feedbackOverlay(appID: "jot", screen: ...)` to the main scene content. Release uses local no-op modifier shims and does not generate row keys.
 
-Tag search, view-mode selection, the text document, each card, mode/speaker label, timestamp, text body, copy indicator/action, and speaker-name action. Repeated cards use opaque per-view UUIDs, with transcript IDs used only as internal lookup keys. Labels stay static. Tags on containers must preserve child targets; verify both a child and parent whitespace pick.
+Tag search, view-mode selection, the text document, each card, mode/speaker label, timestamp, text body, copy indicator/action, and speaker-name action. Repeated cards use opaque per-view UUIDs, with transcript IDs used only as internal lookup keys. Labels stay static. Tags on containers must preserve child targets; verify both a child and parent whitespace pick. Apply `.feedbackViewport()` to each ScrollView itself so offscreen targets cannot draw or receive picks over neighboring controls.
 
 The package is an unchanged snapshot from the committed revision in `Vendor/DevFeedback/UPSTREAM.md`. Make reusable fixes upstream, then refresh it. Run the package tests and Release build after a refresh.
 

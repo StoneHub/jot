@@ -7,6 +7,7 @@ import DevFeedback
 private extension View {
     func feedbackTarget(_ id: String, label: String? = nil, file: String = #fileID, line: UInt = #line) -> some View { self }
     func feedbackOverlay(appID: String, screen: String) -> some View { self }
+    func feedbackViewport() -> some View { self }
 }
 #endif
 
@@ -66,6 +67,12 @@ final class JotDelegate: NSObject, NSApplicationDelegate {
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        // Use the bundled artwork directly while Launch Services refreshes its icon cache.
+        if let url = Bundle.main.url(forResource: "Jot", withExtension: "icns"),
+           let icon = NSImage(contentsOf: url) {
+            icon.isTemplate = false
+            NSApp.applicationIconImage = icon
+        }
         service.launch()
     }
     func attach(_ window: NSWindow) {
@@ -323,6 +330,8 @@ struct TranscriptView: View {
                         Button("Open History in Finder", systemImage: "folder") {
                             NSWorkspace.shared.activateFileViewerSelecting([JotPaths.directory.appendingPathComponent("transcripts.sqlite3")])
                         }
+                        .labelStyle(.iconOnly)
+                        .accessibilityLabel("Open History in Finder")
                         .modifier(GlassButton())
                         .help("Shows the transcript database. Quit Jot before moving history files to Trash.")
                         .feedbackTarget("history.finder", label: "Open History in Finder")
@@ -445,7 +454,7 @@ struct TranscriptView: View {
                                 .feedbackTarget("history.load-more", label: "Load more history")
                         }
                     }
-                }
+                }.feedbackViewport()
             }
         }.feedbackTarget("history.content", label: "Transcript history")
     }
@@ -469,7 +478,7 @@ struct TranscriptView: View {
                 }
                 if service.events.isEmpty { Text("No events yet").foregroundStyle(.secondary) }
             }.frame(maxWidth: .infinity, alignment: .leading)
-        }.feedbackTarget("activity.metrics", label: "Resource metrics and capture events")
+        }.feedbackViewport().feedbackTarget("activity.metrics", label: "Resource metrics and capture events")
     }
 
     private var tuning: some View {
@@ -500,7 +509,7 @@ struct TranscriptView: View {
                 Text("Try the same short scene twice. Change one setting, then compare words, speaker changes, and paragraph breaks separately.")
                     .font(.callout).foregroundStyle(.secondary)
             }.frame(maxWidth: .infinity, alignment: .leading)
-        }
+        }.feedbackViewport()
     }
 
     private func tuningSlider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, step: Double, valueText: String, detail: String) -> some View {
@@ -537,7 +546,7 @@ struct TranscriptView: View {
                 Text("Updates are checked on demand. Downloaded models are kept until an update is explicitly installed.").font(.caption).foregroundStyle(.secondary)
                 Link("FluidAudio releases", destination: URL(string: "https://github.com/FluidInference/FluidAudio/releases")!)
             }
-        }
+        }.feedbackViewport()
     }
 
     private func copy(_ item: Transcript) {

@@ -78,10 +78,14 @@ Removed the whole-Mac battery widget and its sampler. Activity shows Jot process
 
 The window and menu popover use native Liquid Glass on macOS 26, a restrained system-accent background, and material fallbacks on macOS 14–25. The battery widget and sampler are removed. History view-mode controls no longer wrap their label. The user reviewed the menu layout; the installed window was visually checked with system accent colors.
 
-Debug feedback has no persistent toolbar or reserved padding. Developer commands and a shortcut activate picking/history. Child targets distinguish card mode labels, timestamps, text, copy indicators/actions, and speaker-name actions using opaque per-view keys and static labels. Physical picks verified the mode label, copy indicator, and parent whitespace independently. Those empty test drafts were discarded. The latest Developer menu and absence of idle feedback UI were verified through native accessibility; final shortcut and pick-mode scrolling checks were deferred when the user resumed interacting with Jot.
+Debug feedback has no persistent toolbar or reserved padding. Developer commands and a shortcut activate picking/history. Child targets distinguish card mode labels, timestamps, text, copy indicators/actions, and speaker-name actions using opaque per-view keys and static labels. Physical picks verified the mode label, copy indicator, and parent whitespace independently. Those empty test drafts were discarded. The Developer menu and absence of idle feedback UI were verified through native accessibility. The keyboard shortcut activated picking. A native scroll action exposed offscreen target outlines over the header; an upstream viewport fix now clips drawing and hit testing, with regression tests for hidden and partial targets. The final live clipping check is pending because the Mac locked.
 
-Twenty core tests and six feedback tests pass. The feedback Release exclusion test passes. The signed Debug app was installed from Xcode's resolved product; source/installed executable hashes and running process path match. The app remains paused with permissions preserved.
+Twenty core tests and eight feedback tests pass. The feedback Release exclusion test passes. The signed Debug app was installed from Xcode's resolved product; source/installed executable hashes and running process path match. The app remains paused with permissions preserved.
 
 A full signed Release build using the same final source passed the installer's DEBUG and feedback-runtime/metadata checks. The package may leave no-op API symbols; no capture panel, store, or row-target metadata is included. This is not a notarized distribution or another-Mac install test.
 
 ![System-accent glass Activity, before the debug toolbar was removed](evidence/glass-activity.png)
+
+## App icon registration
+
+Jot now includes the standard AppIcon asset catalog at all ten macOS sizes, alongside its bundled ICNS. Startup loads that bundled artwork explicitly while Launch Services refreshes. The running app's icon was read through NSRunningApplication and visually confirmed as Jot's waveform, replacing the generic placeholder. Generator output matches all ten catalog images. The final Debug and Release builds both passed signing and artifact checks.
