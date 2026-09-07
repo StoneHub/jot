@@ -1,0 +1,75 @@
+name: PorchSpeech
+options:
+  bundleIdPrefix: space.porchspeech
+  deploymentTarget:
+    macOS: '14.0'
+packages:
+  FluidAudio:
+    url: https://github.com/FluidInference/FluidAudio.git
+    revision: 5c19d5e12320e22bbfb7a1877b089d2665a69add
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    MACOSX_DEPLOYMENT_TARGET: '14.0'
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: '-'
+    ENABLE_HARDENED_RUNTIME: YES
+    ARCHS: arm64
+targets:
+  PorchCore:
+    type: framework
+    platform: macOS
+    sources: [Sources/PorchCore]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: space.porchspeech.core
+    dependencies:
+      - sdk: libsqlite3.tbd
+  PorchCLI:
+    type: tool
+    platform: macOS
+    sources: [Sources/PorchCLI]
+    settings:
+      base:
+        PRODUCT_NAME: porch
+        LD_RUNPATH_SEARCH_PATHS: '@executable_path/../Frameworks'
+    dependencies:
+      - target: PorchCore
+  PorchSpeech:
+    type: application
+    platform: macOS
+    sources: [Sources/PorchSpeech]
+    info:
+      path: Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Porch Speech
+        CFBundleShortVersionString: '0.1.0'
+        CFBundleVersion: '1'
+        LSUIElement: true
+        NSMicrophoneUsageDescription: Porch Speech transcribes your microphone locally for dictation and ambient transcripts. Audio is not saved.
+        NSHighResolutionCapable: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: space.porchspeech.app
+        PRODUCT_NAME: Porch Speech
+        CODE_SIGN_ENTITLEMENTS: Resources/PorchSpeech.entitlements
+    dependencies:
+      - target: PorchCore
+      - package: FluidAudio
+      - target: PorchCLI
+        embed: false
+    postBuildScripts:
+      - name: Bundle agent CLI
+        script: |
+          mkdir -p "$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers"
+          cp "$BUILT_PRODUCTS_DIR/porch" "$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/porch"
+        inputFiles:
+          - $(BUILT_PRODUCTS_DIR)/porch
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/porch
+schemes:
+  PorchSpeech:
+    build:
+      targets:
+        PorchSpeech: all

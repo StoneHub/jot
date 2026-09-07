@@ -8,3 +8,6 @@ work/
 *.aiff
 *.caf
 *.sqlite*
+
+__pycache__/
+*.pyc
