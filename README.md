@@ -1,12 +1,12 @@
 # Jot
 
-A native Mac utility for local Mac dictation and ambient transcripts. Hold **Fn** in an editable field, speak, and release to insert. Ambient listening separates up to four speakers; names are manual and session-specific.
+A native Mac utility for local dictation and ambient transcripts. Hold **Fn** in an editable field, speak, and release to insert. Ambient listening separates up to four speakers; names are manual and session-specific.
 
 FluidAudio runs Parakeet v3, Silero VAD, and streaming Sortformer through Core ML. Recognition and speaker separation are local. CPU + Apple Neural Engine is the requested compute policy; the app reports this honestly rather than claiming to measure actual accelerator placement. No Ollama process, API key, subscription, or localhost web server is required.
 
 ## Use
 
-Open **Jot** from Applications. The **Transcripts** window is reused by the menu-bar **Open** button. The Dock icon appears while that window is open. **Resume** loads models (initial downloads need internet); **Pause** stops all speech work and unloads models. Fn dictation and ambient transcription are separate toggles. Selected features resume together; switching ambient off by itself leaves Fn available. Closing the window keeps the menu-bar service running; Quit ends it. Microphone and Accessibility permissions are required for dictation. If macOS's Fn/Globe action conflicts, set it to **Do Nothing** in Keyboard settings. Pause persists across app launches. The Fn selection is saved; ambient starts off on a new launch. Within a running session, Resume restores both selected features.
+Open **Jot** from Applications. The **Jot** window is reused by the menu-bar **Open** button. The Dock icon appears while that window is open. **Resume** loads models (initial downloads need internet); **Pause** stops all speech work and unloads models. Fn dictation and ambient transcription are separate toggles. Selected features resume together; switching ambient off by itself leaves Fn available. Closing the window keeps the menu-bar service running; Quit ends it. Microphone and Accessibility permissions are required for dictation. If macOS's Fn/Globe action conflicts, set it to **Do Nothing** in Keyboard settings. Pause persists across app launches. The Fn selection is saved; ambient starts off on a new launch. Within a running session, Resume restores both selected features.
 
 Fn inserts at the captured field/selection, cancels when focus changes, refuses password fields, preserves the clipboard on its paste fallback, and never presses Return. Native accessibility varies between apps: test the fields you use. The first version inserts the recognizer's words with its punctuation; optional rewriting is deferred.
 

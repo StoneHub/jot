@@ -10,7 +10,7 @@ Finish with a GitHub PR, a checked installed Mac build, and an honest account of
 
 ## Native UX revision
 
-Use one reusable Transcripts window with a Dock icon while it is open and a menu-bar Open action. Native history, search, activity, and model details belong in that window; no separate dashboard. Transcript rows copy their text when clicked.
+Use one reusable Jot window with a Dock icon while it is open and a menu-bar Open action. Native history, search, activity, and model details belong in that window; no separate dashboard. Transcript rows copy their text when clicked.
 
 Use Apple's Liquid Glass controls on macOS 26 and native material fallbacks on earlier supported macOS. Remove the marketing title and accelerator-policy footer.
 
