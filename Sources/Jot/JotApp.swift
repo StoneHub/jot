@@ -1,7 +1,15 @@
 import SwiftUI
 import AppKit
 import JotCore
+#if DEBUG
 import DevFeedback
+#else
+private extension View {
+    func feedbackTarget(_ id: String, label: String? = nil, file: String = #fileID, line: UInt = #line) -> some View { self }
+    func feedbackOverlay(appID: String, screen: String) -> some View { self }
+    func feedbackViewport() -> some View { self }
+}
+#endif
 
 @main
 struct JotApp: App {
@@ -12,7 +20,12 @@ struct JotApp: App {
                 .frame(minWidth: 760, minHeight: 620)
         }
         .defaultSize(width: 920, height: 760)
-        .commands { CommandGroup(replacing: .newItem) {} }
+        .commands {
+            CommandGroup(replacing: .newItem) {}
+            #if DEBUG
+            FeedbackCommands()
+            #endif
+        }
         MenuBarExtra {
             MenuControls(service: delegate.service, delegate: delegate)
         } label: {
@@ -54,6 +67,12 @@ final class JotDelegate: NSObject, NSApplicationDelegate {
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        // Use the bundled artwork directly while Launch Services refreshes its icon cache.
+        if let url = Bundle.main.url(forResource: "Jot", withExtension: "icns"),
+           let icon = NSImage(contentsOf: url) {
+            icon.isTemplate = false
+            NSApp.applicationIconImage = icon
+        }
         service.launch()
     }
     func attach(_ window: NSWindow) {
@@ -95,14 +114,67 @@ private struct WindowAttachment: NSViewRepresentable {
 }
 
 private struct GlassSurface: ViewModifier {
+    var tint: Color = .clear
+    var radius: CGFloat = 22
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *) {
-            content.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20))
+            content.glassEffect(.regular.tint(tint), in: RoundedRectangle(cornerRadius: radius))
         } else {
-            content.background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+            content.background(.regularMaterial, in: RoundedRectangle(cornerRadius: radius))
         }
     }
 }
+private struct GlassStage: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            GlassEffectContainer(spacing: 16) { content }
+        } else { content }
+    }
+}
+
+private struct JotBackdrop: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    var body: some View {
+        ZStack {
+            Color(nsColor: .windowBackgroundColor)
+            if !reduceTransparency {
+                LinearGradient(colors: [Color(nsColor: .controlAccentColor).opacity(0.10), .clear, .clear],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+                RadialGradient(colors: [Color(nsColor: .controlAccentColor).opacity(0.05), .clear], center: .topTrailing,
+                               startRadius: 0, endRadius: 500)
+            }
+        }.ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)
+    }
+}
+
+private struct JotBrand: View {
+    var compact = false
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(nsImage: JotMenuIcon.image)
+                .renderingMode(.template).resizable().scaledToFit()
+                .foregroundStyle(.white).padding(10)
+                .frame(width: compact ? 40 : 48, height: compact ? 40 : 48)
+                .background(Color(nsColor: .controlAccentColor).gradient, in: RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.3)))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Jot").font(compact ? .title2.weight(.bold) : .largeTitle.weight(.bold))
+                Text("Local dictation").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private struct NavigationSurface: ViewModifier {
+    var selected: Bool
+    func body(content: Content) -> some View {
+        if selected {
+            content.modifier(GlassSurface(tint: Color(nsColor: .controlAccentColor).opacity(0.14), radius: 14))
+        } else { content }
+    }
+}
+
 private struct GlassButton: ViewModifier {
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *) { content.buttonStyle(.glass) }
@@ -123,8 +195,10 @@ private struct ServiceControls: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(service.isPaused ? "Paused" : (service.isTransitioning ? "Starting" : "Ready"))
-                        .font(compact ? .headline : .title3.weight(.semibold))
+                    HStack(spacing: 7) {
+                        Circle().fill(service.isPaused ? Color.secondary : .green).frame(width: 7, height: 7)
+                        Text(service.isPaused ? "Paused" : (service.isTransitioning ? "Starting" : "Ready"))
+                    }.font(.headline)
                     Text(service.isPaused ? (service.lifecycle.phase == .pausing ? "Releasing models…" : "Models unloaded") : (service.ambientEnabled ? "Ambient transcription on" : "Ambient transcription off"))
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -167,29 +241,48 @@ struct MenuControls: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("Transcripts").font(.headline)
+                JotBrand(compact: true)
                 Spacer()
-                Button("Open") {
+                Button("Open", systemImage: "arrow.up.forward") {
                     delegate.openAction = { openWindow(id: "main") }
                     delegate.showWindow()
                 }.modifier(GlassButton())
             }
             ServiceControls(service: service, compact: true)
-            Divider()
+                .padding(18).modifier(GlassSurface(tint: Color(nsColor: .controlAccentColor).opacity(0.04)))
             HStack {
                 Text(String(format: "CPU %.1f%% · %.0f MB", service.resources.processCPUPercent, service.resources.residentMiB))
                     .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                 Spacer()
                 Button("Quit") { NSApp.terminate(nil) }.buttonStyle(.plain)
             }
-        }.padding(20).frame(width: 300).modifier(GlassSurface()).padding(8)
+        }.padding(18).frame(width: 350)
+            .modifier(GlassStage()).background(JotBackdrop()).tint(Color(nsColor: .controlAccentColor))
     }
 }
+
+/// Opaque UI-instance keys let the picker distinguish rows without exporting
+/// transcript IDs, speaker names, timestamps, or text as target metadata.
+#if DEBUG
+private final class HistoryFeedbackKeys: ObservableObject {
+    private var keys: [String: String] = [:]
+    func key(for transcriptID: String) -> String {
+        if let key = keys[transcriptID] { return key }
+        let key = UUID().uuidString
+        keys[transcriptID] = key
+        return key
+    }
+}
+
+#endif
 
 struct TranscriptView: View {
     @ObservedObject var service: SpeechService
     let delegate: JotDelegate
     @Environment(\.openWindow) private var openWindow
+    #if DEBUG
+    @StateObject private var feedbackKeys = HistoryFeedbackKeys()
+    #endif
     @State private var selected: Transcript?
     @State private var label = ""
     @State private var copiedID: String?
@@ -198,25 +291,21 @@ struct TranscriptView: View {
     @State private var search = ""
     @State private var section = "History"
     @State private var copyReset: Task<Void, Never>?
-    private var feedbackToolbarHeight: CGFloat {
-        #if DEBUG
-        return 38
-        #else
-        return 0
-        #endif
-    }
 
     var body: some View {
-        HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 24) {
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 20) {
+                JotBrand().padding(.horizontal, 8)
                 ServiceControls(service: service)
-                    .padding(18).modifier(GlassSurface())
+                    .padding(18).modifier(GlassSurface(tint: Color(nsColor: .controlAccentColor).opacity(0.04)))
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(["History", "Activity", "Tuning", "Models"], id: \.self) { item in
                         Button { section = item } label: {
                             Label(item, systemImage: item == "History" ? "text.alignleft" : (item == "Activity" ? "chart.xyaxis.line" : (item == "Tuning" ? "slider.horizontal.3" : "square.stack.3d.up")))
-                                .frame(maxWidth: .infinity, alignment: .leading).padding(10)
-                                .background(section == item ? Color.accentColor.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 10))
+                                .font(.body.weight(section == item ? .semibold : .regular))
+                                .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+                                .contentShape(RoundedRectangle(cornerRadius: 14))
+                                .modifier(NavigationSurface(selected: section == item))
                         }.buttonStyle(.plain)
                             .feedbackTarget("navigation.\(item.lowercased())", label: "Open \(item)")
                     }
@@ -232,16 +321,17 @@ struct TranscriptView: View {
                         Text(String(format: "%.0f MB", service.resources.residentMiB)).monospacedDigit()
                     }
                 }.padding(.horizontal, 8)
-            }.padding(20).frame(width: 300).background(.thinMaterial)
-            Divider()
+            }.padding(8).frame(width: 282)
             VStack(alignment: .leading, spacing: 18) {
                 HStack {
-                    Text(section).font(.title2.weight(.semibold))
+                    Text(section).font(.system(size: 26, weight: .bold, design: .rounded))
                     Spacer()
                     if section == "History" {
                         Button("Open History in Finder", systemImage: "folder") {
                             NSWorkspace.shared.activateFileViewerSelecting([JotPaths.directory.appendingPathComponent("transcripts.sqlite3")])
                         }
+                        .labelStyle(.iconOnly)
+                        .accessibilityLabel("Open History in Finder")
                         .modifier(GlassButton())
                         .help("Shows the transcript database. Quit Jot before moving history files to Trash.")
                         .feedbackTarget("history.finder", label: "Open History in Finder")
@@ -259,9 +349,12 @@ struct TranscriptView: View {
                 else if section == "Tuning" { tuning }
                 else { models }
             }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .background(Color(nsColor: .windowBackgroundColor))
+                .modifier(GlassSurface())
         }
-        .padding(.top, feedbackToolbarHeight)
+        .padding(16)
+        .modifier(GlassStage())
+        .background(JotBackdrop())
+        .tint(Color(nsColor: .controlAccentColor))
         .background(WindowAttachment(attach: delegate.attach))
         .onAppear { delegate.openAction = { openWindow(id: "main") } }
         .onDisappear { copyReset?.cancel() }
@@ -287,6 +380,7 @@ struct TranscriptView: View {
         VStack(alignment: .leading, spacing: 14) {
             TextField("Search transcripts", text: $search)
                 .textFieldStyle(.roundedBorder)
+                .fixedSize(horizontal: false, vertical: true)
                 .onChange(of: search) { _, value in service.searchHistory(value) }
                 .feedbackTarget("history.search", label: "Search transcripts")
             if showHistory {
@@ -294,7 +388,8 @@ struct TranscriptView: View {
                     Picker("History view", selection: $historyTextView) {
                         Text("Text").tag(true)
                         Text("Cards").tag(false)
-                    }.pickerStyle(.segmented).frame(width: 150)
+                    }.pickerStyle(.segmented).labelsHidden().frame(width: 150)
+                        .accessibilityLabel("History view")
                         .feedbackTarget("history.view", label: "Text or cards history")
                     if historyTextView {
                         Text("Drag to highlight, then ⌘C. ⌘A selects all loaded text.")
@@ -309,6 +404,7 @@ struct TranscriptView: View {
             } else if historyTextView {
                 SelectableHistory(transcripts: service.history, search: search)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .feedbackTarget("history.text-document", label: "Selectable transcript document")
                 HStack {
                     Text("Oldest to newest · New updates wait while text is selected")
                         .font(.caption).foregroundStyle(.secondary)
@@ -322,31 +418,43 @@ struct TranscriptView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 10) {
                         ForEach(service.history) { item in
+                            #if DEBUG
+                            let key = "history.row." + feedbackKeys.key(for: item.id)
+                            #else
+                            let key = ""
+                            #endif
                             VStack(alignment: .leading, spacing: 8) {
                                 Button { copy(item) } label: {
                                     VStack(alignment: .leading, spacing: 8) {
                                         HStack {
                                             Text(item.speakerLabel ?? item.speakerID ?? (item.mode == "dictation" ? "Dictation" : "Unknown speaker")).font(.caption.weight(.medium))
+                                                .feedbackTarget(key + ".speaker", label: "Mode or speaker label")
                                             Spacer()
                                             Text(item.startedAt.addingTimeInterval(item.startSeconds), format: .dateTime.month(.abbreviated).day().hour().minute()).font(.caption).foregroundStyle(.secondary)
+                                                .feedbackTarget(key + ".timestamp", label: "Transcript timestamp")
                                             Image(systemName: copiedID == item.id ? "checkmark" : "doc.on.doc").foregroundStyle(copiedID == item.id ? .green : .secondary)
+                                                .feedbackTarget(key + ".copy-icon", label: "Copy indicator")
                                         }
                                         Text(item.text).font(.body).multilineTextAlignment(.leading).foregroundStyle(.primary)
+                                            .feedbackTarget(key + ".text", label: "Transcript text")
                                     }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                                 }.buttonStyle(.plain).help(copiedID == item.id ? "Copied" : "Copy transcript")
+                                    .feedbackTarget(key + ".copy", label: "Copy transcript")
                                     .accessibilityLabel("Copy \(item.mode) transcript")
                                     .accessibilityValue(copiedID == item.id ? "Copied" : item.text)
                                 if item.speakerID != nil && item.speakerID != "overlap" {
                                     Button("Name speaker") { selected = item; label = item.speakerLabel ?? "" }.font(.caption).buttonStyle(.link)
+                                        .feedbackTarget(key + ".name-speaker", label: "Name speaker")
                                 }
-                            }.padding(14).background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+                            }.padding(14).background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 14))
+                                .feedbackTarget(key + ".card", label: "Transcript card")
                         }
                         if service.hasMoreHistory {
                             Button("Load more") { service.loadMoreHistory() }.frame(maxWidth: .infinity)
                                 .feedbackTarget("history.load-more", label: "Load more history")
                         }
                     }
-                }
+                }.feedbackViewport()
             }
         }.feedbackTarget("history.content", label: "Transcript history")
     }
@@ -361,19 +469,6 @@ struct TranscriptView: View {
                     GridRow { metric("Transcript lag", String(format: "%.2f s", service.lagSeconds)); metric("Dropped audio", String(format: "%.1f s", service.droppedSeconds)) }
                 }
                 Divider()
-                Text("Battery").font(.headline)
-                Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 18) {
-                    GridRow {
-                        metric("Battery level", service.resources.battery.levelPercent.map { String(format: "%.0f%%", $0) } ?? "Unavailable")
-                        metric("Power source", service.resources.battery.powerSource)
-                    }
-                    GridRow {
-                        metric("Battery used · whole Mac", service.resources.battery.levelPercent == nil ? "Unavailable" : String(format: "%.1f percentage points", service.resources.battery.usedPercentagePoints))
-                    }
-                }
-                Text("Charge lost while on battery since Jot launched, including other apps and time paused. Resets when Jot quits. Charging and gaps without readings are excluded; this is not Jot’s individual energy use.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Divider()
                 Text("Capture events").font(.headline)
                 ForEach(service.events) { event in
                     HStack(alignment: .top) {
@@ -383,7 +478,7 @@ struct TranscriptView: View {
                 }
                 if service.events.isEmpty { Text("No events yet").foregroundStyle(.secondary) }
             }.frame(maxWidth: .infinity, alignment: .leading)
-        }.feedbackTarget("activity.metrics", label: "Resource metrics and capture events")
+        }.feedbackViewport().feedbackTarget("activity.metrics", label: "Resource metrics and capture events")
     }
 
     private var tuning: some View {
@@ -414,7 +509,7 @@ struct TranscriptView: View {
                 Text("Try the same short scene twice. Change one setting, then compare words, speaker changes, and paragraph breaks separately.")
                     .font(.callout).foregroundStyle(.secondary)
             }.frame(maxWidth: .infinity, alignment: .leading)
-        }
+        }.feedbackViewport()
     }
 
     private func tuningSlider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, step: Double, valueText: String, detail: String) -> some View {
@@ -451,7 +546,7 @@ struct TranscriptView: View {
                 Text("Updates are checked on demand. Downloaded models are kept until an update is explicitly installed.").font(.caption).foregroundStyle(.secondary)
                 Link("FluidAudio releases", destination: URL(string: "https://github.com/FluidInference/FluidAudio/releases")!)
             }
-        }
+        }.feedbackViewport()
     }
 
     private func copy(_ item: Transcript) {
@@ -471,5 +566,7 @@ struct TranscriptView: View {
     private func metric(_ title: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 4) { Text(title).font(.caption).foregroundStyle(.secondary); Text(value).font(.title2.monospacedDigit()) }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
     }
 }

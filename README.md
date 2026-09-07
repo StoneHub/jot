@@ -14,7 +14,7 @@ Open **Jot** from Applications and grant microphone and Accessibility access. If
 
 Dictation supports up to 60 seconds per hold. It cancels if focus changes, skips password fields, and never presses Return. Text insertion depends on the target app's Accessibility support.
 
-In **History**, search transcripts, select text across statements, and press ⌘C to copy. **Load more** adds older results. Cards view supports individual copying and speaker naming. **Activity** shows resource use, capture events, and whole-Mac battery loss during observed battery-powered periods since Jot launched. Battery figures include other apps and reset when Jot quits. **Tuning** adjusts speaker grouping and paragraph breaks; see the [tuning guide](docs/TUNING.md).
+In **History**, search transcripts, select text across statements, and press ⌘C to copy. **Load more** adds older results. Cards view supports individual copying and speaker naming. **Activity** shows resource use and capture events. **Tuning** adjusts speaker grouping and paragraph breaks; see the [tuning guide](docs/TUNING.md).
 
 **Models → Check updates** checks published model revisions. It does not download updates or verify that your cached weights match the latest release.
 
@@ -68,4 +68,4 @@ swift test
 
 The installer builds, verifies signatures, installs to Applications, and checks the running executable. It refuses to replace the app during capture, inference, or model preparation. Set `JOT_SIGN_IDENTITY` and `JOT_SIGN_TEAM` to override signing defaults. Build logs and installation proof are in `build/`.
 
-See [architecture and limits](docs/ARCHITECTURE.md), [verification](docs/VERIFICATION.md), and [planned work](docs/BACKLOG.md). Debug builds also include [local UI feedback tools](docs/SWIFTUI-FEEDBACK.md).
+See [architecture and limits](docs/ARCHITECTURE.md), [verification](docs/VERIFICATION.md), and [planned work](docs/BACKLOG.md). Debug builds include [UI feedback commands](docs/SWIFTUI-FEEDBACK.md) in the Developer menu. To build a Release app without changing your installed copy, use `./scripts/build-install.py --configuration Release --build-only`. Release builds exclude the feedback interface.

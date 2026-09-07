@@ -1,7 +1,7 @@
 # Upstream snapshot
 
 - Repository: https://github.com/StoneHub/webDevFeedbackExt
-- Revision: 9ad898738b4e303c4001acc61db6de1e44112c0b
+- Revision: 0107bd120a9dbc16ade2ca5284031cd68404f7a8
 - Path: packages/swiftui-feedback
 - Branch at integration: codex/swiftui-feedback
 

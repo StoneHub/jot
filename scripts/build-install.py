@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Build, verify, and install the exact Xcode product. Never interrupts active capture."""
+import argparse
+import sys
 import hashlib
 import json
 import os
@@ -15,6 +17,10 @@ root = Path(__file__).resolve().parents[1]
 os.chdir(root)
 work = root / 'build'
 work.mkdir(exist_ok=True)
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--configuration', choices=['Debug', 'Release'], default='Debug')
+parser.add_argument('--build-only', action='store_true', help='Verify the build without replacing or launching the installed app')
+options = parser.parse_args()
 identity = os.environ.get('JOT_SIGN_IDENTITY')
 if not identity:
     identities = subprocess.check_output(['security', 'find-identity', '-v', '-p', 'codesigning'], text=True)
@@ -26,7 +32,7 @@ team = os.environ.get('JOT_SIGN_TEAM') or re.search(r'\(([A-Z0-9]+)\)$', identit
 if shutil.which('xcodegen'):
     subprocess.run(['xcodegen', 'generate'], check=True)
 args = ['xcodebuild', '-project', 'Jot.xcodeproj', '-scheme', 'Jot',
-        '-configuration', 'Debug', '-destination', 'platform=macOS,arch=arm64',
+        '-configuration', options.configuration, '-destination', 'platform=macOS,arch=arm64',
         '-derivedDataPath', 'build/DerivedData', '-clonedSourcePackagesDirPath', 'build/SourcePackages',
         'CODE_SIGN_STYLE=Manual', f'CODE_SIGN_IDENTITY={identity}', f'DEVELOPMENT_TEAM={team}']
 print(f'Building; log: {work / "build.log"}', flush=True)
@@ -35,6 +41,28 @@ with (work / 'build.log').open('w') as log:
 settings = json.loads(subprocess.check_output(args + ['-showBuildSettings', '-json']))
 s = next(item['buildSettings'] for item in settings if item['target'] == 'Jot')
 source = Path(s['TARGET_BUILD_DIR']) / s['FULL_PRODUCT_NAME']
+subprocess.run(['codesign', '--verify', '--deep', '--strict', str(source)], check=True)
+if options.configuration == 'Release':
+    conditions = s.get('SWIFT_ACTIVE_COMPILATION_CONDITIONS', '').split()
+    flags = s.get('OTHER_SWIFT_FLAGS', '')
+    if 'DEBUG' in conditions or re.search(r'-D\s*DEBUG\b', flags):
+        raise SystemExit('Release build unexpectedly defines DEBUG.')
+    forbidden = [b'FeedbackPanel', b'FeedbackSession', b'FeedbackHistory', b'dev-feedback.note',
+                 b'UI Feedback', b'history.row.', b'Mode or speaker label']
+    for file in source.rglob('*'):
+        if not file.is_file():
+            continue
+        data = file.read_bytes()
+        if data[:4] not in [b'\xcf\xfa\xed\xfe', b'\xca\xfe\xba\xbe', b'\xfe\xed\xfa\xcf']:
+            continue
+        if any(marker in data for marker in forbidden):
+            raise SystemExit(f'Release contains development feedback code or metadata: {file}')
+    (work / 'release-proof.json').write_text(json.dumps(dict(source=str(source),
+        configuration='Release', debugDefined=False, feedbackRuntimeMarkers=False,
+        sha256=hashlib.sha256((source / 'Contents/MacOS' / s['EXECUTABLE_NAME']).read_bytes()).hexdigest()), indent=2) + '\n')
+if options.build_only:
+    print(json.dumps(dict(source=str(source), configuration=options.configuration, installed=False), indent=2))
+    sys.exit(0)
 destination = Path('/Applications') / s['FULL_PRODUCT_NAME']
 helper = destination / 'Contents/Helpers/jot'
 # Upgrade the previous product only while both services are idle.
@@ -108,7 +136,7 @@ for _ in range(50):
         current = json.loads(status.stdout)['result']
         command = subprocess.check_output(['ps', '-p', str(current['resources']['processID']), '-o', 'comm='], text=True).strip()
         assert command == str(destination / relative), command
-        proof = dict(source=str(source), installed=str(destination), sha256=digest(destination / relative), running=command, pid=current['resources']['processID'])
+        proof = dict(configuration=options.configuration, source=str(source), installed=str(destination), sha256=digest(destination / relative), running=command, pid=current['resources']['processID'])
         (work / 'install-proof.json').write_text(json.dumps(proof, indent=2) + '\n')
         print(json.dumps(proof, indent=2))
         break

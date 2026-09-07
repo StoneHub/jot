@@ -70,12 +70,22 @@ All 20 core tests pass. The signed Debug product resolved by Xcode was installed
 
 Migration preserved all 596 transcripts across 7 sessions, Fn selection, tuning, and the feedback history file. The old app is archived under ignored `build/legacy-app-backup`. Jot remains paused. Its new bundle identity needs microphone and Accessibility permission; live dictation under the new identity has not been retested.
 
-## Activity battery use
+## Activity simplification
 
-Activity now shows battery level, power source, and cumulative net percentage-point loss across observed battery-powered periods since launch. Values cover the whole Mac, including other apps and time paused; they do not attribute energy to Jot. The counter resets at quit. Charging and unavailable readings break observation intervals. Short power-source changes between samples can be missed. CLI/MCP status includes the same battery snapshot.
+Removed the whole-Mac battery widget and its sampler. Activity shows Jot process metrics and capture events. The whole-Mac charge change did not measure Jot's energy use and duplicated macOS battery information.
 
-All 23 core tests pass, including discharge/recharge cycles, gauge bounce, and unavailable readings. Signed Debug installation passed with matching executable hashes and verified installed process path. Native Activity showed the real battery source and 27% charge, matching CLI status; the new counter began at zero. No long discharge test was performed.
+## Glass UI and development feedback
 
-![Activity before battery metrics](evidence/activity-before-battery.png)
+The window and menu popover use native Liquid Glass on macOS 26, a restrained system-accent background, and material fallbacks on macOS 14–25. The battery widget and sampler are removed. History view-mode controls no longer wrap their label. The user reviewed the menu layout; the installed window was visually checked with system accent colors.
 
-![Activity with battery metrics](evidence/activity-battery.png)
+Debug feedback has no persistent toolbar or reserved padding. Developer commands and a shortcut activate picking/history. Child targets distinguish card mode labels, timestamps, text, copy indicators/actions, and speaker-name actions using opaque per-view keys and static labels. Physical picks verified the mode label, copy indicator, and parent whitespace independently. Those empty test drafts were discarded. The Developer menu and absence of idle feedback UI were verified through native accessibility. The keyboard shortcut activated picking. A native scroll action exposed offscreen target outlines over the header; an upstream viewport fix now clips drawing and hit testing, with regression tests for hidden and partial targets. The final live clipping check is pending because the Mac locked.
+
+Twenty core tests and eight feedback tests pass. The feedback Release exclusion test passes. The signed Debug app was installed from Xcode's resolved product; source/installed executable hashes and running process path match. The app remains paused with permissions preserved.
+
+A full signed Release build using the same final source passed the installer's DEBUG and feedback-runtime/metadata checks. The package may leave no-op API symbols; no capture panel, store, or row-target metadata is included. This is not a notarized distribution or another-Mac install test.
+
+![System-accent glass Activity, before the debug toolbar was removed](evidence/glass-activity.png)
+
+## App icon registration
+
+Jot now includes the standard AppIcon asset catalog at all ten macOS sizes, alongside its bundled ICNS. Startup loads that bundled artwork explicitly while Launch Services refreshes. The running app's icon was read through NSRunningApplication and visually confirmed as Jot's waveform, replacing the generic placeholder. Generator output matches all ten catalog images. The final Debug and Release builds both passed signing and artifact checks.

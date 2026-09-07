@@ -1,10 +1,7 @@
 import Foundation
 import Darwin
-import IOKit.ps
-import JotCore
 
 struct ResourceSnapshot: Codable {
-    var battery = BatteryUsage()
     var processCPUPercent: Double = 0
     var residentMiB: Double = 0
     var physicalFootprintMiB: Double = 0
@@ -17,31 +14,9 @@ struct ResourceSnapshot: Codable {
 }
 
 final class ResourceSampler {
-    private var battery = BatteryUsage()
     private var previousCPU: UInt64 = 0
     private var previousTime = ProcessInfo.processInfo.systemUptime
     private let began = ProcessInfo.processInfo.systemUptime
-    private func sampleBattery() {
-        guard let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
-              let sources = IOPSCopyPowerSourcesList(info)?.takeRetainedValue() as? [CFTypeRef] else {
-            battery.observe(level: nil, onBattery: nil)
-            return
-        }
-        for source in sources {
-            guard let description = IOPSGetPowerSourceDescription(info, source)?.takeUnretainedValue() as? [String: Any],
-                  description[kIOPSTypeKey] as? String == kIOPSInternalBatteryType,
-                  let current = description[kIOPSCurrentCapacityKey] as? NSNumber,
-                  let maximum = description[kIOPSMaxCapacityKey] as? NSNumber,
-                  maximum.doubleValue > 0,
-                  let state = description[kIOPSPowerSourceStateKey] as? String,
-                  [kIOPSBatteryPowerValue, kIOPSACPowerValue].contains(state) else { continue }
-            battery.observe(level: current.doubleValue / maximum.doubleValue * 100,
-                            onBattery: state == kIOPSBatteryPowerValue)
-            return
-        }
-        battery.observe(level: nil, onBattery: nil)
-    }
-
     func sample() -> ResourceSnapshot {
         var info = rusage_info_v4()
         let code = withUnsafeMutablePointer(to: &info) { pointer in
@@ -57,8 +32,6 @@ final class ResourceSampler {
             previousCPU = cpu
         }
         previousTime = now
-        sampleBattery()
-        value.battery = battery
         value.uptimeSeconds = now - began
         switch ProcessInfo.processInfo.thermalState {
         case .nominal: value.thermalState = "nominal"

@@ -7,18 +7,23 @@ Pick a tagged view in a native Mac development build, describe the requested cha
 Requires macOS 14+, Swift tools 5.9, and a Debug build. Add this directory as a local Swift package dependency and link the **DevFeedback** product to the app target. For a reproducible host checkout, vendor this directory without `.build`/`.swiftpm`, preserve the license, and record the exact upstream repository commit. SwiftPM cannot fetch a nested package by repository URL; a dedicated package repository can follow after the integration proves useful.
 
 ```swift
+import SwiftUI
+#if DEBUG
 import DevFeedback
+#endif
 
-struct AppWindow: View {
-    var body: some View {
-        #if DEBUG
-        StatusView()
-            .padding(.top, 38)
-            .feedbackOverlay(appID: "example.app", screen: "status")
-        #else
-        StatusView()
-        #endif
-    }
+// Inside the App's scene builder:
+Window("My App", id: "main") {
+    #if DEBUG
+    StatusView().feedbackOverlay(appID: "example.app", screen: "status")
+    #else
+    StatusView()
+    #endif
+}
+.commands {
+    #if DEBUG
+    FeedbackCommands()
+    #endif
 }
 
 // At the meaningful control or section boundary:
@@ -26,13 +31,15 @@ Button("Save", action: save)
     .feedbackTarget("profile.save", label: "Save profile")
 ```
 
-Reserve a top strip for the development Feedback chip. Targets report their actual layout bounds using anchor preferences; nested picking chooses the smallest registered bounds under the pointer. Repeated components need distinct non-sensitive instance IDs. Labels should be static developer text, never values from a transcript, document, or form. The default `#fileID` and `#line` identify the tagging call, not a guaranteed permanent source location.
+The tag example assumes the package is imported. Hosts that guard the import in Release can provide a Release-only no-op tagging shim with lazy (`@autoclosure`) arguments, or conditionally compile tag calls. Verify the resulting distributable, including dynamic tag-key creation, rather than relying on the shim alone.
 
-The screen parameter may change with navigation: new captures use the current screen while saved records and open drafts preserve their original screen. History is shared within the app ID. Install an overlay separately on any sheet needing capture. Release builds compile both public modifiers as no-ops and exclude the panel, store, and record implementation. Host and dependency must both use Debug; a host-only flag does not enable the Release package.
+The idle overlay inserts no button, badge, or reserved spacing. Activate **Developer → Pick UI for Feedback** or **⌘⌥⇧F** while the app window is active. **Developer → Feedback History…** opens saved notes. Highlight outlines and Cancel appear only during an active pick. Targets report their actual layout bounds using anchor preferences; nested picking chooses the smallest registered bounds under the pointer. Add `.feedbackViewport()` to each `ScrollView` itself (outside its content) or other clipped container. Outlines and click hit-testing then use only the intersection with every enclosing viewport; offscreen targets are omitted from the visible count. Capture context retains the original bounds. Container tags preserve descendant tags. Register a row/card and its independently discussable mode label, timestamp, text body, and actions; a lone container tag cannot provide granular feedback. Repeated components need distinct non-sensitive instance IDs. Labels should be static developer text, never values from a transcript, document, or form. The default `#fileID` and `#line` identify the tagging call, not a guaranteed permanent source location.
+
+The screen parameter may change with navigation: new captures use the current screen while saved records and open drafts preserve their original screen. History is shared within the app ID. Install an overlay separately on any sheet needing capture. Release builds compile both public modifiers as inlinable no-ops with lazy metadata arguments, omit the Developer menu items, and exclude the panel, store, and record implementation. The Release test confirms metadata-producing expressions are not evaluated. Host and dependency must both use Debug; a host-only flag does not enable the Release package.
 
 ## Test the workflow
 
-1. In the app, click **Feedback**, then **Pick target**. Orange outlines show registered targets. Click a control; its normal action should not execute.
+1. With the app window active, press **⌘⌥⇧F** or choose **Developer → Pick UI for Feedback**. Orange outlines show registered targets. Click a control; its normal action should not execute.
 2. Write a requested change and optional acceptance checks. **Save & pick next** returns to the picker; **Save** returns to History. Cancel picking with Escape or Cancel.
 3. Close and reopen the panel with an unsaved draft, then navigate to a different app section. The draft should stay attached to its original target. Save or explicitly discard before another pick.
 4. Edit a saved note. Its original target, capture time, bounds, appearance, and app/build stay unchanged.
@@ -57,7 +64,11 @@ The repository includes a [Codex plugin](../../plugins/swiftui-feedback/README.m
 
 ```sh
 swift test --package-path packages/swiftui-feedback
-swift build -c release --package-path packages/swiftui-feedback
+swift test -c release --package-path packages/swiftui-feedback
 ```
 
-Tests cover persistence, selected-only export, edits preserving context, failed writes, corrupt/future history, field limits, same-process windows, and Finder deletion. The host integration must also exercise the real picker, panel, and export dialog.
+Tests include an actual SwiftUI hosting/rendering regression for nested parent/child registrations, plus persistence, selected-only export, edits preserving context, failed writes, corrupt/future history, field limits, same-process windows, and Finder deletion. The host integration must also exercise the real picker, panel, and export dialog.
+
+## Distribution gate
+
+Development installation and a distributable are distinct products. Use Xcode **Release** for Archive/export; never distribute the Debug app used for feedback. Check effective host and package compilation conditions: `DEBUG` must be absent. Verify the built app has no Developer feedback commands, picker, History panel/storage code, bundled DevFeedback framework/resources, source hints, or feedback-only tag markers. Inspect the actual linked executable and bundle, and fail packaging if markers remain. Importing a dependency in the project is not by itself proof that its runtime ships, nor is hiding a control proof of exclusion. Signing and notarization are separate host release requirements.

@@ -16,13 +16,13 @@
 		6E92D801CF7E0C6D4471E466 /* AudioPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1724E7761CB8156A220EF24 /* AudioPipeline.swift */; };
 		987B92C586EF2356FE9B3BBC /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */; };
 		A3267595B1A8F60F403F04CB /* JotCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D0BF24005EE0C2BB76EEAC0 /* JotCLI.swift */; };
+		A4B98AD49438BD1121F60475 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FF011AF3F4B42BB9B97A069F /* Assets.xcassets */; };
 		A84D2F3520652FB64F16B110 /* TranscriptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBDB9C8F81FE456A8328BCE4 /* TranscriptStore.swift */; };
 		B3AB2422EE65311C8F9EEEEA /* ResourceStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75A2B17AAF1631913D5A8DCC /* ResourceStats.swift */; };
 		C4A3067F86EC76FBB07066E5 /* ServiceLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87AE9B1836DA9D504389E51A /* ServiceLifecycle.swift */; };
 		CB99DD1789813FB24F791413 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = CDE54F5568B2E1009E317C26 /* libsqlite3.tbd */; };
 		D283C88CF89D912165283C80 /* JotCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D2E098CDE7120087F5C947F0 /* JotCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D5D8145305034318CEFA19C7 /* ModelUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D08CE824AF0B228F66A9DE7F /* ModelUpdate.swift */; };
-		E3CA57994964D2B208FF5604 /* BatteryUsage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ABB49E4EA74220018971EDB /* BatteryUsage.swift */; };
 		E627399561B1AC9DAB0B0408 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 9B4DFBF48C95EF86F6CFAB88 /* FluidAudio */; };
 		F39E2781C6B2CA0959B89114 /* JotCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D2E098CDE7120087F5C947F0 /* JotCore.framework */; };
 		F42913969834EBA50B2F3166 /* DevFeedback in Frameworks */ = {isa = PBXBuildFile; productRef = EBC71813CAEC75F70AB67AA1 /* DevFeedback */; };
@@ -68,7 +68,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		2ABB49E4EA74220018971EDB /* BatteryUsage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatteryUsage.swift; sourceTree = "<group>"; };
 		2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechService.swift; sourceTree = "<group>"; };
 		5D0BF24005EE0C2BB76EEAC0 /* JotCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JotCLI.swift; sourceTree = "<group>"; };
 		75A2B17AAF1631913D5A8DCC /* ResourceStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResourceStats.swift; sourceTree = "<group>"; };
@@ -86,6 +85,7 @@
 		DF4F7EA10A696D822E25FABC /* SelectableHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectableHistory.swift; sourceTree = "<group>"; };
 		EBA0F84BDC3CF425D094A331 /* JotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JotApp.swift; sourceTree = "<group>"; };
 		FDE6F4ADB49011C1E67086A3 /* JotCLI */ = {isa = PBXFileReference; includeInIndex = 0; path = JotCLI; sourceTree = BUILT_PRODUCTS_DIR; };
+		FF011AF3F4B42BB9B97A069F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		FF9B1EC9EF58D7AA79B27628 /* TranscriptionTuning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionTuning.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -149,6 +149,7 @@
 		8B06638858A04B172277FDD9 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				FF011AF3F4B42BB9B97A069F /* Assets.xcassets */,
 				78ECFD6E5E5AF02BE9088B4A /* Jot.icns */,
 			);
 			path = Resources;
@@ -173,7 +174,6 @@
 		C1DEE3EB4427813127E7E1D0 /* JotCore */ = {
 			isa = PBXGroup;
 			children = (
-				2ABB49E4EA74220018971EDB /* BatteryUsage.swift */,
 				D1812288F51560118033D92A /* LocalService.swift */,
 				D08CE824AF0B228F66A9DE7F /* ModelUpdate.swift */,
 				87AE9B1836DA9D504389E51A /* ServiceLifecycle.swift */,
@@ -318,6 +318,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A4B98AD49438BD1121F60475 /* Assets.xcassets in Resources */,
 				68A990392B7CAAB061ADC290 /* Jot.icns in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -373,7 +374,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E3CA57994964D2B208FF5604 /* BatteryUsage.swift in Sources */,
 				2D62FA2C153FEDA91143654A /* LocalService.swift in Sources */,
 				D5D8145305034318CEFA19C7 /* ModelUpdate.swift in Sources */,
 				C4A3067F86EC76FBB07066E5 /* ServiceLifecycle.swift in Sources */,
