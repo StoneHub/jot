@@ -61,8 +61,10 @@ The installer selects an installed Developer ID Application identity or accepts 
 
 `porch transcribe-file /absolute/path/to/short-audio.aiff` is an idle-only developer diagnostic (at most 60 seconds). It uses the same recognition/diarization pipeline, returns results without storing transcripts, and is not an MCP tool.
 
-The native app contains **History** (click a transcript to copy, search, load more, manual speaker labels), **Activity** (metrics and capture events), and **Models** (on-demand upstream revision checks and release links). Liquid Glass controls are used on macOS 26, with native material fallbacks on older versions. The window title is neutral while a new product name is being chosen.
+The native app contains **History** (click a transcript to copy, search, load more, manual speaker labels), **Activity** (metrics and capture events), **Tuning** (speaker confidence, minimum turn, paragraph pause, filler visibility), and **Models** (on-demand upstream revision checks and release links). Liquid Glass controls are used on macOS 26, with native material fallbacks on older versions. The window title is neutral while a new product name is being chosen.
 
 **Model updates:** upstream model repositories can publish new weights or conversion fixes. Models → Check updates, or `porch models check`, retrieves publication revisions/dates and detects changes since your previous check. The original FluidAudio cache lacks installed revision metadata, so this does not establish that installed weights are current. No models are silently updated. Revision-tracked installation and rollback are proposed next work.
 
 See [implementation scope](docs/PLAN.md), [architecture and limits](docs/ARCHITECTURE.md), [verification](docs/VERIFICATION.md), and [backlog](docs/BACKLOG.md).
+
+[Human tuning guide](docs/TUNING.md): adjust speaker stability and paragraph grouping together using a short repeatable passage. The original transcript words remain stored.

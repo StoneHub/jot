@@ -59,14 +59,14 @@ actor SpeechPipeline {
         sessionID = ""; expectedOffset = 0; baseOffset = 0
     }
 
-    func testFile(_ url: URL) async throws -> SpeechOutput {
+    func testFile(_ url: URL, tuning: TranscriptionTuning = .init()) async throws -> SpeechOutput {
         let file = try AVAudioFile(forReading: url)
         guard Double(file.length) / file.processingFormat.sampleRate <= 60 else { throw PorchError.message("Diagnostic files must be at most 60 seconds.") }
         let samples = try AudioConverter().resampleAudioFile(url)
-        return try await infer(AudioJob(sessionID: UUID().uuidString, startedAt: Date(), offset: 0, samples: samples, mode: "ambient", ticket: UUID()))
+        return try await infer(AudioJob(sessionID: UUID().uuidString, startedAt: Date(), offset: 0, samples: samples, mode: "ambient", ticket: UUID()), tuning: tuning)
     }
 
-    func infer(_ job: AudioJob) async throws -> SpeechOutput {
+    func infer(_ job: AudioJob, tuning: TranscriptionTuning = .init()) async throws -> SpeechOutput {
         guard let asr, let vad, let diarizer else { throw PorchError.message("Prepare models before listening.") }
         try Task.checkCancellation()
         let begin = Date()
@@ -103,23 +103,15 @@ actor SpeechPipeline {
         var segments: [Transcript] = []
         if job.mode == "ambient", let timings = result.tokenTimings, !timings.isEmpty {
             let words = buildWordTimings(from: timings)
-            var group: [WordTiming] = []
-            var currentSpeaker: String?
-            func appendGroup() {
-                guard let first = group.first, let last = group.last else { return }
-                segments.append(Transcript(sessionID: job.sessionID, startedAt: job.startedAt,
-                    startSeconds: job.offset + first.startTime, endSeconds: job.offset + last.endTime,
-                    text: group.map(\.word).joined(separator: " "), speakerID: currentSpeaker, mode: job.mode))
-            }
-            for word in words {
+            let attributed = words.map { word -> AttributedWord in
                 let frame = Int((job.offset - baseOffset + (word.startTime + word.endTime) / 2) / 0.08)
-                let values = probabilities[frame] ?? []
-                let active = values.enumerated().filter { $0.element >= 0.5 }
-                let speaker: String? = active.count == 1 ? "speaker-\(active[0].offset + 1)" : (active.count > 1 ? "overlap" : nil)
-                if !group.isEmpty && speaker != currentSpeaker { appendGroup(); group = [] }
-                currentSpeaker = speaker; group.append(word)
+                return AttributedWord(text: word.word, start: word.startTime, end: word.endTime, probabilities: probabilities[frame] ?? [])
             }
-            appendGroup()
+            segments = TranscriptGrouping.turns(attributed, tuning: tuning).map { turn in
+                Transcript(sessionID: job.sessionID, startedAt: job.startedAt,
+                    startSeconds: job.offset + turn.start, endSeconds: job.offset + turn.end,
+                    text: turn.text, speakerID: turn.speaker, mode: job.mode)
+            }
         }
         if segments.isEmpty {
             segments = [Transcript(sessionID: job.sessionID, startedAt: job.startedAt, startSeconds: job.offset,

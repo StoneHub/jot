@@ -8,6 +8,8 @@ FluidAudio is pinned at `5c19d5e12320e22bbfb7a1877b089d2665a69add`. Parakeet v3 
 
 ## Bounds and lifecycle
 
+Ambient speaker attribution uses user-adjustable confidence and minimum-turn duration. Short candidate changes and isolated hesitations retain the preceding confirmed speaker within each inference block; sustained changes create a new turn. This can also merge a genuine short reply. Paragraph pause controls both quiet-boundary flushing and turn grouping. History may combine nearby same-speaker rows and hide filler-only rows without changing stored source text. Settings persist locally and are exposed by status.
+
 - Callback-to-controller queue: 8 seconds of mono float audio.
 - Dictation accumulation: 60 seconds; overflow cancels insertion.
 - Ambient flush: nominally 10 seconds, or a quiet boundary after at least 2 seconds. A delayed controller tick can extend a block by up to the capture packet bound.

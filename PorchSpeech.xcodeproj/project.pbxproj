@@ -18,6 +18,7 @@
 		97DDD9C473FE924AF919DC22 /* AudioPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBCA65FB0C5EB5162674AF42 /* AudioPipeline.swift */; };
 		B20FC2B6608C7853CDD82D3B /* LocalService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0856DB6E27EE2E20BA406F52 /* LocalService.swift */; };
 		B8F497E319E93EA0F290B822 /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D21CECE395C274E6D3F9F11 /* SpeechService.swift */; };
+		BE585988E8750CE23CCFF446 /* TranscriptionTuning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B000B4CA267F7EEF5459F0B /* TranscriptionTuning.swift */; };
 		C2AE41ADF03B7916A9706B97 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = F40F1E78638453609FF257C3 /* libsqlite3.tbd */; };
 		D6BF73693020118B6D35FD57 /* PorchCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 98DA00B0901667BB1401CF1D /* PorchCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		FA30E6D7B15317E6D349C1D2 /* PorchCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47B69063088BFFB0E388C2F8 /* PorchCLI.swift */; };
@@ -64,6 +65,7 @@
 
 /* Begin PBXFileReference section */
 		0856DB6E27EE2E20BA406F52 /* LocalService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalService.swift; sourceTree = "<group>"; };
+		0B000B4CA267F7EEF5459F0B /* TranscriptionTuning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionTuning.swift; sourceTree = "<group>"; };
 		208DBC7A05881EDF2B5F4AE7 /* TranscriptStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStore.swift; sourceTree = "<group>"; };
 		23084DDB5072F1E5615A10DC /* ServiceLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceLifecycle.swift; sourceTree = "<group>"; };
 		47B69063088BFFB0E388C2F8 /* PorchCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PorchCLI.swift; sourceTree = "<group>"; };
@@ -165,6 +167,7 @@
 				0856DB6E27EE2E20BA406F52 /* LocalService.swift */,
 				9AC710063003D3CEEDA7050A /* ModelUpdate.swift */,
 				23084DDB5072F1E5615A10DC /* ServiceLifecycle.swift */,
+				0B000B4CA267F7EEF5459F0B /* TranscriptionTuning.swift */,
 				208DBC7A05881EDF2B5F4AE7 /* TranscriptStore.swift */,
 			);
 			name = PorchCore;
@@ -318,6 +321,7 @@
 				672767AB77C46069688F2645 /* ModelUpdate.swift in Sources */,
 				2C9CC7775CB99FE41975B03F /* ServiceLifecycle.swift in Sources */,
 				05BBC94C4ECDB5DEB6E1BDE4 /* TranscriptStore.swift in Sources */,
+				BE585988E8750CE23CCFF446 /* TranscriptionTuning.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

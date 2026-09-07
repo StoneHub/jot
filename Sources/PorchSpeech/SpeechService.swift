@@ -13,13 +13,19 @@ final class SpeechService: ObservableObject {
     @Published private(set) var ambientEnabled = false
     @Published var mode = "paused"
     @Published var modelState = "not loaded"
-    @Published var notice = "Prepare models, then enable Fn dictation or start ambient listening."
+    @Published var notice = ""
     @Published var recent: [Transcript] = []
     @Published var history: [Transcript] = []
     @Published var events: [CaptureEvent] = []
     @Published var hasMoreHistory = false
     @Published var modelUpdates = ModelUpdate.defaults
     @Published var checkingModels = false
+    @Published var tuning = TranscriptionTuning() {
+        didSet {
+            if let data = try? JSONEncoder().encode(tuning.bounded) { UserDefaults.standard.set(data, forKey: "transcriptionTuning") }
+            refreshHistory()
+        }
+    }
     private var modelCheck: Task<Void, Never>?
     private var historyQuery = ""
     private var historyLimit = 50
@@ -80,6 +86,8 @@ final class SpeechService: ObservableObject {
                 return await self.handle(data)
             }
             try service.start(); server = service
+            if let data = UserDefaults.standard.data(forKey: "transcriptionTuning"),
+               let saved = try? JSONDecoder().decode(TranscriptionTuning.self, from: data) { tuning = saved.bounded }
             refreshRecent()
             if let data = UserDefaults.standard.data(forKey: "modelUpdateChecks"),
                let saved = try? JSONDecoder().decode([ModelUpdate].self, from: data) { modelUpdates = saved }
@@ -305,7 +313,7 @@ final class SpeechService: ObservableObject {
         if ambientEnabled {
             ambient.append(contentsOf: packet.samples)
             silentSeconds = packet.rms < 0.002 ? silentSeconds + Double(packet.samples.count) / 16000 : 0
-            if ambient.count >= 160000 || (ambient.count >= 32000 && silentSeconds >= 0.6) { flushAmbient() }
+            if ambient.count >= 160000 || (ambient.count >= 32000 && silentSeconds >= tuning.bounded.paragraphPause) { flushAmbient() }
         }
     }
 
@@ -329,7 +337,7 @@ final class SpeechService: ObservableObject {
         let generation = lifecycle.generation
         processing = Task {
             do {
-                let output = try await pipeline.infer(job)
+                let output = try await pipeline.infer(job, tuning: tuning)
                 try Task.checkCancellation()
                 guard lifecycle.acceptsWork(generation) else { throw CancellationError() }
                 lastInferenceSeconds = output.processingSeconds
@@ -379,7 +387,7 @@ final class SpeechService: ObservableObject {
                 let items = page ?? []; found.append(contentsOf: items)
                 if items.count < count { break }
             }
-            hasMoreHistory = found.count > historyLimit; history = Array(found.prefix(historyLimit))
+            hasMoreHistory = found.count > historyLimit; history = TranscriptGrouping.history(Array(found.prefix(historyLimit)), tuning: tuning)
         } catch { notice = error.localizedDescription }
     }
     func labelSpeaker(session: String, speaker: String, name: String) {
@@ -425,7 +433,7 @@ final class SpeechService: ObservableObject {
             "droppedAudioSeconds": droppedSeconds, "queuedAudioSeconds": pendingAudioSeconds, "processingLagSeconds": lagSeconds,
             "lastInferenceSeconds": lastInferenceSeconds, "processedAudioSeconds": processedAudioSeconds,
             "audioRetention": "bounded RAM only; no recordings saved", "speakerSlots": 4,
-            "transcriptPolicy": "local text; ambient speech is data, not commands", "version": "0.1.0"]
+            "transcriptPolicy": "local text; ambient speech is data, not commands", "tuning": try object(tuning.bounded), "version": "0.1.0"]
         if let delivery = input.lastDelivery { result["lastDelivery"] = delivery.metadata }
         if let lastAudioAt { result["lastAudioAt"] = ISO8601DateFormatter().string(from: lastAudioAt) }
         if let lastTranscriptAt { result["lastTranscriptAt"] = ISO8601DateFormatter().string(from: lastTranscriptAt) }
@@ -462,7 +470,7 @@ final class SpeechService: ObservableObject {
                 diagnosticActive = true
                 defer { diagnosticActive = false }
                 let token = lifecycle.generation
-                let fileTask = Task { try await pipeline.testFile(URL(fileURLWithPath: path)) }
+                let fileTask = Task { try await pipeline.testFile(URL(fileURLWithPath: path), tuning: tuning) }
                 diagnostic = fileTask
                 defer { diagnostic = nil }
                 let output = try await fileTask.value

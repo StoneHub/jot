@@ -181,9 +181,9 @@ struct TranscriptView: View {
                 ServiceControls(service: service)
                     .padding(18).modifier(GlassSurface())
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(["History", "Activity", "Models"], id: \.self) { item in
+                    ForEach(["History", "Activity", "Tuning", "Models"], id: \.self) { item in
                         Button { section = item } label: {
-                            Label(item, systemImage: item == "History" ? "text.alignleft" : (item == "Activity" ? "chart.xyaxis.line" : "square.stack.3d.up"))
+                            Label(item, systemImage: item == "History" ? "text.alignleft" : (item == "Activity" ? "chart.xyaxis.line" : (item == "Tuning" ? "slider.horizontal.3" : "square.stack.3d.up")))
                                 .frame(maxWidth: .infinity, alignment: .leading).padding(10)
                                 .background(section == item ? Color.accentColor.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 10))
                         }.buttonStyle(.plain)
@@ -217,6 +217,7 @@ struct TranscriptView: View {
                 }
                 if section == "History" { history }
                 else if section == "Activity" { activity }
+                else if section == "Tuning" { tuning }
                 else { models }
             }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .background(Color(nsColor: .windowBackgroundColor))
@@ -299,6 +300,43 @@ struct TranscriptView: View {
                 }
                 if service.events.isEmpty { Text("No events yet").foregroundStyle(.secondary) }
             }.frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var tuning: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                HStack {
+                    Button("Balanced") { service.tuning = .init() }
+                    Button("Steadier speakers") { service.tuning = .steady }
+                    Button("More detail") { service.tuning = .detailed }
+                }.modifier(GlassButton())
+                tuningSlider("Speaker confidence", value: $service.tuning.speakerConfidence, range: 0.45...0.9, step: 0.05,
+                    valueText: String(format: "%.0f%%", service.tuning.speakerConfidence * 100),
+                    detail: "Higher requires stronger evidence for a speaker label; more speech may remain unknown.")
+                tuningSlider("Minimum speaker turn", value: $service.tuning.minimumSpeakerTurn, range: 0.2...2, step: 0.1,
+                    valueText: String(format: "%.1f s", service.tuning.minimumSpeakerTurn),
+                    detail: "Higher reduces speaker changes from brief hesitations. Short real replies may stay with the previous speaker.")
+                tuningSlider("Pause between paragraphs", value: $service.tuning.paragraphPause, range: 0.3...2.5, step: 0.1,
+                    valueText: String(format: "%.1f s", service.tuning.paragraphPause),
+                    detail: "Longer pauses make fewer, longer rows. Nearby history rows from the same speaker are also grouped.")
+                Toggle("Hide filler-only rows", isOn: $service.tuning.hideFillerRows).toggleStyle(.switch)
+                Text("Hides rows containing only sounds such as um or uh. Original text is kept. Fillers inside sentences stay visible.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Divider()
+                Text("Speaker settings apply to new audio. Paragraph grouping and filler visibility also update saved history.")
+                    .font(.callout).foregroundStyle(.secondary)
+                Text("Try the same short scene twice. Change one setting, then compare words, speaker changes, and paragraph breaks separately.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func tuningSlider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, step: Double, valueText: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack { Text(title).font(.headline); Spacer(); Text(valueText).monospacedDigit().foregroundStyle(.secondary) }
+            Slider(value: value, in: range, step: step).accessibilityLabel(title)
+            Text(detail).font(.caption).foregroundStyle(.secondary)
         }
     }
 
