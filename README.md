@@ -68,3 +68,5 @@ The native app contains **History** (click a transcript to copy, search, load mo
 See [implementation scope](docs/PLAN.md), [architecture and limits](docs/ARCHITECTURE.md), [verification](docs/VERIFICATION.md), and [backlog](docs/BACKLOG.md).
 
 [Human tuning guide](docs/TUNING.md): adjust speaker stability and paragraph grouping together using a short repeatable passage. The original transcript words remain stored.
+
+[SwiftUI feedback](docs/SWIFTUI-FEEDBACK.md): Debug builds include a local control picker, feedback history, and selected Markdown/JSON exports.
