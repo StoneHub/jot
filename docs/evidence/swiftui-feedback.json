@@ -1,0 +1,29 @@
+{
+  "records" : [
+    {
+      "acceptance" : "Fn stays on; exported target is service.fn and screen is tuning.",
+      "appID" : "porch-speech",
+      "appVersion" : "0.1.0",
+      "appearance" : "dark",
+      "bounds" : {
+        "height" : 24,
+        "width" : 155,
+        "x" : 38,
+        "y" : 145
+      },
+      "build" : "1",
+      "createdAt" : 810445200.993732,
+      "id" : "F4A08663-35CB-4AF5-B45D-0524CBC12CC3",
+      "note" : "Integration test verified: picking Fn selects this control without changing dictation.",
+      "screen" : "tuning",
+      "target" : {
+        "file" : "Porch_Speech\/PorchSpeechApp.swift",
+        "id" : "service.fn",
+        "label" : "Fn dictation",
+        "line" : 130
+      }
+    }
+  ],
+  "schemaVersion" : 1,
+  "source" : "swiftui-dev-feedback"
+}

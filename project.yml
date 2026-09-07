@@ -4,6 +4,8 @@ options:
   deploymentTarget:
     macOS: '14.0'
 packages:
+  DevFeedback:
+    path: Vendor/DevFeedback
   FluidAudio:
     url: https://github.com/FluidInference/FluidAudio.git
     revision: 5c19d5e12320e22bbfb7a1877b089d2665a69add
@@ -57,6 +59,7 @@ targets:
     dependencies:
       - target: PorchCore
       - package: FluidAudio
+      - package: DevFeedback
       - target: PorchCLI
         embed: false
     postBuildScripts:

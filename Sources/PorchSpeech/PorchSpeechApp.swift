@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import PorchCore
+import DevFeedback
 
 @main
 struct PorchSpeechApp: App {
@@ -118,6 +119,7 @@ private struct ServiceControls: View {
                 .disabled(service.lifecycle.phase == .pausing)
                 .help("Pause stops all speech work and unloads models.")
                 .accessibilityIdentifier("service-pause-resume")
+                .feedbackTarget("service.pause-resume", label: "Pause or resume service")
             }
             Divider()
             Toggle(isOn: Binding(get: { service.fnRequested }, set: { enabled in
@@ -125,11 +127,13 @@ private struct ServiceControls: View {
             })) {
                 Label("Fn dictation", systemImage: "fn")
             }.toggleStyle(.switch).help("Hold Fn to dictate into the focused text field.")
+                .feedbackTarget("service.fn", label: "Fn dictation")
             Toggle(isOn: Binding(get: { service.ambientRequested }, set: { enabled in
                 Task { await service.setAmbient(enabled) }
             })) {
                 Label("Ambient transcription", systemImage: "mic")
             }.toggleStyle(.switch).help("Continuously transcribe the microphone while the service is running.")
+                .feedbackTarget("service.ambient", label: "Ambient transcription")
             if service.isPaused && (service.fnRequested || service.ambientRequested) {
                 Text("Selected features start when you resume.").font(.caption).foregroundStyle(.secondary)
             }
@@ -174,6 +178,13 @@ struct TranscriptView: View {
     @State private var search = ""
     @State private var section = "History"
     @State private var copyReset: Task<Void, Never>?
+    private var feedbackToolbarHeight: CGFloat {
+        #if DEBUG
+        return 38
+        #else
+        return 0
+        #endif
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -187,6 +198,7 @@ struct TranscriptView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading).padding(10)
                                 .background(section == item ? Color.accentColor.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 10))
                         }.buttonStyle(.plain)
+                            .feedbackTarget("navigation.\(item.lowercased())", label: "Open \(item)")
                     }
                 }
                 Spacer()
@@ -207,8 +219,15 @@ struct TranscriptView: View {
                     Text(section).font(.title2.weight(.semibold))
                     Spacer()
                     if section == "History" {
+                        Button("Open History in Finder", systemImage: "folder") {
+                            NSWorkspace.shared.activateFileViewerSelecting([PorchPaths.directory.appendingPathComponent("transcripts.sqlite3")])
+                        }
+                        .modifier(GlassButton())
+                        .help("Shows the transcript database. Quit Porch Speech before moving history files to Trash.")
+                        .feedbackTarget("history.finder", label: "Open History in Finder")
                         Button(showHistory ? "Hide" : "Show", systemImage: showHistory ? "eye.slash" : "eye") { showHistory.toggle() }
                             .modifier(GlassButton())
+                            .feedbackTarget("history.visibility", label: "Show or hide history")
                     }
                 }
                 if !service.notice.isEmpty {
@@ -222,9 +241,11 @@ struct TranscriptView: View {
             }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .background(Color(nsColor: .windowBackgroundColor))
         }
+        .padding(.top, feedbackToolbarHeight)
         .background(WindowAttachment(attach: delegate.attach))
         .onAppear { delegate.openAction = { openWindow(id: "main") } }
         .onDisappear { copyReset?.cancel() }
+        .feedbackOverlay(appID: "porch-speech", screen: section.lowercased())
         .sheet(isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } })) {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Name speaker").font(.headline)
@@ -247,6 +268,7 @@ struct TranscriptView: View {
             TextField("Search transcripts", text: $search)
                 .textFieldStyle(.roundedBorder)
                 .onChange(of: search) { _, value in service.searchHistory(value) }
+                .feedbackTarget("history.search", label: "Search transcripts")
             if !showHistory {
                 empty("History hidden", symbol: "eye.slash")
             } else if service.history.isEmpty {
@@ -274,11 +296,14 @@ struct TranscriptView: View {
                                 }
                             }.padding(14).background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
                         }
-                        if service.hasMoreHistory { Button("Load more") { service.loadMoreHistory() }.frame(maxWidth: .infinity) }
+                        if service.hasMoreHistory {
+                            Button("Load more") { service.loadMoreHistory() }.frame(maxWidth: .infinity)
+                                .feedbackTarget("history.load-more", label: "Load more history")
+                        }
                     }
                 }
             }
-        }
+        }.feedbackTarget("history.content", label: "Transcript history")
     }
 
     private var activity: some View {
@@ -300,7 +325,7 @@ struct TranscriptView: View {
                 }
                 if service.events.isEmpty { Text("No events yet").foregroundStyle(.secondary) }
             }.frame(maxWidth: .infinity, alignment: .leading)
-        }
+        }.feedbackTarget("activity.metrics", label: "Resource metrics and capture events")
     }
 
     private var tuning: some View {
@@ -311,6 +336,7 @@ struct TranscriptView: View {
                     Button("Steadier speakers") { service.tuning = .steady }
                     Button("More detail") { service.tuning = .detailed }
                 }.modifier(GlassButton())
+                    .feedbackTarget("tuning.presets", label: "Tuning presets")
                 tuningSlider("Speaker confidence", value: $service.tuning.speakerConfidence, range: 0.45...0.9, step: 0.05,
                     valueText: String(format: "%.0f%%", service.tuning.speakerConfidence * 100),
                     detail: "Higher requires stronger evidence for a speaker label; more speech may remain unknown.")
@@ -321,6 +347,7 @@ struct TranscriptView: View {
                     valueText: String(format: "%.1f s", service.tuning.paragraphPause),
                     detail: "Longer pauses make fewer, longer rows. Nearby history rows from the same speaker are also grouped.")
                 Toggle("Hide filler-only rows", isOn: $service.tuning.hideFillerRows).toggleStyle(.switch)
+                    .feedbackTarget("tuning.fillers", label: "Hide filler-only rows")
                 Text("Hides rows containing only sounds such as um or uh. Original text is kept. Fillers inside sentences stay visible.")
                     .font(.caption).foregroundStyle(.secondary)
                 Divider()
@@ -336,6 +363,7 @@ struct TranscriptView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack { Text(title).font(.headline); Spacer(); Text(valueText).monospacedDigit().foregroundStyle(.secondary) }
             Slider(value: value, in: range, step: step).accessibilityLabel(title)
+                .feedbackTarget("tuning.\(title.lowercased().replacingOccurrences(of: " ", with: "-"))", label: title)
             Text(detail).font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -348,6 +376,7 @@ struct TranscriptView: View {
                     Spacer()
                     Button(service.checkingModels ? "Checking…" : "Check updates") { service.checkModelUpdates() }
                         .disabled(service.checkingModels).modifier(GlassButton())
+                        .feedbackTarget("models.check", label: "Check model updates")
                 }
                 ForEach(service.modelUpdates) { model in
                     VStack(alignment: .leading, spacing: 8) {
