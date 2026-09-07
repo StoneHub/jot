@@ -12,6 +12,7 @@
 		2D62FA2C153FEDA91143654A /* LocalService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1812288F51560118033D92A /* LocalService.swift */; };
 		48A035BE8890396E0ED43AAE /* JotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBA0F84BDC3CF425D094A331 /* JotApp.swift */; };
 		6689C56E5F2476BAEFBA6523 /* JotCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D2E098CDE7120087F5C947F0 /* JotCore.framework */; };
+		68A990392B7CAAB061ADC290 /* Jot.icns in Resources */ = {isa = PBXBuildFile; fileRef = 78ECFD6E5E5AF02BE9088B4A /* Jot.icns */; };
 		6E92D801CF7E0C6D4471E466 /* AudioPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1724E7761CB8156A220EF24 /* AudioPipeline.swift */; };
 		987B92C586EF2356FE9B3BBC /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */; };
 		A3267595B1A8F60F403F04CB /* JotCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D0BF24005EE0C2BB76EEAC0 /* JotCLI.swift */; };
@@ -69,6 +70,7 @@
 		2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechService.swift; sourceTree = "<group>"; };
 		5D0BF24005EE0C2BB76EEAC0 /* JotCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JotCLI.swift; sourceTree = "<group>"; };
 		75A2B17AAF1631913D5A8DCC /* ResourceStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResourceStats.swift; sourceTree = "<group>"; };
+		78ECFD6E5E5AF02BE9088B4A /* Jot.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = Jot.icns; sourceTree = "<group>"; };
 		7F8706CA0A472D88DA09E8DC /* Jot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Jot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		82A3D8CCC3D071ABC0F5EE69 /* DictationInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationInput.swift; sourceTree = "<group>"; };
 		87AE9B1836DA9D504389E51A /* ServiceLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceLifecycle.swift; sourceTree = "<group>"; };
@@ -136,9 +138,18 @@
 				DAED3F62949CD7FDFB9AB122 /* JotCLI */,
 				C1DEE3EB4427813127E7E1D0 /* JotCore */,
 				C0D6E39DC9E61AB97A03A598 /* Packages */,
+				8B06638858A04B172277FDD9 /* Resources */,
 				9EAFF92D7689097233BB0737 /* Frameworks */,
 				CC1E4E01C7217031616028C3 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		8B06638858A04B172277FDD9 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				78ECFD6E5E5AF02BE9088B4A /* Jot.icns */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 		9EAFF92D7689097233BB0737 /* Frameworks */ = {
@@ -216,6 +227,7 @@
 			buildConfigurationList = D19C9A8BD450B596109DFFC9 /* Build configuration list for PBXNativeTarget "Jot" */;
 			buildPhases = (
 				3DD6E63B2DEC370C8F73FEFC /* Sources */,
+				50DFCCDBE97F485ECE587641 /* Resources */,
 				CECC998285A097708CD1845D /* Frameworks */,
 				3241435958C595129A4CCE95 /* Embed Frameworks */,
 				D71C074258D6E5D3FE6117F2 /* Bundle agent CLI */,
@@ -297,6 +309,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		50DFCCDBE97F485ECE587641 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				68A990392B7CAAB061ADC290 /* Jot.icns in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
 		D71C074258D6E5D3FE6117F2 /* Bundle agent CLI */ = {

@@ -34,7 +34,6 @@ final class JotDelegate: NSObject, NSApplicationDelegate {
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
-        NSApp.applicationIconImage = NSImage(systemSymbolName: "waveform.circle.fill", accessibilityDescription: "Jot")
         service.launch()
     }
     func attach(_ window: NSWindow) {
