@@ -19,7 +19,7 @@ public enum TranscriptExport {
         let folded = TranscriptGrouping.foldContinuations(rows)
         let merged = paragraphs(folded)
         let duration = rows.map(\.endSeconds).max() ?? 0
-        var lines = ["# Session \(timestamp(session.startedAt))", "",
+        var lines = ["# \(session.title ?? "Session") \(timestamp(session.startedAt))", "",
                      "Session \(session.sessionID). \(rows.count) segments, \(clock(duration)) of audio, ending \(timestamp(session.lastTranscriptAt)).",
                      "Speakers without a name are Jot's automatic groupings. Timestamps are offsets from session start.", ""]
         for row in merged {
@@ -29,7 +29,16 @@ public enum TranscriptExport {
         return lines.joined(separator: "\n")
     }
 
-    static func speakerName(_ row: Transcript) -> String {
+    /// Filesystem-safe name such as "2026-09-08 11-41 Webex review.md".
+    public static func fileName(for session: TranscriptSession) -> String {
+        let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd HH-mm"
+        let stamp = formatter.string(from: session.startedAt)
+        let unsafe = CharacterSet(charactersIn: "/:\\?%*|\"<>").union(.newlines)
+        let title = (session.title ?? "").components(separatedBy: unsafe).joined(separator: " ").split(separator: " ", omittingEmptySubsequences: true).joined(separator: " ")
+        return (title.isEmpty ? "\(stamp) Session" : "\(stamp) \(title.prefix(80))") + ".md"
+    }
+
+    public static func speakerName(_ row: Transcript) -> String {
         if let label = row.speakerLabel, !label.isEmpty { return label }
         switch row.speakerID {
         case nil: return "Unattributed"
@@ -38,7 +47,7 @@ public enum TranscriptExport {
         }
     }
 
-    static func clock(_ seconds: Double) -> String {
+    public static func clock(_ seconds: Double) -> String {
         let total = Int(seconds)
         return String(format: "%d:%02d:%02d", total / 3600, total % 3600 / 60, total % 60)
     }

@@ -27,6 +27,9 @@ struct JotCLI {
     jot pause                          Pause all speech work and unload models
     jot resume                         Reload models and resume selected features
     jot ambient-off                    Turn off ambient capture; keep Fn available
+    jot meeting start <title>          Ambient capture with a name; exports when it ends
+    jot meeting end                    Stop, wait for the last audio, save Markdown to ~/Documents/Jot Sessions
+    jot title <session-id> <title>     Name or rename a session
     jot stop                           Stop the current capture session
     jot search <query> [--limit N] [--offset N]
     jot recent [--limit N] [--offset N]
@@ -54,6 +57,13 @@ struct JotCLI {
         case "ambient-off":
             guard args.count == 1 else { throw CLIError.usage("Use: jot ambient-off") }
             return ("speech.ambient_off", [:])
+        case "meeting":
+            if args.count >= 3, args[1] == "start" { return ("speech.meeting_start", ["title": args.dropFirst(2).joined(separator: " ")]) }
+            if args.count == 2, args[1] == "end" { return ("speech.meeting_end", [:]) }
+            throw CLIError.usage("Use: jot meeting start <title> | jot meeting end")
+        case "title":
+            guard args.count >= 3 else { throw CLIError.usage("Use: jot title <session-id> <title>") }
+            return ("sessions.title", ["sessionID": args[1], "title": args.dropFirst(2).joined(separator: " ")])
         case "models":
             guard args.count == 2, ["prepare", "check"].contains(args[1]) else { throw CLIError.usage("Use: jot models prepare|check") }
             return ("models." + args[1], [:])
@@ -130,6 +140,9 @@ private struct MCPServer {
         ("speech_pause", "speech.pause", "Pause all speech work, discard unfinished audio, and unload models. Poll status until servicePhase is paused.", [:], []),
         ("speech_resume", "speech.resume", "Reload models and resume the selected Fn/ambient features.", [:], []),
         ("speech_ambient_off", "speech.ambient_off", "Switch off ambient capture while keeping Fn dictation available.", [:], []),
+        ("speech_meeting_start", "speech.meeting_start", "Start ambient capture as a named meeting when the user explicitly asks to record one.", ["title": ["type": "string", "maxLength": 200]], ["title"]),
+        ("speech_meeting_end", "speech.meeting_end", "End the meeting, wait for queued audio, and save the session as Markdown in ~/Documents/Jot Sessions.", [:], []),
+        ("sessions_title", "sessions.title", "Name or rename one session.", ["sessionID": ["type": "string"], "title": ["type": "string", "maxLength": 200]], ["sessionID", "title"]),
         ("models_check", "models.check", "Check published model repository revisions. Does not download updates or establish installed cache provenance.", [:], []),
         ("speech_stop", "speech.stop", "Stop capture and end the current session.", [:], []),
         ("speech_doctor", "speech.doctor", "Inspect service health, permissions, and model readiness.", [:], []),
