@@ -12,7 +12,7 @@ Ambient speaker attribution uses user-adjustable confidence and minimum-turn dur
 
 - Callback-to-controller queue: 8 seconds of mono float audio.
 - Dictation accumulation: 60 seconds; overflow cancels insertion.
-- Ambient flush: nominally 10 seconds, or a quiet boundary after at least 2 seconds. A delayed controller tick can extend a block by up to the capture packet bound.
+- Ambient flush: nominally 20 seconds, or a 2-second quiet boundary after at least 2 seconds of audio. Longer blocks give the recognizer whole sentences and the speaker tracker a confirmed speaker to carry into the next block. A delayed controller tick can extend a block by up to the capture packet bound.
 - Pending inference: at most three ambient jobs and one dictation job, plus one in-flight job. Excess ambient audio is dropped with an event. These are separate bounded buffers, not a claim that total audio residency is limited to 60 seconds.
 - Sortformer timeline is bounded to 1,000 frames; local attribution probabilities are pruned.
 - Pause stops capture and Fn, discards pending buffers, cancels speech tasks, and invalidates their generation so late results cannot deliver. After active predictions/loads return, the pipeline releases ASR, VAD, diarizer, and timeline references. UI/CLI/MCP remain available; resource sampling slows to every five seconds. macOS may retain framework/allocator caches, so memory does not fall to zero. Resume reloads cached models and restores selected features. Sleep and device changes pause the whole service. Ambient-off alone finishes queued ambient inference while keeping Fn available.
