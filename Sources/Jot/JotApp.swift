@@ -203,6 +203,8 @@ private struct ServiceControls: View {
 
             }
             Divider()
+            MeetingControls(service: service)
+            Divider()
             Toggle(isOn: Binding(get: { service.fnRequested }, set: { enabled in
                 if enabled { Task { await service.enableFn() } } else { service.disableFn() }
             })) {
@@ -227,6 +229,48 @@ private struct ServiceControls: View {
                 PermissionBanner(service: service)
             }
         }
+    }
+}
+
+/// One button to record a named meeting; ending it saves the transcript and shows the file.
+private struct MeetingControls: View {
+    @ObservedObject var service: SpeechService
+    @State private var naming = false
+    @State private var draft = ""
+    @State private var working = false
+    var body: some View {
+        if let title = service.meetingTitle {
+            HStack(spacing: 10) {
+                Circle().fill(.red).frame(width: 8, height: 8)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.callout.weight(.semibold)).lineLimit(1)
+                    Text("Recording meeting").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                Button(working ? "Saving…" : "End meeting") {
+                    working = true
+                    Task { await service.endMeeting(); working = false }
+                }.modifier(PrimaryGlassButton()).disabled(working).accessibilityIdentifier("end-meeting")
+            }
+        } else if naming {
+            HStack(spacing: 8) {
+                TextField("Meeting name", text: $draft).textFieldStyle(.roundedBorder)
+                    .onSubmit { start() }
+                Button("Start") { start() }.modifier(PrimaryGlassButton())
+                    .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty || working)
+                Button("Cancel") { naming = false; draft = "" }.modifier(GlassButton())
+            }
+        } else {
+            Button("Start meeting", systemImage: "record.circle") { naming = true }
+                .modifier(GlassButton()).accessibilityIdentifier("start-meeting")
+                .help("Ambient capture with a name. Ending it saves Markdown to Documents/Jot Sessions.")
+        }
+    }
+    private func start() {
+        let title = draft.trimmingCharacters(in: .whitespaces)
+        guard !title.isEmpty else { return }
+        working = true
+        Task { await service.startMeeting(title); working = false; naming = false; draft = "" }
     }
 }
 
@@ -303,6 +347,130 @@ struct MenuControls: View {
 }
 
 
+/// Every capture session, readable whole, with rename, speaker naming, copy, and export.
+private struct SessionsView: View {
+    @ObservedObject var service: SpeechService
+    @State private var selectedID: String?
+    @State private var rows: [Transcript] = []
+    @State private var renaming = false
+    @State private var titleDraft = ""
+    @State private var labelTarget: Transcript?
+    @State private var labelDraft = ""
+    @State private var copied = false
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            list.frame(width: 250)
+            detail
+        }
+        .onAppear { service.refreshSessions(); if selectedID == nil { select(service.sessions.first?.sessionID) } }
+        .onChange(of: service.sessions.map(\.transcriptCount)) { _, _ in if let selectedID { rows = service.sessionParagraphs(selectedID) } }
+        .sheet(isPresented: Binding(get: { labelTarget != nil }, set: { if !$0 { labelTarget = nil } })) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Name this speaker for this session").font(.headline)
+                TextField("Name", text: $labelDraft).textFieldStyle(.roundedBorder).frame(width: 280)
+                HStack {
+                    Button("Cancel") { labelTarget = nil }
+                    Spacer()
+                    Button("Save") {
+                        if let target = labelTarget, let speaker = target.speakerID {
+                            service.labelSpeaker(session: target.sessionID, speaker: speaker, name: labelDraft)
+                            rows = service.sessionParagraphs(target.sessionID)
+                        }
+                        labelTarget = nil
+                    }.disabled(labelDraft.trimmingCharacters(in: .whitespaces).isEmpty).keyboardShortcut(.defaultAction)
+                }
+            }.padding(20)
+        }
+    }
+
+    private var list: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 6) {
+                if service.sessions.isEmpty { Text("No sessions yet.").foregroundStyle(.secondary).padding(12) }
+                ForEach(service.sessions) { session in
+                    Button { select(session.sessionID) } label: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 6) {
+                                if session.sessionID == service.activeSessionID && service.meetingTitle != nil {
+                                    Circle().fill(.red).frame(width: 7, height: 7)
+                                }
+                                Text(session.title ?? "Untitled session").font(.callout.weight(session.sessionID == selectedID ? .semibold : .regular)).lineLimit(1)
+                            }
+                            Text("\(session.startedAt.formatted(date: .abbreviated, time: .shortened)) · \(TranscriptExport.clock(session.durationSeconds))")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }.frame(maxWidth: .infinity, alignment: .leading).padding(10)
+                            .contentShape(RoundedRectangle(cornerRadius: 12))
+                            .modifier(NavigationSurface(selected: session.sessionID == selectedID))
+                    }.buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var detail: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let session = service.sessions.first(where: { $0.sessionID == selectedID }) {
+                HStack(spacing: 8) {
+                    if renaming {
+                        TextField("Session name", text: $titleDraft).textFieldStyle(.roundedBorder).frame(maxWidth: 320)
+                            .onSubmit { commitRename(session) }
+                        Button("Save") { commitRename(session) }.modifier(PrimaryGlassButton())
+                        Button("Cancel") { renaming = false }.modifier(GlassButton())
+                    } else {
+                        Text(session.title ?? "Untitled session").font(.title3.weight(.semibold)).lineLimit(1)
+                        Button("Rename", systemImage: "pencil") { titleDraft = session.title ?? ""; renaming = true }
+                            .labelStyle(.iconOnly).modifier(GlassButton()).help("Rename this session")
+                    }
+                    Spacer()
+                    Button(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc") { copyAll(session) }.modifier(GlassButton())
+                    Button("Export", systemImage: "square.and.arrow.up") {
+                        do { NSWorkspace.shared.activateFileViewerSelecting([try service.exportSession(session.sessionID)]) }
+                        catch { service.notice = error.localizedDescription }
+                    }.modifier(PrimaryGlassButton()).help("Saves Markdown to Documents/Jot Sessions and shows it in Finder")
+                }
+                Text("\(session.transcriptCount) segments · \(TranscriptExport.clock(session.durationSeconds)) · Click a speaker to name them")
+                    .font(.caption).foregroundStyle(.secondary)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 12) {
+                        ForEach(rows) { row in
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Text(TranscriptExport.clock(row.startSeconds)).font(.caption.monospacedDigit()).foregroundStyle(.tertiary).frame(width: 56, alignment: .trailing)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    if row.speakerID != nil && row.speakerID != "overlap" {
+                                        Button(TranscriptExport.speakerName(row)) { labelDraft = row.speakerLabel ?? ""; labelTarget = row }
+                                            .buttonStyle(.link).font(.caption.weight(.semibold))
+                                    } else {
+                                        Text(TranscriptExport.speakerName(row)).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                                    }
+                                    Text(row.text).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        }
+                    }.padding(.vertical, 4)
+                }
+            } else {
+                Text("Select a session.").foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+
+    private func select(_ id: String?) {
+        selectedID = id; renaming = false
+        rows = id.map(service.sessionParagraphs) ?? []
+    }
+    private func commitRename(_ session: TranscriptSession) {
+        service.renameSession(session.sessionID, title: titleDraft); renaming = false
+    }
+    private func copyAll(_ session: TranscriptSession) {
+        let text = rows.map { "[\(TranscriptExport.clock($0.startSeconds))] \(TranscriptExport.speakerName($0)): \($0.text)" }.joined(separator: "\n\n")
+        NSPasteboard.general.clearContents()
+        guard NSPasteboard.general.setString(text, forType: .string) else { service.notice = "Could not copy session."; return }
+        copied = true
+        Task { try? await Task.sleep(nanoseconds: 1_500_000_000); copied = false }
+    }
+}
+
 struct TranscriptView: View {
     @ObservedObject var service: SpeechService
     let delegate: JotDelegate
@@ -323,9 +491,9 @@ struct TranscriptView: View {
                 ServiceControls(service: service)
                     .padding(18).modifier(GlassSurface(tint: Color(nsColor: .controlAccentColor).opacity(0.04)))
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(["History", "Vocabulary", "Activity", "Tuning", "Models"], id: \.self) { item in
+                    ForEach(["History", "Sessions", "Vocabulary", "Activity", "Tuning", "Models"], id: \.self) { item in
                         Button { section = item } label: {
-                            Label(item, systemImage: item == "Vocabulary" ? "character.book.closed" : item == "History" ? "text.alignleft" : (item == "Activity" ? "chart.xyaxis.line" : (item == "Tuning" ? "slider.horizontal.3" : "square.stack.3d.up")))
+                            Label(item, systemImage: item == "Sessions" ? "rectangle.stack" : item == "Vocabulary" ? "character.book.closed" : item == "History" ? "text.alignleft" : (item == "Activity" ? "chart.xyaxis.line" : (item == "Tuning" ? "slider.horizontal.3" : "square.stack.3d.up")))
                                 .font(.body.weight(section == item ? .semibold : .regular))
                                 .frame(maxWidth: .infinity, alignment: .leading).padding(12)
                                 .contentShape(RoundedRectangle(cornerRadius: 14))
@@ -369,6 +537,7 @@ struct TranscriptView: View {
                         .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 }
                 if section == "History" { history }
+                else if section == "Sessions" { SessionsView(service: service) }
                 else if section == "Vocabulary" { VocabularyView(service: service) }
                 else if section == "Activity" { activity }
                 else if section == "Tuning" { tuning }

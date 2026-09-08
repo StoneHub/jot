@@ -25,6 +25,11 @@ final class SpeechService: ObservableObject {
     @Published private(set) var cachedModelBytes = ModelCache.bytesOnDisk()
     /// Set when a resume would download models that are not cached yet. The view asks before any download starts.
     @Published var downloadPrompt: Int64?
+    @Published private(set) var sessions: [TranscriptSession] = []
+    /// Title of the meeting being recorded; nil when ambient is off or was started without a name.
+    @Published private(set) var meetingTitle: String?
+    @Published private(set) var activeSessionID: String?
+    @Published private(set) var lastExport: URL?
     @Published var tuning = TranscriptionTuning() {
         didSet {
             if let data = try? JSONEncoder().encode(tuning.bounded) { UserDefaults.standard.set(data, forKey: "transcriptionTuning") }
@@ -142,7 +147,7 @@ final class SpeechService: ObservableObject {
             try service.start(); server = service
             if let data = UserDefaults.standard.data(forKey: "transcriptionTuning"),
                let saved = try? JSONDecoder().decode(TranscriptionTuning.self, from: data) { tuning = saved.bounded }
-            refreshRecent()
+            refreshRecent(); refreshSessions()
             if let data = UserDefaults.standard.data(forKey: "modelUpdateChecks"),
                let saved = try? JSONDecoder().decode([ModelUpdate].self, from: data) { modelUpdates = saved }
             if UserDefaults.standard.bool(forKey: "modelsPrepared"), !UserDefaults.standard.bool(forKey: "servicePaused") { prepare() }
@@ -305,6 +310,77 @@ final class SpeechService: ObservableObject {
         }
     }
 
+    // MARK: Sessions and meetings
+
+    func refreshSessions() {
+        do { sessions = try store?.sessions(limit: 200) ?? [] } catch { notice = error.localizedDescription }
+    }
+
+    /// Folded and merged rows for reading one session. Stored rows are untouched.
+    func sessionParagraphs(_ id: String) -> [Transcript] {
+        guard let store else { return [] }
+        do { return TranscriptExport.paragraphs(TranscriptGrouping.foldContinuations(try store.session(id: id))) }
+        catch { notice = error.localizedDescription; return [] }
+    }
+
+    func renameSession(_ id: String, title: String) {
+        do { try store?.setTitle(sessionID: id, title: title); refreshSessions() }
+        catch { notice = error.localizedDescription }
+    }
+
+    static var exportDirectory: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Jot Sessions", isDirectory: true)
+    }
+
+    /// Writes one session as Markdown into ~/Documents/Jot Sessions and returns the file.
+    @discardableResult
+    func exportSession(_ id: String) throws -> URL {
+        guard let store, let session = try store.sessions(limit: 200).first(where: { $0.sessionID == id }) else { throw JotError.message("Session not found") }
+        let rows = try store.session(id: id)
+        guard !rows.isEmpty else { throw JotError.message("Session has no transcript") }
+        try FileManager.default.createDirectory(at: Self.exportDirectory, withIntermediateDirectories: true)
+        let url = Self.exportDirectory.appendingPathComponent(TranscriptExport.fileName(for: session))
+        try TranscriptExport.markdown(session: session, rows: rows).write(to: url, atomically: true, encoding: .utf8)
+        lastExport = url
+        return url
+    }
+
+    /// A meeting is ambient capture with a name, and an export when it ends.
+    func startMeeting(_ title: String) async {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { notice = "Give the meeting a name first."; return }
+        do {
+            try await startAmbient()
+            guard ambientEnabled else { throw JotError.message("Ambient capture did not start.") }
+            meetingTitle = trimmed
+            try store?.setTitle(sessionID: sessionID, title: trimmed)
+            refreshSessions()
+        } catch { meetingTitle = nil; notice = error.localizedDescription }
+    }
+
+    /// Stops capture, waits for the queued audio to finish, then writes the file and shows it in Finder.
+    func endMeeting() async {
+        let id = sessionID
+        await setAmbient(false)
+        await drainAmbientWork()
+        meetingTitle = nil
+        refreshSessions()
+        do {
+            let url = try exportSession(id)
+            notice = "Saved \(url.lastPathComponent) in Documents/Jot Sessions."
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } catch { notice = error.localizedDescription }
+    }
+
+    /// Ambient off only queues the last block; export has to wait for the worker to store it.
+    private func drainAmbientWork() async {
+        for _ in 0..<120 {
+            if jobs.allSatisfy({ $0.mode != "ambient" }) && processing == nil { return }
+            kickWorker()
+            try? await Task.sleep(nanoseconds: 250_000_000)
+        }
+    }
+
     private func activateAmbient() async throws {
         let token = lifecycle.generation
         guard lifecycle.acceptsWork(token), !diagnosticActive else { throw JotError.message("Resume the service before listening.") }
@@ -313,7 +389,7 @@ final class SpeechService: ObservableObject {
         guard !ambientEnabled else { return }
         if !capture.running { lastAudioAt = Date() }
         try capture.start()
-        sessionID = UUID().uuidString; sessionStarted = Date(); ambientOffset = 0
+        sessionID = UUID().uuidString; sessionStarted = Date(); ambientOffset = 0; activeSessionID = sessionID
         ambient = []; silentSeconds = 0; ambientEnabled = true; updateMode()
         recordEvent("started", "Ambient microphone capture started."); notice = ""
     }
@@ -472,7 +548,7 @@ final class SpeechService: ObservableObject {
                 processedAudioSeconds += Double(job.samples.count) / 16000
                 lagSeconds = max(0, Date().timeIntervalSince(job.startedAt) - job.offset - Double(job.samples.count) / 16000)
                 for transcript in output.transcripts { try store?.append(transcript) }
-                if !output.transcripts.isEmpty { lastTranscriptAt = Date(); refreshRecent() }
+                if !output.transcripts.isEmpty { lastTranscriptAt = Date(); refreshRecent(); refreshSessions() }
                 if job.mode == "dictation", job.ticket == dictationTicket {
                     if output.text.isEmpty { notice = "No speech detected; nothing inserted." }
                     else {
@@ -607,6 +683,20 @@ final class SpeechService: ObservableObject {
             case "speech.resume": _ = prepareFromCommand(); result = try status()
             case "speech.ambient_off": await setAmbient(false); result = try status()
             case "speech.stop": stop(); result = try status()
+            case "speech.meeting_start":
+                guard let title = params["title"] as? String else { throw JotError.message("Meeting needs a title") }
+                await startMeeting(title)
+                guard meetingTitle != nil else { throw JotError.message(notice.isEmpty ? "Meeting did not start" : notice) }
+                result = ["sessionID": sessionID, "title": title]
+            case "speech.meeting_end":
+                let id = sessionID
+                guard meetingTitle != nil || ambientEnabled else { throw JotError.message("No meeting or ambient capture is running") }
+                await endMeeting()
+                result = ["sessionID": id, "file": lastExport?.path ?? ""]
+            case "sessions.title":
+                guard let id = params["sessionID"] as? String, let title = params["title"] as? String else { throw JotError.message("sessionID and title are required") }
+                try store?.setTitle(sessionID: id, title: title); refreshSessions()
+                result = ["sessionID": id, "title": title]
             case "transcripts.search": result = try object(store?.search(params["query"] as? String ?? "", limit: limit, offset: offset) ?? [])
             case "transcripts.recent": result = try object(store?.recent(limit: limit, offset: offset) ?? [])
             case "transcripts.events": result = try object(store?.events(sessionID: params["sessionID"] as? String, limit: limit, offset: offset) ?? [])

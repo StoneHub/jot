@@ -30,6 +30,8 @@ Grant microphone and Accessibility access. If Fn triggers a macOS shortcut, set 
 
 Dictation supports up to 60 seconds per hold. It cancels if focus changes, skips password fields, and never presses Return. Text insertion depends on the target app's Accessibility support.
 
+**Start meeting** records ambient capture under a name. **End meeting** waits for the last audio, saves the whole transcript as Markdown in `~/Documents/Jot Sessions`, and shows the file in Finder. **Sessions** lists every capture session; open one to read it whole, rename it, name speakers, copy it, or export it.
+
 In **History**, search transcripts, select text across statements, and press ⌘C to copy. **Load more** adds older results. Cards view supports individual copying and speaker naming. **Activity** shows resource use and capture events. **Tuning** adjusts speaker grouping and paragraph breaks; see the [tuning guide](docs/TUNING.md).
 
 **Models → Check updates** checks published model revisions. It does not download updates or verify that your cached weights match the latest release.
@@ -51,7 +53,7 @@ Choose a preset or adjust speaker confidence, minimum turn length, and pauses be
 See the [tuning guide](docs/TUNING.md) for what each setting changes. Speaker separation still needs broader testing with real conversations; see [verification and known limits](docs/VERIFICATION.md).
 
 ## Your data stays local
-Audio stays in temporary memory buffers and is discarded after processing. Jot saves text, timestamps, speaker labels, and capture events in `~/Library/Application Support/Jot`. It does not save recordings for replay.
+Audio stays in temporary memory buffers and is discarded after processing. Jot saves text, timestamps, speaker labels, session titles, and capture events in `~/Library/Application Support/Jot`. It does not save recordings for replay. Exported sessions are plain Markdown files in `~/Documents/Jot Sessions`, written only when you end a meeting or press Export.
 
 Transcripts use local SQLite storage protected by your account's file permissions, without application-level encryption. Model files are cached separately. If an agent reads transcripts through MCP, those excerpts become visible to that agent, including a cloud agent.
 
@@ -67,6 +69,11 @@ jot start                 # Start ambient transcription
 jot ambient-off
 jot search 'blue notebook'
 jot recent --limit 20
+jot meeting start Webex review   # Ambient capture with a name
+jot meeting end                  # Saves Markdown to ~/Documents/Jot Sessions
+jot sessions
+jot export <session-id>          # Whole session as Markdown; add --json for rows
+jot title <session-id> <title>
 jot doctor
 jot diagnostics            # Local performance report, no captured content
 jot --help
