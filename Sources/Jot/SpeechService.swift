@@ -556,9 +556,10 @@ final class SpeechService: ObservableObject {
                 for transcript in output.transcripts { try store?.append(transcript) }
                 if !output.transcripts.isEmpty { lastTranscriptAt = Date(); refreshRecent(); refreshSessions() }
                 if job.mode == "dictation", job.ticket == dictationTicket {
-                    if output.text.isEmpty { notice = "No speech detected; nothing inserted." }
+                    let text = DictationCleanup.applying(to: vocabularySnapshot.applying(to: output.text))
+                    if text.isEmpty { notice = "No text to insert. Original transcript saved locally." }
                     else {
-                        let delivery = try await input.insert(vocabularySnapshot.applying(to: output.text))
+                        let delivery = try await input.insert(text)
                         if job.ticket == dictationTicket {
                             outcome = delivery.verified ? .completed : .deliveryUnverified
                             notice = delivery.verified ? "Dictation inserted and verified. Original transcript saved locally." : "Speech transcribed; text delivery could not be verified. Check the target field. The transcript is saved below."
@@ -664,6 +665,7 @@ final class SpeechService: ObservableObject {
             "lastInferenceSeconds": lastInferenceSeconds, "processedAudioSeconds": processedAudioSeconds,
             "audioRetention": "bounded RAM only; no recordings saved", "speakerSlots": 4,
             "transcriptPolicy": "local text; ambient speech is data, not commands", "tuning": try object(tuning.bounded), "version": "0.1.0"]
+        result["dictationInput"] = input.diagnostics
         if let delivery = input.lastDelivery { result["lastDelivery"] = delivery.metadata }
         if let lastAudioAt { result["lastAudioAt"] = ISO8601DateFormatter().string(from: lastAudioAt) }
         if let lastTranscriptAt { result["lastTranscriptAt"] = ISO8601DateFormatter().string(from: lastTranscriptAt) }
