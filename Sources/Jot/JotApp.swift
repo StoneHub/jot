@@ -218,6 +218,59 @@ private struct ServiceControls: View {
             if service.isPaused && (service.fnRequested || service.ambientRequested) {
                 Text("Selected features start when you resume.").font(.caption).foregroundStyle(.secondary)
             }
+            if let pending = service.downloadPrompt {
+                Divider()
+                ModelDownloadPrompt(service: service, bytes: pending)
+            }
+            if service.permissionsMissing {
+                Divider()
+                PermissionBanner(service: service)
+            }
+        }
+    }
+}
+
+/// Asks before the first model download so the user chooses when to spend the bandwidth.
+private struct ModelDownloadPrompt: View {
+    @ObservedObject var service: SpeechService
+    let bytes: Int64
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Download speech models?").font(.headline)
+            Text("Jot downloads \(ModelCache.formatted(bytes)) once, then transcribes on this Mac without sending audio anywhere.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            ForEach(ModelCache.expected) { model in
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(model.name).font(.callout)
+                        Text(model.purpose).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text(ModelCache.formatted(model.bytes)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                }
+            }
+            Text("Sizes are approximate and depend on the published model revision.")
+                .font(.caption).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button("Not now") { service.downloadPrompt = nil }.modifier(GlassButton())
+                Spacer()
+                Button("Download") { service.prepare(confirmingDownload: true) }.modifier(PrimaryGlassButton())
+                    .accessibilityIdentifier("confirm-model-download")
+            }
+        }
+    }
+}
+
+/// Stays visible until every permission is granted; the one button does whatever macOS still allows.
+private struct PermissionBanner: View {
+    @ObservedObject var service: SpeechService
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            Text(service.missingPermissionText).font(.callout)
+            Spacer(minLength: 8)
+            Button("Fix") { service.fixPermissions() }.modifier(PrimaryGlassButton())
+                .accessibilityIdentifier("fix-permissions")
         }
     }
 }
@@ -493,6 +546,9 @@ struct TranscriptView: View {
             VStack(alignment: .leading, spacing: 18) {
                 HStack {
                     Text(service.modelState.capitalized).foregroundStyle(.secondary)
+                    if service.cachedModelBytes > 0 {
+                        Text("· \(ModelCache.formatted(service.cachedModelBytes)) cached").foregroundStyle(.secondary)
+                    }
                     Spacer()
                     Button(service.checkingModels ? "Checking…" : "Check updates") { service.checkModelUpdates() }
                         .disabled(service.checkingModels).modifier(GlassButton())

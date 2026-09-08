@@ -20,6 +20,11 @@ final class SpeechService: ObservableObject {
     @Published var hasMoreHistory = false
     @Published var modelUpdates = ModelUpdate.defaults
     @Published var checkingModels = false
+    @Published var micPermission = AVCaptureDevice.authorizationStatus(for: .audio)
+    @Published var accessibilityGranted = DictationInput.accessibilityGranted
+    @Published private(set) var cachedModelBytes = ModelCache.bytesOnDisk()
+    /// Set when a resume would download models that are not cached yet. The view asks before any download starts.
+    @Published var downloadPrompt: Int64?
     @Published var tuning = TranscriptionTuning() {
         didSet {
             if let data = try? JSONEncoder().encode(tuning.bounded) { UserDefaults.standard.set(data, forKey: "transcriptionTuning") }
@@ -142,6 +147,7 @@ final class SpeechService: ObservableObject {
                let saved = try? JSONDecoder().decode([ModelUpdate].self, from: data) { modelUpdates = saved }
             if UserDefaults.standard.bool(forKey: "modelsPrepared"), !UserDefaults.standard.bool(forKey: "servicePaused") { prepare() }
         } catch { notice = "Service startup: \(error.localizedDescription)" }
+        promptForPermissionsAtLaunch()
         scheduleTimer()
         let center = NSWorkspace.shared.notificationCenter
         observers.append(center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
@@ -176,7 +182,14 @@ final class SpeechService: ObservableObject {
         }
     }
 
-    func prepare() {
+    /// Resume. The first resume downloads models, so it asks before spending bandwidth.
+    func prepare(confirmingDownload: Bool = false) {
+        cachedModelBytes = ModelCache.bytesOnDisk()
+        if cachedModelBytes == 0 && !confirmingDownload {
+            downloadPrompt = ModelCache.expectedBytes
+            return
+        }
+        downloadPrompt = nil
         guard let token = lifecycle.beginStart() else { return }
         UserDefaults.standard.set(false, forKey: "servicePaused")
         preparing = true; modelState = "preparing"; updateMode()
@@ -190,6 +203,7 @@ final class SpeechService: ObservableObject {
                 modelState = "ready"
                 markPerformance(.modelsReady)
                 UserDefaults.standard.set(true, forKey: "modelsPrepared")
+                cachedModelBytes = ModelCache.bytesOnDisk()
                 if fnRequested { await enableFn() }
                 if ambientRequested { try await activateAmbient() }
                 if lifecycle.acceptsWork(token) { notice = "" }
@@ -205,12 +219,61 @@ final class SpeechService: ObservableObject {
 
     func requestMic() async -> Bool {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
-        case .authorized: return true
-        case .notDetermined: return await AVCaptureDevice.requestAccess(for: .audio)
+        case .authorized: refreshPermissions(); return true
+        case .notDetermined:
+            let granted = await AVCaptureDevice.requestAccess(for: .audio)
+            refreshPermissions()
+            return granted
         default:
+            refreshPermissions()
             notice = "Microphone access is required. Enable Jot in System Settings → Privacy & Security → Microphone."
             return false
         }
+    }
+
+    /// A CLI or MCP resume is already an explicit request, so it downloads and reports the size instead of prompting.
+    @discardableResult
+    private func prepareFromCommand() -> Int64 {
+        let pending = ModelCache.bytesOnDisk() == 0 ? ModelCache.expectedBytes : 0
+        prepare(confirmingDownload: true)
+        return pending
+    }
+
+    func refreshPermissions() {
+        micPermission = AVCaptureDevice.authorizationStatus(for: .audio)
+        accessibilityGranted = DictationInput.accessibilityGranted
+    }
+
+    var permissionsMissing: Bool { micPermission != .authorized || !accessibilityGranted }
+
+    /// Sentence for the persistent banner, naming exactly what is still off.
+    var missingPermissionText: String {
+        var names: [String] = []
+        if micPermission != .authorized { names.append("Microphone") }
+        if !accessibilityGranted { names.append("Accessibility") }
+        return names.joined(separator: " and ") + " access is off."
+    }
+
+    /// Startup asks once for whatever is missing. macOS shows its own dialogs, each with an Open System Settings button.
+    private func promptForPermissionsAtLaunch() {
+        Task {
+            if micPermission == .notDetermined { _ = await requestMic() }
+            if !DictationInput.accessibilityGranted { input.requestAccessibility() }
+            refreshPermissions()
+        }
+    }
+
+    /// The persistent button. Asks again where macOS still allows it, otherwise opens the exact settings pane.
+    func fixPermissions() {
+        if micPermission == .notDetermined { Task { _ = await requestMic() }; return }
+        if micPermission != .authorized { openSettings("Privacy_Microphone"); return }
+        input.requestAccessibility()
+        openSettings("Privacy_Accessibility")
+    }
+
+    private func openSettings(_ pane: String) {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") else { return }
+        NSWorkspace.shared.open(url)
     }
 
     func enableFn() async {
@@ -339,7 +402,7 @@ final class SpeechService: ObservableObject {
         if lifecycle.phase == .ready { drainAudio() }
         tickCount += 1
         if Date().timeIntervalSince(lastStatsTime) >= 1 {
-            samplePerformance(); lastStatsTime = Date()
+            samplePerformance(); lastStatsTime = Date(); refreshPermissions()
             queuedSeconds = jobs.reduce(0) { $0 + Double($1.samples.count) / 16000 }
             if ambientEnabled || dictationActive, let lastAudioAt, Date().timeIntervalSince(lastAudioAt) > 4 {
                 recordEvent("input_stalled", "No microphone samples for more than four seconds."); pause(); notice = "Microphone stopped delivering audio. Resume to reconnect; a capture gap occurred."
@@ -534,13 +597,13 @@ final class SpeechService: ObservableObject {
             var result: Any = [:]
             switch method {
             case "speech.status", "speech.doctor": result = try status()
-            case "models.prepare": prepare(); result = ["state": modelState]
+            case "models.prepare": result = ["state": modelState, "downloadBytes": prepareFromCommand()]
             case "models.check": checkModelUpdates(); if let modelCheck { await modelCheck.value }; result = try object(modelUpdates)
             case "speech.diagnostics":
                 samplePerformance(); result = try object(diagnostics.report)
             case "speech.start": try await startAmbient(); result = try status()
             case "speech.pause": pause(); result = try status()
-            case "speech.resume": prepare(); result = try status()
+            case "speech.resume": _ = prepareFromCommand(); result = try status()
             case "speech.ambient_off": await setAmbient(false); result = try status()
             case "speech.stop": stop(); result = try status()
             case "transcripts.search": result = try object(store?.search(params["query"] as? String ?? "", limit: limit, offset: offset) ?? [])
