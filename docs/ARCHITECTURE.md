@@ -20,7 +20,7 @@ Ambient speaker attribution uses user-adjustable confidence and minimum-turn dur
 
 ## Delivery and access
 
-Fn is observed by a listen-only event tap. It does not reconfigure macOS or suppress its existing shortcuts. A focus observer and application identity guard the captured field. AX insertion is preferred; the fallback restores the prior clipboard only if it has not been changed since staging. The app never submits the resulting text.
+A global event tap observes Fn/Globe or a persisted modifier-plus-key shortcut. Fn events pass through unchanged. Custom trigger key-down, repeat, and key-up events are consumed; unrelated keys and modifier events pass through. `ShortcutTracker` owns the physical-key state independently of capture, so modifier-first release finishes only once and autorepeat cannot restart a recording. The shortcut recorder temporarily suspends the global handler while editing. A focus observer and application identity guard the captured field. AX insertion is preferred; the fallback restores the prior clipboard only if it has not been changed since staging. The app never submits the resulting text.
 
 SQLite operations are serialized. The application-support directory is user-only and the socket is mode 0600; the server checks peer UID, bounds requests/responses, limits concurrent clients, and enforces input deadlines. A second service does not take over a live socket. No audio file is created by capture; diagnostics read an explicitly selected existing file.
 

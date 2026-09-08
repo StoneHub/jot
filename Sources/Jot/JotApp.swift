@@ -208,8 +208,9 @@ private struct ServiceControls: View {
             Toggle(isOn: Binding(get: { service.fnRequested }, set: { enabled in
                 if enabled { Task { await service.enableFn() } } else { service.disableFn() }
             })) {
-                Label("Fn dictation", systemImage: "fn")
-            }.toggleStyle(.switch).help("Hold Fn to dictate into the focused text field.")
+                Label("Dictation", systemImage: "keyboard")
+            }.toggleStyle(.switch).help("Hold \(service.shortcut.displayName) to dictate into the focused text field.")
+            ShortcutSettings(service: service)
 
             Toggle(isOn: Binding(get: { service.ambientRequested }, set: { enabled in
                 Task { await service.setAmbient(enabled) }

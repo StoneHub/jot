@@ -1,7 +1,8 @@
 import AppKit
 import ApplicationServices
+import JotCore
 
-/// A listen-only Fn shortcut and a focus-bound text delivery transaction.
+/// A global push-to-talk shortcut and a focus-bound text delivery transaction.
 /// Enabling this component does not request permissions or alter macOS shortcuts.
 @MainActor
 final class DictationInput {
@@ -11,12 +12,12 @@ final class DictationInput {
 
         var errorDescription: String? {
             switch self {
-            case .accessibilityRequired: return "Allow Accessibility access to use Fn dictation."
-            case .eventTapUnavailable: return "The Fn listener could not start. Check Input Monitoring permission."
-            case .noTextField: return "Focus an editable text field before holding Fn."
+            case .accessibilityRequired: return "Allow Accessibility access to use dictation."
+            case .eventTapUnavailable: return "The shortcut listener could not start. Check Input Monitoring permission."
+            case .noTextField: return "Focus an editable text field before holding the dictation shortcut."
             case .secureField: return "Dictation is unavailable in password fields."
             case .targetChanged: return "Dictation cancelled because the focused application or text field changed."
-            case .shortcutCancelled: return "Dictation cancelled because Fn was used with another key."
+            case .shortcutCancelled: return "Dictation cancelled because the dictation shortcut was used with another key."
             case .clipboardUnavailable: return "The clipboard could not be preserved; no text was pasted."
             case .pasteUnavailable: return "The paste shortcut could not be created."
             }
@@ -41,7 +42,7 @@ final class DictationInput {
         }
     }
     private(set) var lastDelivery: DeliveryResult?
-    /// The owner can reject another Fn press while an earlier utterance is transcribing.
+    /// The owner can reject another shortcut press while an earlier utterance is transcribing.
     var canStart: () -> Bool = { true }
     private(set) var isEnabled = false
     private let onStart: () -> Void
@@ -52,6 +53,10 @@ final class DictationInput {
     private var focusObserver: AXObserver?
     private var observedApplication: AXUIElement?
     private var target: Target?
+    var shortcut: DictationShortcut = .fn { didSet { tracker.reset() } }
+    var isRecordingShortcut = false { didSet { tracker.reset() } }
+    private var tracker = ShortcutTracker()
+    private var shortcutPresses = 0
     private var fnPresses = 0
     private var acceptedPresses = 0
     private var busyPresses = 0
@@ -59,7 +64,7 @@ final class DictationInput {
     /// Health and counts only. Never includes typed text or accessibility field values.
     var diagnostics: [String: Any] {
         var result: [String: Any] = [
-            "shortcut": "Fn", "enabled": isEnabled,
+            "shortcut": shortcut.displayName, "shortcutPresses": shortcutPresses, "enabled": isEnabled,
             "eventTapEnabled": eventTap.map { CGEvent.tapIsEnabled(tap: $0) } ?? false,
             "fnPresses": fnPresses, "acceptedPresses": acceptedPresses,
             "busyPresses": busyPresses]
@@ -72,7 +77,6 @@ final class DictationInput {
         onError?(error)
     }
 
-    private var fnDown = false
     private var recording = false
     private var clipboardRestore: (() -> Void)?
     private var pasteGeneration = 0
@@ -120,15 +124,16 @@ final class DictationInput {
         }
         let mask = (CGEventMask(1) << CGEventType.flagsChanged.rawValue)
             | (CGEventMask(1) << CGEventType.keyDown.rawValue)
+            | (CGEventMask(1) << CGEventType.keyUp.rawValue)
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap, place: .headInsertEventTap,
-            options: .listenOnly, eventsOfInterest: mask,
+            options: .defaultTap, eventsOfInterest: mask,
             callback: { _, type, event, context in
                 guard let context else { return Unmanaged.passUnretained(event) }
                 let controller = Unmanaged<DictationInput>.fromOpaque(context).takeUnretainedValue()
                 // This tap's source is installed only on the main run loop.
-                MainActor.assumeIsolated { controller.handle(type, event: event) }
-                return Unmanaged.passUnretained(event)
+                let consume = MainActor.assumeIsolated { controller.handle(type, event: event) }
+                return consume ? nil : Unmanaged.passUnretained(event)
             }, userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
             report(InputError.eventTapUnavailable)
@@ -159,7 +164,7 @@ final class DictationInput {
         eventSource = nil
         if let activationObserver { NSWorkspace.shared.notificationCenter.removeObserver(activationObserver) }
         activationObserver = nil
-        fnDown = false
+        tracker.reset()
         clearTarget()
         if recording { recording = false; onStop() }
         clipboardRestore?()
@@ -182,7 +187,7 @@ final class DictationInput {
     }
 
     /// Ends a service-cancelled or empty utterance without calling its callbacks again.
-    /// Keeps the physical Fn state so holding the key cannot accidentally restart capture.
+    /// Keeps the physical shortcut state so holding the key cannot accidentally restart capture.
     func discardTarget() {
         recording = false
         clearTarget()
@@ -307,34 +312,31 @@ final class DictationInput {
         return result
     }
 
-    private func handle(_ type: CGEventType, event: CGEvent) {
-        guard isEnabled else { return }
+    private func handle(_ type: CGEventType, event: CGEvent) -> Bool {
+        guard isEnabled else { return false }
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             cancel(InputError.shortcutCancelled)
-            fnDown = false
+            tracker.reset()
             if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: true) }
-            return
+            return false
         }
-        let down = event.flags.contains(.maskSecondaryFn)
-        let modifiers: CGEventFlags = [.maskCommand, .maskControl, .maskAlternate, .maskShift]
-        if type == .keyDown {
-            if event.getIntegerValueField(.eventSourceUserData) == Self.pasteEventMarker { return }
-            if fnDown { cancel(InputError.shortcutCancelled) }
-            return
+        guard !isRecordingShortcut else { return false }
+        if event.getIntegerValueField(.eventSourceUserData) == Self.pasteEventMarker { return false }
+        let kind: ShortcutTracker.Event
+        switch type {
+        case .keyDown: kind = .keyDown
+        case .keyUp: kind = .keyUp
+        case .flagsChanged: kind = .flagsChanged
+        default: return false
         }
-        guard type == .flagsChanged else { return }
-        // Dedicated Fn/Globe is virtual key 63. Arrow/navigation events can also
-        // carry secondaryFn, so their modifier flags must not start dictation.
-        if !fnDown && event.getIntegerValueField(.keyboardEventKeycode) != 63 { return }
-        let wasDown = fnDown
-        fnDown = down
-        if down && !event.flags.intersection(modifiers).isEmpty {
-            cancel(InputError.shortcutCancelled)
-            return
-        }
-        if down && !wasDown {
-            fnPresses += 1
-            guard canStart() else { busyPresses += 1; return }
+        let result = tracker.handle(kind, keyCode: UInt16(event.getIntegerValueField(.keyboardEventKeycode)),
+            modifiers: shortcut.keyCode == nil ? ShortcutModifiers(event.flags) : ShortcutModifiers(event.flags).subtracting(.fn), repeating: event.getIntegerValueField(.keyboardEventAutorepeat) != 0,
+            shortcut: shortcut)
+        switch result.action {
+        case .start:
+            shortcutPresses += 1
+            if shortcut.keyCode == nil { fnPresses += 1 }
+            guard canStart() else { busyPresses += 1; return result.consume }
             do {
                 try captureTarget()
                 recording = true
@@ -342,11 +344,16 @@ final class DictationInput {
                 lastShortcutError = nil
                 onStart()
             } catch { report(error) }
-        } else if !down && wasDown && recording {
-            recording = false
-            checkFocus()
-            onStop()
+        case .stop:
+            if recording {
+                recording = false
+                checkFocus()
+                onStop()
+            }
+        case .cancel: cancel(InputError.shortcutCancelled)
+        case .none: break
         }
+        return result.consume
     }
 
     private func cancel(_ error: Error) {

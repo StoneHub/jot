@@ -14,7 +14,7 @@ Other ideas remain optional: a local dictation cleanup model, enrolled speaker n
 
 ## Proposed dictation controls
 
-Support a configurable push-to-talk shortcut, a hands-free toggle shortcut or button, and optional double-tap of the push-to-talk shortcut. These are activation choices for dictation, separate from ambient transcription.
+Configurable push-to-talk is implemented. A hands-free toggle shortcut or button and optional double-tap of the push-to-talk shortcut remain proposals. These are activation choices for dictation, separate from ambient transcription.
 
 The built-in macOS microphone indicator is sufficient listening feedback for Monroe. No additional menu-bar animation or fixed bottom-of-screen bar is requested. Consider cursor animation only if a supported public macOS API allows it while dictating in other apps; do not substitute a cursor-following overlay. AppKit cursor APIs cover app-owned views, and a supported cross-app cursor-animation API has not been established. Keep Finish and Cancel accessible from the controls.
 
