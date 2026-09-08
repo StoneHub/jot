@@ -33,3 +33,9 @@ The SwiftUI app uses a single `Window` scene, disables automatic tabbing, and sw
 `PersonalVocabulary` in JotCore validates entries and performs one pass over the original recognized string. Matches are case-insensitive literal whole phrases, with flexible whitespace and Unicode letter/mark/number boundaries. Overlaps resolve leftmost first, longest at the same start; inserted replacements are never matched again. Duplicate matching phrases are rejected, including disabled entries. Empty “Heard as” uses the preferred spelling as its matching phrase.
 
 Jot stores the Codable vocabulary separately in its `personalVocabulary` preference. A load error preserves existing data and blocks editing rather than overwriting unreadable entries. Fn captures a value snapshot when dictation begins. The worker saves original transcripts first, then applies that snapshot only at `DictationInput.insert`; ambient capture, SQLite schema, focus checks, and delivery verification are unchanged. The Vocabulary preview uses the same matcher.
+
+## Performance diagnostics
+
+`PerformanceDiagnostics` in JotCore keeps bounded numeric samples, typed lifecycle events, and per-job timings. SpeechService feeds it from the existing sampler, captures lifecycle transitions, and measures job queue/inference/completion time using monotonic uptime. Reports are exposed through `jot diagnostics` and `speech_diagnostics`; they have no SwiftUI view or published view model. See [local performance investigation](PERFORMANCE.md) for limits and measurement semantics.
+
+Jot no longer depends on DevFeedback. Debug and Release use the same product UI, with no picker, overlay, feedback tags, or generated row keys. Historical verification records describe earlier builds.

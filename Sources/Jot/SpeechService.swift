@@ -51,6 +51,31 @@ final class SpeechService: ObservableObject {
     private var historyQuery = ""
     private var historyLimit = 50
     @Published var resources = ResourceSnapshot()
+    #if DEBUG
+    private var diagnostics = PerformanceDiagnostics(build: .debug)
+    #else
+    private var diagnostics = PerformanceDiagnostics(build: .release)
+    #endif
+    private let diagnosticsBegan = ProcessInfo.processInfo.systemUptime
+    private var inFlightAudioSeconds = 0.0
+
+    private func samplePerformance() {
+        resources = sampler.sample()
+        guard resources.valid else { return }
+        let elapsed = ProcessInfo.processInfo.systemUptime - diagnosticsBegan
+        diagnostics.observe(.init(elapsedSeconds: elapsed, footprintMiB: resources.physicalFootprintMiB,
+            residentMiB: resources.residentMiB, cpuPercent: resources.processCPUPercent,
+            droppedAudioSeconds: droppedSeconds, bufferedAudioSeconds: Double(capture.bufferedSampleCount + ambient.count + dictation.count) / 16000 + inFlightAudioSeconds,
+            queuedAudioSeconds: jobs.reduce(0) { $0 + Double($1.samples.count) / 16000 }, loadedHistoryRows: history.count,
+            modelsReady: modelState == "ready", ambientEnabled: ambientEnabled, dictationActive: dictationActive,
+            inferenceRunning: processing != nil))
+    }
+
+    private func markPerformance(_ kind: PerformanceEventKind) {
+        samplePerformance()
+        diagnostics.mark(kind, at: ProcessInfo.processInfo.systemUptime - diagnosticsBegan)
+    }
+
     @Published var level: Float = 0
     @Published var fnEnabled = false
     @Published var droppedSeconds = 0.0
@@ -100,6 +125,7 @@ final class SpeechService: ObservableObject {
     }()
 
     func launch() {
+        markPerformance(.launch)
         do { vocabulary = try vocabularyPreferences.load() }
         catch { vocabularyLoadError = "Could not load vocabulary. Saved entries were preserved. " + error.localizedDescription }
         do {
@@ -154,6 +180,7 @@ final class SpeechService: ObservableObject {
         guard let token = lifecycle.beginStart() else { return }
         UserDefaults.standard.set(false, forKey: "servicePaused")
         preparing = true; modelState = "preparing"; updateMode()
+        markPerformance(.resume); markPerformance(.modelLoadStarted)
         notice = "Loading models…"
         preparation = Task {
             do {
@@ -161,6 +188,7 @@ final class SpeechService: ObservableObject {
                 try Task.checkCancellation()
                 guard lifecycle.finishStart(token, succeeded: true) else { return }
                 modelState = "ready"
+                markPerformance(.modelsReady)
                 UserDefaults.standard.set(true, forKey: "modelsPrepared")
                 if fnRequested { await enableFn() }
                 if ambientRequested { try await activateAmbient() }
@@ -238,6 +266,7 @@ final class SpeechService: ObservableObject {
     /// Stop all speech work immediately, then release models when any active prediction returns.
     func pause() {
         guard let token = lifecycle.beginPause() else { return }
+        markPerformance(.pause)
         UserDefaults.standard.set(true, forKey: "servicePaused")
         capture.stop()
         let packet = capture.drain()
@@ -259,7 +288,7 @@ final class SpeechService: ObservableObject {
             await pipeline.unload()
             if lifecycle.finishPause(token) {
                 modelState = "unloaded"; preparing = false; preparation = nil; notice = ""; updateMode()
-                resources = sampler.sample(); scheduleTimer()
+                markPerformance(.modelsUnloaded); scheduleTimer()
             }
             pausing = nil
         }
@@ -276,6 +305,7 @@ final class SpeechService: ObservableObject {
             dictationVocabulary = vocabulary
             dictation = []; dictationStarted = Date(); dictationTicket = UUID(); dictationActive = true
             updateMode()
+            markPerformance(.dictationStarted)
             notice = "Listening for dictation… release Fn to insert."
         } catch { cancelDictation(); notice = error.localizedDescription }
     }
@@ -286,6 +316,7 @@ final class SpeechService: ObservableObject {
         drainAudio()
         guard dictationActive else { return }
         dictationActive = false
+        markPerformance(.dictationReleased)
         level = 0
         updateMode()
         guard dictation.count >= 3200 else { dictation = []; input.discardTarget(); notice = "Too little audio to transcribe."; return }
@@ -296,6 +327,7 @@ final class SpeechService: ObservableObject {
     }
 
     private func cancelDictation() {
+        if dictationActive || dictationPending { markPerformance(.dictationCancelled) }
         input.discardTarget()
         dictationActive = false; dictationPending = false; dictationTicket = UUID(); dictation = []
         jobs.removeAll { $0.mode == "dictation" }
@@ -307,7 +339,7 @@ final class SpeechService: ObservableObject {
         if lifecycle.phase == .ready { drainAudio() }
         tickCount += 1
         if Date().timeIntervalSince(lastStatsTime) >= 1 {
-            resources = sampler.sample(); lastStatsTime = Date()
+            samplePerformance(); lastStatsTime = Date()
             queuedSeconds = jobs.reduce(0) { $0 + Double($1.samples.count) / 16000 }
             if ambientEnabled || dictationActive, let lastAudioAt, Date().timeIntervalSince(lastAudioAt) > 4 {
                 recordEvent("input_stalled", "No microphone samples for more than four seconds."); pause(); notice = "Microphone stopped delivering audio. Resume to reconnect; a capture gap occurred."
@@ -360,11 +392,18 @@ final class SpeechService: ObservableObject {
         let job = jobs.removeFirst()
         let generation = lifecycle.generation
         let vocabularySnapshot = dictationVocabulary
+        let began = ProcessInfo.processInfo.systemUptime
+        let waitSeconds = max(0, began - job.submittedUptime)
+        inFlightAudioSeconds = Double(job.samples.count) / 16000
         processing = Task {
+            var outcome = PerformanceJob.Outcome.completed
+            var inferenceSeconds: Double?
             do {
                 let output = try await pipeline.infer(job, tuning: tuning)
                 try Task.checkCancellation()
                 guard lifecycle.acceptsWork(generation) else { throw CancellationError() }
+                inferenceSeconds = output.processingSeconds
+                outcome = output.text.isEmpty ? .noSpeech : .completed
                 lastInferenceSeconds = output.processingSeconds
                 processedAudioSeconds += Double(job.samples.count) / 16000
                 lagSeconds = max(0, Date().timeIntervalSince(job.startedAt) - job.offset - Double(job.samples.count) / 16000)
@@ -375,23 +414,43 @@ final class SpeechService: ObservableObject {
                     else {
                         let delivery = try await input.insert(vocabularySnapshot.applying(to: output.text))
                         if job.ticket == dictationTicket {
+                            outcome = delivery.verified ? .completed : .deliveryUnverified
                             notice = delivery.verified ? "Dictation inserted and verified. Original transcript saved locally." : "Speech transcribed; text delivery could not be verified. Check the target field. The transcript is saved below."
                         }
                     }
                 }
             } catch {
+                outcome = error is CancellationError ? .cancelled : .failed
                 if !(error is CancellationError) { recordEvent("processing_error", error.localizedDescription, session: job.sessionID) }
                 if lifecycle.acceptsWork(generation), job.mode != "dictation" || job.ticket == dictationTicket {
                     notice = "\(job.mode.capitalized): \(error.localizedDescription). Transcript insertion was not completed."
                 }
             }
+            if job.mode == "dictation", job.ticket != dictationTicket { outcome = .cancelled }
+            diagnostics.record(.init(elapsedSeconds: ProcessInfo.processInfo.systemUptime - diagnosticsBegan,
+                mode: job.mode == "dictation" ? .dictation : .ambient, outcome: outcome,
+                audioSeconds: Double(job.samples.count) / 16000, queueWaitSeconds: waitSeconds,
+                inferenceSeconds: inferenceSeconds, completionSeconds: max(0, ProcessInfo.processInfo.systemUptime - job.submittedUptime)))
+            inFlightAudioSeconds = 0
             if job.mode == "dictation", job.ticket == dictationTicket { input.discardTarget(); dictationPending = false }
             processing = nil
+            samplePerformance()
             kickWorker()
         }
     }
 
     private func recordEvent(_ kind: String, _ detail: String, duration: Double? = nil, session: String? = nil) {
+        let marker: PerformanceEventKind?
+        switch kind {
+        case "started": marker = .ambientStarted
+        case "ambient_off": marker = .ambientStopped
+        case "sleep": marker = .sleep
+        case "device_change": marker = .deviceChange
+        case "audio_gap": marker = .audioGap
+        case "processing_error": marker = .processingFailed
+        default: marker = nil
+        }
+        if let marker { markPerformance(marker) }
         do { try store?.appendEvent(CaptureEvent(sessionID: session ?? sessionID, kind: kind, detail: detail, durationSeconds: duration)); events = try store?.events(limit: 50) ?? [] }
         catch { notice = "Could not save capture event: \(error.localizedDescription)" }
     }
@@ -477,6 +536,8 @@ final class SpeechService: ObservableObject {
             case "speech.status", "speech.doctor": result = try status()
             case "models.prepare": prepare(); result = ["state": modelState]
             case "models.check": checkModelUpdates(); if let modelCheck { await modelCheck.value }; result = try object(modelUpdates)
+            case "speech.diagnostics":
+                samplePerformance(); result = try object(diagnostics.report)
             case "speech.start": try await startAmbient(); result = try status()
             case "speech.pause": pause(); result = try status()
             case "speech.resume": prepare(); result = try status()

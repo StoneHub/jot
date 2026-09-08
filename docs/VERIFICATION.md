@@ -102,3 +102,17 @@ Jot now includes the standard AppIcon asset catalog at all ten macOS sizes, alon
 The previous app had no vocabulary screen. This screenshot contains only the synthetic vocabulary example and preview, with no transcript history.
 
 ![Installed personal vocabulary with a corrected phrase preview](evidence/vocabulary.jpg)
+
+## Remove DevFeedback; keep diagnostics outside the UI — 2026-09-07
+
+Removed the vendored feedback package, Xcode dependency, imports, commands, overlay modifiers, view tags, and feedback-only row key state. Updated project instructions and CI to enforce removal. Existing local feedback notes are left untouched; the installer no longer migrates them. Earlier records above describe historical builds.
+
+Restored Activity to its previous metrics/events layout. The experimental memory graph and diagnostic UI are absent. Numeric performance history remains bounded in memory and accessible only through CLI/MCP; no automatic file collector or remote telemetry was added.
+
+All 29 core tests passed, including sample cadence/capacity, stable startup and sampled peak, invalid samples, bounded event/job retention, percentile populations, and an allowlisted diagnostic export schema. Native UI inspection confirmed Activity's original layout and a menu bar containing Jot, Edit, View, Window, and Help, with no Developer menu. The source and signed Debug/installed Mach-O checks found no feedback runtime or metadata. Built/installed executable hashes matched and the running path was `/Applications/Jot.app/Contents/MacOS/Jot`.
+
+The full signed Release build also passed the feedback-removal artifact guard and DEBUG exclusion check.
+
+A live CLI report contained multiple samples plus launch, resume, model-load-started, and models-ready markers, with the Debug build label and no captured-content fields. Per-job timing math is tested; an actual spoken dictation under this new build has not been used as a controlled performance benchmark.
+
+![Restored Activity interface without feedback tools](evidence/activity-without-feedback.jpg)

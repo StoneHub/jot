@@ -33,6 +33,7 @@ struct JotCLI {
     jot read <transcript-id>
     jot label <session-id> <speaker-id> <name>
     jot doctor                         Permissions, models, and service health
+    jot diagnostics                    Bounded performance report; no captured content
     jot models prepare                 Download/prepare local speech models
     jot models check                   Check published model revisions (no download)
     jot transcribe-file <path>          Diagnostic file inference; no persistence
@@ -44,7 +45,7 @@ struct JotCLI {
     private static func command(_ args: [String]) throws -> (String, [String: Any]) {
         guard let first = args.first else { throw CLIError.usage(usage) }
         switch first {
-        case "status", "start", "pause", "resume", "stop", "doctor":
+        case "status", "start", "pause", "resume", "stop", "doctor", "diagnostics":
             guard args.count == 1 else { throw CLIError.usage("Unexpected arguments for \(first)") }
             return ("speech." + first, [:])
         case "ambient-off":
@@ -116,6 +117,7 @@ private struct MCPServer {
     private static let supportedVersions = ["2025-06-18", "2025-03-26", "2024-11-05"]
     private static let tools: [(String, String, String, [String: Any], [String])] = [
         ("speech_status", "speech.status", "Get capture state, model state, and current system impact statistics.", [:], []),
+        ("speech_diagnostics", "speech.diagnostics", "Read bounded local memory, lifecycle, and latency diagnostics without audio, transcripts, vocabulary, or app identities.", [:], []),
         ("speech_start", "speech.start", "Start ambient microphone transcription when the user explicitly requests listening.", [:], []),
         ("speech_pause", "speech.pause", "Pause all speech work, discard unfinished audio, and unload models. Poll status until servicePhase is paused.", [:], []),
         ("speech_resume", "speech.resume", "Reload models and resume the selected Fn/ambient features.", [:], []),
