@@ -1,15 +1,6 @@
 import SwiftUI
 import AppKit
 import JotCore
-#if DEBUG
-import DevFeedback
-#else
-extension View {
-    func feedbackTarget(_ id: String, label: String? = nil, file: String = #fileID, line: UInt = #line) -> some View { self }
-    func feedbackOverlay(appID: String, screen: String) -> some View { self }
-    func feedbackViewport() -> some View { self }
-}
-#endif
 
 @main
 struct JotApp: App {
@@ -22,9 +13,6 @@ struct JotApp: App {
         .defaultSize(width: 920, height: 760)
         .commands {
             CommandGroup(replacing: .newItem) {}
-            #if DEBUG
-            FeedbackCommands()
-            #endif
         }
         MenuBarExtra {
             MenuControls(service: delegate.service, delegate: delegate)
@@ -212,7 +200,7 @@ private struct ServiceControls: View {
                 .disabled(service.lifecycle.phase == .pausing)
                 .help("Pause stops all speech work and unloads models.")
                 .accessibilityIdentifier("service-pause-resume")
-                .feedbackTarget("service.pause-resume", label: "Pause or resume service")
+
             }
             Divider()
             Toggle(isOn: Binding(get: { service.fnRequested }, set: { enabled in
@@ -220,13 +208,13 @@ private struct ServiceControls: View {
             })) {
                 Label("Fn dictation", systemImage: "fn")
             }.toggleStyle(.switch).help("Hold Fn to dictate into the focused text field.")
-                .feedbackTarget("service.fn", label: "Fn dictation")
+
             Toggle(isOn: Binding(get: { service.ambientRequested }, set: { enabled in
                 Task { await service.setAmbient(enabled) }
             })) {
                 Label("Ambient transcription", systemImage: "mic")
             }.toggleStyle(.switch).help("Continuously transcribe the microphone while the service is running.")
-                .feedbackTarget("service.ambient", label: "Ambient transcription")
+
             if service.isPaused && (service.fnRequested || service.ambientRequested) {
                 Text("Selected features start when you resume.").font(.caption).foregroundStyle(.secondary)
             }
@@ -261,28 +249,11 @@ struct MenuControls: View {
     }
 }
 
-/// Opaque UI-instance keys let the picker distinguish rows without exporting
-/// transcript IDs, speaker names, timestamps, or text as target metadata.
-#if DEBUG
-private final class HistoryFeedbackKeys: ObservableObject {
-    private var keys: [String: String] = [:]
-    func key(for transcriptID: String) -> String {
-        if let key = keys[transcriptID] { return key }
-        let key = UUID().uuidString
-        keys[transcriptID] = key
-        return key
-    }
-}
-
-#endif
 
 struct TranscriptView: View {
     @ObservedObject var service: SpeechService
     let delegate: JotDelegate
     @Environment(\.openWindow) private var openWindow
-    #if DEBUG
-    @StateObject private var feedbackKeys = HistoryFeedbackKeys()
-    #endif
     @State private var selected: Transcript?
     @State private var label = ""
     @State private var copiedID: String?
@@ -307,7 +278,7 @@ struct TranscriptView: View {
                                 .contentShape(RoundedRectangle(cornerRadius: 14))
                                 .modifier(NavigationSurface(selected: section == item))
                         }.buttonStyle(.plain)
-                            .feedbackTarget("navigation.\(item.lowercased())", label: "Open \(item)")
+
                     }
                 }
                 Spacer()
@@ -334,10 +305,10 @@ struct TranscriptView: View {
                         .accessibilityLabel("Open History in Finder")
                         .modifier(GlassButton())
                         .help("Shows the transcript database. Quit Jot before moving history files to Trash.")
-                        .feedbackTarget("history.finder", label: "Open History in Finder")
+
                         Button(showHistory ? "Hide" : "Show", systemImage: showHistory ? "eye.slash" : "eye") { showHistory.toggle() }
                             .modifier(GlassButton())
-                            .feedbackTarget("history.visibility", label: "Show or hide history")
+
                     }
                 }
                 if !service.notice.isEmpty {
@@ -359,7 +330,7 @@ struct TranscriptView: View {
         .background(WindowAttachment(attach: delegate.attach))
         .onAppear { delegate.openAction = { openWindow(id: "main") } }
         .onDisappear { copyReset?.cancel() }
-        .feedbackOverlay(appID: "jot", screen: section.lowercased())
+
         .sheet(isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } })) {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Name speaker").font(.headline)
@@ -383,7 +354,7 @@ struct TranscriptView: View {
                 .textFieldStyle(.roundedBorder)
                 .fixedSize(horizontal: false, vertical: true)
                 .onChange(of: search) { _, value in service.searchHistory(value) }
-                .feedbackTarget("history.search", label: "Search transcripts")
+
             if showHistory {
                 HStack {
                     Picker("History view", selection: $historyTextView) {
@@ -391,7 +362,7 @@ struct TranscriptView: View {
                         Text("Cards").tag(false)
                     }.pickerStyle(.segmented).labelsHidden().frame(width: 150)
                         .accessibilityLabel("History view")
-                        .feedbackTarget("history.view", label: "Text or cards history")
+
                     if historyTextView {
                         Text("Drag to highlight, then ⌘C. ⌘A selects all loaded text.")
                             .font(.caption).foregroundStyle(.secondary)
@@ -405,59 +376,54 @@ struct TranscriptView: View {
             } else if historyTextView {
                 SelectableHistory(transcripts: service.history, search: search)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .feedbackTarget("history.text-document", label: "Selectable transcript document")
+
                 HStack {
                     Text("Oldest to newest · New updates wait while text is selected")
                         .font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     if service.hasMoreHistory {
                         Button("Load more") { service.loadMoreHistory() }
-                            .feedbackTarget("history.load-more", label: "Load more history")
+
                     }
                 }
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 10) {
                         ForEach(service.history) { item in
-                            #if DEBUG
-                            let key = "history.row." + feedbackKeys.key(for: item.id)
-                            #else
-                            let key = ""
-                            #endif
                             VStack(alignment: .leading, spacing: 8) {
                                 Button { copy(item) } label: {
                                     VStack(alignment: .leading, spacing: 8) {
                                         HStack {
                                             Text(item.speakerLabel ?? item.speakerID ?? (item.mode == "dictation" ? "Dictation" : "Unknown speaker")).font(.caption.weight(.medium))
-                                                .feedbackTarget(key + ".speaker", label: "Mode or speaker label")
+
                                             Spacer()
                                             Text(item.startedAt.addingTimeInterval(item.startSeconds), format: .dateTime.month(.abbreviated).day().hour().minute()).font(.caption).foregroundStyle(.secondary)
-                                                .feedbackTarget(key + ".timestamp", label: "Transcript timestamp")
+
                                             Image(systemName: copiedID == item.id ? "checkmark" : "doc.on.doc").foregroundStyle(copiedID == item.id ? .green : .secondary)
-                                                .feedbackTarget(key + ".copy-icon", label: "Copy indicator")
+
                                         }
                                         Text(item.text).font(.body).multilineTextAlignment(.leading).foregroundStyle(.primary)
-                                            .feedbackTarget(key + ".text", label: "Transcript text")
+
                                     }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                                 }.buttonStyle(.plain).help(copiedID == item.id ? "Copied" : "Copy transcript")
-                                    .feedbackTarget(key + ".copy", label: "Copy transcript")
+
                                     .accessibilityLabel("Copy \(item.mode) transcript")
                                     .accessibilityValue(copiedID == item.id ? "Copied" : item.text)
                                 if item.speakerID != nil && item.speakerID != "overlap" {
                                     Button("Name speaker") { selected = item; label = item.speakerLabel ?? "" }.font(.caption).buttonStyle(.link)
-                                        .feedbackTarget(key + ".name-speaker", label: "Name speaker")
+
                                 }
                             }.padding(14).background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 14))
-                                .feedbackTarget(key + ".card", label: "Transcript card")
+
                         }
                         if service.hasMoreHistory {
                             Button("Load more") { service.loadMoreHistory() }.frame(maxWidth: .infinity)
-                                .feedbackTarget("history.load-more", label: "Load more history")
+
                         }
                     }
-                }.feedbackViewport()
+                }
             }
-        }.feedbackTarget("history.content", label: "Transcript history")
+        }
     }
 
     private var activity: some View {
@@ -479,7 +445,7 @@ struct TranscriptView: View {
                 }
                 if service.events.isEmpty { Text("No events yet").foregroundStyle(.secondary) }
             }.frame(maxWidth: .infinity, alignment: .leading)
-        }.feedbackViewport().feedbackTarget("activity.metrics", label: "Resource metrics and capture events")
+        }
     }
 
     private var tuning: some View {
@@ -490,7 +456,7 @@ struct TranscriptView: View {
                     Button("Steadier speakers") { service.tuning = .steady }
                     Button("More detail") { service.tuning = .detailed }
                 }.modifier(GlassButton())
-                    .feedbackTarget("tuning.presets", label: "Tuning presets")
+
                 tuningSlider("Speaker confidence", value: $service.tuning.speakerConfidence, range: 0.45...0.9, step: 0.05,
                     valueText: String(format: "%.0f%%", service.tuning.speakerConfidence * 100),
                     detail: "Higher requires stronger evidence for a speaker label; more speech may remain unknown.")
@@ -501,7 +467,7 @@ struct TranscriptView: View {
                     valueText: String(format: "%.1f s", service.tuning.paragraphPause),
                     detail: "Longer pauses make fewer, longer rows. Nearby history rows from the same speaker are also grouped.")
                 Toggle("Hide filler-only rows", isOn: $service.tuning.hideFillerRows).toggleStyle(.switch)
-                    .feedbackTarget("tuning.fillers", label: "Hide filler-only rows")
+
                 Text("Hides rows containing only sounds such as um or uh. Original text is kept. Fillers inside sentences stay visible.")
                     .font(.caption).foregroundStyle(.secondary)
                 Divider()
@@ -510,14 +476,14 @@ struct TranscriptView: View {
                 Text("Try the same short scene twice. Change one setting, then compare words, speaker changes, and paragraph breaks separately.")
                     .font(.callout).foregroundStyle(.secondary)
             }.frame(maxWidth: .infinity, alignment: .leading)
-        }.feedbackViewport()
+        }
     }
 
     private func tuningSlider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, step: Double, valueText: String, detail: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack { Text(title).font(.headline); Spacer(); Text(valueText).monospacedDigit().foregroundStyle(.secondary) }
             Slider(value: value, in: range, step: step).accessibilityLabel(title)
-                .feedbackTarget("tuning.\(title.lowercased().replacingOccurrences(of: " ", with: "-"))", label: title)
+
             Text(detail).font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -530,7 +496,7 @@ struct TranscriptView: View {
                     Spacer()
                     Button(service.checkingModels ? "Checking…" : "Check updates") { service.checkModelUpdates() }
                         .disabled(service.checkingModels).modifier(GlassButton())
-                        .feedbackTarget("models.check", label: "Check model updates")
+
                 }
                 ForEach(service.modelUpdates) { model in
                     VStack(alignment: .leading, spacing: 8) {
@@ -547,7 +513,7 @@ struct TranscriptView: View {
                 Text("Updates are checked on demand. Downloaded models are kept until an update is explicitly installed.").font(.caption).foregroundStyle(.secondary)
                 Link("FluidAudio releases", destination: URL(string: "https://github.com/FluidInference/FluidAudio/releases")!)
             }
-        }.feedbackViewport()
+        }
     }
 
     private func copy(_ item: Transcript) {

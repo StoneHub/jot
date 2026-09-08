@@ -11,6 +11,7 @@ struct AudioJob: Sendable {
     let samples: [Float]
     let mode: String
     let ticket: UUID
+    var submittedUptime = ProcessInfo.processInfo.systemUptime
 }
 
 struct SpeechOutput: Sendable {
@@ -176,6 +177,10 @@ final class MicrophoneCapture: @unchecked Sendable {
         rms = samples.isEmpty ? 0 : sqrt(samples.reduce(0) { $0 + $1 * $1 } / Float(samples.count))
         pending.append(contentsOf: samples)
         if pending.count > 128000 { let excess = pending.count - 128000; pending.removeFirst(excess); dropped += excess }
+    }
+
+    var bufferedSampleCount: Int {
+        lock.lock(); defer { lock.unlock() }; return pending.count
     }
 
     func drain() -> (samples: [Float], dropped: Int, lastAudio: Date, rms: Float) {

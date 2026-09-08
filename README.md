@@ -45,10 +45,11 @@ jot ambient-off
 jot search 'blue notebook'
 jot recent --limit 20
 jot doctor
+jot diagnostics            # Local performance report, no captured content
 jot --help
 ```
 
-`jot status` reports capture state, permissions, memory, CPU use, and processing delays. It does not measure GPU or Neural Engine utilization.
+`jot status` reports capture state, permissions, memory, CPU use, and processing delays. It does not measure GPU or Neural Engine utilization. `jot diagnostics` returns bounded memory samples, lifecycle markers, and job timings for external analysis. These stay in memory until Jot quits; save the JSON output to retain a report. Reports contain no audio, transcript text, vocabulary, target-app names, or session IDs. See [local performance investigation](docs/PERFORMANCE.md).
 
 Add this to your MCP client's configuration:
 
@@ -76,4 +77,4 @@ swift test
 
 The installer builds, verifies signatures, installs to Applications, and checks the running executable. It refuses to replace the app during capture, inference, or model preparation. Set `JOT_SIGN_IDENTITY` and `JOT_SIGN_TEAM` to override signing defaults. Build logs and installation proof are in `build/`.
 
-See [architecture and limits](docs/ARCHITECTURE.md), [verification](docs/VERIFICATION.md), and [planned work](docs/BACKLOG.md). Debug builds include [UI feedback commands](docs/SWIFTUI-FEEDBACK.md) in the Developer menu. To build a Release app without changing your installed copy, use `./scripts/build-install.py --configuration Release --build-only`. Release builds exclude the feedback interface.
+See [architecture and limits](docs/ARCHITECTURE.md), [verification](docs/VERIFICATION.md), and [planned work](docs/BACKLOG.md). To build a Release app without changing your installed copy, use `./scripts/build-install.py --configuration Release --build-only`. Debug and Release builds contain no UI feedback tool.

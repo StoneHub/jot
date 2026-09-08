@@ -42,22 +42,12 @@ settings = json.loads(subprocess.check_output(args + ['-showBuildSettings', '-js
 s = next(item['buildSettings'] for item in settings if item['target'] == 'Jot')
 source = Path(s['TARGET_BUILD_DIR']) / s['FULL_PRODUCT_NAME']
 subprocess.run(['codesign', '--verify', '--deep', '--strict', str(source)], check=True)
+subprocess.run([sys.executable, str(root / 'scripts/check-no-feedback.py'), str(source)], check=True)
 if options.configuration == 'Release':
     conditions = s.get('SWIFT_ACTIVE_COMPILATION_CONDITIONS', '').split()
     flags = s.get('OTHER_SWIFT_FLAGS', '')
     if 'DEBUG' in conditions or re.search(r'-D\s*DEBUG\b', flags):
         raise SystemExit('Release build unexpectedly defines DEBUG.')
-    forbidden = [b'FeedbackPanel', b'FeedbackSession', b'FeedbackHistory', b'dev-feedback.note',
-                 b'UI Feedback', b'history.row.', b'Mode or speaker label',
-                 b'vocabulary.row.', b'vocabulary.preferred', b'Saved preferred spelling']
-    for file in source.rglob('*'):
-        if not file.is_file():
-            continue
-        data = file.read_bytes()
-        if data[:4] not in [b'\xcf\xfa\xed\xfe', b'\xca\xfe\xba\xbe', b'\xfe\xed\xfa\xcf']:
-            continue
-        if any(marker in data for marker in forbidden):
-            raise SystemExit(f'Release contains development feedback code or metadata: {file}')
     (work / 'release-proof.json').write_text(json.dumps(dict(source=str(source),
         configuration='Release', debugDefined=False, feedbackRuntimeMarkers=False,
         sha256=hashlib.sha256((source / 'Contents/MacOS' / s['EXECUTABLE_NAME']).read_bytes()).hexdigest()), indent=2) + '\n')
@@ -113,16 +103,13 @@ if old_preferences.returncode == 0:
                 preferences[key] = previous[key]
         preferences['jotLegacyPreferencesMigrated'] = True
         subprocess.run(['defaults', 'import', 'space.jot.app', '-'], input=plistlib.dumps(preferences), check=True)
-old_feedback = support / 'DevFeedback' / 'porch-speech'.encode().hex()
-new_feedback = support / 'DevFeedback' / 'jot'.encode().hex()
-if old_feedback.exists() and not new_feedback.exists():
-    shutil.copytree(old_feedback, new_feedback)
 subprocess.run(['codesign', '--verify', '--deep', '--strict', str(source)], check=True)
 subprocess.run(['ditto', str(source), str(destination)], check=True)
 relative = Path('Contents/MacOS') / s['EXECUTABLE_NAME']
 digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
 assert digest(source / relative) == digest(destination / relative), 'Installed executable differs'
 subprocess.run(['codesign', '--verify', '--deep', '--strict', str(destination)], check=True)
+subprocess.run([sys.executable, str(root / 'scripts/check-no-feedback.py'), str(destination)], check=True)
 assert (destination / 'Contents/Helpers/jot').exists()
 link = Path.home() / '.local/bin/jot'
 link.parent.mkdir(parents=True, exist_ok=True)

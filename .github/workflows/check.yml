@@ -10,7 +10,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Storage and local transport tests
         run: swift test
-      - name: Feedback persistence and export tests
-        run: swift test --package-path Vendor/DevFeedback
-      - name: Feedback release no-op build
-        run: swift build --package-path Vendor/DevFeedback -c release
+      - name: Feedback removal guard
+        run: python3 scripts/check-no-feedback.py

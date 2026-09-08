@@ -27,8 +27,8 @@
 		D5D8145305034318CEFA19C7 /* ModelUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D08CE824AF0B228F66A9DE7F /* ModelUpdate.swift */; };
 		E627399561B1AC9DAB0B0408 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 9B4DFBF48C95EF86F6CFAB88 /* FluidAudio */; };
 		F39E2781C6B2CA0959B89114 /* JotCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D2E098CDE7120087F5C947F0 /* JotCore.framework */; };
-		F42913969834EBA50B2F3166 /* DevFeedback in Frameworks */ = {isa = PBXBuildFile; productRef = EBC71813CAEC75F70AB67AA1 /* DevFeedback */; };
 		F8582FACF33F73EA96F027A9 /* SelectableHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF4F7EA10A696D822E25FABC /* SelectableHistory.swift */; };
+		FAFD6EC5E32678410DBEB658 /* PerformanceDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95995C31AC896BE76C27532F /* PerformanceDiagnostics.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -78,8 +78,8 @@
 		8056EA6CBA3EA3C1DC87BCCA /* PersonalVocabulary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalVocabulary.swift; sourceTree = "<group>"; };
 		82A3D8CCC3D071ABC0F5EE69 /* DictationInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationInput.swift; sourceTree = "<group>"; };
 		87AE9B1836DA9D504389E51A /* ServiceLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceLifecycle.swift; sourceTree = "<group>"; };
+		95995C31AC896BE76C27532F /* PerformanceDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceDiagnostics.swift; sourceTree = "<group>"; };
 		A1724E7761CB8156A220EF24 /* AudioPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPipeline.swift; sourceTree = "<group>"; };
-		BEA152FD6CE42C79DFBF0AC3 /* DevFeedback */ = {isa = PBXFileReference; lastKnownFileType = folder; name = DevFeedback; path = Vendor/DevFeedback; sourceTree = SOURCE_ROOT; };
 		CBDB9C8F81FE456A8328BCE4 /* TranscriptStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStore.swift; sourceTree = "<group>"; };
 		CDE54F5568B2E1009E317C26 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 		D08CE824AF0B228F66A9DE7F /* ModelUpdate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelUpdate.swift; sourceTree = "<group>"; };
@@ -116,7 +116,6 @@
 			files = (
 				6689C56E5F2476BAEFBA6523 /* JotCore.framework in Frameworks */,
 				E627399561B1AC9DAB0B0408 /* FluidAudio in Frameworks */,
-				F42913969834EBA50B2F3166 /* DevFeedback in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -144,7 +143,6 @@
 				2662DB7F70702632B0247607 /* Jot */,
 				DAED3F62949CD7FDFB9AB122 /* JotCLI */,
 				C1DEE3EB4427813127E7E1D0 /* JotCore */,
-				C0D6E39DC9E61AB97A03A598 /* Packages */,
 				8B06638858A04B172277FDD9 /* Resources */,
 				9EAFF92D7689097233BB0737 /* Frameworks */,
 				CC1E4E01C7217031616028C3 /* Products */,
@@ -168,19 +166,12 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		C0D6E39DC9E61AB97A03A598 /* Packages */ = {
-			isa = PBXGroup;
-			children = (
-				BEA152FD6CE42C79DFBF0AC3 /* DevFeedback */,
-			);
-			name = Packages;
-			sourceTree = "<group>";
-		};
 		C1DEE3EB4427813127E7E1D0 /* JotCore */ = {
 			isa = PBXGroup;
 			children = (
 				D1812288F51560118033D92A /* LocalService.swift */,
 				D08CE824AF0B228F66A9DE7F /* ModelUpdate.swift */,
+				95995C31AC896BE76C27532F /* PerformanceDiagnostics.swift */,
 				8056EA6CBA3EA3C1DC87BCCA /* PersonalVocabulary.swift */,
 				87AE9B1836DA9D504389E51A /* ServiceLifecycle.swift */,
 				FF9B1EC9EF58D7AA79B27628 /* TranscriptionTuning.swift */,
@@ -250,7 +241,6 @@
 			name = Jot;
 			packageProductDependencies = (
 				9B4DFBF48C95EF86F6CFAB88 /* FluidAudio */,
-				EBC71813CAEC75F70AB67AA1 /* DevFeedback */,
 			);
 			productName = Jot;
 			productReference = 7F8706CA0A472D88DA09E8DC /* Jot.app */;
@@ -305,7 +295,6 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				469DC1BBB30D99516E1567A4 /* XCRemoteSwiftPackageReference "FluidAudio" */,
-				92EE25EC452AB8ACFD581868 /* XCLocalSwiftPackageReference "Vendor/DevFeedback" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = CC1E4E01C7217031616028C3 /* Products */;
@@ -383,6 +372,7 @@
 			files = (
 				2D62FA2C153FEDA91143654A /* LocalService.swift in Sources */,
 				D5D8145305034318CEFA19C7 /* ModelUpdate.swift in Sources */,
+				FAFD6EC5E32678410DBEB658 /* PerformanceDiagnostics.swift in Sources */,
 				CE41316CF2FC8414E69CEF14 /* PersonalVocabulary.swift in Sources */,
 				C4A3067F86EC76FBB07066E5 /* ServiceLifecycle.swift in Sources */,
 				A84D2F3520652FB64F16B110 /* TranscriptStore.swift in Sources */,
@@ -681,13 +671,6 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCLocalSwiftPackageReference section */
-		92EE25EC452AB8ACFD581868 /* XCLocalSwiftPackageReference "Vendor/DevFeedback" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Vendor/DevFeedback;
-		};
-/* End XCLocalSwiftPackageReference section */
-
 /* Begin XCRemoteSwiftPackageReference section */
 		469DC1BBB30D99516E1567A4 /* XCRemoteSwiftPackageReference "FluidAudio" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -704,10 +687,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 469DC1BBB30D99516E1567A4 /* XCRemoteSwiftPackageReference "FluidAudio" */;
 			productName = FluidAudio;
-		};
-		EBC71813CAEC75F70AB67AA1 /* DevFeedback */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = DevFeedback;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
