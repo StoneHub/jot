@@ -89,3 +89,16 @@ A full signed Release build using the same final source passed the installer's D
 ## App icon registration
 
 Jot now includes the standard AppIcon asset catalog at all ten macOS sizes, alongside its bundled ICNS. Startup loads that bundled artwork explicitly while Launch Services refreshes. The running app's icon was read through NSRunningApplication and visually confirmed as Jot's waveform, replacing the generic placeholder. Generator output matches all ten catalog images. The final Debug and Release builds both passed signing and artifact checks.
+
+## Personal vocabulary — 2026-09-07
+
+- All 25 core tests pass, including five vocabulary tests for Unicode word boundaries, whitespace, capitalization, overlapping phrases, literal replacement, non-cascading behavior, disable/edit/remove, a stable in-flight value snapshot, validation, and preference persistence. Corrupt saved vocabulary is not overwritten on load failure.
+- Signed Debug build installed from Xcode's resolved product at `build/DerivedData/Build/Products/Debug/Jot.app`. Source and installed executable SHA-256 match: `c5a709e3262d6643f501a00e73a03bc88ac914baa110633099af93a4bc2bbbf3`. The running process was verified at `/Applications/Jot.app/Contents/MacOS/Jot`.
+- Native UI checks added `swift you eye` → `SwiftUI`, verified the preview, disabled/re-enabled it, edited the replacement, removed it, and restored it with Undo remove. The saved entry survived an app rebuild/relaunch. The final preview visibly and accessibly returned `I am building with SwiftUI.` The temporary entry and preview text were removed after capturing the screenshot.
+- Debug picker selected the saved spelling and enable-switch child targets with static labels and opaque keys. The enable switch remained on and the preview stayed corrected after the picker click. The lexical checker reports only the existing mutually exclusive Text/Cards `history.load-more` declarations; new literal vocabulary targets are unique. The feedback package was not modified.
+- The full signed Release build passed DEBUG and feedback-runtime checks, expanded to cover vocabulary target metadata. Release executable SHA-256: `3c8e99d9d0f5594abb33e9044d06705c88438e276fce186becf05b0d8cfa53d8`. This is build verification, not notarization or another-Mac installation proof.
+- Source inspection confirms original transcripts are persisted before vocabulary is applied solely at dictation insertion. Fn remained enabled and ambient remained off; existing history was preserved. A controlled microphone-to-target insertion test specifically exercising a vocabulary replacement remains a user check; the installed preview exercises the same matcher without microphone capture.
+
+The previous app had no vocabulary screen. This screenshot contains only the synthetic vocabulary example and preview, with no transcript history.
+
+![Installed personal vocabulary with a corrected phrase preview](evidence/vocabulary.jpg)

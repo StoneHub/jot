@@ -4,7 +4,7 @@ import JotCore
 #if DEBUG
 import DevFeedback
 #else
-private extension View {
+extension View {
     func feedbackTarget(_ id: String, label: String? = nil, file: String = #fileID, line: UInt = #line) -> some View { self }
     func feedbackOverlay(appID: String, screen: String) -> some View { self }
     func feedbackViewport() -> some View { self }
@@ -175,7 +175,7 @@ private struct NavigationSurface: ViewModifier {
     }
 }
 
-private struct GlassButton: ViewModifier {
+struct GlassButton: ViewModifier {
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *) { content.buttonStyle(.glass) }
         else { content.buttonStyle(.bordered) }
@@ -299,9 +299,9 @@ struct TranscriptView: View {
                 ServiceControls(service: service)
                     .padding(18).modifier(GlassSurface(tint: Color(nsColor: .controlAccentColor).opacity(0.04)))
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(["History", "Activity", "Tuning", "Models"], id: \.self) { item in
+                    ForEach(["History", "Vocabulary", "Activity", "Tuning", "Models"], id: \.self) { item in
                         Button { section = item } label: {
-                            Label(item, systemImage: item == "History" ? "text.alignleft" : (item == "Activity" ? "chart.xyaxis.line" : (item == "Tuning" ? "slider.horizontal.3" : "square.stack.3d.up")))
+                            Label(item, systemImage: item == "Vocabulary" ? "character.book.closed" : item == "History" ? "text.alignleft" : (item == "Activity" ? "chart.xyaxis.line" : (item == "Tuning" ? "slider.horizontal.3" : "square.stack.3d.up")))
                                 .font(.body.weight(section == item ? .semibold : .regular))
                                 .frame(maxWidth: .infinity, alignment: .leading).padding(12)
                                 .contentShape(RoundedRectangle(cornerRadius: 14))
@@ -345,6 +345,7 @@ struct TranscriptView: View {
                         .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 }
                 if section == "History" { history }
+                else if section == "Vocabulary" { VocabularyView(service: service) }
                 else if section == "Activity" { activity }
                 else if section == "Tuning" { tuning }
                 else { models }

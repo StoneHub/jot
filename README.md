@@ -18,6 +18,14 @@ In **History**, search transcripts, select text across statements, and press ⌘
 
 **Models → Check updates** checks published model revisions. It does not download updates or verify that your cached weights match the latest release.
 
+## Personal vocabulary
+
+Open **Vocabulary** to add a preferred spelling such as `SwiftUI`. If Jot mishears it, enter the phrase under **Heard as**, for example `swift you eye`. Leave that field empty to normalize capitalization only.
+
+Entries can be edited, disabled, removed, and restored with **Undo remove**. Use the preview to check saved, enabled entries without recording. Matching ignores capitalization, respects whole-word boundaries, and prefers longer phrases at the same position. Replacements are applied once, without chaining into other entries.
+
+Vocabulary applies before Fn dictation is inserted into your target app, using the entries enabled when that dictation began. History and ambient transcripts keep the original recognition. Entries stay in Jot's local preferences; this does not train or change the recognition model.
+
 ## Data and privacy
 
 Audio stays in temporary memory buffers and is discarded after processing. Jot saves text, timestamps, speaker labels, and capture events in `~/Library/Application Support/Jot`. It does not save recordings for replay.
