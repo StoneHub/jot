@@ -335,9 +335,11 @@ final class SpeechService: ObservableObject {
     /// Writes one session as Markdown into ~/Documents/Jot Sessions and returns the file.
     @discardableResult
     func exportSession(_ id: String) throws -> URL {
-        guard let store, let session = try store.sessions(limit: 200).first(where: { $0.sessionID == id }) else { throw JotError.message("Session not found") }
+        guard let store else { throw JotError.message("Transcript storage is unavailable.") }
         let rows = try store.session(id: id)
-        guard !rows.isEmpty else { throw JotError.message("Session has no transcript") }
+        guard !rows.isEmpty, let session = try store.sessions(limit: 200).first(where: { $0.sessionID == id }) else {
+            throw JotError.message("Nothing was transcribed in this session, so there is no file to save.")
+        }
         try FileManager.default.createDirectory(at: Self.exportDirectory, withIntermediateDirectories: true)
         let url = Self.exportDirectory.appendingPathComponent(TranscriptExport.fileName(for: session))
         try TranscriptExport.markdown(session: session, rows: rows).write(to: url, atomically: true, encoding: .utf8)
@@ -365,11 +367,10 @@ final class SpeechService: ObservableObject {
         await drainAmbientWork()
         meetingTitle = nil
         refreshSessions()
-        do {
-            let url = try exportSession(id)
-            notice = "Saved \(url.lastPathComponent) in Documents/Jot Sessions."
-            NSWorkspace.shared.activateFileViewerSelecting([url])
-        } catch { notice = error.localizedDescription }
+        // A meeting with nothing transcribed ends quietly; there is no file to show.
+        guard (try? store?.session(id: id).isEmpty) == false else { return }
+        do { NSWorkspace.shared.activateFileViewerSelecting([try exportSession(id)]) }
+        catch { notice = error.localizedDescription }
     }
 
     /// Ambient off only queues the last block; export has to wait for the worker to store it.
