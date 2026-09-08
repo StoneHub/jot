@@ -28,11 +28,19 @@ public struct Transcript: Codable, Sendable, Identifiable {
     }
 }
 
-public struct TranscriptSession: Codable, Sendable {
+public struct TranscriptSession: Codable, Sendable, Identifiable {
     public let sessionID: String
     public let startedAt: Date
     public let lastTranscriptAt: Date
     public let transcriptCount: Int
+    /// Set by meeting mode or a rename; nil for an untitled ambient session.
+    public var title: String?
+    public var id: String { sessionID }
+    public var durationSeconds: Double { lastTranscriptAt.timeIntervalSince(startedAt) }
+    public init(sessionID: String, startedAt: Date, lastTranscriptAt: Date, transcriptCount: Int, title: String? = nil) {
+        self.sessionID = sessionID; self.startedAt = startedAt; self.lastTranscriptAt = lastTranscriptAt
+        self.transcriptCount = transcriptCount; self.title = title
+    }
 }
 
 /// Capture lifecycle metadata only. Callers must not put transcript text or audio in detail.
@@ -90,7 +98,7 @@ public final class TranscriptStore: @unchecked Sendable {
         do {
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: databaseURL.path)
             sqlite3_busy_timeout(db, 5_000)
-            try execute("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS transcripts (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, started_at REAL NOT NULL, start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, text TEXT NOT NULL, speaker_id TEXT, mode TEXT NOT NULL CHECK(mode IN ('ambient','dictation'))); CREATE INDEX IF NOT EXISTS transcript_absolute_time ON transcripts((started_at + start_seconds) DESC, id DESC); CREATE INDEX IF NOT EXISTS transcript_session ON transcripts(session_id); CREATE TABLE IF NOT EXISTS speaker_labels (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY(session_id,speaker_id)); CREATE TABLE IF NOT EXISTS capture_events (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, timestamp REAL NOT NULL, kind TEXT NOT NULL, detail TEXT NOT NULL, duration_seconds REAL CHECK(duration_seconds >= 0)); CREATE INDEX IF NOT EXISTS capture_event_time ON capture_events(timestamp DESC,id DESC); CREATE INDEX IF NOT EXISTS capture_event_session_time ON capture_events(session_id,timestamp DESC,id DESC); PRAGMA user_version=2;")
+            try execute("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS transcripts (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, started_at REAL NOT NULL, start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, text TEXT NOT NULL, speaker_id TEXT, mode TEXT NOT NULL CHECK(mode IN ('ambient','dictation'))); CREATE INDEX IF NOT EXISTS transcript_absolute_time ON transcripts((started_at + start_seconds) DESC, id DESC); CREATE INDEX IF NOT EXISTS transcript_session ON transcripts(session_id); CREATE TABLE IF NOT EXISTS speaker_labels (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY(session_id,speaker_id)); CREATE TABLE IF NOT EXISTS capture_events (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, timestamp REAL NOT NULL, kind TEXT NOT NULL, detail TEXT NOT NULL, duration_seconds REAL CHECK(duration_seconds >= 0)); CREATE INDEX IF NOT EXISTS capture_event_time ON capture_events(timestamp DESC,id DESC); CREATE INDEX IF NOT EXISTS capture_event_session_time ON capture_events(session_id,timestamp DESC,id DESC); CREATE TABLE IF NOT EXISTS session_titles (session_id TEXT PRIMARY KEY, title TEXT NOT NULL); PRAGMA user_version=3;")
         } catch {
             sqlite3_close(db); db = nil; throw error
         }
@@ -185,7 +193,7 @@ public final class TranscriptStore: @unchecked Sendable {
 
     public func sessions(limit: Int = 50) throws -> [TranscriptSession] {
         try locked {
-            let stmt = try prepare("SELECT session_id, MIN(started_at), MAX(started_at + end_seconds), COUNT(*) FROM transcripts GROUP BY session_id ORDER BY MAX(started_at + end_seconds) DESC, session_id LIMIT ?")
+            let stmt = try prepare("SELECT t.session_id, MIN(t.started_at), MAX(t.started_at + t.end_seconds), COUNT(*), s.title FROM transcripts t LEFT JOIN session_titles s ON s.session_id = t.session_id GROUP BY t.session_id ORDER BY MAX(t.started_at + t.end_seconds) DESC, t.session_id LIMIT ?")
             defer { sqlite3_finalize(stmt) }
             sqlite3_bind_int(stmt, 1, Int32(clamp(limit)))
             var result: [TranscriptSession] = []
@@ -193,9 +201,21 @@ public final class TranscriptStore: @unchecked Sendable {
                 let status = sqlite3_step(stmt)
                 if status == SQLITE_DONE { break }
                 guard status == SQLITE_ROW else { throw error() }
-                result.append(TranscriptSession(sessionID: column(stmt, 0)!, startedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 1)), lastTranscriptAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 2)), transcriptCount: Int(sqlite3_column_int64(stmt, 3))))
+                result.append(TranscriptSession(sessionID: column(stmt, 0)!, startedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 1)), lastTranscriptAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 2)), transcriptCount: Int(sqlite3_column_int64(stmt, 3)), title: column(stmt, 4)))
             }
             return result
+        }
+    }
+
+    /// A title names a session for the Sessions list and export file; an empty title removes it.
+    public func setTitle(sessionID: String, title: String) throws {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        try locked {
+            let stmt = try prepare(trimmed.isEmpty ? "DELETE FROM session_titles WHERE session_id = ?" : "INSERT INTO session_titles(session_id,title) VALUES(?,?) ON CONFLICT(session_id) DO UPDATE SET title=excluded.title")
+            defer { sqlite3_finalize(stmt) }
+            bind(sessionID, to: 1, in: stmt)
+            if !trimmed.isEmpty { bind(String(trimmed.prefix(200)), to: 2, in: stmt) }
+            guard sqlite3_step(stmt) == SQLITE_DONE else { throw error() }
         }
     }
 
