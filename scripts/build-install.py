@@ -21,6 +21,11 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--configuration', choices=['Debug', 'Release'], default='Debug')
 parser.add_argument('--build-only', action='store_true', help='Verify the build without replacing or launching the installed app')
 options = parser.parse_args()
+# xcodebuild ships with Xcode; the Command Line Tools alone cannot build the app target.
+developer = subprocess.run(['xcode-select', '-p'], capture_output=True, text=True)
+if developer.returncode != 0 or not Path(developer.stdout.strip(), 'usr/bin/xcodebuild').exists():
+    raise SystemExit('Install Xcode and run: sudo xcode-select --switch /Applications/Xcode.app. '
+                     'The Command Line Tools cannot build the Jot app target.')
 identity = os.environ.get('JOT_SIGN_IDENTITY')
 if not identity:
     identities = subprocess.check_output(['security', 'find-identity', '-v', '-p', 'codesigning'], text=True)
@@ -28,7 +33,13 @@ if not identity:
     if not candidates:
         raise SystemExit('Set JOT_SIGN_IDENTITY to an installed signing identity. Stable signing preserves macOS permissions.')
     identity = candidates[0]
-team = os.environ.get('JOT_SIGN_TEAM') or re.search(r'\(([A-Z0-9]+)\)$', identity).group(1)
+team = os.environ.get('JOT_SIGN_TEAM')
+if not team:
+    # Identity names normally end in the team ID, as in "Developer ID Application: Name (TEAMID)".
+    match = re.search(r'\(([A-Z0-9]+)\)$', identity)
+    if not match:
+        raise SystemExit(f'Cannot read a team ID from JOT_SIGN_IDENTITY ({identity}). Set JOT_SIGN_TEAM as well.')
+    team = match.group(1)
 if shutil.which('xcodegen'):
     subprocess.run(['xcodegen', 'generate'], check=True)
 args = ['xcodebuild', '-project', 'Jot.xcodeproj', '-scheme', 'Jot',
