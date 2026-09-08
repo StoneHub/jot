@@ -52,6 +52,26 @@ final class DictationInput {
     private var focusObserver: AXObserver?
     private var observedApplication: AXUIElement?
     private var target: Target?
+    private var fnPresses = 0
+    private var acceptedPresses = 0
+    private var busyPresses = 0
+    private var lastShortcutError: String?
+    /// Health and counts only. Never includes typed text or accessibility field values.
+    var diagnostics: [String: Any] {
+        var result: [String: Any] = [
+            "shortcut": "Fn", "enabled": isEnabled,
+            "eventTapEnabled": eventTap.map { CGEvent.tapIsEnabled(tap: $0) } ?? false,
+            "fnPresses": fnPresses, "acceptedPresses": acceptedPresses,
+            "busyPresses": busyPresses]
+        if let lastShortcutError { result["lastError"] = lastShortcutError }
+        return result
+    }
+
+    private func report(_ error: Error) {
+        lastShortcutError = error.localizedDescription
+        onError?(error)
+    }
+
     private var fnDown = false
     private var recording = false
     private var clipboardRestore: (() -> Void)?
@@ -95,7 +115,7 @@ final class DictationInput {
     func enable() -> Bool {
         guard !isEnabled else { return true }
         guard Self.accessibilityGranted else {
-            onError?(InputError.accessibilityRequired)
+            report(InputError.accessibilityRequired)
             return false
         }
         let mask = (CGEventMask(1) << CGEventType.flagsChanged.rawValue)
@@ -111,7 +131,7 @@ final class DictationInput {
                 return Unmanaged.passUnretained(event)
             }, userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
-            onError?(InputError.eventTapUnavailable)
+            report(InputError.eventTapUnavailable)
             return false
         }
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
@@ -313,12 +333,15 @@ final class DictationInput {
             return
         }
         if down && !wasDown {
-            guard canStart() else { return }
+            fnPresses += 1
+            guard canStart() else { busyPresses += 1; return }
             do {
                 try captureTarget()
                 recording = true
+                acceptedPresses += 1
+                lastShortcutError = nil
                 onStart()
-            } catch { onError?(error) }
+            } catch { report(error) }
         } else if !down && wasDown && recording {
             recording = false
             checkFocus()
@@ -331,7 +354,7 @@ final class DictationInput {
         clearTarget()
         let wasRecording = recording
         recording = false
-        onError?(error)
+        report(error)
         if wasRecording { onStop() }
     }
 

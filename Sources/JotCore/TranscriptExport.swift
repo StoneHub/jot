@@ -38,6 +38,24 @@ public enum TranscriptExport {
         return (title.isEmpty ? "\(stamp) Session" : "\(stamp) \(title.prefix(80))") + ".md"
     }
 
+    /// Exclusive creation preserves earlier exports, including files edited outside Jot.
+    public static func write(session: TranscriptSession, rows: [Transcript], directory: URL) throws -> URL {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let base = URL(fileURLWithPath: fileName(for: session)).deletingPathExtension().lastPathComponent
+        let data = Data(markdown(session: session, rows: rows).utf8)
+        var attempt = 1
+        while true {
+            let suffix = attempt == 1 ? "" : " (\(attempt))"
+            let url = directory.appendingPathComponent("\(base)\(suffix).md")
+            do {
+                try data.write(to: url, options: .withoutOverwriting)
+                return url
+            } catch let error as NSError where error.domain == NSCocoaErrorDomain && error.code == NSFileWriteFileExistsError {
+                attempt += 1
+            }
+        }
+    }
+
     public static func speakerName(_ row: Transcript) -> String {
         if let label = row.speakerLabel, !label.isEmpty { return label }
         switch row.speakerID {
