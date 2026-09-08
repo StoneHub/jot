@@ -27,3 +27,9 @@ SQLite operations are serialized. The application-support directory is user-only
 No model inference sends microphone content to a remote provider. Model preparation downloads model artifacts; future agent reads are separate disclosure decisions. Third-party code and model terms remain their authors' terms: [FluidAudio](https://github.com/FluidInference/FluidAudio), [Parakeet v3 model](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), and FluidAudio's referenced converted model repositories. This implementation does not relicense those artifacts.
 
 The SwiftUI app uses a single `Window` scene, disables automatic tabbing, and switches activation policy between regular (Dock visible) and accessory (window closed). The menu-bar popover and window share the same service controls. Published model metadata is separate from installed-cache provenance.
+
+## Personal vocabulary
+
+`PersonalVocabulary` in JotCore validates entries and performs one pass over the original recognized string. Matches are case-insensitive literal whole phrases, with flexible whitespace and Unicode letter/mark/number boundaries. Overlaps resolve leftmost first, longest at the same start; inserted replacements are never matched again. Duplicate matching phrases are rejected, including disabled entries. Empty “Heard as” uses the preferred spelling as its matching phrase.
+
+Jot stores the Codable vocabulary separately in its `personalVocabulary` preference. A load error preserves existing data and blocks editing rather than overwriting unreadable entries. Fn captures a value snapshot when dictation begins. The worker saves original transcripts first, then applies that snapshot only at `DictationInput.insert`; ambient capture, SQLite schema, focus checks, and delivery verification are unchanged. The Vocabulary preview uses the same matcher.

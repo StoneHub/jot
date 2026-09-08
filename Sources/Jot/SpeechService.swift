@@ -26,6 +26,27 @@ final class SpeechService: ObservableObject {
             refreshHistory()
         }
     }
+    @Published private(set) var vocabulary = PersonalVocabulary()
+    @Published private(set) var vocabularyLoadError: String?
+    private let vocabularyPreferences = VocabularyPreferences()
+    private var dictationVocabulary = PersonalVocabulary()
+
+    func saveVocabularyEntry(_ entry: VocabularyEntry) throws {
+        guard vocabularyLoadError == nil else { throw VocabularyError.invalid("Saved vocabulary could not be loaded. Resolve the storage error before editing.") }
+        var updated = vocabulary
+        try updated.save(entry)
+        try vocabularyPreferences.save(updated)
+        vocabulary = updated
+    }
+
+    func removeVocabularyEntry(_ id: UUID) throws {
+        guard vocabularyLoadError == nil else { throw VocabularyError.invalid("Saved vocabulary could not be loaded. Resolve the storage error before editing.") }
+        var updated = vocabulary
+        updated.remove(id)
+        try vocabularyPreferences.save(updated)
+        vocabulary = updated
+    }
+
     private var modelCheck: Task<Void, Never>?
     private var historyQuery = ""
     private var historyLimit = 50
@@ -79,6 +100,8 @@ final class SpeechService: ObservableObject {
     }()
 
     func launch() {
+        do { vocabulary = try vocabularyPreferences.load() }
+        catch { vocabularyLoadError = "Could not load vocabulary. Saved entries were preserved. " + error.localizedDescription }
         do {
             store = try TranscriptStore()
             let service = LocalServiceServer { [weak self] data in
@@ -250,6 +273,7 @@ final class SpeechService: ObservableObject {
         do {
             if !capture.running { lastAudioAt = Date() }
             try capture.start()
+            dictationVocabulary = vocabulary
             dictation = []; dictationStarted = Date(); dictationTicket = UUID(); dictationActive = true
             updateMode()
             notice = "Listening for dictation… release Fn to insert."
@@ -335,6 +359,7 @@ final class SpeechService: ObservableObject {
         guard lifecycle.phase == .ready, processing == nil, !jobs.isEmpty else { return }
         let job = jobs.removeFirst()
         let generation = lifecycle.generation
+        let vocabularySnapshot = dictationVocabulary
         processing = Task {
             do {
                 let output = try await pipeline.infer(job, tuning: tuning)
@@ -348,7 +373,7 @@ final class SpeechService: ObservableObject {
                 if job.mode == "dictation", job.ticket == dictationTicket {
                     if output.text.isEmpty { notice = "No speech detected; nothing inserted." }
                     else {
-                        let delivery = try await input.insert(output.text)
+                        let delivery = try await input.insert(vocabularySnapshot.applying(to: output.text))
                         if job.ticket == dictationTicket {
                             notice = delivery.verified ? "Dictation inserted and verified. Original transcript saved locally." : "Speech transcribed; text delivery could not be verified. Check the target field. The transcript is saved below."
                         }

@@ -48,7 +48,8 @@ if options.configuration == 'Release':
     if 'DEBUG' in conditions or re.search(r'-D\s*DEBUG\b', flags):
         raise SystemExit('Release build unexpectedly defines DEBUG.')
     forbidden = [b'FeedbackPanel', b'FeedbackSession', b'FeedbackHistory', b'dev-feedback.note',
-                 b'UI Feedback', b'history.row.', b'Mode or speaker label']
+                 b'UI Feedback', b'history.row.', b'Mode or speaker label',
+                 b'vocabulary.row.', b'vocabulary.preferred', b'Saved preferred spelling']
     for file in source.rglob('*'):
         if not file.is_file():
             continue
