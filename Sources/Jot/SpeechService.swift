@@ -70,6 +70,10 @@ final class SpeechService: ObservableObject {
     }
 
     private var modelCheck: Task<Void, Never>?
+    @Published private(set) var historyRevision = 0
+    private var historySources: [String: [String]] = [:]
+    private var historyClearedAt: TimeInterval = -1
+    private var deletedSessions = Set<String>()
     private var historyQuery = ""
     private var historyLimit = 50
     @Published var resources = ResourceSnapshot()
@@ -325,6 +329,39 @@ final class SpeechService: ObservableObject {
 
     // MARK: Sessions and meetings
 
+    func clearHistory() throws {
+        guard let store else { throw JotError.message("Transcript storage is unavailable.") }
+        try store.clearHistory()
+        historyClearedAt = ProcessInfo.processInfo.systemUptime
+        lastExport = nil
+        historyLimit = 50
+        didDeleteHistory()
+        notice = "History cleared."
+    }
+
+    func canDeleteSession(_ id: String) -> Bool { !(id == activeSessionID && ambientEnabled) }
+
+    func deleteSession(_ id: String) throws {
+        guard canDeleteSession(id) else { throw JotError.message("Stop recording this session before deleting it.") }
+        guard let store else { throw JotError.message("Transcript storage is unavailable.") }
+        try store.deleteSession(id: id)
+        deletedSessions.insert(id)
+        didDeleteHistory()
+        notice = "Session deleted."
+    }
+
+    func deleteHistoryCard(_ item: Transcript) throws {
+        guard let store else { throw JotError.message("Transcript storage is unavailable.") }
+        try store.deleteTranscripts(ids: historySources[item.id] ?? [item.id])
+        didDeleteHistory()
+        notice = "Transcript deleted."
+    }
+
+    private func didDeleteHistory() {
+        refreshRecent(); refreshSessions()
+        historyRevision += 1
+    }
+
     func refreshSessions() {
         do { sessions = try store?.sessions(limit: 200) ?? [] } catch { notice = error.localizedDescription }
     }
@@ -566,16 +603,18 @@ final class SpeechService: ObservableObject {
                 lastInferenceSeconds = output.processingSeconds
                 processedAudioSeconds += Double(job.samples.count) / 16000
                 lagSeconds = max(0, Date().timeIntervalSince(job.startedAt) - job.offset - Double(job.samples.count) / 16000)
-                for transcript in output.transcripts { try store?.append(transcript) }
+                if job.submittedUptime > historyClearedAt && !deletedSessions.contains(job.sessionID) {
+                    for transcript in output.transcripts { try store?.append(transcript) }
+                }
                 if !output.transcripts.isEmpty { lastTranscriptAt = Date(); refreshRecent(); refreshSessions() }
                 if job.mode == "dictation", job.ticket == dictationTicket {
                     let text = DictationCleanup.applying(to: vocabularySnapshot.applying(to: output.text))
-                    if text.isEmpty { notice = "No text to insert. Original transcript saved locally." }
+                    if text.isEmpty { notice = "No text to insert." }
                     else {
                         let delivery = try await input.insert(text)
                         if job.ticket == dictationTicket {
                             outcome = delivery.verified ? .completed : .deliveryUnverified
-                            notice = delivery.verified ? "Dictation inserted and verified. Original transcript saved locally." : "Speech transcribed; text delivery could not be verified. Check the target field. The transcript is saved below."
+                            notice = delivery.verified ? "Dictation inserted and verified." : "Speech transcribed; text delivery could not be verified. Check the target field."
                         }
                     }
                 }
@@ -631,7 +670,10 @@ final class SpeechService: ObservableObject {
                 let items = page ?? []; found.append(contentsOf: items)
                 if items.count < count { break }
             }
-            hasMoreHistory = found.count > historyLimit; history = TranscriptGrouping.history(Array(found.prefix(historyLimit)), tuning: tuning)
+            hasMoreHistory = found.count > historyLimit
+            let groups = TranscriptGrouping.historyGroups(Array(found.prefix(historyLimit)), tuning: tuning)
+            history = groups.map(\.transcript)
+            historySources = Dictionary(uniqueKeysWithValues: groups.map { ($0.transcript.id, $0.sourceIDs) })
         } catch { notice = error.localizedDescription }
     }
     func labelSpeaker(session: String, speaker: String, name: String) {
@@ -718,6 +760,10 @@ final class SpeechService: ObservableObject {
                 guard let id = params["sessionID"] as? String, let title = params["title"] as? String else { throw JotError.message("sessionID and title are required") }
                 try store?.setTitle(sessionID: id, title: title); refreshSessions()
                 result = ["sessionID": id, "title": title]
+            case "transcripts.clear": try clearHistory(); result = ["cleared": true]
+            case "transcripts.delete_session":
+                guard let id = params["sessionID"] as? String else { throw JotError.message("sessionID is required") }
+                try deleteSession(id); result = ["deleted": true]
             case "transcripts.search": result = try object(store?.search(params["query"] as? String ?? "", limit: limit, offset: offset) ?? [])
             case "transcripts.recent": result = try object(store?.recent(limit: limit, offset: offset) ?? [])
             case "transcripts.events": result = try object(store?.events(sessionID: params["sessionID"] as? String, limit: limit, offset: offset) ?? [])

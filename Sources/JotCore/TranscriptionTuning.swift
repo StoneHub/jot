@@ -107,19 +107,29 @@ public enum TranscriptGrouping {
     }
 
     /// Presentation only: source rows and words remain in SQLite for inspection/export.
+    public struct HistoryGroup {
+        public var transcript: Transcript
+        public var sourceIDs: [String]
+    }
+
     public static func history(_ source: [Transcript], tuning: TranscriptionTuning) -> [Transcript] {
+        historyGroups(source, tuning: tuning).map(\.transcript)
+    }
+
+    public static func historyGroups(_ source: [Transcript], tuning: TranscriptionTuning) -> [HistoryGroup] {
         let sorted = source.sorted { $0.startedAt.addingTimeInterval($0.startSeconds) < $1.startedAt.addingTimeInterval($1.startSeconds) }
-        var result: [Transcript] = []
+        var result: [HistoryGroup] = []
         for item in sorted {
             if tuning.hideFillerRows && isFillerOnly(item.text) { continue }
-            if let previous = result.last, item.mode == "ambient", previous.mode == "ambient",
+            if let previous = result.last?.transcript, item.mode == "ambient", previous.mode == "ambient",
                item.sessionID == previous.sessionID, item.speakerID == previous.speakerID,
                item.speakerLabel == previous.speakerLabel,
                item.startSeconds >= previous.endSeconds,
                item.startSeconds - previous.endSeconds < tuning.bounded.paragraphPause {
-                result[result.count - 1].text += " " + item.text
-                result[result.count - 1].endSeconds = item.endSeconds
-            } else { result.append(item) }
+                result[result.count - 1].transcript.text += " " + item.text
+                result[result.count - 1].transcript.endSeconds = item.endSeconds
+                result[result.count - 1].sourceIDs.append(item.id)
+            } else { result.append(HistoryGroup(transcript: item, sourceIDs: [item.id])) }
         }
         return result.reversed()
     }
