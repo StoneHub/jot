@@ -48,14 +48,15 @@ public enum TranscriptGrouping {
 
     /// Confirm a new speaker only after sustained evidence. Short replies can stay with
     /// the preceding speaker; this is an explicit user-adjustable stability tradeoff.
-    public static func turns(_ words: [AttributedWord], tuning raw: TranscriptionTuning) -> [SpeechTurn] {
+    public static func turns(_ words: [AttributedWord], tuning raw: TranscriptionTuning, continuing initialSpeaker: String? = nil) -> [SpeechTurn] {
         guard !words.isEmpty else { return [] }
         let tuning = raw.bounded
         var candidates: [String?] = words.map { word in
             let active = word.probabilities.prefix(4).enumerated().filter { Double($0.element) >= tuning.speakerConfidence }
             return active.count == 1 ? "speaker-\(active[0].offset + 1)" : (active.count > 1 ? "overlap" : nil)
         }
-        var stable: String?
+        // Seeded from the previous audio block so a sentence that spans a block boundary keeps its speaker.
+        var stable: String? = initialSpeaker
         var runStart = 0
         while runStart < words.count {
             var runEnd = runStart + 1
@@ -81,6 +82,28 @@ public enum TranscriptGrouping {
             } else { result.append(SpeechTurn(text: word.text, start: word.start, end: word.end, speaker: candidates[index])) }
         }
         return result
+    }
+
+    /// Export-time repair: an unattributed ambient row that picks up a speaker's unfinished sentence within `gap` seconds inherits that speaker. Stored rows are unchanged.
+    public static func foldContinuations(_ source: [Transcript], gap: Double = 1.5) -> [Transcript] {
+        var result = source.sorted { $0.startedAt.addingTimeInterval($0.startSeconds) < $1.startedAt.addingTimeInterval($1.startSeconds) }
+        for index in result.indices.dropFirst() {
+            let previous = result[index - 1]
+            guard result[index].speakerID == nil, result[index].mode == "ambient", previous.mode == "ambient",
+                  previous.sessionID == result[index].sessionID,
+                  let speaker = previous.speakerID, speaker != "overlap",
+                  result[index].startSeconds - previous.endSeconds < gap,
+                  !endsSentence(previous.text) else { continue }
+            result[index].speakerID = speaker
+            result[index].speakerLabel = previous.speakerLabel
+        }
+        return result
+    }
+
+    static func endsSentence(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let last = trimmed.last(where: { !"\"')]".contains($0) }) else { return false }
+        return ".!?".contains(last)
     }
 
     /// Presentation only: source rows and words remain in SQLite for inspection/export.
