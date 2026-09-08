@@ -340,9 +340,7 @@ final class SpeechService: ObservableObject {
         guard !rows.isEmpty, let session = try store.sessions(limit: 200).first(where: { $0.sessionID == id }) else {
             throw JotError.message("Nothing was transcribed in this session, so there is no file to save.")
         }
-        try FileManager.default.createDirectory(at: Self.exportDirectory, withIntermediateDirectories: true)
-        let url = Self.exportDirectory.appendingPathComponent(TranscriptExport.fileName(for: session))
-        try TranscriptExport.markdown(session: session, rows: rows).write(to: url, atomically: true, encoding: .utf8)
+        let url = try TranscriptExport.write(session: session, rows: rows, directory: Self.exportDirectory)
         lastExport = url
         return url
     }
@@ -361,25 +359,32 @@ final class SpeechService: ObservableObject {
     }
 
     /// Stops capture, waits for the queued audio to finish, then writes the file and shows it in Finder.
-    func endMeeting() async {
+    @discardableResult
+    func endMeeting() async -> URL? {
+        lastExport = nil
         let id = sessionID
+        let generation = lifecycle.generation
         await setAmbient(false)
-        await drainAmbientWork()
+        do {
+            try await MeetingExportWait.wait(
+                isValid: { self.lifecycle.acceptsWork(generation) && self.sessionID == id },
+                isComplete: {
+                    self.kickWorker()
+                    return self.jobs.allSatisfy { $0.mode != "ambient" } && self.processing == nil
+                })
+        } catch {
+            notice = "Meeting export interrupted. Saved transcripts remain in Sessions; no file was exported."
+            return nil
+        }
         meetingTitle = nil
         refreshSessions()
         // A meeting with nothing transcribed ends quietly; there is no file to show.
-        guard (try? store?.session(id: id).isEmpty) == false else { return }
-        do { NSWorkspace.shared.activateFileViewerSelecting([try exportSession(id)]) }
-        catch { notice = error.localizedDescription }
-    }
-
-    /// Ambient off only queues the last block; export has to wait for the worker to store it.
-    private func drainAmbientWork() async {
-        for _ in 0..<120 {
-            if jobs.allSatisfy({ $0.mode != "ambient" }) && processing == nil { return }
-            kickWorker()
-            try? await Task.sleep(nanoseconds: 250_000_000)
-        }
+        guard (try? store?.session(id: id).isEmpty) == false else { return nil }
+        do {
+            let url = try exportSession(id)
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+            return url
+        } catch { notice = error.localizedDescription; return nil }
     }
 
     private func activateAmbient() async throws {
@@ -692,8 +697,8 @@ final class SpeechService: ObservableObject {
             case "speech.meeting_end":
                 let id = sessionID
                 guard meetingTitle != nil || ambientEnabled else { throw JotError.message("No meeting or ambient capture is running") }
-                await endMeeting()
-                result = ["sessionID": id, "file": lastExport?.path ?? ""]
+                let file = await endMeeting()
+                result = ["sessionID": id, "file": file?.path ?? ""]
             case "sessions.title":
                 guard let id = params["sessionID"] as? String, let title = params["title"] as? String else { throw JotError.message("sessionID and title are required") }
                 try store?.setTitle(sessionID: id, title: title); refreshSessions()

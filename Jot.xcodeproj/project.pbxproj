@@ -11,6 +11,7 @@
 		09AFFFF3AF1BE6A912FA1BA0 /* DictationInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82A3D8CCC3D071ABC0F5EE69 /* DictationInput.swift */; };
 		289C368E513B52686DE68A8B /* TranscriptionTuning.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF9B1EC9EF58D7AA79B27628 /* TranscriptionTuning.swift */; };
 		2D62FA2C153FEDA91143654A /* LocalService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1812288F51560118033D92A /* LocalService.swift */; };
+		44270DB6A337277CD915775F /* MeetingExportWait.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4D583EF07B940C30081D6E /* MeetingExportWait.swift */; };
 		48A035BE8890396E0ED43AAE /* JotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBA0F84BDC3CF425D094A331 /* JotApp.swift */; };
 		6689C56E5F2476BAEFBA6523 /* JotCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D2E098CDE7120087F5C947F0 /* JotCore.framework */; };
 		68A990392B7CAAB061ADC290 /* Jot.icns in Resources */ = {isa = PBXBuildFile; fileRef = 78ECFD6E5E5AF02BE9088B4A /* Jot.icns */; };
@@ -82,6 +83,7 @@
 		82A3D8CCC3D071ABC0F5EE69 /* DictationInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationInput.swift; sourceTree = "<group>"; };
 		87AE9B1836DA9D504389E51A /* ServiceLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceLifecycle.swift; sourceTree = "<group>"; };
 		95995C31AC896BE76C27532F /* PerformanceDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceDiagnostics.swift; sourceTree = "<group>"; };
+		9A4D583EF07B940C30081D6E /* MeetingExportWait.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingExportWait.swift; sourceTree = "<group>"; };
 		A1724E7761CB8156A220EF24 /* AudioPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPipeline.swift; sourceTree = "<group>"; };
 		A66DE823E83854B6AF8688F6 /* ModelCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCache.swift; sourceTree = "<group>"; };
 		CBDB9C8F81FE456A8328BCE4 /* TranscriptStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStore.swift; sourceTree = "<group>"; };
@@ -174,6 +176,7 @@
 			isa = PBXGroup;
 			children = (
 				D1812288F51560118033D92A /* LocalService.swift */,
+				9A4D583EF07B940C30081D6E /* MeetingExportWait.swift */,
 				A66DE823E83854B6AF8688F6 /* ModelCache.swift */,
 				D08CE824AF0B228F66A9DE7F /* ModelUpdate.swift */,
 				95995C31AC896BE76C27532F /* PerformanceDiagnostics.swift */,
@@ -377,6 +380,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				2D62FA2C153FEDA91143654A /* LocalService.swift in Sources */,
+				44270DB6A337277CD915775F /* MeetingExportWait.swift in Sources */,
 				9746908AE8E2351C6FF18B81 /* ModelCache.swift in Sources */,
 				D5D8145305034318CEFA19C7 /* ModelUpdate.swift in Sources */,
 				FAFD6EC5E32678410DBEB658 /* PerformanceDiagnostics.swift in Sources */,

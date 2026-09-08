@@ -61,6 +61,21 @@ final class TranscriptExportTests: XCTestCase {
         XCTAssertTrue(text.contains("4 segments, 0:00:14 of audio"), text)
     }
 
+    func testCollidingExportsAndRepeatedExportsPreserveExistingFiles() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let first = TranscriptSession(sessionID: "first", startedAt: started, lastTranscriptAt: started, transcriptCount: 1, title: "Review")
+        let second = TranscriptSession(sessionID: "second", startedAt: started, lastTranscriptAt: started, transcriptCount: 1, title: "Review")
+        let firstURL = try TranscriptExport.write(session: first, rows: [row(0, 1, "First meeting", speaker: nil)], directory: directory)
+        try "User-edited export".write(to: firstURL, atomically: true, encoding: .utf8)
+        let secondURL = try TranscriptExport.write(session: second, rows: [row(0, 1, "Second meeting", speaker: nil)], directory: directory)
+        let repeatedURL = try TranscriptExport.write(session: second, rows: [row(0, 2, "Updated meeting", speaker: nil)], directory: directory)
+        XCTAssertEqual(Set([firstURL, secondURL, repeatedURL]).count, 3)
+        XCTAssertEqual(try String(contentsOf: firstURL), "User-edited export")
+        XCTAssertTrue(try String(contentsOf: secondURL).contains("Second meeting"))
+        XCTAssertTrue(try String(contentsOf: repeatedURL).contains("Updated meeting"))
+    }
+
     func testSessionReadReturnsEveryRowInOrderBeyondOnePage() throws {
         let directory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

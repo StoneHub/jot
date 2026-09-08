@@ -90,7 +90,7 @@ public struct LocalServiceClient: Sendable {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw LocalServiceError.unavailable("Could not create local socket") }
         defer { close(fd) }
-        let timeout = ["models.prepare", "speech.transcribe_file"].contains(method) ? 600 : 30
+        let timeout = ["models.prepare", "speech.transcribe_file", "speech.meeting_end"].contains(method) ? 600 : 30
         configure(fd, timeout: timeout)
         guard try connectSocket(fd, socketURL) == 0 else { throw LocalServiceError.unavailable("Jot is not running. Open Jot.app, then retry. (\(String(cString: strerror(errno))))") }
         guard ownPeer(fd) else { throw LocalServiceError.invalid("Service peer belongs to a different user") }
