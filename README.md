@@ -8,7 +8,7 @@
 
 ![Jot running on macOS, showing a single test dictation in searchable history](docs/images/jot-history.jpg)
 
-Jot turns your voice into text in the focused field. Hold **Fn** to dictate, or switch on **ambient transcription** to keep a searchable transcript with up to four speaker labels you can name per session. Speech recognition runs on your Mac through [FluidAudio](https://github.com/FluidInference/FluidAudio).
+Jot turns your voice into text in the focused field. Hold **Fn** (or your custom shortcut) to dictate, or switch on **ambient transcription** to keep a searchable transcript with up to four speaker labels you can name per session. Speech recognition runs on your Mac through [FluidAudio](https://github.com/FluidInference/FluidAudio).
 
 - **Speak into your apps.** Release Fn to insert your words without sending the message.
 - **Keep the words.** Search local history, select text across statements, or copy a single card.
@@ -25,8 +25,10 @@ Build and install Jot using the [instructions below](#build-and-install), then o
 Grant microphone and Accessibility access. If Fn triggers a macOS shortcut, set the Fn/Globe action to **Do Nothing** in Keyboard settings.
 
 - **Resume** loads models and enables your selected speech features. **Pause** stops speech processing and unloads models.
-- **Fn dictation** and **Ambient transcription** have separate switches. Ambient starts off when you launch Jot.
+- **Dictation** and **Ambient transcription** have separate switches. Ambient starts off when you launch Jot.
 - Closing the window keeps Jot in the menu bar. **Open** brings the window back; **Quit** stops the app.
+
+**Change the shortcut:** click the key label beside **Hold to talk**. Press a key with Control, Option, or Command, or choose **Use Fn / Globe** to restore the default. Your choice is saved on this Mac. Custom shortcuts take precedence over the same combination in other apps; choose an unused combination. Release the key or a required modifier to finish.
 
 Dictation supports up to 60 seconds per hold. It cancels if focus changes, skips password fields, and never presses Return. Text insertion depends on the target app's Accessibility support.
 

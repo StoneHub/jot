@@ -9,6 +9,18 @@ import FluidAudio
 final class SpeechService: ObservableObject {
     @Published var lifecycle = ServiceLifecycle()
     @Published var fnRequested = UserDefaults.standard.bool(forKey: "fnRequested")
+    @Published private(set) var shortcut = ShortcutPreferences().load()
+    var canChangeShortcut: Bool { !dictationActive && !dictationPending }
+
+    func setShortcutRecording(_ active: Bool) { input.isRecordingShortcut = active }
+
+    func setShortcut(_ value: DictationShortcut) throws {
+        guard canChangeShortcut else { throw JotError.message("Finish dictation before changing its shortcut.") }
+        try ShortcutPreferences().save(value)
+        shortcut = value
+        input.shortcut = value
+    }
+
     @Published var ambientRequested = false
     @Published private(set) var ambientEnabled = false
     @Published var mode = "paused"
@@ -123,6 +135,7 @@ final class SpeechService: ObservableObject {
     private var lastStatsTime = Date.distantPast
     private lazy var input: DictationInput = {
         let result = DictationInput(onStart: { [weak self] in self?.beginDictation() }, onStop: { [weak self] in self?.endDictation() })
+        result.shortcut = shortcut
         result.canStart = { [weak self] in
             guard let self else { return false }
             return self.lifecycle.phase == .ready && self.modelState == "ready" && !self.dictationPending && !self.dictationActive && !self.diagnosticActive
@@ -288,7 +301,7 @@ final class SpeechService: ObservableObject {
         guard await requestMic(), lifecycle.acceptsWork(token), fnRequested else { return }
         if !DictationInput.accessibilityGranted { input.requestAccessibility() }
         fnEnabled = input.enable()
-        if !fnEnabled { notice = "Enable Accessibility access in System Settings, then switch Fn dictation on again." }
+        if !fnEnabled { notice = "Enable Accessibility access in System Settings, then switch dictation on again." }
     }
 
     func disableFn() {
@@ -451,7 +464,7 @@ final class SpeechService: ObservableObject {
             dictation = []; dictationStarted = Date(); dictationTicket = UUID(); dictationActive = true
             updateMode()
             markPerformance(.dictationStarted)
-            notice = "Listening for dictation… release Fn to insert."
+            notice = "Listening for dictation… release \(shortcut.displayName) to insert."
         } catch { cancelDictation(); notice = error.localizedDescription }
     }
 
@@ -659,7 +672,7 @@ final class SpeechService: ObservableObject {
         var result: [String: Any] = ["mode": mode, "models": modelState, "microphoneRunning": capture.running,
             "microphonePermission": AVCaptureDevice.authorizationStatus(for: .audio).rawValue,
             "accessibilityGranted": DictationInput.accessibilityGranted, "fnEnabled": fnEnabled,
-            "fnRequested": fnRequested, "ambientRequested": ambientRequested, "ambientEnabled": ambientEnabled, "servicePhase": lifecycle.phase.rawValue,
+            "dictationShortcut": shortcut.displayName, "fnRequested": fnRequested, "ambientRequested": ambientRequested, "ambientEnabled": ambientEnabled, "servicePhase": lifecycle.phase.rawValue,
             "notice": notice, "sessionID": sessionID, "inferenceRunning": processing != nil || diagnosticActive, "resources": try object(resources),
             "droppedAudioSeconds": droppedSeconds, "queuedAudioSeconds": pendingAudioSeconds, "processingLagSeconds": lagSeconds,
             "lastInferenceSeconds": lastInferenceSeconds, "processedAudioSeconds": processedAudioSeconds,
