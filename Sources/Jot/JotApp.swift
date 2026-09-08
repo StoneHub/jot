@@ -373,6 +373,10 @@ private struct SessionsView: View {
             }
         }
         .onAppear { service.refreshSessions(); if selectedID == nil { select(service.sessions.first?.sessionID) } }
+        .onChange(of: service.historyRevision) { _, _ in
+            labelTarget = nil
+            select(service.sessions.contains { $0.sessionID == selectedID } ? selectedID : service.sessions.first?.sessionID)
+        }
         .onChange(of: service.sessions.map(\.transcriptCount)) { _, _ in if let selectedID { rows = service.sessionParagraphs(selectedID) } }
         .sheet(isPresented: Binding(get: { labelTarget != nil }, set: { if !$0 { labelTarget = nil } })) {
             VStack(alignment: .leading, spacing: 12) {
@@ -424,6 +428,12 @@ private struct SessionsView: View {
                     do { NSWorkspace.shared.activateFileViewerSelecting([try service.exportSession(session.sessionID)]) }
                     catch { service.notice = error.localizedDescription }
                 }.modifier(PrimaryGlassButton()).help("Saves Markdown to Documents/Jot Sessions and shows it in Finder")
+                Button("Delete session", systemImage: "trash", role: .destructive) {
+                    do { try service.deleteSession(session.sessionID) }
+                    catch { service.notice = error.localizedDescription }
+                }.labelStyle(.iconOnly).modifier(GlassButton())
+                    .disabled(!service.canDeleteSession(session.sessionID))
+                    .help("Delete this saved session")
             }
         }
     }
@@ -521,6 +531,11 @@ struct TranscriptView: View {
                         .modifier(GlassButton())
                         .help("Shows the transcript database. Quit Jot before moving history files to Trash.")
 
+                        Button("Clear", systemImage: "clear", role: .destructive) {
+                            do { try service.clearHistory(); search = ""; selected = nil; copiedID = nil }
+                            catch { service.notice = error.localizedDescription }
+                        }.modifier(GlassButton()).help("Delete all saved transcripts and sessions")
+
                         Button(showHistory ? "Hide" : "Show", systemImage: showHistory ? "eye.slash" : "eye") { showHistory.toggle() }
                             .modifier(GlassButton())
 
@@ -546,6 +561,7 @@ struct TranscriptView: View {
         .background(WindowAttachment(attach: delegate.attach))
         .onAppear { delegate.openAction = { openWindow(id: "main") } }
         .onDisappear { copyReset?.cancel() }
+        .onChange(of: service.historyRevision) { _, _ in selected = nil; copiedID = nil }
 
         .sheet(isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } })) {
             VStack(alignment: .leading, spacing: 16) {
@@ -591,6 +607,7 @@ struct TranscriptView: View {
                 empty(search.isEmpty ? "No transcripts yet" : "No matches", symbol: "text.alignleft")
             } else if historyTextView {
                 SelectableHistory(transcripts: service.history, search: search)
+                    .id(service.historyRevision)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 HStack {
@@ -625,9 +642,15 @@ struct TranscriptView: View {
 
                                     .accessibilityLabel("Copy \(item.mode) transcript")
                                     .accessibilityValue(copiedID == item.id ? "Copied" : item.text)
-                                if item.speakerID != nil && item.speakerID != "overlap" {
-                                    Button("Name speaker") { selected = item; label = item.speakerLabel ?? "" }.font(.caption).buttonStyle(.link)
-
+                                HStack {
+                                    if item.speakerID != nil && item.speakerID != "overlap" {
+                                        Button("Name speaker") { selected = item; label = item.speakerLabel ?? "" }.font(.caption).buttonStyle(.link)
+                                    }
+                                    Spacer()
+                                    Button("Delete transcript", systemImage: "trash", role: .destructive) {
+                                        do { try service.deleteHistoryCard(item) }
+                                        catch { service.notice = error.localizedDescription }
+                                    }.labelStyle(.iconOnly).buttonStyle(.plain).help("Delete this transcript")
                                 }
                             }.padding(14).background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 14))
 

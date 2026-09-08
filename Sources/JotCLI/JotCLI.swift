@@ -35,6 +35,8 @@ struct JotCLI {
     jot recent [--limit N] [--offset N]
     jot sessions [--limit N]
     jot events [--session ID] [--limit N] [--offset N]
+    jot clear-history                  Delete all saved transcripts and sessions
+    jot delete-session <session-id>     Delete one saved session
     jot read <transcript-id>
     jot export <session-id> [--json]    Whole session as Markdown, or folded rows as JSON
     jot label <session-id> <speaker-id> <name>
@@ -54,6 +56,12 @@ struct JotCLI {
         case "status", "start", "pause", "resume", "stop", "doctor", "diagnostics":
             guard args.count == 1 else { throw CLIError.usage("Unexpected arguments for \(first)") }
             return ("speech." + first, [:])
+        case "clear-history":
+            guard args.count == 1 else { throw CLIError.usage("Use: jot clear-history") }
+            return ("transcripts.clear", [:])
+        case "delete-session":
+            guard args.count == 2 else { throw CLIError.usage("Use: jot delete-session <session-id>") }
+            return ("transcripts.delete_session", ["sessionID": args[1]])
         case "ambient-off":
             guard args.count == 1 else { throw CLIError.usage("Use: jot ambient-off") }
             return ("speech.ambient_off", [:])
