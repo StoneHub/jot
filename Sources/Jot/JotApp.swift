@@ -347,7 +347,7 @@ struct MenuControls: View {
 }
 
 
-/// Every capture session, readable whole, with rename, speaker naming, copy, and export.
+/// Every capture session, readable whole at full width; the picker keeps the list out of the reading column.
 private struct SessionsView: View {
     @ObservedObject var service: SpeechService
     @State private var selectedID: String?
@@ -359,9 +359,17 @@ private struct SessionsView: View {
     @State private var copied = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            list.frame(width: 250)
-            detail
+        VStack(alignment: .leading, spacing: 12) {
+            if service.sessions.isEmpty {
+                Text("No sessions yet. Start a meeting or switch on ambient transcription.").foregroundStyle(.secondary)
+            } else {
+                header
+                if let session = selected {
+                    Text("\(session.startedAt.formatted(date: .abbreviated, time: .shortened)) · \(session.transcriptCount) segments · \(TranscriptExport.clock(session.durationSeconds)) · Click a speaker to name them")
+                        .font(.caption).foregroundStyle(.secondary)
+                    transcript
+                }
+            }
         }
         .onAppear { service.refreshSessions(); if selectedID == nil { select(service.sessions.first?.sessionID) } }
         .onChange(of: service.sessions.map(\.transcriptCount)) { _, _ in if let selectedID { rows = service.sessionParagraphs(selectedID) } }
@@ -384,74 +392,59 @@ private struct SessionsView: View {
         }
     }
 
-    private var list: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 6) {
-                if service.sessions.isEmpty { Text("No sessions yet.").foregroundStyle(.secondary).padding(12) }
-                ForEach(service.sessions) { session in
-                    Button { select(session.sessionID) } label: {
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 6) {
-                                if session.sessionID == service.activeSessionID && service.meetingTitle != nil {
-                                    Circle().fill(.red).frame(width: 7, height: 7)
-                                }
-                                Text(session.title ?? "Untitled session").font(.callout.weight(session.sessionID == selectedID ? .semibold : .regular)).lineLimit(1)
-                            }
-                            Text("\(session.startedAt.formatted(date: .abbreviated, time: .shortened)) · \(TranscriptExport.clock(session.durationSeconds))")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }.frame(maxWidth: .infinity, alignment: .leading).padding(10)
-                            .contentShape(RoundedRectangle(cornerRadius: 12))
-                            .modifier(NavigationSurface(selected: session.sessionID == selectedID))
-                    }.buttonStyle(.plain)
+    private var selected: TranscriptSession? { service.sessions.first { $0.sessionID == selectedID } }
+
+    private func label(_ session: TranscriptSession) -> String {
+        let recording = session.sessionID == service.activeSessionID && service.meetingTitle != nil ? "● " : ""
+        return "\(recording)\(session.title ?? "Untitled session") · \(session.startedAt.formatted(date: .abbreviated, time: .shortened)) · \(TranscriptExport.clock(session.durationSeconds))"
+    }
+
+    /// One row: which session, rename, copy, export. The session menu scales past the few sessions a list column shows well.
+    private var header: some View {
+        HStack(spacing: 8) {
+            if renaming, let session = selected {
+                TextField("Session name", text: $titleDraft).textFieldStyle(.roundedBorder).frame(maxWidth: 360)
+                    .onSubmit { commitRename(session) }
+                Button("Save") { commitRename(session) }.modifier(PrimaryGlassButton())
+                Button("Cancel") { renaming = false }.modifier(GlassButton())
+            } else {
+                Picker("Session", selection: Binding(get: { selectedID ?? "" }, set: { select($0) })) {
+                    ForEach(service.sessions) { session in Text(label(session)).tag(session.sessionID) }
+                }.labelsHidden().pickerStyle(.menu).frame(maxWidth: 480)
+                if let session = selected {
+                    Button("Rename", systemImage: "pencil") { titleDraft = session.title ?? ""; renaming = true }
+                        .labelStyle(.iconOnly).modifier(GlassButton()).help("Rename this session")
                 }
+            }
+            Spacer()
+            if let session = selected {
+                Button(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc") { copyAll(session) }.modifier(GlassButton())
+                Button("Export", systemImage: "square.and.arrow.up") {
+                    do { NSWorkspace.shared.activateFileViewerSelecting([try service.exportSession(session.sessionID)]) }
+                    catch { service.notice = error.localizedDescription }
+                }.modifier(PrimaryGlassButton()).help("Saves Markdown to Documents/Jot Sessions and shows it in Finder")
             }
         }
     }
 
-    private var detail: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if let session = service.sessions.first(where: { $0.sessionID == selectedID }) {
-                HStack(spacing: 8) {
-                    if renaming {
-                        TextField("Session name", text: $titleDraft).textFieldStyle(.roundedBorder).frame(maxWidth: 320)
-                            .onSubmit { commitRename(session) }
-                        Button("Save") { commitRename(session) }.modifier(PrimaryGlassButton())
-                        Button("Cancel") { renaming = false }.modifier(GlassButton())
-                    } else {
-                        Text(session.title ?? "Untitled session").font(.title3.weight(.semibold)).lineLimit(1)
-                        Button("Rename", systemImage: "pencil") { titleDraft = session.title ?? ""; renaming = true }
-                            .labelStyle(.iconOnly).modifier(GlassButton()).help("Rename this session")
-                    }
-                    Spacer()
-                    Button(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc") { copyAll(session) }.modifier(GlassButton())
-                    Button("Export", systemImage: "square.and.arrow.up") {
-                        do { NSWorkspace.shared.activateFileViewerSelecting([try service.exportSession(session.sessionID)]) }
-                        catch { service.notice = error.localizedDescription }
-                    }.modifier(PrimaryGlassButton()).help("Saves Markdown to Documents/Jot Sessions and shows it in Finder")
-                }
-                Text("\(session.transcriptCount) segments · \(TranscriptExport.clock(session.durationSeconds)) · Click a speaker to name them")
-                    .font(.caption).foregroundStyle(.secondary)
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 12) {
-                        ForEach(rows) { row in
-                            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                Text(TranscriptExport.clock(row.startSeconds)).font(.caption.monospacedDigit()).foregroundStyle(.tertiary).frame(width: 56, alignment: .trailing)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    if row.speakerID != nil && row.speakerID != "overlap" {
-                                        Button(TranscriptExport.speakerName(row)) { labelDraft = row.speakerLabel ?? ""; labelTarget = row }
-                                            .buttonStyle(.link).font(.caption.weight(.semibold))
-                                    } else {
-                                        Text(TranscriptExport.speakerName(row)).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                                    }
-                                    Text(row.text).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-                                }
+    private var transcript: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 14) {
+                ForEach(rows) { row in
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(TranscriptExport.clock(row.startSeconds)).font(.caption.monospacedDigit()).foregroundStyle(.tertiary).frame(width: 56, alignment: .trailing)
+                        VStack(alignment: .leading, spacing: 3) {
+                            if row.speakerID != nil && row.speakerID != "overlap" {
+                                Button(TranscriptExport.speakerName(row)) { labelDraft = row.speakerLabel ?? ""; labelTarget = row }
+                                    .buttonStyle(.link).font(.caption.weight(.semibold))
+                            } else {
+                                Text(TranscriptExport.speakerName(row)).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                             }
+                            Text(row.text).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                         }
-                    }.padding(.vertical, 4)
+                    }
                 }
-            } else {
-                Text("Select a session.").foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+            }.frame(maxWidth: 820, alignment: .leading).padding(.vertical, 4)
         }
     }
 
