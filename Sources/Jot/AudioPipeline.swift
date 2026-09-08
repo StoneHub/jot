@@ -29,6 +29,8 @@ actor SpeechPipeline {
     private var expectedOffset: Double = 0
     private var baseOffset: Double = 0
     private var probabilities: [Int: [Float]] = [:]
+    /// Last confirmed speaker of the previous ambient block, carried forward while audio stays continuous.
+    private var lastSpeaker: String?
 
     func prepare() async throws {
         if asr == nil {
@@ -55,7 +57,7 @@ actor SpeechPipeline {
     }
 
     func unload() {
-        asr = nil; vad = nil; diarizer = nil
+        asr = nil; vad = nil; diarizer = nil; lastSpeaker = nil
         probabilities.removeAll(keepingCapacity: false)
         sessionID = ""; expectedOffset = 0; baseOffset = 0
     }
@@ -73,7 +75,7 @@ actor SpeechPipeline {
         let begin = Date()
         if job.mode == "ambient" {
             if sessionID != job.sessionID || abs(job.offset - expectedOffset) > 0.02 {
-                diarizer.reset(); probabilities.removeAll(); sessionID = job.sessionID; baseOffset = job.offset
+                diarizer.reset(); probabilities.removeAll(); sessionID = job.sessionID; baseOffset = job.offset; lastSpeaker = nil
             }
             expectedOffset = job.offset + Double(job.samples.count) / 16000
             diarizer.addAudio(job.samples)
@@ -108,7 +110,9 @@ actor SpeechPipeline {
                 let frame = Int((job.offset - baseOffset + (word.startTime + word.endTime) / 2) / 0.08)
                 return AttributedWord(text: word.word, start: word.startTime, end: word.endTime, probabilities: probabilities[frame] ?? [])
             }
-            segments = TranscriptGrouping.turns(attributed, tuning: tuning).map { turn in
+            let turns = TranscriptGrouping.turns(attributed, tuning: tuning, continuing: lastSpeaker)
+            if let final = turns.last?.speaker, final != "overlap" { lastSpeaker = final }
+            segments = turns.map { turn in
                 Transcript(sessionID: job.sessionID, startedAt: job.startedAt,
                     startSeconds: job.offset + turn.start, endSeconds: job.offset + turn.end,
                     text: turn.text, speakerID: turn.speaker, mode: job.mode)

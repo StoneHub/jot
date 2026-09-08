@@ -166,6 +166,19 @@ public final class TranscriptStore: @unchecked Sendable {
         try locked { try rows(where: "", value: nil, limit: limit, offset: offset) }
     }
 
+    /// Every row of one session in chronological order, for export. Bounded at 10,000 rows so a response stays inside the socket frame limit.
+    public func session(id: String) throws -> [Transcript] {
+        try locked {
+            var result: [Transcript] = []
+            while result.count < 10_000 {
+                let page = try rows(where: "WHERE t.session_id = ?", value: id, limit: 200, offset: result.count)
+                result.append(contentsOf: page)
+                if page.count < 200 { break }
+            }
+            return result.sorted { ($0.startSeconds, $0.id) < ($1.startSeconds, $1.id) }
+        }
+    }
+
     public func read(id: String) throws -> Transcript? {
         try locked { try rows(where: "WHERE t.id = ?", value: id, limit: 1, offset: 0).first }
     }

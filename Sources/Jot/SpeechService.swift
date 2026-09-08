@@ -432,7 +432,8 @@ final class SpeechService: ObservableObject {
         if ambientEnabled {
             ambient.append(contentsOf: packet.samples)
             silentSeconds = packet.rms < 0.002 ? silentSeconds + Double(packet.samples.count) / 16000 : 0
-            if ambient.count >= 160000 || (ambient.count >= 32000 && silentSeconds >= tuning.bounded.paragraphPause) { flushAmbient() }
+            // Blocks run up to 20 s and only break on a 2 s silence, so most sentences reach the recognizer whole.
+            if ambient.count >= 320000 || (ambient.count >= 32000 && silentSeconds >= max(2, tuning.bounded.paragraphPause)) { flushAmbient() }
         }
     }
 
@@ -613,6 +614,12 @@ final class SpeechService: ObservableObject {
             case "transcripts.read":
                 guard let id = params["id"] as? String, let item = try store?.read(id: id) else { throw JotError.message("Transcript not found") }
                 result = try object(item)
+            case "transcripts.export":
+                guard let id = params["sessionID"] as? String, let store else { throw JotError.message("Session not found") }
+                let rows = try store.session(id: id)
+                guard let session = try store.sessions(limit: 200).first(where: { $0.sessionID == id }), !rows.isEmpty else { throw JotError.message("Session not found") }
+                if params["format"] as? String == "json" { result = try object(TranscriptGrouping.foldContinuations(rows)) }
+                else { result = ["sessionID": id, "text": TranscriptExport.markdown(session: session, rows: rows)] }
             case "speech.transcribe_file":
                 guard modelState == "ready", !capture.running, processing == nil, jobs.isEmpty, !diagnosticActive else { throw JotError.message("Diagnostic transcription requires ready models and idle capture/inference.") }
                 guard let path = params["path"] as? String else { throw JotError.message("path is required") }
