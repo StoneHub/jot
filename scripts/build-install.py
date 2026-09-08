@@ -115,13 +115,29 @@ if old_preferences.returncode == 0:
         preferences['jotLegacyPreferencesMigrated'] = True
         subprocess.run(['defaults', 'import', 'space.jot.app', '-'], input=plistlib.dumps(preferences), check=True)
 subprocess.run(['codesign', '--verify', '--deep', '--strict', str(source)], check=True)
-subprocess.run(['ditto', str(source), str(destination)], check=True)
+# ditto merges existing directories: Debug-only dylibs would invalidate a Release seal.
+# The runtime is already idle/stopped. Preserve its bundle and install into an empty path.
+backup = work / 'app-backups' / str(time.time_ns()) / destination.name
+had_previous = destination.exists()
+if had_previous:
+    backup.parent.mkdir(parents=True)
+    shutil.move(str(destination), str(backup))
 relative = Path('Contents/MacOS') / s['EXECUTABLE_NAME']
 digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
-assert digest(source / relative) == digest(destination / relative), 'Installed executable differs'
-subprocess.run(['codesign', '--verify', '--deep', '--strict', str(destination)], check=True)
-subprocess.run([sys.executable, str(root / 'scripts/check-no-feedback.py'), str(destination)], check=True)
-assert (destination / 'Contents/Helpers/jot').exists()
+try:
+    subprocess.run(['ditto', str(source), str(destination)], check=True)
+    assert digest(source / relative) == digest(destination / relative), 'Installed executable differs'
+    subprocess.run(['codesign', '--verify', '--deep', '--strict', str(destination)], check=True)
+    subprocess.run([sys.executable, str(root / 'scripts/check-no-feedback.py'), str(destination)], check=True)
+    assert (destination / 'Contents/Helpers/jot').exists()
+except BaseException:
+    if destination.exists():
+        shutil.rmtree(destination)
+    if had_previous:
+        shutil.move(str(backup), str(destination))
+    raise
+if had_previous:
+    print(f'Previous app preserved: {backup}', flush=True)
 link = Path.home() / '.local/bin/jot'
 link.parent.mkdir(parents=True, exist_ok=True)
 if not link.exists() and not link.is_symlink():
