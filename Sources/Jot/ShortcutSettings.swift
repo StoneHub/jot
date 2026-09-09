@@ -14,20 +14,17 @@ extension ShortcutModifiers {
     }
 }
 
+/// The shortcut button alone; the row that labels it lives with the other controls so it lines up with them.
 struct ShortcutSettings: View {
     @ObservedObject var service: SpeechService
     @State private var showing = false
     var body: some View {
-        HStack {
-            Text("Hold to talk").font(.caption).foregroundStyle(.secondary)
-            Spacer(minLength: 4)
-            Button(service.shortcut.displayName) { showing = true }
-                .font(.callout.monospaced()).accessibilityLabel("Change dictation shortcut")
-                .disabled(!service.canChangeShortcut)
-                .popover(isPresented: $showing) {
-                    ShortcutEditor(service: service, dismiss: { showing = false })
-                }
-        }
+        Button(service.shortcut.displayName) { showing = true }
+            .font(.callout.monospaced()).accessibilityLabel("Change dictation shortcut")
+            .disabled(!service.canChangeShortcut)
+            .popover(isPresented: $showing) {
+                ShortcutEditor(service: service, dismiss: { showing = false })
+            }
     }
 }
 
