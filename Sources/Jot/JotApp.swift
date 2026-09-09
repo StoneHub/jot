@@ -176,21 +176,42 @@ private struct PrimaryGlassButton: ViewModifier {
     }
 }
 
+/// Every control row shares one grammar: a 20-point gutter for a symbol or status dot, a title with an optional caption, and the control on the right edge.
+private struct ControlRow<Control: View>: View {
+    var symbol: String? = nil
+    var dot: Color? = nil
+    let title: String
+    var caption: String? = nil
+    var secondary = false
+    @ViewBuilder let control: () -> Control
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Group {
+                if let dot { Circle().fill(dot).frame(width: 8, height: 8) }
+                else if let symbol { Image(systemName: symbol).foregroundStyle(.secondary) }
+                else { Color.clear }
+            }.frame(width: 20, height: 20)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(secondary ? .callout : .body).foregroundStyle(secondary ? .secondary : .primary).lineLimit(1)
+                if let caption { Text(caption).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+            }
+            Spacer(minLength: 8)
+            control()
+        }.frame(maxWidth: .infinity)
+    }
+}
+
 private struct ServiceControls: View {
     @ObservedObject var service: SpeechService
     var compact = false
+    private var statusTitle: String { service.isPaused ? "Paused" : (service.isTransitioning ? "Starting" : "Ready") }
+    private var statusCaption: String {
+        if service.isPaused { return service.lifecycle.phase == .pausing ? "Releasing models…" : "Models unloaded" }
+        return service.ambientEnabled ? "Ambient transcription on" : "Ambient transcription off"
+    }
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 7) {
-                        Circle().fill(service.isPaused ? Color.secondary : .green).frame(width: 7, height: 7)
-                        Text(service.isPaused ? "Paused" : (service.isTransitioning ? "Starting" : "Ready"))
-                    }.font(.headline)
-                    Text(service.isPaused ? (service.lifecycle.phase == .pausing ? "Releasing models…" : "Models unloaded") : (service.ambientEnabled ? "Ambient transcription on" : "Ambient transcription off"))
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
+        VStack(alignment: .leading, spacing: 14) {
+            ControlRow(dot: service.isPaused ? Color.secondary : .green, title: statusTitle, caption: statusCaption) {
                 Button {
                     if service.isPaused { service.prepare() } else { service.pause() }
                 } label: {
@@ -200,26 +221,23 @@ private struct ServiceControls: View {
                 .disabled(service.lifecycle.phase == .pausing)
                 .help("Pause stops all speech work and unloads models.")
                 .accessibilityIdentifier("service-pause-resume")
-
             }
             Divider()
             MeetingControls(service: service)
             Divider()
-            Toggle(isOn: Binding(get: { service.fnRequested }, set: { enabled in
-                if enabled { Task { await service.enableFn() } } else { service.disableFn() }
-            })) {
-                Label("Dictation", systemImage: "keyboard")
-            }.toggleStyle(.switch).help("Hold \(service.shortcut.displayName) to dictate into the focused text field.")
-            ShortcutSettings(service: service)
-
-            Toggle(isOn: Binding(get: { service.ambientRequested }, set: { enabled in
-                Task { await service.setAmbient(enabled) }
-            })) {
-                Label("Ambient transcription", systemImage: "mic")
-            }.toggleStyle(.switch).help("Continuously transcribe the microphone while the service is running.")
-
+            ControlRow(symbol: "keyboard", title: "Dictation") {
+                Toggle("Dictation", isOn: Binding(get: { service.fnRequested }, set: { enabled in
+                    if enabled { Task { await service.enableFn() } } else { service.disableFn() }
+                })).labelsHidden().toggleStyle(.switch)
+            }.help("Hold \(service.shortcut.displayName) to dictate into the focused text field.")
+            ControlRow(title: "Hold to talk", secondary: true) { ShortcutSettings(service: service) }
+            ControlRow(symbol: "mic", title: "Ambient transcription") {
+                Toggle("Ambient transcription", isOn: Binding(get: { service.ambientRequested }, set: { enabled in
+                    Task { await service.setAmbient(enabled) }
+                })).labelsHidden().toggleStyle(.switch)
+            }.help("Continuously transcribe the microphone while the service is running.")
             if service.isPaused && (service.fnRequested || service.ambientRequested) {
-                Text("Selected features start when you resume.").font(.caption).foregroundStyle(.secondary)
+                Text("Selected features start when you resume.").font(.caption).foregroundStyle(.secondary).padding(.leading, 30)
             }
             if let pending = service.downloadPrompt {
                 Divider()
@@ -233,7 +251,7 @@ private struct ServiceControls: View {
     }
 }
 
-/// One button to record a named meeting; ending it saves the transcript and shows the file.
+/// One row to record a named meeting; ending it saves the transcript and shows the file.
 private struct MeetingControls: View {
     @ObservedObject var service: SpeechService
     @State private var naming = false
@@ -241,30 +259,27 @@ private struct MeetingControls: View {
     @State private var working = false
     var body: some View {
         if let title = service.meetingTitle {
-            HStack(spacing: 10) {
-                Circle().fill(.red).frame(width: 8, height: 8)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.callout.weight(.semibold)).lineLimit(1)
-                    Text("Recording meeting").font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 8)
-                Button(working ? "Saving…" : "End meeting") {
+            ControlRow(dot: .red, title: title, caption: "Recording") {
+                Button(working ? "Saving…" : "End") {
                     working = true
                     Task { await service.endMeeting(); working = false }
                 }.modifier(PrimaryGlassButton()).disabled(working).accessibilityIdentifier("end-meeting")
             }
         } else if naming {
-            HStack(spacing: 8) {
-                TextField("Meeting name", text: $draft).textFieldStyle(.roundedBorder)
-                    .onSubmit { start() }
-                Button("Start") { start() }.modifier(PrimaryGlassButton())
-                    .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty || working)
-                Button("Cancel") { naming = false; draft = "" }.modifier(GlassButton())
+            VStack(alignment: .leading, spacing: 8) {
+                ControlRow(symbol: "record.circle", title: "Meeting", caption: "Name it, then start") { EmptyView() }
+                HStack(spacing: 8) {
+                    TextField("Meeting name", text: $draft).textFieldStyle(.roundedBorder).onSubmit { start() }
+                    Button("Start") { start() }.modifier(PrimaryGlassButton())
+                        .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty || working)
+                    Button("Cancel") { naming = false; draft = "" }.modifier(GlassButton())
+                }.padding(.leading, 30)
             }
         } else {
-            Button("Start meeting", systemImage: "record.circle") { naming = true }
-                .modifier(GlassButton()).accessibilityIdentifier("start-meeting")
-                .help("Ambient capture with a name. Ending it saves Markdown to Documents/Jot Sessions.")
+            ControlRow(symbol: "record.circle", title: "Meeting", caption: "Ambient capture with a name") {
+                Button("Start") { naming = true }.modifier(GlassButton()).accessibilityIdentifier("start-meeting")
+                    .help("Ending it saves Markdown to Documents/Jot Sessions.")
+            }
         }
     }
     private func start() {
