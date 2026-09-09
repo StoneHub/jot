@@ -7,14 +7,15 @@ import JotCore
 @MainActor
 final class DictationInput {
     enum InputError: LocalizedError {
-        case accessibilityRequired, eventTapUnavailable, noTextField, secureField
+        case accessibilityRequired, eventTapUnavailable, secureField
+        case noTextField(app: String, role: String)
         case targetChanged, shortcutCancelled, clipboardUnavailable, pasteUnavailable
 
         var errorDescription: String? {
             switch self {
             case .accessibilityRequired: return "Allow Accessibility access to use dictation."
             case .eventTapUnavailable: return "The shortcut listener could not start. Check Input Monitoring permission."
-            case .noTextField: return "Focus an editable text field before holding the dictation shortcut."
+            case .noTextField(let app, let role): return "Focus an editable text field before holding the dictation shortcut. Jot saw \(role) in \(app)."
             case .secureField: return "Dictation is unavailable in password fields."
             case .targetChanged: return "Dictation cancelled because the focused application or text field changed."
             case .shortcutCancelled: return "Dictation cancelled because the dictation shortcut was used with another key."
@@ -61,6 +62,8 @@ final class DictationInput {
     private var acceptedPresses = 0
     private var busyPresses = 0
     private var lastShortcutError: String?
+    /// Kept after a later press succeeds, so a rejection in one app survives a success in another.
+    private var lastRejection: String?
     /// Health and counts only. Never includes typed text or accessibility field values.
     var diagnostics: [String: Any] {
         var result: [String: Any] = [
@@ -69,11 +72,13 @@ final class DictationInput {
             "fnPresses": fnPresses, "acceptedPresses": acceptedPresses,
             "busyPresses": busyPresses]
         if let lastShortcutError { result["lastError"] = lastShortcutError }
+        if let lastRejection { result["lastRejection"] = lastRejection }
         return result
     }
 
     private func report(_ error: Error) {
         lastShortcutError = error.localizedDescription
+        lastRejection = error.localizedDescription
         onError?(error)
     }
 
@@ -147,8 +152,12 @@ final class DictationInput {
         activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.checkFocus() }
+            MainActor.assumeIsolated {
+                if let front = NSWorkspace.shared.frontmostApplication { Self.wakeAccessibility(front.processIdentifier) }
+                self?.checkFocus()
+            }
         }
+        if let front = NSWorkspace.shared.frontmostApplication { Self.wakeAccessibility(front.processIdentifier) }
         isEnabled = true
         return true
     }
@@ -177,13 +186,34 @@ final class DictationInput {
         guard Self.accessibilityGranted else { throw InputError.accessibilityRequired }
         guard let app = NSWorkspace.shared.frontmostApplication,
               app.processIdentifier != ProcessInfo.processInfo.processIdentifier else {
-            throw InputError.noTextField
+            throw InputError.noTextField(app: "no other app in front", role: "none")
         }
         let application = AXUIElementCreateApplication(app.processIdentifier)
-        guard let field = focusedField(application) else { throw InputError.noTextField }
-        try validateEditable(field)
+        let field = try editableField(in: application, of: app)
         target = Target(pid: app.processIdentifier, field: field)
         observeFocus(application, pid: app.processIdentifier)
+    }
+
+    /// Electron and Chromium apps keep their accessibility tree off until asked. The first failed look wakes it and looks once more.
+    private func editableField(in application: AXUIElement, of app: NSRunningApplication) throws -> AXUIElement {
+        let name = app.bundleIdentifier ?? app.localizedName ?? "unknown app"
+        do {
+            guard let field = focusedField(application) else { throw InputError.noTextField(app: name, role: "no focused element") }
+            try validateEditable(field)
+            return field
+        } catch InputError.noTextField {
+            Self.wakeAccessibility(app.processIdentifier)
+            usleep(250_000)
+            guard let field = focusedField(application) else { throw InputError.noTextField(app: name, role: "no focused element") }
+            try validateEditable(field)
+            return field
+        }
+    }
+
+    /// Electron honors AXManualAccessibility; native apps ignore it. Harmless to set every time an app comes to the front.
+    static func wakeAccessibility(_ pid: pid_t) {
+        guard pid != ProcessInfo.processInfo.processIdentifier else { return }
+        AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), "AXManualAccessibility" as CFString, kCFBooleanTrue)
     }
 
     /// Ends a service-cancelled or empty utterance without calling its callbacks again.
@@ -378,6 +408,14 @@ final class DictationInput {
         return (value as! AXUIElement)
     }
 
+    /// Bundle id of the process that owns an element, for the focused-field error and doctor output.
+    private func owner(of field: AXUIElement) -> String {
+        var pid: pid_t = 0
+        AXUIElementGetPid(field, &pid)
+        let app = NSRunningApplication(processIdentifier: pid)
+        return app?.bundleIdentifier ?? app?.localizedName ?? "pid \(pid)"
+    }
+
     private func stringAttribute(_ field: AXUIElement, _ name: String) -> String? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(field, name as CFString, &value) == .success else { return nil }
@@ -392,11 +430,11 @@ final class DictationInput {
         }
         // Unknown/custom accessibility roles fail closed. Text-entry support varies by app.
         guard role == kAXTextFieldRole || role == kAXTextAreaRole || role == kAXComboBoxRole else {
-            throw InputError.noTextField
+            throw InputError.noTextField(app: owner(of: field), role: [role, subrole].compactMap { $0 }.joined(separator: "/").ifEmpty("no role"))
         }
         var value: CFTypeRef?
         if AXUIElementCopyAttributeValue(field, kAXEnabledAttribute as CFString, &value) == .success,
-           let enabled = value as? Bool, !enabled { throw InputError.noTextField }
+           let enabled = value as? Bool, !enabled { throw InputError.noTextField(app: owner(of: field), role: "\(role ?? "field") (disabled)") }
     }
 
     private func validateCurrent(_ target: Target) throws {
@@ -492,4 +530,8 @@ final class DictationInput {
             if self?.pasteGeneration == generation { self?.clipboardRestore = nil }
         }
     }
+}
+
+private extension String {
+    func ifEmpty(_ fallback: String) -> String { isEmpty ? fallback : self }
 }
