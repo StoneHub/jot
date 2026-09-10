@@ -11,6 +11,13 @@ final class SpeechService: ObservableObject {
     @Published var fnRequested = UserDefaults.standard.bool(forKey: "fnRequested")
     @Published private(set) var shortcut = ShortcutPreferences().load()
     var canChangeShortcut: Bool { !dictationActive && !dictationPending }
+    private let speakerMute = DictationSpeakerMute()
+    @Published var muteSpeakersDuringDictation = UserDefaults.standard.object(forKey: "muteSpeakersDuringDictation") as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(muteSpeakersDuringDictation, forKey: "muteSpeakersDuringDictation")
+            if !muteSpeakersDuringDictation { speakerMute.end() }
+        }
+    }
 
     func setShortcutRecording(_ active: Bool) { input.isRecordingShortcut = active }
 
@@ -496,6 +503,7 @@ final class SpeechService: ObservableObject {
         drainAudio()
         do {
             if !capture.running { lastAudioAt = Date() }
+            if muteSpeakersDuringDictation { speakerMute.begin() }
             try capture.start()
             dictationVocabulary = vocabulary
             dictation = []; dictationStarted = Date(); dictationTicket = UUID(); dictationActive = true
@@ -506,6 +514,7 @@ final class SpeechService: ObservableObject {
     }
 
     func endDictation() {
+        speakerMute.end()
         guard dictationActive else { return }
         if !ambientEnabled { capture.stop() }
         drainAudio()
@@ -522,6 +531,7 @@ final class SpeechService: ObservableObject {
     }
 
     private func cancelDictation() {
+        speakerMute.end()
         if dictationActive || dictationPending { markPerformance(.dictationCancelled) }
         input.discardTarget()
         dictationActive = false; dictationPending = false; dictationTicket = UUID(); dictation = []
