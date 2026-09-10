@@ -1,5 +1,7 @@
 import Foundation
 import AVFoundation
+import AudioToolbox
+import CoreAudio
 import CoreML
 import FluidAudio
 import JotCore
@@ -132,21 +134,97 @@ enum JotError: LocalizedError {
 }
 
 /// Audio callback owns resampling; only a bounded 8-second RAM queue crosses to the controller.
+struct AudioInputDevice: Identifiable, Equatable {
+    let id: String
+    let name: String
+
+    static func available() -> [Self] {
+        deviceIDs().compactMap { id in
+            guard hasInputStreams(id), let uid = stringProperty(id, kAudioDevicePropertyDeviceUID),
+                  let name = stringProperty(id, kAudioObjectPropertyName) else { return nil }
+            return Self(id: uid, name: name)
+        }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    static func defaultName() -> String? {
+        guard let id = deviceIDProperty(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultInputDevice) else { return nil }
+        return stringProperty(id, kAudioObjectPropertyName)
+    }
+
+    static func deviceID(for uid: String) -> AudioObjectID? {
+        deviceIDs().first { stringProperty($0, kAudioDevicePropertyDeviceUID) == uid && hasInputStreams($0) }
+    }
+
+    private static func deviceIDs() -> [AudioObjectID] {
+        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        var byteCount: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &byteCount) == noErr else { return [] }
+        var result = [AudioObjectID](repeating: 0, count: Int(byteCount) / MemoryLayout<AudioObjectID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &byteCount, &result) == noErr else { return [] }
+        return result
+    }
+
+    private static func hasInputStreams(_ id: AudioObjectID) -> Bool {
+        var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams,
+            mScope: kAudioDevicePropertyScopeInput, mElement: kAudioObjectPropertyElementMain)
+        var byteCount: UInt32 = 0
+        return AudioObjectGetPropertyDataSize(id, &address, 0, nil, &byteCount) == noErr && byteCount > 0
+    }
+
+    private static func deviceIDProperty(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector) -> AudioObjectID? {
+        var address = AudioObjectPropertyAddress(mSelector: selector,
+            mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        var value: AudioObjectID = 0
+        var byteCount = UInt32(MemoryLayout<AudioObjectID>.size)
+        guard AudioObjectGetPropertyData(object, &address, 0, nil, &byteCount, &value) == noErr else { return nil }
+        return value
+    }
+
+    private static func stringProperty(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector) -> String? {
+        var address = AudioObjectPropertyAddress(mSelector: selector,
+            mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        var value: Unmanaged<CFString>?
+        var byteCount = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        guard AudioObjectGetPropertyData(object, &address, 0, nil, &byteCount, &value) == noErr, let value else { return nil }
+        return value.takeUnretainedValue() as String
+    }
+}
+
 final class MicrophoneCapture: @unchecked Sendable {
     private let lock = NSLock()
-    private let engine = AVAudioEngine()
+    private var engine = AVAudioEngine()
     private let callbacks = DispatchGroup()
     private var pending: [Float] = []
     private var tapInstalled = false
     private var dropped = 0
     private var lastAudio = Date.distantPast
     private var rms: Float = 0
+    private var selectedInputUID: String?
     var running: Bool { engine.isRunning }
+
+    func setInput(uid: String?) throws {
+        guard !engine.isRunning else { throw JotError.message("Pause capture before changing the microphone.") }
+        selectedInputUID = uid
+    }
 
     func start() throws {
         guard !engine.isRunning else { return }
+        if tapInstalled { engine.inputNode.removeTap(onBus: 0); tapInstalled = false; callbacks.wait() }
+        // A fresh input node follows the current system default when no explicit device is selected.
+        engine = AVAudioEngine()
         let input = engine.inputNode
-        if tapInstalled { input.removeTap(onBus: 0); tapInstalled = false; callbacks.wait() }
+        if let selectedInputUID {
+            guard let selectedDevice = AudioInputDevice.deviceID(for: selectedInputUID) else {
+                throw JotError.message("The selected microphone is no longer available. Choose System Default.")
+            }
+            guard let unit = input.audioUnit else { throw JotError.message("No usable microphone input.") }
+            var device = selectedDevice
+            guard AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
+                &device, UInt32(MemoryLayout<AudioObjectID>.size)) == noErr else {
+                throw JotError.message("Jot could not select the chosen microphone.")
+            }
+        }
         let source = input.outputFormat(forBus: 0)
         guard source.sampleRate > 0, source.channelCount > 0,
               let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),

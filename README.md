@@ -34,6 +34,8 @@ Grant microphone and Accessibility access. If Fn triggers a macOS shortcut, set 
 
 Dictation supports up to 60 seconds per hold. It cancels if focus changes, skips password fields, and never presses Return. Text insertion depends on the target app's Accessibility support.
 
+**Choose a microphone:** select **System Default** or a specific input from the Microphone menu. Jot changes only its own capture device; it never changes macOS's default input. Pause capture before switching devices.
+
 **Quiet speakers while you talk:** dictation temporarily mutes the built-in speakers and restores their previous mute state on release or cancellation. Headphones and other outputs are left alone. Media continues playing silently. This is enabled by default; turn it off in **Tuning → Mute built-in speakers during dictation**.
 
 **Start meeting** records ambient capture under a name. **End meeting** waits for the last audio, saves the whole transcript as Markdown in `~/Documents/Jot Sessions`, and shows the file in Finder. **Sessions** lists every capture session; open one to read it whole, rename it, name speakers, copy it, or export it.

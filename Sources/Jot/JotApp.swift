@@ -225,6 +225,15 @@ private struct ServiceControls: View {
             Divider()
             MeetingControls(service: service)
             Divider()
+            ControlRow(symbol: "mic", title: "Microphone") {
+                Picker("Microphone", selection: Binding(get: { service.selectedInputUID }, set: { service.setInput(uid: $0) })) {
+                    Text("System Default (\(service.systemDefaultInputName))").tag("")
+                    ForEach(service.inputDevices) { device in Text(device.name).tag(device.id) }
+                }
+                .labelsHidden().pickerStyle(.menu)
+                .disabled(!service.canChangeInput)
+            }
+            .help(service.canChangeInput ? "Choose the microphone Jot uses. This does not change macOS's default input." : "Pause capture before changing the microphone.")
             ControlRow(symbol: "keyboard", title: "Dictation") {
                 Toggle("Dictation", isOn: Binding(get: { service.fnRequested }, set: { enabled in
                     if enabled { Task { await service.enableFn() } } else { service.disableFn() }
