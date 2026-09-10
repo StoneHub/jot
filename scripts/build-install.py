@@ -55,6 +55,9 @@ source = Path(s['TARGET_BUILD_DIR']) / s['FULL_PRODUCT_NAME']
 subprocess.run(['codesign', '--verify', '--deep', '--strict', str(source)], check=True)
 subprocess.run([sys.executable, str(root / 'scripts/check-no-feedback.py'), str(source)], check=True)
 if options.configuration == 'Release':
+    entitlements = subprocess.check_output(['codesign', '-d', '--entitlements', ':-', str(source)], stderr=subprocess.DEVNULL)
+    if plistlib.loads(entitlements).get('com.apple.security.get-task-allow'):
+        raise SystemExit('Release build unexpectedly allows debugger attachment.')
     conditions = s.get('SWIFT_ACTIVE_COMPILATION_CONDITIONS', '').split()
     flags = s.get('OTHER_SWIFT_FLAGS', '')
     if 'DEBUG' in conditions or re.search(r'-D\s*DEBUG\b', flags):
