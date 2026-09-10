@@ -20,6 +20,8 @@ Jot turns your voice into text in the focused field. Hold **Fn** (or your custom
 
 ## Get started
 
+**Download status:** a public notarized app download is not available yet. The first release is being prepared; signing alone does not make the app ready for Gatekeeper distribution. See the [release checklist](docs/RELEASING.md).
+
 Build and install Jot using the [instructions below](#build-and-install), then open it from Applications. Requires **Apple Silicon and macOS 14 or later**. The first model download needs internet.
 
 Grant microphone and Accessibility access. If Fn triggers a macOS shortcut, set the Fn/Globe action to **Do Nothing** in Keyboard settings.

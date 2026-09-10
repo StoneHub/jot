@@ -44,6 +44,8 @@ targets:
       - path: Resources/Assets.xcassets
       - path: Resources/Jot.icns
         buildPhase: resources
+      - path: Resources/ThirdPartyNotices.txt
+        buildPhase: resources
     info:
       path: Resources/Info.plist
       properties:
