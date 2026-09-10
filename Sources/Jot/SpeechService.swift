@@ -11,6 +11,7 @@ final class SpeechService: ObservableObject {
     @Published var fnRequested = UserDefaults.standard.bool(forKey: "fnRequested")
     @Published private(set) var shortcut = ShortcutPreferences().load()
     var canChangeShortcut: Bool { !dictationActive && !dictationPending }
+    var canChangeInput: Bool { !capture.running && !dictationPending && !diagnosticActive }
     private let speakerMute = DictationSpeakerMute()
     @Published var muteSpeakersDuringDictation = UserDefaults.standard.object(forKey: "muteSpeakersDuringDictation") as? Bool ?? true {
         didSet {
@@ -40,6 +41,9 @@ final class SpeechService: ObservableObject {
     @Published var modelUpdates = ModelUpdate.defaults
     @Published var checkingModels = false
     @Published var micPermission = AVCaptureDevice.authorizationStatus(for: .audio)
+    @Published private(set) var inputDevices: [AudioInputDevice] = []
+    @Published var selectedInputUID = UserDefaults.standard.string(forKey: "selectedInputUID") ?? ""
+    @Published private(set) var systemDefaultInputName = "System Default"
     @Published var accessibilityGranted = DictationInput.accessibilityGranted
     @Published private(set) var cachedModelBytes = ModelCache.bytesOnDisk()
     /// Set when a resume would download models that are not cached yet. The view asks before any download starts.
@@ -160,6 +164,7 @@ final class SpeechService: ObservableObject {
 
     func launch() {
         markPerformance(.launch)
+        refreshInputDevices()
         do { vocabulary = try vocabularyPreferences.load() }
         catch { vocabularyLoadError = "Could not load vocabulary. Saved entries were preserved. " + error.localizedDescription }
         do {
@@ -271,6 +276,28 @@ final class SpeechService: ObservableObject {
     func refreshPermissions() {
         micPermission = AVCaptureDevice.authorizationStatus(for: .audio)
         accessibilityGranted = DictationInput.accessibilityGranted
+    }
+
+    func refreshInputDevices() {
+        inputDevices = AudioInputDevice.available()
+        systemDefaultInputName = AudioInputDevice.defaultName() ?? "System Default"
+        if !selectedInputUID.isEmpty && !inputDevices.contains(where: { $0.id == selectedInputUID }) {
+            selectedInputUID = ""
+            UserDefaults.standard.removeObject(forKey: "selectedInputUID")
+            notice = "The previous microphone is unavailable; using System Default."
+        }
+        try? capture.setInput(uid: selectedInputUID.isEmpty ? nil : selectedInputUID)
+    }
+
+    func setInput(uid: String) {
+        guard canChangeInput else { return }
+        do {
+            try capture.setInput(uid: uid.isEmpty ? nil : uid)
+            selectedInputUID = uid
+            if uid.isEmpty { UserDefaults.standard.removeObject(forKey: "selectedInputUID") }
+            else { UserDefaults.standard.set(uid, forKey: "selectedInputUID") }
+            notice = ""
+        } catch { notice = error.localizedDescription }
     }
 
     var permissionsMissing: Bool { micPermission != .authorized || !accessibilityGranted }
