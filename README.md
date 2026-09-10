@@ -16,7 +16,7 @@ Jot turns your voice into text in the focused field. Hold **Fn** (or your custom
 - **Give agents context.** Search and read transcripts through the bundled CLI and MCP server.
 - **Feel at home on the Mac.** System accent colors, native Liquid Glass on macOS 26, and material fallbacks on earlier versions.
 
-*Screenshots show the installed app. History is filtered to a harmless test dictation.*
+*Screenshot shows an earlier Jot build with a harmless test dictation. The current app also includes Sessions, Vocabulary, and configurable dictation controls.*
 
 ## Get started
 
