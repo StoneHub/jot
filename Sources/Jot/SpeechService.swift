@@ -192,6 +192,7 @@ final class SpeechService: ObservableObject {
         observers.append(NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.ambientEnabled || self.dictationActive else { return }
+                if self.capture.shouldIgnoreConfigurationChange() { return }
                 self.recordEvent("device_change", "Audio input configuration changed."); self.pause(); self.notice = "Audio input changed. Resume when ready."
             }
         })
@@ -348,12 +349,18 @@ final class SpeechService: ObservableObject {
     }
 
     func setAmbient(_ enabled: Bool) async {
-        ambientRequested = enabled
-        guard lifecycle.phase == .ready else { return }
         if enabled {
+            guard lifecycle.phase == .ready else {
+                ambientRequested = false
+                notice = "Resume Jot before enabling ambient transcription."
+                return
+            }
+            ambientRequested = true
             do { try await activateAmbient() }
             catch { ambientRequested = false; notice = error.localizedDescription }
         } else {
+            ambientRequested = false
+            guard lifecycle.phase == .ready else { ambientEnabled = false; updateMode(); return }
             if !dictationActive { capture.stop() }
             drainAudio()
             if ambientEnabled { flushAmbient(); recordEvent("ambient_off", "Ambient transcription switched off.") }
@@ -502,7 +509,7 @@ final class SpeechService: ObservableObject {
         let discarded = Double(packet.samples.count + packet.dropped + ambient.count + dictation.count + jobs.reduce(0) { $0 + $1.samples.count }) / 16000
         if discarded > 0 { recordEvent("audio_discarded", "Unfinished audio discarded by Pause.") }
         if ambientEnabled { recordEvent("paused", "Service paused.") }
-        ambientEnabled = false
+        ambientRequested = false; ambientEnabled = false
         cancelDictation(); input.disable(); fnEnabled = false
         ambient.removeAll(keepingCapacity: false); jobs.removeAll(keepingCapacity: false)
         capture.discardBufferedAudio(); queuedSeconds = 0; level = 0

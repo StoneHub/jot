@@ -26,6 +26,7 @@
 		A4B98AD49438BD1121F60475 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FF011AF3F4B42BB9B97A069F /* Assets.xcassets */; };
 		A84D2F3520652FB64F16B110 /* TranscriptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBDB9C8F81FE456A8328BCE4 /* TranscriptStore.swift */; };
 		B3AB2422EE65311C8F9EEEEA /* ResourceStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75A2B17AAF1631913D5A8DCC /* ResourceStats.swift */; };
+		B8375EF5701D6ACC915D64F2 /* AudioConfigurationChangeFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABF19F7C8406F23ECE65D4FB /* AudioConfigurationChangeFilter.swift */; };
 		BB1B00EDC2CC0B7F551C8C00 /* TranscriptExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C7CFFD942425F7F2F26AD45 /* TranscriptExport.swift */; };
 		C4A3067F86EC76FBB07066E5 /* ServiceLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87AE9B1836DA9D504389E51A /* ServiceLifecycle.swift */; };
 		CB99DD1789813FB24F791413 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = CDE54F5568B2E1009E317C26 /* libsqlite3.tbd */; };
@@ -95,6 +96,7 @@
 		9A4D583EF07B940C30081D6E /* MeetingExportWait.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingExportWait.swift; sourceTree = "<group>"; };
 		A1724E7761CB8156A220EF24 /* AudioPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPipeline.swift; sourceTree = "<group>"; };
 		A66DE823E83854B6AF8688F6 /* ModelCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCache.swift; sourceTree = "<group>"; };
+		ABF19F7C8406F23ECE65D4FB /* AudioConfigurationChangeFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioConfigurationChangeFilter.swift; sourceTree = "<group>"; };
 		B091B8659394C293AB6A5B14 /* ShortcutSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutSettings.swift; sourceTree = "<group>"; };
 		CBDB9C8F81FE456A8328BCE4 /* TranscriptStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStore.swift; sourceTree = "<group>"; };
 		CDE54F5568B2E1009E317C26 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
@@ -187,6 +189,7 @@
 		C1DEE3EB4427813127E7E1D0 /* JotCore */ = {
 			isa = PBXGroup;
 			children = (
+				ABF19F7C8406F23ECE65D4FB /* AudioConfigurationChangeFilter.swift */,
 				83ACD6F41350D0FEEF8F9394 /* DictationCleanup.swift */,
 				7415694705568E2457081A4F /* DictationShortcut.swift */,
 				6646658769779D619884AA27 /* DictationSpeakerMute.swift */,
@@ -396,6 +399,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B8375EF5701D6ACC915D64F2 /* AudioConfigurationChangeFilter.swift in Sources */,
 				6A34209658A335507BD1D20E /* DictationCleanup.swift in Sources */,
 				8EF28A78E5F76B97289D3D9B /* DictationShortcut.swift in Sources */,
 				7F7F23DCD4A5FFD39B920C97 /* DictationSpeakerMute.swift in Sources */,

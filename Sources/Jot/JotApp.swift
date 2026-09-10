@@ -241,9 +241,9 @@ private struct ServiceControls: View {
             }.help("Hold \(service.shortcut.displayName) to dictate into the focused text field.")
             ControlRow(title: "Hold to talk", secondary: true) { ShortcutSettings(service: service) }
             ControlRow(symbol: "mic", title: "Ambient transcription") {
-                Toggle("Ambient transcription", isOn: Binding(get: { service.ambientRequested }, set: { enabled in
+                Toggle("Ambient transcription", isOn: Binding(get: { service.ambientEnabled }, set: { enabled in
                     Task { await service.setAmbient(enabled) }
-                })).labelsHidden().toggleStyle(.switch)
+                })).labelsHidden().toggleStyle(.switch).disabled(service.lifecycle.phase != .ready)
             }.help("Continuously transcribe the microphone while the service is running.")
             if service.isPaused && (service.fnRequested || service.ambientRequested) {
                 Text("Selected features start when you resume.").font(.caption).foregroundStyle(.secondary).padding(.leading, 30)

@@ -201,11 +201,16 @@ final class MicrophoneCapture: @unchecked Sendable {
     private var lastAudio = Date.distantPast
     private var rms: Float = 0
     private var selectedInputUID: String?
+    private var configurationChangeFilter = AudioConfigurationChangeFilter()
     var running: Bool { engine.isRunning }
 
     func setInput(uid: String?) throws {
         guard !engine.isRunning else { throw JotError.message("Pause capture before changing the microphone.") }
         selectedInputUID = uid
+    }
+
+    func shouldIgnoreConfigurationChange() -> Bool {
+        configurationChangeFilter.shouldIgnore(at: ProcessInfo.processInfo.systemUptime)
     }
 
     func start() throws {
@@ -220,8 +225,10 @@ final class MicrophoneCapture: @unchecked Sendable {
             }
             guard let unit = input.audioUnit else { throw JotError.message("No usable microphone input.") }
             var device = selectedDevice
+            configurationChangeFilter.expectSelectionChange(at: ProcessInfo.processInfo.systemUptime)
             guard AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
                 &device, UInt32(MemoryLayout<AudioObjectID>.size)) == noErr else {
+                configurationChangeFilter.cancelExpectedChange()
                 throw JotError.message("Jot could not select the chosen microphone.")
             }
         }
