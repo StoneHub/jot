@@ -24,6 +24,19 @@ final class SessionTitleTests: XCTestCase {
         XCTAssertNil(try store.sessions().first { $0.sessionID == "s1" }?.title)
     }
 
+    func testDictationRowsStayOutOfTheSessionsList() throws {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = try TranscriptStore(directory: directory)
+        try store.append(Transcript(sessionID: "meeting", startedAt: started, startSeconds: 0, endSeconds: 5, text: "hello", mode: "ambient"))
+        for index in 0..<3 {
+            try store.append(Transcript(sessionID: "fn-\(index)", startedAt: started.addingTimeInterval(Double(index) + 10), startSeconds: 0, endSeconds: 1, text: "typed", mode: "dictation"))
+        }
+        XCTAssertEqual(try store.sessions().map(\.sessionID), ["meeting"])
+        XCTAssertEqual(try store.recent().count, 4, "History still shows every dictation")
+    }
+
     func testExportFileNameUsesDateAndTitleAndStripsPathCharacters() {
         let untitled = TranscriptSession(sessionID: "s", startedAt: started, lastTranscriptAt: started, transcriptCount: 1)
         XCTAssertTrue(TranscriptExport.fileName(for: untitled).hasSuffix(" Session.md"), TranscriptExport.fileName(for: untitled))

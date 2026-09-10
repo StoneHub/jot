@@ -191,9 +191,10 @@ public final class TranscriptStore: @unchecked Sendable {
         try locked { try rows(where: "WHERE t.id = ?", value: id, limit: 1, offset: 0).first }
     }
 
+    /// Ambient and meeting captures only. Each Fn dictation carries its own session id and belongs in History, not here.
     public func sessions(limit: Int = 50) throws -> [TranscriptSession] {
         try locked {
-            let stmt = try prepare("SELECT t.session_id, MIN(t.started_at), MAX(t.started_at + t.end_seconds), COUNT(*), s.title FROM transcripts t LEFT JOIN session_titles s ON s.session_id = t.session_id GROUP BY t.session_id ORDER BY MAX(t.started_at + t.end_seconds) DESC, t.session_id LIMIT ?")
+            let stmt = try prepare("SELECT t.session_id, MIN(t.started_at), MAX(t.started_at + t.end_seconds), COUNT(*), s.title FROM transcripts t LEFT JOIN session_titles s ON s.session_id = t.session_id WHERE t.mode = 'ambient' GROUP BY t.session_id ORDER BY MAX(t.started_at + t.end_seconds) DESC, t.session_id LIMIT ?")
             defer { sqlite3_finalize(stmt) }
             sqlite3_bind_int(stmt, 1, Int32(clamp(limit)))
             var result: [TranscriptSession] = []
