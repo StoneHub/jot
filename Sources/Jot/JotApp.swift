@@ -705,6 +705,12 @@ struct TranscriptView: View {
     private var tuning: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Mute built-in speakers during dictation", isOn: $service.muteSpeakersDuringDictation)
+                        .toggleStyle(.switch)
+                    Text("Restores the previous mute state when you release your shortcut. Other audio outputs are unchanged. Media keeps playing silently.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 HStack {
                     Button("Balanced") { service.tuning = .init() }
                     Button("Steadier speakers") { service.tuning = .steady }
