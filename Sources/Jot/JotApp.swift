@@ -35,17 +35,37 @@ private struct JotMenuIconLabel: View {
 /// Native template icons let macOS supply contrast against light and dark menu bars.
 private enum JotMenuIcon {
     static let ready: NSImage = templateImage(description: "Jot") {
+        drawWaveform()
+    }
+
+    static let paused: NSImage = templateImage(description: "Jot paused") {
+        drawWaveform()
+
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
+        context.saveGState()
+        context.setLineCap(.round)
+        context.move(to: CGPoint(x: 2.5, y: 2.5))
+        context.addLine(to: CGPoint(x: 15.5, y: 15.5))
+        context.setBlendMode(.clear)
+        context.setLineWidth(5)
+        context.strokePath()
+        context.restoreGState()
+
+        context.saveGState()
+        context.setStrokeColor(NSColor.black.cgColor)
+        context.setLineCap(.round)
+        context.setLineWidth(2.25)
+        context.move(to: CGPoint(x: 2.5, y: 2.5))
+        context.addLine(to: CGPoint(x: 15.5, y: 15.5))
+        context.strokePath()
+        context.restoreGState()
+    }
+
+    private static func drawWaveform() {
         for (index, height) in [5.0, 10, 16, 10, 5].enumerated() {
             NSBezierPath(roundedRect: NSRect(x: 1 + Double(index) * 3.4,
                 y: (18 - height) / 2, width: 2.5, height: height),
                 xRadius: 1.25, yRadius: 1.25).fill()
-        }
-    }
-
-    static let paused: NSImage = templateImage(description: "Jot paused") {
-        for x in [4.0, 10.5] {
-            NSBezierPath(roundedRect: NSRect(x: x, y: 3, width: 3.5, height: 12),
-                xRadius: 1.5, yRadius: 1.5).fill()
         }
     }
 
