@@ -17,30 +17,48 @@ struct JotApp: App {
         MenuBarExtra {
             MenuControls(service: delegate.service, delegate: delegate)
         } label: {
-            Image(nsImage: JotMenuIcon.image)
-                .accessibilityLabel("Jot controls")
-                .help("Jot — open speech controls")
+            JotMenuIconLabel(service: delegate.service)
         }.menuBarExtraStyle(.window)
     }
 }
 
-/// The same five rounded waveform bars as the app icon, drawn as a native
-/// template so macOS supplies contrast against light and dark menu bars.
+private struct JotMenuIconLabel: View {
+    @ObservedObject var service: SpeechService
+
+    var body: some View {
+        Image(nsImage: service.isPaused ? JotMenuIcon.paused : JotMenuIcon.ready)
+            .accessibilityLabel(service.isPaused ? "Jot paused" : "Jot controls")
+            .help(service.isPaused ? "Jot is paused — open controls to resume" : "Jot — open speech controls")
+    }
+}
+
+/// Native template icons let macOS supply contrast against light and dark menu bars.
 private enum JotMenuIcon {
-    static let image: NSImage = {
+    static let ready: NSImage = templateImage(description: "Jot") {
+        for (index, height) in [5.0, 10, 16, 10, 5].enumerated() {
+            NSBezierPath(roundedRect: NSRect(x: 1 + Double(index) * 3.4,
+                y: (18 - height) / 2, width: 2.5, height: height),
+                xRadius: 1.25, yRadius: 1.25).fill()
+        }
+    }
+
+    static let paused: NSImage = templateImage(description: "Jot paused") {
+        for x in [4.0, 10.5] {
+            NSBezierPath(roundedRect: NSRect(x: x, y: 3, width: 3.5, height: 12),
+                xRadius: 1.5, yRadius: 1.5).fill()
+        }
+    }
+
+    private static func templateImage(description: String, draw: @escaping () -> Void) -> NSImage {
         let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
             NSColor.black.setFill()
-            for (index, height) in [5.0, 10, 16, 10, 5].enumerated() {
-                NSBezierPath(roundedRect: NSRect(x: 1 + Double(index) * 3.4,
-                    y: (18 - height) / 2, width: 2.5, height: height),
-                    xRadius: 1.25, yRadius: 1.25).fill()
-            }
+            draw()
             return true
         }
         image.isTemplate = true
-        image.accessibilityDescription = "Jot"
+        image.accessibilityDescription = description
         return image
-    }()
+    }
 }
 
 @MainActor
@@ -139,7 +157,7 @@ private struct JotBrand: View {
     var compact = false
     var body: some View {
         HStack(spacing: 12) {
-            Image(nsImage: JotMenuIcon.image)
+            Image(nsImage: JotMenuIcon.ready)
                 .renderingMode(.template).resizable().scaledToFit()
                 .foregroundStyle(.white).padding(10)
                 .frame(width: compact ? 40 : 48, height: compact ? 40 : 48)
