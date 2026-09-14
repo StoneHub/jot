@@ -216,6 +216,20 @@ final class DictationInput {
         AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), "AXManualAccessibility" as CFString, kCFBooleanTrue)
     }
 
+    /// Screen rectangle of the captured field in AppKit coordinates, or nil when the app does not report one.
+    func targetFrame() -> CGRect? {
+        guard let target else { return nil }
+        var positionValue: CFTypeRef?; var sizeValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(target.field, kAXPositionAttribute as CFString, &positionValue) == .success,
+              AXUIElementCopyAttributeValue(target.field, kAXSizeAttribute as CFString, &sizeValue) == .success,
+              let positionValue, let sizeValue else { return nil }
+        var origin = CGPoint.zero; var size = CGSize.zero
+        guard AXValueGetValue(positionValue as! AXValue, .cgPoint, &origin), AXValueGetValue(sizeValue as! AXValue, .cgSize, &size),
+              size.width > 1, size.height > 1, let primary = NSScreen.screens.first else { return nil }
+        // Accessibility measures from the top-left of the primary display; AppKit from its bottom-left.
+        return CGRect(x: origin.x, y: primary.frame.height - origin.y - size.height, width: size.width, height: size.height)
+    }
+
     /// Ends a service-cancelled or empty utterance without calling its callbacks again.
     /// Keeps the physical shortcut state so holding the key cannot accidentally restart capture.
     func discardTarget() {

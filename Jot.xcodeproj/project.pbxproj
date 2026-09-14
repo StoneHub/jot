@@ -14,6 +14,7 @@
 		2D62FA2C153FEDA91143654A /* LocalService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1812288F51560118033D92A /* LocalService.swift */; };
 		44270DB6A337277CD915775F /* MeetingExportWait.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4D583EF07B940C30081D6E /* MeetingExportWait.swift */; };
 		48A035BE8890396E0ED43AAE /* JotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBA0F84BDC3CF425D094A331 /* JotApp.swift */; };
+		5E5BCB33BE3FA0C312F91826 /* DictationHighlight.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE1CC811540F74F27A08E5AF /* DictationHighlight.swift */; };
 		6689C56E5F2476BAEFBA6523 /* JotCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D2E098CDE7120087F5C947F0 /* JotCore.framework */; };
 		68A990392B7CAAB061ADC290 /* Jot.icns in Resources */ = {isa = PBXBuildFile; fileRef = 78ECFD6E5E5AF02BE9088B4A /* Jot.icns */; };
 		6A34209658A335507BD1D20E /* DictationCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83ACD6F41350D0FEEF8F9394 /* DictationCleanup.swift */; };
@@ -98,6 +99,7 @@
 		A66DE823E83854B6AF8688F6 /* ModelCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCache.swift; sourceTree = "<group>"; };
 		ABF19F7C8406F23ECE65D4FB /* AudioConfigurationChangeFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioConfigurationChangeFilter.swift; sourceTree = "<group>"; };
 		B091B8659394C293AB6A5B14 /* ShortcutSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutSettings.swift; sourceTree = "<group>"; };
+		BE1CC811540F74F27A08E5AF /* DictationHighlight.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationHighlight.swift; sourceTree = "<group>"; };
 		CBDB9C8F81FE456A8328BCE4 /* TranscriptStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStore.swift; sourceTree = "<group>"; };
 		CDE54F5568B2E1009E317C26 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 		D08CE824AF0B228F66A9DE7F /* ModelUpdate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelUpdate.swift; sourceTree = "<group>"; };
@@ -144,6 +146,7 @@
 			isa = PBXGroup;
 			children = (
 				A1724E7761CB8156A220EF24 /* AudioPipeline.swift */,
+				BE1CC811540F74F27A08E5AF /* DictationHighlight.swift */,
 				82A3D8CCC3D071ABC0F5EE69 /* DictationInput.swift */,
 				EBA0F84BDC3CF425D094A331 /* JotApp.swift */,
 				75A2B17AAF1631913D5A8DCC /* ResourceStats.swift */,
@@ -385,6 +388,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6E92D801CF7E0C6D4471E466 /* AudioPipeline.swift in Sources */,
+				5E5BCB33BE3FA0C312F91826 /* DictationHighlight.swift in Sources */,
 				09AFFFF3AF1BE6A912FA1BA0 /* DictationInput.swift in Sources */,
 				48A035BE8890396E0ED43AAE /* JotApp.swift in Sources */,
 				B3AB2422EE65311C8F9EEEEA /* ResourceStats.swift in Sources */,

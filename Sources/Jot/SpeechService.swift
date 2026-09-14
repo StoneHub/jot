@@ -13,6 +13,13 @@ final class SpeechService: ObservableObject {
     var canChangeShortcut: Bool { !dictationActive && !dictationPending }
     var canChangeInput: Bool { !capture.running && !dictationPending && !diagnosticActive }
     private let speakerMute = DictationSpeakerMute()
+    private let highlight = DictationHighlight()
+    @Published var highlightTargetField = UserDefaults.standard.object(forKey: "highlightTargetField") as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(highlightTargetField, forKey: "highlightTargetField")
+            if !highlightTargetField { highlight.hide() }
+        }
+    }
     @Published var muteSpeakersDuringDictation = UserDefaults.standard.object(forKey: "muteSpeakersDuringDictation") as? Bool ?? true {
         didSet {
             UserDefaults.standard.set(muteSpeakersDuringDictation, forKey: "muteSpeakersDuringDictation")
@@ -541,6 +548,7 @@ final class SpeechService: ObservableObject {
             try capture.start()
             dictationVocabulary = vocabulary
             dictation = []; dictationStarted = Date(); dictationTicket = UUID(); dictationActive = true
+            if highlightTargetField { highlight.show(follow: { [weak self] in self?.input.targetFrame() }) }
             updateMode()
             markPerformance(.dictationStarted)
             notice = "Listening for dictation… release \(shortcut.displayName) to insert."
@@ -548,7 +556,7 @@ final class SpeechService: ObservableObject {
     }
 
     func endDictation() {
-        speakerMute.end()
+        speakerMute.end(); highlight.hide()
         guard dictationActive else { return }
         if !ambientEnabled { capture.stop() }
         drainAudio()
@@ -565,7 +573,7 @@ final class SpeechService: ObservableObject {
     }
 
     private func cancelDictation() {
-        speakerMute.end()
+        speakerMute.end(); highlight.hide()
         if dictationActive || dictationPending { markPerformance(.dictationCancelled) }
         input.discardTarget()
         dictationActive = false; dictationPending = false; dictationTicket = UUID(); dictation = []

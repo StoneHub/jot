@@ -753,6 +753,10 @@ struct TranscriptView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Outline the text field while dictating", isOn: $service.highlightTargetField)
+                        .toggleStyle(.switch)
+                    Text("A pulsing accent border marks the field your words will go into, only while you hold the shortcut.")
+                        .font(.caption).foregroundStyle(.secondary)
                     Toggle("Mute built-in speakers during dictation", isOn: $service.muteSpeakersDuringDictation)
                         .toggleStyle(.switch)
                     Text("Restores the previous mute state when you release your shortcut. Other audio outputs are unchanged. Media keeps playing silently.")
