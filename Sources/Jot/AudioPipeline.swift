@@ -133,7 +133,7 @@ enum JotError: LocalizedError {
     var errorDescription: String? { if case .message(let text) = self { return text }; return nil }
 }
 
-/// Audio callback owns resampling; only a bounded 8-second RAM queue crosses to the controller.
+/// One input device as Core Audio reports it; the id is the persistent device UID.
 struct AudioInputDevice: Identifiable, Equatable {
     let id: String
     let name: String
@@ -191,6 +191,7 @@ struct AudioInputDevice: Identifiable, Equatable {
     }
 }
 
+/// Audio callback owns resampling; only a bounded 8-second RAM queue crosses to the controller.
 final class MicrophoneCapture: @unchecked Sendable {
     private let lock = NSLock()
     private var engine = AVAudioEngine()
