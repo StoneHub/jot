@@ -36,6 +36,12 @@ final class SpeechService: ObservableObject {
             if !muteSpeakersDuringDictation { speakerMute.end() }
         }
     }
+    @Published var keepMacAwakeWhileListening = UserDefaults.standard.bool(forKey: JotDefaultsKey.keepMacAwakeWhileListening) {
+        didSet {
+            UserDefaults.standard.set(keepMacAwakeWhileListening, forKey: JotDefaultsKey.keepMacAwakeWhileListening)
+            updateKeepAwakeAssertion()
+        }
+    }
 
     func setShortcutRecording(_ active: Bool) { input.isRecordingShortcut = active }
 
@@ -157,6 +163,7 @@ final class SpeechService: ObservableObject {
     let capture = MicrophoneCapture()
     let pipeline = SpeechPipeline()
     private let sampler = ResourceSampler()
+    private let keepAwake = KeepAwakeAssertion()
     var store: TranscriptStore?
     private var server: LocalServiceServer?
     private var timer: Timer?
@@ -232,6 +239,7 @@ final class SpeechService: ObservableObject {
 
     var isPaused: Bool { lifecycle.phase == .paused || lifecycle.phase == .pausing || lifecycle.phase == .failed }
     var isTransitioning: Bool { lifecycle.phase == .starting || lifecycle.phase == .pausing }
+    var keepAwakeActive: Bool { keepAwake.isActive }
 
     private func scheduleTimer() {
         timer?.invalidate()
@@ -398,7 +406,7 @@ final class SpeechService: ObservableObject {
         } else {
             ambientRequested = false
             guard lifecycle.phase == .ready else { ambientEnabled = false; updateMode(); return }
-            if !dictationActive { capture.stop() }
+            if !dictationActive { capture.stop(); updateKeepAwakeAssertion() }
             drainAudio()
             if ambientEnabled { flushAmbient(); recordEvent(.ambientOff, "Ambient transcription switched off.") }
             ambientEnabled = false; updateMode(); level = 0; kickWorker()
@@ -538,6 +546,7 @@ final class SpeechService: ObservableObject {
         guard !ambientEnabled else { return }
         if !capture.running { lastAudioAt = Date() }
         try capture.start()
+        updateKeepAwakeAssertion()
         sessionID = UUID().uuidString; sessionStarted = Date(); ambientOffset = 0; activeSessionID = sessionID
         ambient = []; silentSeconds = 0; ambientEnabled = true; updateMode()
         recordEvent(.started, "Ambient microphone capture started."); notice = ""
@@ -557,6 +566,7 @@ final class SpeechService: ObservableObject {
         markPerformance(.pause)
         UserDefaults.standard.set(true, forKey: JotDefaultsKey.servicePaused)
         capture.stop()
+        updateKeepAwakeAssertion()
         let packet = capture.drain()
         let discarded = AudioClock.seconds(samples: packet.samples.count + packet.dropped + ambient.count + dictation.count + jobs.reduce(0) { $0 + $1.samples.count })
         if discarded > 0 { recordEvent(.audioDiscarded, "Unfinished audio discarded by Pause.") }
@@ -593,6 +603,7 @@ final class SpeechService: ObservableObject {
             if !capture.running { lastAudioAt = Date() }
             if muteSpeakersDuringDictation { speakerMute.begin() }
             try capture.start()
+            updateKeepAwakeAssertion()
             dictationVocabulary = vocabulary
             dictation = []; dictationStarted = Date(); dictationTicket = UUID(); dictationActive = true
             if highlightTargetField { highlight.show(follow: { [weak self] in self?.input.targetFrame() }) }
@@ -605,7 +616,7 @@ final class SpeechService: ObservableObject {
     func endDictation() {
         speakerMute.end(); highlight.hide()
         guard dictationActive else { return }
-        if !ambientEnabled { capture.stop() }
+        if !ambientEnabled { capture.stop(); updateKeepAwakeAssertion() }
         drainAudio()
         guard dictationActive else { return }
         dictationActive = false
@@ -625,7 +636,7 @@ final class SpeechService: ObservableObject {
         input.discardTarget()
         dictationActive = false; dictationPending = false; dictationTicket = UUID(); dictation = []
         jobs.removeAll { $0.mode == .dictation }
-        if !ambientEnabled { capture.stop() }
+        if !ambientEnabled { capture.stop(); updateKeepAwakeAssertion() }
         updateMode()
     }
 
@@ -799,8 +810,12 @@ final class SpeechService: ObservableObject {
     func shutdown() {
         if ambientEnabled { recordEvent(.stopped, "Application quit; capture ended.") }
         modelCheck?.cancel(); preparation?.cancel(); processing?.cancel(); diagnostic?.cancel(); pausing?.cancel()
-        timer?.invalidate(); cancelDictation(); input.disable(); capture.stop(); server?.stop()
+        timer?.invalidate(); cancelDictation(); input.disable(); capture.stop(); updateKeepAwakeAssertion(); server?.stop()
         inputWatcher?.stop(); inputWatcher = nil
         for observer in observers { NSWorkspace.shared.notificationCenter.removeObserver(observer); NotificationCenter.default.removeObserver(observer) }
+    }
+
+    private func updateKeepAwakeAssertion() {
+        keepAwake.setActive(keepMacAwakeWhileListening && capture.running)
     }
 }

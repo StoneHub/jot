@@ -762,6 +762,10 @@ struct TranscriptView: View {
                         .toggleStyle(.switch)
                     Text("Restores the previous mute state when you release your shortcut. Other audio outputs are unchanged. Media keeps playing silently.")
                         .font(.caption).foregroundStyle(.secondary)
+                    Toggle("Keep Mac awake while listening", isOn: $service.keepMacAwakeWhileListening)
+                        .toggleStyle(.switch)
+                    Text("Prevents idle sleep while Jot is capturing ambient audio or dictation. Manual sleep, lid close, and shutdown still work normally.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 HStack {
                     Button("Balanced") { service.tuning = .init() }
