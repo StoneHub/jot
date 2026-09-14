@@ -2,7 +2,7 @@
 
 Publish from the default branch after required checks pass. Keep public distribution separate from the installed development app.
 
-1. Confirm a clean checkout, current `origin/main`, no required unmerged work, and an unused version tag matching `Resources/Info.plist` and `project.yml`.
+1. Confirm a clean checkout, current `origin/main`, no required unmerged work, and an unused version tag matching `JotVersion.current` in `Sources/JotCore/JotVersion.swift`, `Resources/Info.plist`, and `project.yml`.
 2. Run `swift test` and `./scripts/build-install.py --configuration Release --build-only`. The script resolves the actual Xcode product, verifies Developer ID signatures, rejects DEBUG and feedback artifacts, and writes `build/release-proof.json`.
 3. Confirm the product contains `ThirdPartyNotices.txt`, no private transcripts, audio recordings, credentials, or development reports. Review README screenshots for private content. Models download separately on first use.
 4. Create a ZIP with `ditto -c -k --sequesterRsrc --keepParent` from the resolved app. Submit it using `xcrun notarytool submit` with an authorized keychain profile and wait for Accepted. Never put credentials into the repository or release logs.

@@ -39,6 +39,7 @@
 		D5D8145305034318CEFA19C7 /* ModelUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D08CE824AF0B228F66A9DE7F /* ModelUpdate.swift */; };
 		E5AC6A21952912C803142B66 /* ShortcutSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B091B8659394C293AB6A5B14 /* ShortcutSettings.swift */; };
 		E627399561B1AC9DAB0B0408 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 9B4DFBF48C95EF86F6CFAB88 /* FluidAudio */; };
+		E7E4D5D9AA889DAD7DFCB9C8 /* JotVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8260B75D679FF88E8921F1B /* JotVersion.swift */; };
 		F39E2781C6B2CA0959B89114 /* JotCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D2E098CDE7120087F5C947F0 /* JotCore.framework */; };
 		F8582FACF33F73EA96F027A9 /* SelectableHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF4F7EA10A696D822E25FABC /* SelectableHistory.swift */; };
 		FAFD6EC5E32678410DBEB658 /* PerformanceDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95995C31AC896BE76C27532F /* PerformanceDiagnostics.swift */; };
@@ -112,6 +113,7 @@
 		D1812288F51560118033D92A /* LocalService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalService.swift; sourceTree = "<group>"; };
 		D2E098CDE7120087F5C947F0 /* JotCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = JotCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		D61874EB855429080562675D /* VocabularyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabularyView.swift; sourceTree = "<group>"; };
+		D8260B75D679FF88E8921F1B /* JotVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JotVersion.swift; sourceTree = "<group>"; };
 		DF4F7EA10A696D822E25FABC /* SelectableHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectableHistory.swift; sourceTree = "<group>"; };
 		EBA0F84BDC3CF425D094A331 /* JotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JotApp.swift; sourceTree = "<group>"; };
 		FDE6F4ADB49011C1E67086A3 /* JotCLI */ = {isa = PBXFileReference; includeInIndex = 0; path = JotCLI; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -203,6 +205,7 @@
 				83ACD6F41350D0FEEF8F9394 /* DictationCleanup.swift */,
 				7415694705568E2457081A4F /* DictationShortcut.swift */,
 				6646658769779D619884AA27 /* DictationSpeakerMute.swift */,
+				D8260B75D679FF88E8921F1B /* JotVersion.swift */,
 				D1812288F51560118033D92A /* LocalService.swift */,
 				9A4D583EF07B940C30081D6E /* MeetingExportWait.swift */,
 				C1C5114298E41FD0B34E6B8C /* MicrophoneSelection.swift */,
@@ -417,6 +420,7 @@
 				6A34209658A335507BD1D20E /* DictationCleanup.swift in Sources */,
 				8EF28A78E5F76B97289D3D9B /* DictationShortcut.swift in Sources */,
 				7F7F23DCD4A5FFD39B920C97 /* DictationSpeakerMute.swift in Sources */,
+				E7E4D5D9AA889DAD7DFCB9C8 /* JotVersion.swift in Sources */,
 				2D62FA2C153FEDA91143654A /* LocalService.swift in Sources */,
 				44270DB6A337277CD915775F /* MeetingExportWait.swift in Sources */,
 				D2C247EB99AD43C79AB4C8A3 /* MicrophoneSelection.swift in Sources */,
