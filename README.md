@@ -38,6 +38,8 @@ Dictation supports up to 60 seconds per hold. It cancels if focus changes, skips
 
 **Quiet speakers while you talk:** dictation temporarily mutes the built-in speakers and restores their previous mute state on release or cancellation. Headphones and other outputs are left alone. Media continues playing silently. This is enabled by default; turn it off in **Tuning → Mute built-in speakers during dictation**.
 
+**Keep Mac awake during ambient capture:** turn this on beneath **Ambient transcription** to prevent idle sleep while ambient capture or a meeting is recording. It releases automatically when ambient capture stops, and does not block manual sleep, lid close, shutdown, or battery-critical sleep.
+
 **Start meeting** records ambient capture under a name. **End meeting** waits for the last audio, saves the whole transcript as Markdown in `~/Documents/Jot Sessions`, and shows the file in Finder. If the Mac sleeps or the microphone changes during a meeting, **Resume** continues it as a second session with the same name; **End meeting** saves the latest part, and the earlier part can be exported from **Sessions**. **Sessions** lists every capture session; open one to read it whole, rename it, name speakers, copy it, or export it.
 
 In **History**, search transcripts, select text across statements, and press ⌘C to copy. **Load more** adds older results. Cards view supports individual copying and speaker naming. **Clear** in History permanently deletes all saved transcripts and sessions, including rows outside the current search or loaded page. History cards and sessions each have a trash button for individual deletion. Existing exported files are separate. New dictation starts a fresh history.

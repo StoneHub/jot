@@ -283,6 +283,11 @@ private struct ServiceControls: View {
                     Task { await service.setAmbient(enabled) }
                 })).labelsHidden().toggleStyle(.switch).disabled(service.lifecycle.phase != .ready)
             }.help("Continuously transcribe the microphone while the service is running.")
+            Toggle("Keep Mac awake during ambient capture", isOn: $service.keepMacAwakeWhileListening)
+                .toggleStyle(.switch)
+                .padding(.leading, 30)
+            Text("Prevents idle sleep while ambient transcription or a meeting is recording. It releases when ambient capture stops.")
+                .font(.caption).foregroundStyle(.secondary).padding(.leading, 30)
             if service.isPaused && (service.fnRequested || service.ambientRequested) {
                 Text("Selected features start when you resume.").font(.caption).foregroundStyle(.secondary).padding(.leading, 30)
             }

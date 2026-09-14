@@ -112,7 +112,7 @@ if old_preferences.returncode == 0:
     previous = plistlib.loads(old_preferences.stdout)
     preferences = plistlib.loads(new_preferences.stdout) if new_preferences.returncode == 0 else {}
     if not preferences.get('jotLegacyPreferencesMigrated'):
-        for key in ['fnRequested', 'historyTextView', 'modelUpdateChecks', 'modelsPrepared', 'servicePaused', 'transcriptionTuning']:
+        for key in ['fnRequested', 'historyTextView', 'modelUpdateChecks', 'modelsPrepared', 'servicePaused', 'transcriptionTuning', 'keepMacAwakeWhileListening']:
             if key in previous and key not in preferences:
                 preferences[key] = previous[key]
         preferences['jotLegacyPreferencesMigrated'] = True
