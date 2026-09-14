@@ -410,6 +410,30 @@ struct MenuControls: View {
 }
 
 
+/// One sheet names a speaker from History or Sessions; the label is scoped to the row's session.
+private struct SpeakerNameSheet: View {
+    let transcript: Transcript
+    let service: SpeechService
+    @Binding var draft: String
+    let onSave: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Name this speaker for this session").font(.headline)
+            TextField("Name", text: $draft).textFieldStyle(.roundedBorder).frame(width: 280)
+            HStack {
+                Button("Cancel", action: onCancel)
+                Spacer()
+                Button("Save") {
+                    if let speaker = transcript.speakerID { service.labelSpeaker(session: transcript.sessionID, speaker: speaker, name: draft) }
+                    onSave()
+                }.disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty).keyboardShortcut(.defaultAction)
+            }
+        }.padding(20)
+    }
+}
+
 /// Every capture session, readable whole at full width; the picker keeps the list out of the reading column.
 private struct SessionsView: View {
     @ObservedObject var service: SpeechService
@@ -440,22 +464,10 @@ private struct SessionsView: View {
             select(service.sessions.contains { $0.sessionID == selectedID } ? selectedID : service.sessions.first?.sessionID)
         }
         .onChange(of: service.sessions.map(\.transcriptCount)) { _, _ in if let selectedID { rows = service.sessionParagraphs(selectedID) } }
-        .sheet(isPresented: Binding(get: { labelTarget != nil }, set: { if !$0 { labelTarget = nil } })) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Name this speaker for this session").font(.headline)
-                TextField("Name", text: $labelDraft).textFieldStyle(.roundedBorder).frame(width: 280)
-                HStack {
-                    Button("Cancel") { labelTarget = nil }
-                    Spacer()
-                    Button("Save") {
-                        if let target = labelTarget, let speaker = target.speakerID {
-                            service.labelSpeaker(session: target.sessionID, speaker: speaker, name: labelDraft)
-                            rows = service.sessionParagraphs(target.sessionID)
-                        }
-                        labelTarget = nil
-                    }.disabled(labelDraft.trimmingCharacters(in: .whitespaces).isEmpty).keyboardShortcut(.defaultAction)
-                }
-            }.padding(20)
+        .sheet(item: $labelTarget) { target in
+            SpeakerNameSheet(transcript: target, service: service, draft: $labelDraft,
+                onSave: { rows = service.sessionParagraphs(target.sessionID); labelTarget = nil },
+                onCancel: { labelTarget = nil })
         }
     }
 
@@ -625,20 +637,8 @@ struct TranscriptView: View {
         .onDisappear { copyReset?.cancel() }
         .onChange(of: service.historyRevision) { _, _ in selected = nil; copiedID = nil }
 
-        .sheet(isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } })) {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Name speaker").font(.headline)
-                TextField("Name for this session", text: $label)
-                HStack {
-                    Button("Cancel") { selected = nil }
-                    Spacer()
-                    Button("Save") {
-                        guard let item = selected, let speaker = item.speakerID else { return }
-                        service.labelSpeaker(session: item.sessionID, speaker: speaker, name: label)
-                        selected = nil
-                    }.disabled(label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }.padding(24).frame(width: 360)
+        .sheet(item: $selected) { item in
+            SpeakerNameSheet(transcript: item, service: service, draft: $label, onSave: { selected = nil }, onCancel: { selected = nil })
         }
     }
 
