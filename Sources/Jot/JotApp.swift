@@ -306,7 +306,7 @@ private struct MeetingControls: View {
     @State private var working = false
     var body: some View {
         if let title = service.meetingTitle {
-            ControlRow(dot: .red, title: title, caption: "Recording") {
+            ControlRow(dot: service.ambientEnabled ? .red : Color.secondary, title: title, caption: caption) {
                 Button(working ? "Saving…" : "End") {
                     working = true
                     Task { await service.endMeeting(); working = false }
@@ -329,6 +329,8 @@ private struct MeetingControls: View {
             }
         }
     }
+    /// An automatic pause keeps the meeting for Resume; the row must not claim to record until capture is back.
+    private var caption: String { service.isPaused ? "Paused, resumes with Jot" : (service.ambientEnabled ? "Recording" : "Starting") }
     private func start() {
         let title = draft.trimmingCharacters(in: .whitespaces)
         guard !title.isEmpty else { return }

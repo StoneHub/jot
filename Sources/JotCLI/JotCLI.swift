@@ -24,7 +24,7 @@ struct JotCLI {
 
     jot status                         Listening state and system impact
     jot start                          Start ambient transcription
-    jot pause                          Pause all speech work and unload models
+    jot pause                          Pause all speech work, unload models, and end any meeting
     jot resume                         Reload models and resume selected features
     jot ambient-off                    Turn off ambient capture; keep Fn available
     jot meeting start <title>          Ambient capture with a name; exports when it ends
@@ -145,7 +145,7 @@ private struct MCPServer {
         ("speech_status", "speech.status", "Get capture state, model state, and current system impact statistics.", [:], []),
         ("speech_diagnostics", "speech.diagnostics", "Read bounded local memory, lifecycle, and latency diagnostics without audio, transcripts, vocabulary, or app identities.", [:], []),
         ("speech_start", "speech.start", "Start ambient microphone transcription when the user explicitly requests listening.", [:], []),
-        ("speech_pause", "speech.pause", "Pause all speech work, discard unfinished audio, and unload models. Poll status until servicePhase is paused.", [:], []),
+        ("speech_pause", "speech.pause", "Pause all speech work, discard unfinished audio, unload models, and end any meeting without exporting. Poll status until servicePhase is paused.", [:], []),
         ("speech_resume", "speech.resume", "Reload models and resume the selected Fn/ambient features.", [:], []),
         ("speech_ambient_off", "speech.ambient_off", "Switch off ambient capture while keeping Fn dictation available.", [:], []),
         ("speech_meeting_start", "speech.meeting_start", "Start ambient capture as a named meeting when the user explicitly asks to record one.", ["title": ["type": "string", "maxLength": 200]], ["title"]),
