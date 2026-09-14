@@ -1,7 +1,7 @@
 import Foundation
 import IOKit.pwr_mgt
 
-/// Holds macOS's idle-sleep assertion only while Jot is actively listening.
+/// Holds macOS's idle-sleep assertion only while Jot is running ambient capture.
 /// Manual sleep, lid close, shutdown, and battery-critical sleep still work normally.
 final class KeepAwakeAssertion {
     private var identifier: IOPMAssertionID = 0

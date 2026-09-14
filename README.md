@@ -38,7 +38,7 @@ Dictation supports up to 60 seconds per hold. It cancels if focus changes, skips
 
 **Quiet speakers while you talk:** dictation temporarily mutes the built-in speakers and restores their previous mute state on release or cancellation. Headphones and other outputs are left alone. Media continues playing silently. This is enabled by default; turn it off in **Tuning → Mute built-in speakers during dictation**.
 
-**Keep Mac awake while listening:** turn this on in **Tuning** to prevent idle sleep while Jot is capturing ambient audio or dictation. It releases automatically when capture stops, and does not block manual sleep, lid close, shutdown, or battery-critical sleep.
+**Keep Mac awake during ambient capture:** turn this on beneath **Ambient transcription** to prevent idle sleep while ambient capture or a meeting is recording. It releases automatically when ambient capture stops, and does not block manual sleep, lid close, shutdown, or battery-critical sleep.
 
 **Start meeting** records ambient capture under a name. **End meeting** waits for the last audio, saves the whole transcript as Markdown in `~/Documents/Jot Sessions`, and shows the file in Finder. If the Mac sleeps or the microphone changes during a meeting, **Resume** continues it as a second session with the same name; **End meeting** saves the latest part, and the earlier part can be exported from **Sessions**. **Sessions** lists every capture session; open one to read it whole, rename it, name speakers, copy it, or export it.
 

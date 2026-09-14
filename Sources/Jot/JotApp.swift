@@ -283,6 +283,11 @@ private struct ServiceControls: View {
                     Task { await service.setAmbient(enabled) }
                 })).labelsHidden().toggleStyle(.switch).disabled(service.lifecycle.phase != .ready)
             }.help("Continuously transcribe the microphone while the service is running.")
+            Toggle("Keep Mac awake during ambient capture", isOn: $service.keepMacAwakeWhileListening)
+                .toggleStyle(.switch)
+                .padding(.leading, 30)
+            Text("Prevents idle sleep while ambient transcription or a meeting is recording. It releases when ambient capture stops.")
+                .font(.caption).foregroundStyle(.secondary).padding(.leading, 30)
             if service.isPaused && (service.fnRequested || service.ambientRequested) {
                 Text("Selected features start when you resume.").font(.caption).foregroundStyle(.secondary).padding(.leading, 30)
             }
@@ -761,10 +766,6 @@ struct TranscriptView: View {
                     Toggle("Mute built-in speakers during dictation", isOn: $service.muteSpeakersDuringDictation)
                         .toggleStyle(.switch)
                     Text("Restores the previous mute state when you release your shortcut. Other audio outputs are unchanged. Media keeps playing silently.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Toggle("Keep Mac awake while listening", isOn: $service.keepMacAwakeWhileListening)
-                        .toggleStyle(.switch)
-                    Text("Prevents idle sleep while Jot is capturing ambient audio or dictation. Manual sleep, lid close, and shutdown still work normally.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 HStack {

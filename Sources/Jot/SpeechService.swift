@@ -546,9 +546,8 @@ final class SpeechService: ObservableObject {
         guard !ambientEnabled else { return }
         if !capture.running { lastAudioAt = Date() }
         try capture.start()
-        updateKeepAwakeAssertion()
         sessionID = UUID().uuidString; sessionStarted = Date(); ambientOffset = 0; activeSessionID = sessionID
-        ambient = []; silentSeconds = 0; ambientEnabled = true; updateMode()
+        ambient = []; silentSeconds = 0; ambientEnabled = true; updateKeepAwakeAssertion(); updateMode()
         recordEvent(.started, "Ambient microphone capture started."); notice = ""
     }
 
@@ -816,6 +815,6 @@ final class SpeechService: ObservableObject {
     }
 
     private func updateKeepAwakeAssertion() {
-        keepAwake.setActive(keepMacAwakeWhileListening && capture.running)
+        keepAwake.setActive(keepMacAwakeWhileListening && ambientEnabled && capture.running)
     }
 }
