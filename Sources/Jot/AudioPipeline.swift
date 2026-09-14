@@ -6,14 +6,24 @@ import CoreML
 import FluidAudio
 import JotCore
 
+/// The raw values are stored in the transcripts table, whose CHECK constraint allows exactly these two.
+enum CaptureMode: String, Sendable { case ambient, dictation }
+
 struct AudioJob: Sendable {
     let sessionID: String
     let startedAt: Date
     let offset: Double
     let samples: [Float]
-    let mode: String
+    let mode: CaptureMode
     let ticket: UUID
     var submittedUptime = ProcessInfo.processInfo.systemUptime
+}
+
+/// The one sample rate every buffer in the app uses; the recognizer models expect 16 kHz mono.
+enum AudioClock {
+    static let sampleRate = 16000
+    static func samples(seconds: Double) -> Int { Int((seconds * Double(sampleRate)).rounded()) }
+    static func seconds(samples: Int) -> Double { Double(samples) / Double(sampleRate) }
 }
 
 struct SpeechOutput: Sendable {
@@ -68,14 +78,14 @@ actor SpeechPipeline {
         let file = try AVAudioFile(forReading: url)
         guard Double(file.length) / file.processingFormat.sampleRate <= 60 else { throw JotError.message("Diagnostic files must be at most 60 seconds.") }
         let samples = try AudioConverter().resampleAudioFile(url)
-        return try await infer(AudioJob(sessionID: UUID().uuidString, startedAt: Date(), offset: 0, samples: samples, mode: "ambient", ticket: UUID()), tuning: tuning)
+        return try await infer(AudioJob(sessionID: UUID().uuidString, startedAt: Date(), offset: 0, samples: samples, mode: .ambient, ticket: UUID()), tuning: tuning)
     }
 
     func infer(_ job: AudioJob, tuning: TranscriptionTuning = .init()) async throws -> SpeechOutput {
         guard let asr, let vad, let diarizer else { throw JotError.message("Prepare models before listening.") }
         try Task.checkCancellation()
         let begin = Date()
-        if job.mode == "ambient" {
+        if job.mode == .ambient {
             if sessionID != job.sessionID || abs(job.offset - expectedOffset) > 0.02 {
                 diarizer.reset(); probabilities.removeAll(); sessionID = job.sessionID; baseOffset = job.offset; lastSpeaker = nil
             }
@@ -106,7 +116,7 @@ actor SpeechPipeline {
         let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return SpeechOutput(transcripts: [], text: "", processingSeconds: Date().timeIntervalSince(begin)) }
         var segments: [Transcript] = []
-        if job.mode == "ambient", let timings = result.tokenTimings, !timings.isEmpty {
+        if job.mode == .ambient, let timings = result.tokenTimings, !timings.isEmpty {
             let words = buildWordTimings(from: timings)
             let attributed = words.map { word -> AttributedWord in
                 let frame = Int((job.offset - baseOffset + (word.startTime + word.endTime) / 2) / 0.08)
@@ -117,12 +127,12 @@ actor SpeechPipeline {
             segments = turns.map { turn in
                 Transcript(sessionID: job.sessionID, startedAt: job.startedAt,
                     startSeconds: job.offset + turn.start, endSeconds: job.offset + turn.end,
-                    text: turn.text, speakerID: turn.speaker, mode: job.mode)
+                    text: turn.text, speakerID: turn.speaker, mode: job.mode.rawValue)
             }
         }
         if segments.isEmpty {
             segments = [Transcript(sessionID: job.sessionID, startedAt: job.startedAt, startSeconds: job.offset,
-                endSeconds: job.offset + Double(job.samples.count) / 16000, text: text, speakerID: nil, mode: job.mode)]
+                endSeconds: job.offset + Double(job.samples.count) / 16000, text: text, speakerID: nil, mode: job.mode.rawValue)]
         }
         return SpeechOutput(transcripts: segments, text: text, processingSeconds: Date().timeIntervalSince(begin))
     }
@@ -201,6 +211,7 @@ final class MicrophoneCapture: @unchecked Sendable {
     private var rms: Float = 0
     private var selectedInputUID: String?
     private var configurationChangeFilter = AudioConfigurationChangeFilter()
+    private static let queueLimit = AudioClock.samples(seconds: 8)
     var running: Bool { engine.isRunning }
 
     func setInput(uid: String?) throws {
@@ -237,7 +248,7 @@ final class MicrophoneCapture: @unchecked Sendable {
         }
         let source = input.outputFormat(forBus: 0)
         guard source.sampleRate > 0, source.channelCount > 0,
-              let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),
+              let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: Double(AudioClock.sampleRate), channels: 1, interleaved: false),
               let converter = AVAudioConverter(from: source, to: target) else {
             throw JotError.message("No usable microphone input. Check the macOS input device.")
         }
@@ -246,7 +257,7 @@ final class MicrophoneCapture: @unchecked Sendable {
             guard let self else { return }
             self.callbacks.enter()
             defer { self.callbacks.leave() }
-            let capacity = AVAudioFrameCount(ceil(Double(buffer.frameLength) * 16000 / source.sampleRate) + 32)
+            let capacity = AVAudioFrameCount(ceil(Double(buffer.frameLength) * Double(AudioClock.sampleRate) / source.sampleRate) + 32)
             guard let converted = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return }
             var supplied = false
             var error: NSError?
@@ -270,7 +281,7 @@ final class MicrophoneCapture: @unchecked Sendable {
         lastAudio = Date()
         rms = samples.isEmpty ? 0 : sqrt(samples.reduce(0) { $0 + $1 * $1 } / Float(samples.count))
         pending.append(contentsOf: samples)
-        if pending.count > 128000 { let excess = pending.count - 128000; pending.removeFirst(excess); dropped += excess }
+        if pending.count > Self.queueLimit { let excess = pending.count - Self.queueLimit; pending.removeFirst(excess); dropped += excess }
     }
 
     var bufferedSampleCount: Int {

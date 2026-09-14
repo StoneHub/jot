@@ -5,24 +5,34 @@ import Foundation
 import JotCore
 import FluidAudio
 
+/// The raw values are what `jot status` reports under "models".
+enum ModelState: String { case notLoaded = "not loaded", preparing, ready, failed, unloading, unloaded }
+
+/// The raw values are stored in the capture_events table and shown in History.
+enum CaptureEventKind: String {
+    case started, paused, stopped, sleep
+    case ambientOff = "ambient_off", deviceChange = "device_change", inputStalled = "input_stalled"
+    case audioGap = "audio_gap", audioDiscarded = "audio_discarded", processingError = "processing_error"
+}
+
 @MainActor
 final class SpeechService: ObservableObject {
     @Published var lifecycle = ServiceLifecycle()
-    @Published var fnRequested = UserDefaults.standard.bool(forKey: "fnRequested")
+    @Published var fnRequested = UserDefaults.standard.bool(forKey: JotDefaultsKey.fnRequested)
     @Published private(set) var shortcut = ShortcutPreferences().load()
     var canChangeShortcut: Bool { !dictationActive && !dictationPending }
     var canChangeInput: Bool { !capture.running && !dictationPending && !diagnosticActive }
     private let speakerMute = DictationSpeakerMute()
     private let highlight = DictationHighlight()
-    @Published var highlightTargetField = UserDefaults.standard.object(forKey: "highlightTargetField") as? Bool ?? true {
+    @Published var highlightTargetField = UserDefaults.standard.object(forKey: JotDefaultsKey.highlightTargetField) as? Bool ?? true {
         didSet {
-            UserDefaults.standard.set(highlightTargetField, forKey: "highlightTargetField")
+            UserDefaults.standard.set(highlightTargetField, forKey: JotDefaultsKey.highlightTargetField)
             if !highlightTargetField { highlight.hide() }
         }
     }
-    @Published var muteSpeakersDuringDictation = UserDefaults.standard.object(forKey: "muteSpeakersDuringDictation") as? Bool ?? true {
+    @Published var muteSpeakersDuringDictation = UserDefaults.standard.object(forKey: JotDefaultsKey.muteSpeakersDuringDictation) as? Bool ?? true {
         didSet {
-            UserDefaults.standard.set(muteSpeakersDuringDictation, forKey: "muteSpeakersDuringDictation")
+            UserDefaults.standard.set(muteSpeakersDuringDictation, forKey: JotDefaultsKey.muteSpeakersDuringDictation)
             if !muteSpeakersDuringDictation { speakerMute.end() }
         }
     }
@@ -39,7 +49,7 @@ final class SpeechService: ObservableObject {
     @Published var ambientRequested = false
     @Published private(set) var ambientEnabled = false
     @Published var mode = "paused"
-    @Published var modelState = "not loaded"
+    @Published var modelState = ModelState.notLoaded
     @Published var notice = ""
     @Published var recent: [Transcript] = []
     @Published var history: [Transcript] = []
@@ -49,8 +59,8 @@ final class SpeechService: ObservableObject {
     @Published var checkingModels = false
     @Published var micPermission = AVCaptureDevice.authorizationStatus(for: .audio)
     @Published private(set) var inputDevices: [AudioInputDevice] = []
-    @Published var selectedInputUID = UserDefaults.standard.string(forKey: "selectedInputUID") ?? ""
-    @Published private(set) var selectedInputName = UserDefaults.standard.string(forKey: "selectedInputName") ?? "Saved microphone"
+    @Published var selectedInputUID = UserDefaults.standard.string(forKey: JotDefaultsKey.selectedInputUID) ?? ""
+    @Published private(set) var selectedInputName = UserDefaults.standard.string(forKey: JotDefaultsKey.selectedInputName) ?? "Saved microphone"
     /// True while the saved microphone is unplugged; capture then runs on System Default and the choice is kept.
     @Published private(set) var selectedInputMissing = false
     @Published private(set) var systemDefaultInputName = "System Default"
@@ -71,7 +81,7 @@ final class SpeechService: ObservableObject {
     @Published private(set) var lastExport: URL?
     @Published var tuning = TranscriptionTuning() {
         didSet {
-            if let data = try? JSONEncoder().encode(tuning.bounded) { UserDefaults.standard.set(data, forKey: "transcriptionTuning") }
+            if let data = try? JSONEncoder().encode(tuning.bounded) { UserDefaults.standard.set(data, forKey: JotDefaultsKey.transcriptionTuning) }
             refreshHistory()
         }
     }
@@ -96,7 +106,7 @@ final class SpeechService: ObservableObject {
         vocabulary = updated
     }
 
-    private var modelCheck: Task<Void, Never>?
+    var modelCheck: Task<Void, Never>?
     @Published private(set) var historyRevision = 0
     private var historySources: [String: [String]] = [:]
     private var historyClearedAt: TimeInterval = -1
@@ -105,22 +115,27 @@ final class SpeechService: ObservableObject {
     private var historyLimit = 50
     @Published var resources = ResourceSnapshot()
     #if DEBUG
-    private var diagnostics = PerformanceDiagnostics(build: .debug)
+    var diagnostics = PerformanceDiagnostics(build: .debug)
     #else
-    private var diagnostics = PerformanceDiagnostics(build: .release)
+    var diagnostics = PerformanceDiagnostics(build: .release)
     #endif
     private let diagnosticsBegan = ProcessInfo.processInfo.systemUptime
+    /// Shorter audio is dropped: recognition on it is noise.
+    private static let minimumJobSamples = AudioClock.samples(seconds: 0.2)
+    private static let ambientBreakSamples = AudioClock.samples(seconds: 2)
+    private static let ambientBlockSamples = AudioClock.samples(seconds: 20)
+    private static let dictationLimit = AudioClock.samples(seconds: 60)
     private var inFlightAudioSeconds = 0.0
 
-    private func samplePerformance() {
+    func samplePerformance() {
         resources = sampler.sample()
         guard resources.valid else { return }
         let elapsed = ProcessInfo.processInfo.systemUptime - diagnosticsBegan
         diagnostics.observe(.init(elapsedSeconds: elapsed, footprintMiB: resources.physicalFootprintMiB,
             residentMiB: resources.residentMiB, cpuPercent: resources.processCPUPercent,
-            droppedAudioSeconds: droppedSeconds, bufferedAudioSeconds: Double(capture.bufferedSampleCount + ambient.count + dictation.count) / 16000 + inFlightAudioSeconds,
-            queuedAudioSeconds: jobs.reduce(0) { $0 + Double($1.samples.count) / 16000 }, loadedHistoryRows: history.count,
-            modelsReady: modelState == "ready", ambientEnabled: ambientEnabled, dictationActive: dictationActive,
+            droppedAudioSeconds: droppedSeconds, bufferedAudioSeconds: AudioClock.seconds(samples: capture.bufferedSampleCount + ambient.count + dictation.count) + inFlightAudioSeconds,
+            queuedAudioSeconds: jobs.reduce(0) { $0 + AudioClock.seconds(samples: $1.samples.count) }, loadedHistoryRows: history.count,
+            modelsReady: modelState == .ready, ambientEnabled: ambientEnabled, dictationActive: dictationActive,
             inferenceRunning: processing != nil))
     }
 
@@ -139,18 +154,18 @@ final class SpeechService: ObservableObject {
     @Published var lastTranscriptAt: Date?
     @Published var queuedSeconds = 0.0
     private(set) var preparing = false
-    private let capture = MicrophoneCapture()
-    private let pipeline = SpeechPipeline()
+    let capture = MicrophoneCapture()
+    let pipeline = SpeechPipeline()
     private let sampler = ResourceSampler()
-    private var store: TranscriptStore?
+    var store: TranscriptStore?
     private var server: LocalServiceServer?
     private var timer: Timer?
-    private var diagnosticActive = false
+    var diagnosticActive = false
     private var preparation: Task<Void, Never>?
     private var pausing: Task<Void, Never>?
-    private var diagnostic: Task<SpeechOutput, Error>?
+    var diagnostic: Task<SpeechOutput, Error>?
     private var tickCount = 0
-    private var sessionID = UUID().uuidString
+    var sessionID = UUID().uuidString
     private var sessionStarted = Date()
     private var ambientOffset = 0.0
     private var ambient: [Float] = []
@@ -160,16 +175,16 @@ final class SpeechService: ObservableObject {
     private var dictationPending = false
     private var dictationTicket = UUID()
     private var dictationStarted = Date()
-    private var jobs: [AudioJob] = []
-    private var processing: Task<Void, Never>?
+    var jobs: [AudioJob] = []
+    var processing: Task<Void, Never>?
     private var observers: [NSObjectProtocol] = []
     private var lastStatsTime = Date.distantPast
-    private lazy var input: DictationInput = {
+    lazy var input: DictationInput = {
         let result = DictationInput(onStart: { [weak self] in self?.beginDictation() }, onStop: { [weak self] in self?.endDictation() })
         result.shortcut = shortcut
         result.canStart = { [weak self] in
             guard let self else { return false }
-            return self.lifecycle.phase == .ready && self.modelState == "ready" && !self.dictationPending && !self.dictationActive && !self.diagnosticActive
+            return self.lifecycle.phase == .ready && self.modelState == .ready && !self.dictationPending && !self.dictationActive && !self.diagnosticActive
         }
         result.onError = { [weak self] error in
             self?.notice = error.localizedDescription
@@ -191,26 +206,26 @@ final class SpeechService: ObservableObject {
                 return await self.handle(data)
             }
             try service.start(); server = service
-            if let data = UserDefaults.standard.data(forKey: "transcriptionTuning"),
+            if let data = UserDefaults.standard.data(forKey: JotDefaultsKey.transcriptionTuning),
                let saved = try? JSONDecoder().decode(TranscriptionTuning.self, from: data) { tuning = saved.bounded }
             refreshRecent(); refreshSessions()
-            if let data = UserDefaults.standard.data(forKey: "modelUpdateChecks"),
+            if let data = UserDefaults.standard.data(forKey: JotDefaultsKey.modelUpdateChecks),
                let saved = try? JSONDecoder().decode([ModelUpdate].self, from: data) { modelUpdates = saved }
-            if UserDefaults.standard.bool(forKey: "modelsPrepared"), !UserDefaults.standard.bool(forKey: "servicePaused") { prepare() }
+            if UserDefaults.standard.bool(forKey: JotDefaultsKey.modelsPrepared), !UserDefaults.standard.bool(forKey: JotDefaultsKey.servicePaused) { prepare() }
         } catch { notice = "Service startup: \(error.localizedDescription)" }
         promptForPermissionsAtLaunch()
         scheduleTimer()
         let center = NSWorkspace.shared.notificationCenter
         observers.append(center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
-                self?.recordEvent("sleep", "Capture paused because the Mac is sleeping."); self?.pause(automatic: true); self?.notice = "Paused for sleep."
+                self?.recordEvent(.sleep, "Capture paused because the Mac is sleeping."); self?.pause(automatic: true); self?.notice = "Paused for sleep."
             }
         })
         observers.append(NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.ambientEnabled || self.dictationActive else { return }
                 if self.capture.shouldIgnoreConfigurationChange() { return }
-                self.recordEvent("device_change", "Audio input configuration changed."); self.pause(automatic: true); self.notice = "Audio input changed. Resume when ready."
+                self.recordEvent(.deviceChange, "Audio input configuration changed."); self.pause(automatic: true); self.notice = "Audio input changed. Resume when ready."
             }
         })
     }
@@ -243,8 +258,8 @@ final class SpeechService: ObservableObject {
         }
         downloadPrompt = nil
         guard let token = lifecycle.beginStart() else { return }
-        UserDefaults.standard.set(false, forKey: "servicePaused")
-        preparing = true; modelState = "preparing"; updateMode()
+        UserDefaults.standard.set(false, forKey: JotDefaultsKey.servicePaused)
+        preparing = true; modelState = .preparing; updateMode()
         markPerformance(.resume); markPerformance(.modelLoadStarted)
         notice = "Loading models…"
         preparation = Task {
@@ -252,16 +267,16 @@ final class SpeechService: ObservableObject {
                 try await pipeline.prepare()
                 try Task.checkCancellation()
                 guard lifecycle.finishStart(token, succeeded: true) else { return }
-                modelState = "ready"
+                modelState = .ready
                 markPerformance(.modelsReady)
-                UserDefaults.standard.set(true, forKey: "modelsPrepared")
+                UserDefaults.standard.set(true, forKey: JotDefaultsKey.modelsPrepared)
                 cachedModelBytes = ModelCache.bytesOnDisk()
                 if fnRequested { await enableFn() }
                 if ambientRequested { try await activateAmbient(); try continueMeeting() }
                 if lifecycle.acceptsWork(token) { notice = "" }
             } catch {
                 if lifecycle.finishStart(token, succeeded: false) {
-                    modelState = "failed"; notice = error.localizedDescription
+                    modelState = .failed; notice = error.localizedDescription
                     await pipeline.unload()
                 } else if lifecycle.acceptsWork(token) { notice = error.localizedDescription }
             }
@@ -285,7 +300,7 @@ final class SpeechService: ObservableObject {
 
     /// A CLI or MCP resume is already an explicit request, so it downloads and reports the size instead of prompting.
     @discardableResult
-    private func prepareFromCommand() -> Int64 {
+    func prepareFromCommand() -> Int64 {
         let pending = ModelCache.bytesOnDisk() == 0 ? ModelCache.expectedBytes : 0
         prepare(confirmingDownload: true)
         return pending
@@ -300,7 +315,7 @@ final class SpeechService: ObservableObject {
         inputDevices = AudioInputDevice.available()
         systemDefaultInputName = AudioInputDevice.defaultName() ?? "System Default"
         if let saved = inputDevices.first(where: { $0.id == selectedInputUID }), saved.name != selectedInputName {
-            selectedInputName = saved.name; UserDefaults.standard.set(saved.name, forKey: "selectedInputName")
+            selectedInputName = saved.name; UserDefaults.standard.set(saved.name, forKey: JotDefaultsKey.selectedInputName)
         }
         let wasMissing = selectedInputMissing
         let captureUID = MicrophoneSelection.captureUID(saved: selectedInputUID, available: inputDevices.map(\.id))
@@ -317,8 +332,8 @@ final class SpeechService: ObservableObject {
             selectedInputUID = uid
             if let device = inputDevices.first(where: { $0.id == uid }) { selectedInputName = device.name }
             selectedInputMissing = !uid.isEmpty && !inputDevices.contains { $0.id == uid }
-            if uid.isEmpty { UserDefaults.standard.removeObject(forKey: "selectedInputUID"); UserDefaults.standard.removeObject(forKey: "selectedInputName") }
-            else { UserDefaults.standard.set(uid, forKey: "selectedInputUID"); UserDefaults.standard.set(selectedInputName, forKey: "selectedInputName") }
+            if uid.isEmpty { UserDefaults.standard.removeObject(forKey: JotDefaultsKey.selectedInputUID); UserDefaults.standard.removeObject(forKey: JotDefaultsKey.selectedInputName) }
+            else { UserDefaults.standard.set(uid, forKey: JotDefaultsKey.selectedInputUID); UserDefaults.standard.set(selectedInputName, forKey: JotDefaultsKey.selectedInputName) }
             notice = ""
         } catch { notice = error.localizedDescription }
     }
@@ -356,7 +371,7 @@ final class SpeechService: ObservableObject {
     }
 
     func enableFn() async {
-        fnRequested = true; UserDefaults.standard.set(true, forKey: "fnRequested")
+        fnRequested = true; UserDefaults.standard.set(true, forKey: JotDefaultsKey.fnRequested)
         let token = lifecycle.generation
         guard lifecycle.acceptsWork(token) else { return }
         guard await requestMic(), lifecycle.acceptsWork(token), fnRequested else { return }
@@ -366,7 +381,7 @@ final class SpeechService: ObservableObject {
     }
 
     func disableFn() {
-        fnRequested = false; UserDefaults.standard.set(false, forKey: "fnRequested")
+        fnRequested = false; UserDefaults.standard.set(false, forKey: JotDefaultsKey.fnRequested)
         cancelDictation(); input.disable(); fnEnabled = false; notice = ""
     }
 
@@ -385,7 +400,7 @@ final class SpeechService: ObservableObject {
             guard lifecycle.phase == .ready else { ambientEnabled = false; updateMode(); return }
             if !dictationActive { capture.stop() }
             drainAudio()
-            if ambientEnabled { flushAmbient(); recordEvent("ambient_off", "Ambient transcription switched off.") }
+            if ambientEnabled { flushAmbient(); recordEvent(.ambientOff, "Ambient transcription switched off.") }
             ambientEnabled = false; updateMode(); level = 0; kickWorker()
         }
     }
@@ -446,7 +461,7 @@ final class SpeechService: ObservableObject {
     }
 
     /// The summary and rows an export is built from; an unknown or dictation-only id has neither.
-    private func exportable(_ id: String) throws -> (session: TranscriptSession, rows: [Transcript]) {
+    func exportable(_ id: String) throws -> (session: TranscriptSession, rows: [Transcript]) {
         guard let store else { throw JotError.message("Transcript storage is unavailable.") }
         let rows = try store.session(id: id)
         guard !rows.isEmpty, let session = try store.sessionSummary(id: id) else {
@@ -497,7 +512,7 @@ final class SpeechService: ObservableObject {
                     isValid: { self.lifecycle.acceptsWork(generation) && self.sessionID == id },
                     isComplete: {
                         self.kickWorker()
-                        return self.jobs.allSatisfy { $0.mode != "ambient" } && self.processing == nil
+                        return self.jobs.allSatisfy { $0.mode != .ambient } && self.processing == nil
                     })
             } catch {
                 notice = "Meeting export interrupted. Saved transcripts remain in Sessions; no file was exported."
@@ -525,7 +540,7 @@ final class SpeechService: ObservableObject {
         try capture.start()
         sessionID = UUID().uuidString; sessionStarted = Date(); ambientOffset = 0; activeSessionID = sessionID
         ambient = []; silentSeconds = 0; ambientEnabled = true; updateMode()
-        recordEvent("started", "Ambient microphone capture started."); notice = ""
+        recordEvent(.started, "Ambient microphone capture started."); notice = ""
     }
 
     func startAmbient() async throws {
@@ -540,12 +555,12 @@ final class SpeechService: ObservableObject {
     func pause(automatic: Bool = false) {
         guard let token = lifecycle.beginPause() else { return }
         markPerformance(.pause)
-        UserDefaults.standard.set(true, forKey: "servicePaused")
+        UserDefaults.standard.set(true, forKey: JotDefaultsKey.servicePaused)
         capture.stop()
         let packet = capture.drain()
-        let discarded = Double(packet.samples.count + packet.dropped + ambient.count + dictation.count + jobs.reduce(0) { $0 + $1.samples.count }) / 16000
-        if discarded > 0 { recordEvent("audio_discarded", "Unfinished audio discarded by Pause.") }
-        if ambientEnabled { recordEvent("paused", "Service paused.") }
+        let discarded = AudioClock.seconds(samples: packet.samples.count + packet.dropped + ambient.count + dictation.count + jobs.reduce(0) { $0 + $1.samples.count })
+        if discarded > 0 { recordEvent(.audioDiscarded, "Unfinished audio discarded by Pause.") }
+        if ambientEnabled { recordEvent(.paused, "Service paused.") }
         let outcome = PauseOutcome(automatic: automatic, ambientRequested: ambientRequested, meetingTitle: meetingTitle)
         ambientRequested = outcome.ambientRequested; meetingTitle = outcome.meetingTitle; ambientEnabled = false
         cancelDictation(); input.disable(); fnEnabled = false
@@ -553,7 +568,7 @@ final class SpeechService: ObservableObject {
         capture.discardBufferedAudio(); queuedSeconds = 0; level = 0
         let loadingTask = preparation, worker = processing, fileTask = diagnostic
         loadingTask?.cancel(); worker?.cancel(); fileTask?.cancel()
-        modelState = "unloading"; updateMode(); notice = "Releasing models…"
+        modelState = .unloading; updateMode(); notice = "Releasing models…"
         scheduleTimer()
         pausing = Task {
             await loadingTask?.value
@@ -561,7 +576,7 @@ final class SpeechService: ObservableObject {
             _ = try? await fileTask?.value
             await pipeline.unload()
             if lifecycle.finishPause(token) {
-                modelState = "unloaded"; preparing = false; preparation = nil; updateMode()
+                modelState = .unloaded; preparing = false; preparation = nil; updateMode()
                 notice = outcome.endedMeeting ? "Meeting stopped. Its transcript is in Sessions." : ""
                 markPerformance(.modelsUnloaded); scheduleTimer()
             }
@@ -572,7 +587,7 @@ final class SpeechService: ObservableObject {
     func stop() { ambientRequested = false; pause() }
 
     func beginDictation() {
-        guard lifecycle.phase == .ready, modelState == "ready", !dictationPending else { return }
+        guard lifecycle.phase == .ready, modelState == .ready, !dictationPending else { return }
         drainAudio()
         do {
             if !capture.running { lastAudioAt = Date() }
@@ -597,10 +612,10 @@ final class SpeechService: ObservableObject {
         markPerformance(.dictationReleased)
         level = 0
         updateMode()
-        guard dictation.count >= 3200 else { dictation = []; input.discardTarget(); notice = "Too little audio to transcribe."; return }
+        guard dictation.count >= Self.minimumJobSamples else { dictation = []; input.discardTarget(); notice = "Too little audio to transcribe."; return }
         dictationPending = true
         let job = AudioJob(sessionID: UUID().uuidString, startedAt: dictationStarted, offset: 0,
-            samples: dictation, mode: "dictation", ticket: dictationTicket)
+            samples: dictation, mode: .dictation, ticket: dictationTicket)
         dictation = []; jobs.insert(job, at: 0); notice = "Transcribing dictation locally…"; kickWorker()
     }
 
@@ -609,7 +624,7 @@ final class SpeechService: ObservableObject {
         if dictationActive || dictationPending { markPerformance(.dictationCancelled) }
         input.discardTarget()
         dictationActive = false; dictationPending = false; dictationTicket = UUID(); dictation = []
-        jobs.removeAll { $0.mode == "dictation" }
+        jobs.removeAll { $0.mode == .dictation }
         if !ambientEnabled { capture.stop() }
         updateMode()
     }
@@ -619,9 +634,9 @@ final class SpeechService: ObservableObject {
         tickCount += 1
         if Date().timeIntervalSince(lastStatsTime) >= 1 {
             samplePerformance(); lastStatsTime = Date(); refreshPermissions()
-            queuedSeconds = jobs.reduce(0) { $0 + Double($1.samples.count) / 16000 }
+            queuedSeconds = jobs.reduce(0) { $0 + AudioClock.seconds(samples: $1.samples.count) }
             if ambientEnabled || dictationActive, let lastAudioAt, Date().timeIntervalSince(lastAudioAt) > 4 {
-                recordEvent("input_stalled", "No microphone samples for more than four seconds."); pause(automatic: true); notice = "Microphone stopped delivering audio. Resume to reconnect; a capture gap occurred."
+                recordEvent(.inputStalled, "No microphone samples for more than four seconds."); pause(automatic: true); notice = "Microphone stopped delivering audio. Resume to reconnect; a capture gap occurred."
             }
         }
         kickWorker()
@@ -634,37 +649,37 @@ final class SpeechService: ObservableObject {
         lastAudioAt = packet.lastAudio
         if packet.dropped > 0 {
             if dictationActive { cancelDictation() }
-            let lostSeconds = Double(packet.dropped + ambient.count) / 16000
+            let lostSeconds = AudioClock.seconds(samples: packet.dropped + ambient.count)
             droppedSeconds += lostSeconds
-            recordEvent("audio_gap", "Capture queue overflow discarded audio.", duration: lostSeconds)
+            recordEvent(.audioGap, "Capture queue overflow discarded audio.", duration: lostSeconds)
             // End attribution continuity rather than silently stitching across lost audio.
-            ambientOffset += Double(ambient.count + packet.dropped) / 16000; ambient = []
+            ambientOffset += AudioClock.seconds(samples: ambient.count + packet.dropped); ambient = []
             notice = "Audio backlog overflow: a gap was recorded."
         }
         if dictationActive {
-            if dictation.count + packet.samples.count <= 960000 { dictation.append(contentsOf: packet.samples) }
+            if dictation.count + packet.samples.count <= Self.dictationLimit { dictation.append(contentsOf: packet.samples) }
             else { cancelDictation(); notice = "Dictation exceeded 60 seconds; cancelled without inserting a partial prompt." }
         }
         if ambientEnabled {
             ambient.append(contentsOf: packet.samples)
-            silentSeconds = packet.rms < 0.002 ? silentSeconds + Double(packet.samples.count) / 16000 : 0
+            silentSeconds = packet.rms < 0.002 ? silentSeconds + AudioClock.seconds(samples: packet.samples.count) : 0
             // Blocks run up to 20 s and only break on a 2 s silence, so most sentences reach the recognizer whole.
-            if ambient.count >= 320000 || (ambient.count >= 32000 && silentSeconds >= max(2, tuning.bounded.paragraphPause)) { flushAmbient() }
+            if ambient.count >= Self.ambientBlockSamples || (ambient.count >= Self.ambientBreakSamples && silentSeconds >= max(2, tuning.bounded.paragraphPause)) { flushAmbient() }
         }
     }
 
     private func flushAmbient() {
         guard !ambient.isEmpty else { return }
         let samples = ambient; ambient = []; silentSeconds = 0
-        let start = ambientOffset; ambientOffset += Double(samples.count) / 16000
-        guard samples.count >= 3200 else { return }
-        if jobs.filter({ $0.mode == "ambient" }).count >= 3 {
-            droppedSeconds += Double(samples.count) / 16000
-            recordEvent("audio_gap", "Inference queue full; segment discarded.", duration: Double(samples.count) / 16000)
+        let start = ambientOffset; ambientOffset += AudioClock.seconds(samples: samples.count)
+        guard samples.count >= Self.minimumJobSamples else { return }
+        if jobs.filter({ $0.mode == .ambient }).count >= 3 {
+            droppedSeconds += AudioClock.seconds(samples: samples.count)
+            recordEvent(.audioGap, "Inference queue full; segment discarded.", duration: AudioClock.seconds(samples: samples.count))
             notice = "Inference fell behind; bounded audio queue dropped a segment."
             return
         }
-        jobs.append(AudioJob(sessionID: sessionID, startedAt: sessionStarted, offset: start, samples: samples, mode: "ambient", ticket: UUID()))
+        jobs.append(AudioJob(sessionID: sessionID, startedAt: sessionStarted, offset: start, samples: samples, mode: .ambient, ticket: UUID()))
     }
 
     private func kickWorker() {
@@ -674,7 +689,7 @@ final class SpeechService: ObservableObject {
         let vocabularySnapshot = dictationVocabulary
         let began = ProcessInfo.processInfo.systemUptime
         let waitSeconds = max(0, began - job.submittedUptime)
-        inFlightAudioSeconds = Double(job.samples.count) / 16000
+        inFlightAudioSeconds = AudioClock.seconds(samples: job.samples.count)
         processing = Task {
             var outcome = PerformanceJob.Outcome.completed
             var inferenceSeconds: Double?
@@ -685,13 +700,13 @@ final class SpeechService: ObservableObject {
                 inferenceSeconds = output.processingSeconds
                 outcome = output.text.isEmpty ? .noSpeech : .completed
                 lastInferenceSeconds = output.processingSeconds
-                processedAudioSeconds += Double(job.samples.count) / 16000
-                lagSeconds = max(0, Date().timeIntervalSince(job.startedAt) - job.offset - Double(job.samples.count) / 16000)
+                processedAudioSeconds += AudioClock.seconds(samples: job.samples.count)
+                lagSeconds = max(0, Date().timeIntervalSince(job.startedAt) - job.offset - AudioClock.seconds(samples: job.samples.count))
                 if job.submittedUptime > historyClearedAt && !deletedSessions.contains(job.sessionID) {
                     for transcript in output.transcripts { try store?.append(transcript) }
                 }
                 if !output.transcripts.isEmpty { lastTranscriptAt = Date(); refreshRecent(); refreshSessions() }
-                if job.mode == "dictation", job.ticket == dictationTicket {
+                if job.mode == .dictation, job.ticket == dictationTicket {
                     let text = DictationCleanup.applying(to: vocabularySnapshot.applying(to: output.text))
                     if text.isEmpty { notice = "No text to insert." }
                     else {
@@ -704,37 +719,37 @@ final class SpeechService: ObservableObject {
                 }
             } catch {
                 outcome = error is CancellationError ? .cancelled : .failed
-                if !(error is CancellationError) { recordEvent("processing_error", error.localizedDescription, session: job.sessionID) }
-                if lifecycle.acceptsWork(generation), job.mode != "dictation" || job.ticket == dictationTicket {
-                    notice = "\(job.mode.capitalized): \(error.localizedDescription). Transcript insertion was not completed."
+                if !(error is CancellationError) { recordEvent(.processingError, error.localizedDescription, session: job.sessionID) }
+                if lifecycle.acceptsWork(generation), job.mode != .dictation || job.ticket == dictationTicket {
+                    notice = "\(job.mode.rawValue.capitalized): \(error.localizedDescription). Transcript insertion was not completed."
                 }
             }
-            if job.mode == "dictation", job.ticket != dictationTicket { outcome = .cancelled }
+            if job.mode == .dictation, job.ticket != dictationTicket { outcome = .cancelled }
             diagnostics.record(.init(elapsedSeconds: ProcessInfo.processInfo.systemUptime - diagnosticsBegan,
-                mode: job.mode == "dictation" ? .dictation : .ambient, outcome: outcome,
-                audioSeconds: Double(job.samples.count) / 16000, queueWaitSeconds: waitSeconds,
+                mode: job.mode == .dictation ? .dictation : .ambient, outcome: outcome,
+                audioSeconds: AudioClock.seconds(samples: job.samples.count), queueWaitSeconds: waitSeconds,
                 inferenceSeconds: inferenceSeconds, completionSeconds: max(0, ProcessInfo.processInfo.systemUptime - job.submittedUptime)))
             inFlightAudioSeconds = 0
-            if job.mode == "dictation", job.ticket == dictationTicket { input.discardTarget(); dictationPending = false }
+            if job.mode == .dictation, job.ticket == dictationTicket { input.discardTarget(); dictationPending = false }
             processing = nil
             samplePerformance()
             kickWorker()
         }
     }
 
-    private func recordEvent(_ kind: String, _ detail: String, duration: Double? = nil, session: String? = nil) {
+    private func recordEvent(_ kind: CaptureEventKind, _ detail: String, duration: Double? = nil, session: String? = nil) {
         let marker: PerformanceEventKind?
         switch kind {
-        case "started": marker = .ambientStarted
-        case "ambient_off": marker = .ambientStopped
-        case "sleep": marker = .sleep
-        case "device_change": marker = .deviceChange
-        case "audio_gap": marker = .audioGap
-        case "processing_error": marker = .processingFailed
+        case .started: marker = .ambientStarted
+        case .ambientOff: marker = .ambientStopped
+        case .sleep: marker = .sleep
+        case .deviceChange: marker = .deviceChange
+        case .audioGap: marker = .audioGap
+        case .processingError: marker = .processingFailed
         default: marker = nil
         }
         if let marker { markPerformance(marker) }
-        do { try store?.appendEvent(CaptureEvent(sessionID: session ?? sessionID, kind: kind, detail: detail, durationSeconds: duration)); events = try store?.events(limit: 50) ?? [] }
+        do { try store?.appendEvent(CaptureEvent(sessionID: session ?? sessionID, kind: kind.rawValue, detail: detail, durationSeconds: duration)); events = try store?.events(limit: 50) ?? [] }
         catch { notice = "Could not save capture event: \(error.localizedDescription)" }
     }
 
@@ -776,111 +791,16 @@ final class SpeechService: ObservableObject {
                 return rows.sorted { $0.0 < $1.0 }.map(\.1)
             }
             modelUpdates = results
-            if let data = try? JSONEncoder().encode(results) { UserDefaults.standard.set(data, forKey: "modelUpdateChecks") }
+            if let data = try? JSONEncoder().encode(results) { UserDefaults.standard.set(data, forKey: JotDefaultsKey.modelUpdateChecks) }
             checkingModels = false; modelCheck = nil
         }
     }
 
     func shutdown() {
-        if ambientEnabled { recordEvent("stopped", "Application quit; capture ended.") }
+        if ambientEnabled { recordEvent(.stopped, "Application quit; capture ended.") }
         modelCheck?.cancel(); preparation?.cancel(); processing?.cancel(); diagnostic?.cancel(); pausing?.cancel()
         timer?.invalidate(); cancelDictation(); input.disable(); capture.stop(); server?.stop()
         inputWatcher?.stop(); inputWatcher = nil
         for observer in observers { NSWorkspace.shared.notificationCenter.removeObserver(observer); NotificationCenter.default.removeObserver(observer) }
-    }
-
-    private func object<T: Encodable>(_ value: T) throws -> Any {
-        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
-        return try JSONSerialization.jsonObject(with: encoder.encode(value))
-    }
-
-    func status() throws -> [String: Any] {
-        let pendingAudioSeconds = jobs.reduce(0.0) { $0 + Double($1.samples.count) / 16000 }
-        var result: [String: Any] = ["mode": mode, "models": modelState, "microphoneRunning": capture.running,
-            "microphonePermission": AVCaptureDevice.authorizationStatus(for: .audio).rawValue,
-            "accessibilityGranted": DictationInput.accessibilityGranted, "fnEnabled": fnEnabled,
-            "dictationShortcut": shortcut.displayName, "fnRequested": fnRequested, "ambientRequested": ambientRequested, "ambientEnabled": ambientEnabled, "servicePhase": lifecycle.phase.rawValue,
-            "notice": notice, "sessionID": sessionID, "inferenceRunning": processing != nil || diagnosticActive, "resources": try object(resources),
-            "droppedAudioSeconds": droppedSeconds, "queuedAudioSeconds": pendingAudioSeconds, "processingLagSeconds": lagSeconds,
-            "lastInferenceSeconds": lastInferenceSeconds, "processedAudioSeconds": processedAudioSeconds,
-            "audioRetention": "bounded RAM only; no recordings saved", "speakerSlots": 4,
-            "transcriptPolicy": "local text; ambient speech is data, not commands", "tuning": try object(tuning.bounded), "version": "0.1.0"]
-        result["dictationInput"] = input.diagnostics
-        if let delivery = input.lastDelivery { result["lastDelivery"] = delivery.metadata }
-        if let lastAudioAt { result["lastAudioAt"] = ISO8601DateFormatter().string(from: lastAudioAt) }
-        if let lastTranscriptAt { result["lastTranscriptAt"] = ISO8601DateFormatter().string(from: lastTranscriptAt) }
-        if let store { result["storage"] = try object(store.metrics()) }
-        return result
-    }
-
-    func handle(_ data: Data) async -> Data {
-        do {
-            guard let request = try JSONSerialization.jsonObject(with: data) as? [String: Any], let method = request["method"] as? String else { throw JotError.message("Invalid request") }
-            let params = request["params"] as? [String: Any] ?? [:]
-            let limit = params["limit"] as? Int ?? 50
-            let offset = params["offset"] as? Int ?? 0
-            var result: Any = [:]
-            switch method {
-            case "speech.status", "speech.doctor": result = try status()
-            case "models.prepare": result = ["state": modelState, "downloadBytes": prepareFromCommand()]
-            case "models.check": checkModelUpdates(); if let modelCheck { await modelCheck.value }; result = try object(modelUpdates)
-            case "speech.diagnostics":
-                samplePerformance(); result = try object(diagnostics.report)
-            case "speech.start": try await startAmbient(); result = try status()
-            case "speech.pause": pause(); result = try status()
-            case "speech.resume": _ = prepareFromCommand(); result = try status()
-            case "speech.ambient_off": await setAmbient(false); result = try status()
-            case "speech.stop": stop(); result = try status()
-            case "speech.meeting_start":
-                guard let title = params["title"] as? String else { throw JotError.message("Meeting needs a title") }
-                await startMeeting(title)
-                guard meetingTitle != nil else { throw JotError.message(notice.isEmpty ? "Meeting did not start" : notice) }
-                result = ["sessionID": sessionID, "title": title]
-            case "speech.meeting_end":
-                let id = sessionID
-                guard meetingTitle != nil || ambientEnabled else { throw JotError.message("No meeting or ambient capture is running") }
-                let file = await endMeeting()
-                result = ["sessionID": id, "file": file?.path ?? ""]
-            case "sessions.title":
-                guard let id = params["sessionID"] as? String, let title = params["title"] as? String else { throw JotError.message("sessionID and title are required") }
-                try store?.setTitle(sessionID: id, title: title); refreshSessions()
-                result = ["sessionID": id, "title": title]
-            case "transcripts.clear": try clearHistory(); result = ["cleared": true]
-            case "transcripts.delete_session":
-                guard let id = params["sessionID"] as? String else { throw JotError.message("sessionID is required") }
-                try deleteSession(id); result = ["deleted": true]
-            case "transcripts.search": result = try object(store?.search(params["query"] as? String ?? "", limit: limit, offset: offset) ?? [])
-            case "transcripts.recent": result = try object(store?.recent(limit: limit, offset: offset) ?? [])
-            case "transcripts.events": result = try object(store?.events(sessionID: params["sessionID"] as? String, limit: limit, offset: offset) ?? [])
-            case "transcripts.sessions": result = try object(store?.sessions(limit: limit) ?? [])
-            case "transcripts.read":
-                guard let id = params["id"] as? String, let item = try store?.read(id: id) else { throw JotError.message("Transcript not found") }
-                result = try object(item)
-            case "transcripts.export":
-                guard let id = params["sessionID"] as? String else { throw JotError.message("sessionID is required") }
-                let (session, rows) = try exportable(id)
-                if params["format"] as? String == "json" { result = try object(TranscriptGrouping.foldContinuations(rows)) }
-                else { result = ["sessionID": id, "text": TranscriptExport.markdown(session: session, rows: rows)] }
-            case "speech.transcribe_file":
-                guard modelState == "ready", !capture.running, processing == nil, jobs.isEmpty, !diagnosticActive else { throw JotError.message("Diagnostic transcription requires ready models and idle capture/inference.") }
-                guard let path = params["path"] as? String else { throw JotError.message("path is required") }
-                diagnosticActive = true
-                defer { diagnosticActive = false }
-                let token = lifecycle.generation
-                let fileTask = Task { try await pipeline.testFile(URL(fileURLWithPath: path), tuning: tuning) }
-                diagnostic = fileTask
-                defer { diagnostic = nil }
-                let output = try await fileTask.value
-                guard lifecycle.acceptsWork(token) else { throw CancellationError() }
-                result = ["text": output.text, "transcripts": try object(output.transcripts), "processingSeconds": output.processingSeconds, "persisted": false]
-            case "speakers.label":
-                guard let session = params["sessionID"] as? String, let speaker = params["speakerID"] as? String, let name = params["name"] as? String else { throw JotError.message("sessionID, speakerID and name are required") }
-                try store?.label(sessionID: session, speakerID: speaker, name: name); refreshRecent(); result = ["updated": true]
-            default: throw JotError.message("Unknown method: \(method)")
-            }
-            return try JSONSerialization.data(withJSONObject: ["ok": true, "result": result], options: [.sortedKeys])
-        } catch {
-            return (try? JSONSerialization.data(withJSONObject: ["ok": false, "error": error.localizedDescription])) ?? Data()
-        }
     }
 }

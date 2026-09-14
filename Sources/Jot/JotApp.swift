@@ -558,7 +558,7 @@ struct TranscriptView: View {
     @State private var label = ""
     @State private var copiedID: String?
     @State private var showHistory = true
-    @AppStorage("historyTextView") private var historyTextView = true
+    @AppStorage(JotDefaultsKey.historyTextView) private var historyTextView = true
     @State private var search = ""
     @State private var section = Section.history
     @State private var copyReset: Task<Void, Never>?
@@ -801,7 +801,7 @@ struct TranscriptView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 HStack {
-                    Text(service.modelState.capitalized).foregroundStyle(.secondary)
+                    Text(service.modelState.rawValue.capitalized).foregroundStyle(.secondary)
                     if service.cachedModelBytes > 0 {
                         Text("· \(ModelCache.formatted(service.cachedModelBytes)) cached").foregroundStyle(.secondary)
                     }
