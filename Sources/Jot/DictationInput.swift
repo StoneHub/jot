@@ -222,7 +222,8 @@ final class DictationInput {
         var positionValue: CFTypeRef?; var sizeValue: CFTypeRef?
         guard AXUIElementCopyAttributeValue(target.field, kAXPositionAttribute as CFString, &positionValue) == .success,
               AXUIElementCopyAttributeValue(target.field, kAXSizeAttribute as CFString, &sizeValue) == .success,
-              let positionValue, let sizeValue else { return nil }
+              let positionValue, let sizeValue,
+              CFGetTypeID(positionValue) == AXValueGetTypeID(), CFGetTypeID(sizeValue) == AXValueGetTypeID() else { return nil }
         var origin = CGPoint.zero; var size = CGSize.zero
         guard AXValueGetValue(positionValue as! AXValue, .cgPoint, &origin), AXValueGetValue(sizeValue as! AXValue, .cgSize, &size),
               size.width > 1, size.height > 1, let primary = NSScreen.screens.first else { return nil }
