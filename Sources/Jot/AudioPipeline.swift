@@ -133,64 +133,63 @@ enum JotError: LocalizedError {
     var errorDescription: String? { if case .message(let text) = self { return text }; return nil }
 }
 
-/// Audio callback owns resampling; only a bounded 8-second RAM queue crosses to the controller.
+/// One input device as Core Audio reports it; the id is the persistent device UID.
 struct AudioInputDevice: Identifiable, Equatable {
     let id: String
     let name: String
 
     static func available() -> [Self] {
         deviceIDs().compactMap { id in
-            guard hasInputStreams(id), let uid = stringProperty(id, kAudioDevicePropertyDeviceUID),
-                  let name = stringProperty(id, kAudioObjectPropertyName) else { return nil }
+            guard hasInputStreams(id), let uid = CoreAudioProperties.string(id, kAudioDevicePropertyDeviceUID),
+                  let name = CoreAudioProperties.string(id, kAudioObjectPropertyName) else { return nil }
             return Self(id: uid, name: name)
         }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     static func defaultName() -> String? {
-        guard let id = deviceIDProperty(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultInputDevice) else { return nil }
-        return stringProperty(id, kAudioObjectPropertyName)
+        guard let id: AudioObjectID = CoreAudioProperties.value(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultInputDevice) else { return nil }
+        return CoreAudioProperties.string(id, kAudioObjectPropertyName)
     }
 
     static func deviceID(for uid: String) -> AudioObjectID? {
-        deviceIDs().first { stringProperty($0, kAudioDevicePropertyDeviceUID) == uid && hasInputStreams($0) }
+        deviceIDs().first { CoreAudioProperties.string($0, kAudioDevicePropertyDeviceUID) == uid && hasInputStreams($0) }
     }
 
     private static func deviceIDs() -> [AudioObjectID] {
-        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
-            mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
-        var byteCount: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &byteCount) == noErr else { return [] }
-        var result = [AudioObjectID](repeating: 0, count: Int(byteCount) / MemoryLayout<AudioObjectID>.size)
-        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &byteCount, &result) == noErr else { return [] }
-        return result
+        CoreAudioProperties.array(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDevices)
     }
 
     private static func hasInputStreams(_ id: AudioObjectID) -> Bool {
-        var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams,
-            mScope: kAudioDevicePropertyScopeInput, mElement: kAudioObjectPropertyElementMain)
-        var byteCount: UInt32 = 0
-        return AudioObjectGetPropertyDataSize(id, &address, 0, nil, &byteCount) == noErr && byteCount > 0
-    }
-
-    private static func deviceIDProperty(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector) -> AudioObjectID? {
-        var address = AudioObjectPropertyAddress(mSelector: selector,
-            mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
-        var value: AudioObjectID = 0
-        var byteCount = UInt32(MemoryLayout<AudioObjectID>.size)
-        guard AudioObjectGetPropertyData(object, &address, 0, nil, &byteCount, &value) == noErr else { return nil }
-        return value
-    }
-
-    private static func stringProperty(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector) -> String? {
-        var address = AudioObjectPropertyAddress(mSelector: selector,
-            mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
-        var value: Unmanaged<CFString>?
-        var byteCount = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
-        guard AudioObjectGetPropertyData(object, &address, 0, nil, &byteCount, &value) == noErr, let value else { return nil }
-        return value.takeUnretainedValue() as String
+        (CoreAudioProperties.dataSize(id, kAudioDevicePropertyStreams, scope: kAudioDevicePropertyScopeInput) ?? 0) > 0
     }
 }
 
+/// Calls back on the main queue whenever the input device list or the macOS default input changes.
+final class AudioInputDeviceWatcher {
+    private let selectors: [AudioObjectPropertySelector] = [kAudioHardwarePropertyDevices, kAudioHardwarePropertyDefaultInputDevice]
+    private let listener: AudioObjectPropertyListenerBlock
+
+    init(onChange: @escaping @MainActor () -> Void) {
+        listener = { _, _ in MainActor.assumeIsolated(onChange) }
+        for selector in selectors {
+            var address = Self.address(selector)
+            AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main, listener)
+        }
+    }
+
+    func stop() {
+        for selector in selectors {
+            var address = Self.address(selector)
+            AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main, listener)
+        }
+    }
+
+    private static func address(_ selector: AudioObjectPropertySelector) -> AudioObjectPropertyAddress {
+        AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    }
+}
+
+/// Audio callback owns resampling; only a bounded 8-second RAM queue crosses to the controller.
 final class MicrophoneCapture: @unchecked Sendable {
     private let lock = NSLock()
     private var engine = AVAudioEngine()
@@ -206,6 +205,11 @@ final class MicrophoneCapture: @unchecked Sendable {
 
     func setInput(uid: String?) throws {
         guard !engine.isRunning else { throw JotError.message("Pause capture before changing the microphone.") }
+        selectedInputUID = uid
+    }
+
+    /// Device arrivals and removals can land while the engine runs; the running engine is left alone and start() opens this device next time.
+    func setInputForNextStart(uid: String?) {
         selectedInputUID = uid
     }
 
@@ -225,7 +229,6 @@ final class MicrophoneCapture: @unchecked Sendable {
             }
             guard let unit = input.audioUnit else { throw JotError.message("No usable microphone input.") }
             var device = selectedDevice
-            configurationChangeFilter.expectSelectionChange(at: ProcessInfo.processInfo.systemUptime)
             guard AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
                 &device, UInt32(MemoryLayout<AudioObjectID>.size)) == noErr else {
                 configurationChangeFilter.cancelExpectedChange()
@@ -257,7 +260,9 @@ final class MicrophoneCapture: @unchecked Sendable {
         }
         tapInstalled = true
         do { engine.prepare(); try engine.start() }
-        catch { input.removeTap(onBus: 0); tapInstalled = false; throw error }
+        catch { input.removeTap(onBus: 0); tapInstalled = false; configurationChangeFilter.cancelExpectedChange(); throw error }
+        // The controller handles our own selection notification only after this returns, so the ignore window starts once the engine is up, not before a slow USB device finishes starting.
+        if selectedInputUID != nil { configurationChangeFilter.expectSelectionChange(at: ProcessInfo.processInfo.systemUptime) }
     }
 
     private func accept(_ samples: [Float]) {
