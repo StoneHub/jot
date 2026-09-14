@@ -801,7 +801,7 @@ struct TranscriptView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 HStack {
-                    Text(service.modelState.capitalized).foregroundStyle(.secondary)
+                    Text(service.modelState.rawValue.capitalized).foregroundStyle(.secondary)
                     if service.cachedModelBytes > 0 {
                         Text("· \(ModelCache.formatted(service.cachedModelBytes)) cached").foregroundStyle(.secondary)
                     }

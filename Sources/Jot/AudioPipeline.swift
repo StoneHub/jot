@@ -6,12 +6,15 @@ import CoreML
 import FluidAudio
 import JotCore
 
+/// The raw values are stored in the transcripts table, whose CHECK constraint allows exactly these two.
+enum CaptureMode: String, Sendable { case ambient, dictation }
+
 struct AudioJob: Sendable {
     let sessionID: String
     let startedAt: Date
     let offset: Double
     let samples: [Float]
-    let mode: String
+    let mode: CaptureMode
     let ticket: UUID
     var submittedUptime = ProcessInfo.processInfo.systemUptime
 }
@@ -75,14 +78,14 @@ actor SpeechPipeline {
         let file = try AVAudioFile(forReading: url)
         guard Double(file.length) / file.processingFormat.sampleRate <= 60 else { throw JotError.message("Diagnostic files must be at most 60 seconds.") }
         let samples = try AudioConverter().resampleAudioFile(url)
-        return try await infer(AudioJob(sessionID: UUID().uuidString, startedAt: Date(), offset: 0, samples: samples, mode: "ambient", ticket: UUID()), tuning: tuning)
+        return try await infer(AudioJob(sessionID: UUID().uuidString, startedAt: Date(), offset: 0, samples: samples, mode: .ambient, ticket: UUID()), tuning: tuning)
     }
 
     func infer(_ job: AudioJob, tuning: TranscriptionTuning = .init()) async throws -> SpeechOutput {
         guard let asr, let vad, let diarizer else { throw JotError.message("Prepare models before listening.") }
         try Task.checkCancellation()
         let begin = Date()
-        if job.mode == "ambient" {
+        if job.mode == .ambient {
             if sessionID != job.sessionID || abs(job.offset - expectedOffset) > 0.02 {
                 diarizer.reset(); probabilities.removeAll(); sessionID = job.sessionID; baseOffset = job.offset; lastSpeaker = nil
             }
@@ -113,7 +116,7 @@ actor SpeechPipeline {
         let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return SpeechOutput(transcripts: [], text: "", processingSeconds: Date().timeIntervalSince(begin)) }
         var segments: [Transcript] = []
-        if job.mode == "ambient", let timings = result.tokenTimings, !timings.isEmpty {
+        if job.mode == .ambient, let timings = result.tokenTimings, !timings.isEmpty {
             let words = buildWordTimings(from: timings)
             let attributed = words.map { word -> AttributedWord in
                 let frame = Int((job.offset - baseOffset + (word.startTime + word.endTime) / 2) / 0.08)
@@ -124,12 +127,12 @@ actor SpeechPipeline {
             segments = turns.map { turn in
                 Transcript(sessionID: job.sessionID, startedAt: job.startedAt,
                     startSeconds: job.offset + turn.start, endSeconds: job.offset + turn.end,
-                    text: turn.text, speakerID: turn.speaker, mode: job.mode)
+                    text: turn.text, speakerID: turn.speaker, mode: job.mode.rawValue)
             }
         }
         if segments.isEmpty {
             segments = [Transcript(sessionID: job.sessionID, startedAt: job.startedAt, startSeconds: job.offset,
-                endSeconds: job.offset + Double(job.samples.count) / 16000, text: text, speakerID: nil, mode: job.mode)]
+                endSeconds: job.offset + Double(job.samples.count) / 16000, text: text, speakerID: nil, mode: job.mode.rawValue)]
         }
         return SpeechOutput(transcripts: segments, text: text, processingSeconds: Date().timeIntervalSince(begin))
     }
