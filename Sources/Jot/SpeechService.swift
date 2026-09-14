@@ -8,21 +8,21 @@ import FluidAudio
 @MainActor
 final class SpeechService: ObservableObject {
     @Published var lifecycle = ServiceLifecycle()
-    @Published var fnRequested = UserDefaults.standard.bool(forKey: "fnRequested")
+    @Published var fnRequested = UserDefaults.standard.bool(forKey: JotDefaultsKey.fnRequested)
     @Published private(set) var shortcut = ShortcutPreferences().load()
     var canChangeShortcut: Bool { !dictationActive && !dictationPending }
     var canChangeInput: Bool { !capture.running && !dictationPending && !diagnosticActive }
     private let speakerMute = DictationSpeakerMute()
     private let highlight = DictationHighlight()
-    @Published var highlightTargetField = UserDefaults.standard.object(forKey: "highlightTargetField") as? Bool ?? true {
+    @Published var highlightTargetField = UserDefaults.standard.object(forKey: JotDefaultsKey.highlightTargetField) as? Bool ?? true {
         didSet {
-            UserDefaults.standard.set(highlightTargetField, forKey: "highlightTargetField")
+            UserDefaults.standard.set(highlightTargetField, forKey: JotDefaultsKey.highlightTargetField)
             if !highlightTargetField { highlight.hide() }
         }
     }
-    @Published var muteSpeakersDuringDictation = UserDefaults.standard.object(forKey: "muteSpeakersDuringDictation") as? Bool ?? true {
+    @Published var muteSpeakersDuringDictation = UserDefaults.standard.object(forKey: JotDefaultsKey.muteSpeakersDuringDictation) as? Bool ?? true {
         didSet {
-            UserDefaults.standard.set(muteSpeakersDuringDictation, forKey: "muteSpeakersDuringDictation")
+            UserDefaults.standard.set(muteSpeakersDuringDictation, forKey: JotDefaultsKey.muteSpeakersDuringDictation)
             if !muteSpeakersDuringDictation { speakerMute.end() }
         }
     }
@@ -49,8 +49,8 @@ final class SpeechService: ObservableObject {
     @Published var checkingModels = false
     @Published var micPermission = AVCaptureDevice.authorizationStatus(for: .audio)
     @Published private(set) var inputDevices: [AudioInputDevice] = []
-    @Published var selectedInputUID = UserDefaults.standard.string(forKey: "selectedInputUID") ?? ""
-    @Published private(set) var selectedInputName = UserDefaults.standard.string(forKey: "selectedInputName") ?? "Saved microphone"
+    @Published var selectedInputUID = UserDefaults.standard.string(forKey: JotDefaultsKey.selectedInputUID) ?? ""
+    @Published private(set) var selectedInputName = UserDefaults.standard.string(forKey: JotDefaultsKey.selectedInputName) ?? "Saved microphone"
     /// True while the saved microphone is unplugged; capture then runs on System Default and the choice is kept.
     @Published private(set) var selectedInputMissing = false
     @Published private(set) var systemDefaultInputName = "System Default"
@@ -71,7 +71,7 @@ final class SpeechService: ObservableObject {
     @Published private(set) var lastExport: URL?
     @Published var tuning = TranscriptionTuning() {
         didSet {
-            if let data = try? JSONEncoder().encode(tuning.bounded) { UserDefaults.standard.set(data, forKey: "transcriptionTuning") }
+            if let data = try? JSONEncoder().encode(tuning.bounded) { UserDefaults.standard.set(data, forKey: JotDefaultsKey.transcriptionTuning) }
             refreshHistory()
         }
     }
@@ -196,12 +196,12 @@ final class SpeechService: ObservableObject {
                 return await self.handle(data)
             }
             try service.start(); server = service
-            if let data = UserDefaults.standard.data(forKey: "transcriptionTuning"),
+            if let data = UserDefaults.standard.data(forKey: JotDefaultsKey.transcriptionTuning),
                let saved = try? JSONDecoder().decode(TranscriptionTuning.self, from: data) { tuning = saved.bounded }
             refreshRecent(); refreshSessions()
-            if let data = UserDefaults.standard.data(forKey: "modelUpdateChecks"),
+            if let data = UserDefaults.standard.data(forKey: JotDefaultsKey.modelUpdateChecks),
                let saved = try? JSONDecoder().decode([ModelUpdate].self, from: data) { modelUpdates = saved }
-            if UserDefaults.standard.bool(forKey: "modelsPrepared"), !UserDefaults.standard.bool(forKey: "servicePaused") { prepare() }
+            if UserDefaults.standard.bool(forKey: JotDefaultsKey.modelsPrepared), !UserDefaults.standard.bool(forKey: JotDefaultsKey.servicePaused) { prepare() }
         } catch { notice = "Service startup: \(error.localizedDescription)" }
         promptForPermissionsAtLaunch()
         scheduleTimer()
@@ -248,7 +248,7 @@ final class SpeechService: ObservableObject {
         }
         downloadPrompt = nil
         guard let token = lifecycle.beginStart() else { return }
-        UserDefaults.standard.set(false, forKey: "servicePaused")
+        UserDefaults.standard.set(false, forKey: JotDefaultsKey.servicePaused)
         preparing = true; modelState = "preparing"; updateMode()
         markPerformance(.resume); markPerformance(.modelLoadStarted)
         notice = "Loading models…"
@@ -259,7 +259,7 @@ final class SpeechService: ObservableObject {
                 guard lifecycle.finishStart(token, succeeded: true) else { return }
                 modelState = "ready"
                 markPerformance(.modelsReady)
-                UserDefaults.standard.set(true, forKey: "modelsPrepared")
+                UserDefaults.standard.set(true, forKey: JotDefaultsKey.modelsPrepared)
                 cachedModelBytes = ModelCache.bytesOnDisk()
                 if fnRequested { await enableFn() }
                 if ambientRequested { try await activateAmbient(); try continueMeeting() }
@@ -305,7 +305,7 @@ final class SpeechService: ObservableObject {
         inputDevices = AudioInputDevice.available()
         systemDefaultInputName = AudioInputDevice.defaultName() ?? "System Default"
         if let saved = inputDevices.first(where: { $0.id == selectedInputUID }), saved.name != selectedInputName {
-            selectedInputName = saved.name; UserDefaults.standard.set(saved.name, forKey: "selectedInputName")
+            selectedInputName = saved.name; UserDefaults.standard.set(saved.name, forKey: JotDefaultsKey.selectedInputName)
         }
         let wasMissing = selectedInputMissing
         let captureUID = MicrophoneSelection.captureUID(saved: selectedInputUID, available: inputDevices.map(\.id))
@@ -322,8 +322,8 @@ final class SpeechService: ObservableObject {
             selectedInputUID = uid
             if let device = inputDevices.first(where: { $0.id == uid }) { selectedInputName = device.name }
             selectedInputMissing = !uid.isEmpty && !inputDevices.contains { $0.id == uid }
-            if uid.isEmpty { UserDefaults.standard.removeObject(forKey: "selectedInputUID"); UserDefaults.standard.removeObject(forKey: "selectedInputName") }
-            else { UserDefaults.standard.set(uid, forKey: "selectedInputUID"); UserDefaults.standard.set(selectedInputName, forKey: "selectedInputName") }
+            if uid.isEmpty { UserDefaults.standard.removeObject(forKey: JotDefaultsKey.selectedInputUID); UserDefaults.standard.removeObject(forKey: JotDefaultsKey.selectedInputName) }
+            else { UserDefaults.standard.set(uid, forKey: JotDefaultsKey.selectedInputUID); UserDefaults.standard.set(selectedInputName, forKey: JotDefaultsKey.selectedInputName) }
             notice = ""
         } catch { notice = error.localizedDescription }
     }
@@ -361,7 +361,7 @@ final class SpeechService: ObservableObject {
     }
 
     func enableFn() async {
-        fnRequested = true; UserDefaults.standard.set(true, forKey: "fnRequested")
+        fnRequested = true; UserDefaults.standard.set(true, forKey: JotDefaultsKey.fnRequested)
         let token = lifecycle.generation
         guard lifecycle.acceptsWork(token) else { return }
         guard await requestMic(), lifecycle.acceptsWork(token), fnRequested else { return }
@@ -371,7 +371,7 @@ final class SpeechService: ObservableObject {
     }
 
     func disableFn() {
-        fnRequested = false; UserDefaults.standard.set(false, forKey: "fnRequested")
+        fnRequested = false; UserDefaults.standard.set(false, forKey: JotDefaultsKey.fnRequested)
         cancelDictation(); input.disable(); fnEnabled = false; notice = ""
     }
 
@@ -545,7 +545,7 @@ final class SpeechService: ObservableObject {
     func pause(automatic: Bool = false) {
         guard let token = lifecycle.beginPause() else { return }
         markPerformance(.pause)
-        UserDefaults.standard.set(true, forKey: "servicePaused")
+        UserDefaults.standard.set(true, forKey: JotDefaultsKey.servicePaused)
         capture.stop()
         let packet = capture.drain()
         let discarded = AudioClock.seconds(samples: packet.samples.count + packet.dropped + ambient.count + dictation.count + jobs.reduce(0) { $0 + $1.samples.count })
@@ -781,7 +781,7 @@ final class SpeechService: ObservableObject {
                 return rows.sorted { $0.0 < $1.0 }.map(\.1)
             }
             modelUpdates = results
-            if let data = try? JSONEncoder().encode(results) { UserDefaults.standard.set(data, forKey: "modelUpdateChecks") }
+            if let data = try? JSONEncoder().encode(results) { UserDefaults.standard.set(data, forKey: JotDefaultsKey.modelUpdateChecks) }
             checkingModels = false; modelCheck = nil
         }
     }

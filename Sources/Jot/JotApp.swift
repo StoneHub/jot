@@ -558,7 +558,7 @@ struct TranscriptView: View {
     @State private var label = ""
     @State private var copiedID: String?
     @State private var showHistory = true
-    @AppStorage("historyTextView") private var historyTextView = true
+    @AppStorage(JotDefaultsKey.historyTextView) private var historyTextView = true
     @State private var search = ""
     @State private var section = Section.history
     @State private var copyReset: Task<Void, Never>?
