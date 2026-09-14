@@ -40,16 +40,26 @@ public struct PersonalVocabulary: Codable, Equatable, Sendable {
         value.split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased()
     }
 
+    /// Compiled patterns keyed by matching phrase; NSCache is thread-safe and evicts on its own, so the Codable form stays as it is.
+    private static let patterns: NSCache<NSString, NSRegularExpression> = { let cache = NSCache<NSString, NSRegularExpression>(); cache.countLimit = 512; return cache }()
+
+    private static func pattern(for matchPhrase: String) -> NSRegularExpression? {
+        if let cached = patterns.object(forKey: matchPhrase as NSString) { return cached }
+        let phrase = matchPhrase.split(whereSeparator: \.isWhitespace)
+            .map { NSRegularExpression.escapedPattern(for: String($0)) }.joined(separator: "\\s+")
+        guard !phrase.isEmpty,
+              let regex = try? NSRegularExpression(pattern: "(?<![\\p{L}\\p{M}\\p{N}_])(?:" + phrase + ")(?![\\p{L}\\p{M}\\p{N}_])", options: .caseInsensitive) else { return nil }
+        patterns.setObject(regex, forKey: matchPhrase as NSString)
+        return regex
+    }
+
     /// Match the original text once: leftmost first, longest at the same position.
     /// Literal insertion avoids regex replacement syntax and cascading corrections.
     public func applying(to text: String) -> String {
         let source = text as NSString
         var candidates: [(range: NSRange, replacement: String, order: Int)] = []
         for (order, entry) in entries.enumerated() where entry.enabled {
-            let phrase = entry.matchPhrase.split(whereSeparator: \.isWhitespace)
-                .map { NSRegularExpression.escapedPattern(for: String($0)) }.joined(separator: "\\s+")
-            guard !phrase.isEmpty,
-                  let regex = try? NSRegularExpression(pattern: "(?<![\\p{L}\\p{M}\\p{N}_])(?:" + phrase + ")(?![\\p{L}\\p{M}\\p{N}_])", options: .caseInsensitive) else { continue }
+            guard let regex = Self.pattern(for: entry.matchPhrase) else { continue }
             for match in regex.matches(in: text, range: NSRange(location: 0, length: source.length)) {
                 candidates.append((match.range, entry.preferred, order))
             }

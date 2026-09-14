@@ -31,8 +31,7 @@ public enum TranscriptExport {
 
     /// Filesystem-safe name such as "2026-09-08 11-41 Webex review.md".
     public static func fileName(for session: TranscriptSession) -> String {
-        let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd HH-mm"
-        let stamp = formatter.string(from: session.startedAt)
+        let stamp = fileStamp.string(from: session.startedAt)
         let unsafe = CharacterSet(charactersIn: "/:\\?%*|\"<>").union(.newlines)
         let title = (session.title ?? "").components(separatedBy: unsafe).joined(separator: " ").split(separator: " ", omittingEmptySubsequences: true).joined(separator: " ")
         return (title.isEmpty ? "\(stamp) Session" : "\(stamp) \(title.prefix(80))") + ".md"
@@ -76,9 +75,9 @@ public enum TranscriptExport {
         return String(format: "%d:%02d:%02d", total / 3600, total % 3600 / 60, total % 60)
     }
 
-    private static func timestamp(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH:mm zzz"
-        return formatter.string(from: date)
-    }
+    // Shared formatters: DateFormatter has been thread-safe since macOS 10.9, and the callers are the main actor and the CLI anyway.
+    private static let fileStamp: DateFormatter = { let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd HH-mm"; return formatter }()
+    private static let headerStamp: DateFormatter = { let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd HH:mm zzz"; return formatter }()
+
+    private static func timestamp(_ date: Date) -> String { headerStamp.string(from: date) }
 }
