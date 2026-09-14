@@ -65,6 +65,12 @@ public enum TranscriptExport {
         }
     }
 
+    /// History wording for a row with no speaker; exports keep "Unattributed" so saved Markdown does not change.
+    public static func historyName(_ row: Transcript) -> String {
+        guard row.speakerID == nil, (row.speakerLabel ?? "").isEmpty else { return speakerName(row) }
+        return row.mode == "dictation" ? "Dictation" : "Unknown speaker"
+    }
+
     public static func clock(_ seconds: Double) -> String {
         let total = Int(seconds)
         return String(format: "%d:%02d:%02d", total / 3600, total % 3600 / 60, total % 60)

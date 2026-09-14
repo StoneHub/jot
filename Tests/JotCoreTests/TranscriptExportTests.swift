@@ -61,6 +61,23 @@ final class TranscriptExportTests: XCTestCase {
         XCTAssertTrue(text.contains("4 segments, 0:00:14 of audio"), text)
     }
 
+    func testHistoryNameSharesSpeakerWordingWithExportExceptForRowsWithoutASpeaker() {
+        var labeled = row(0, 1, "hi", speaker: "speaker-1"); labeled.speakerLabel = "Innocent"
+        var blankLabel = row(0, 1, "hi", speaker: nil); blankLabel.speakerLabel = ""
+        let cases: [(Transcript, history: String, export: String)] = [
+            (labeled, "Innocent", "Innocent"),
+            (row(0, 1, "hi", speaker: "speaker-2"), "Speaker 2", "Speaker 2"),
+            (row(0, 1, "hi", speaker: "overlap"), "Overlap", "Overlap"),
+            (row(0, 1, "hi", speaker: nil), "Unknown speaker", "Unattributed"),
+            (blankLabel, "Unknown speaker", "Unattributed"),
+            (row(0, 1, "hi", speaker: nil, mode: "dictation"), "Dictation", "Unattributed")
+        ]
+        for (transcript, history, export) in cases {
+            XCTAssertEqual(TranscriptExport.historyName(transcript), history)
+            XCTAssertEqual(TranscriptExport.speakerName(transcript), export)
+        }
+    }
+
     func testCollidingExportsAndRepeatedExportsPreserveExistingFiles() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

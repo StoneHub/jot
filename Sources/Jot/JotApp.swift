@@ -689,7 +689,7 @@ struct TranscriptView: View {
                                 Button { copy(item) } label: {
                                     VStack(alignment: .leading, spacing: 8) {
                                         HStack {
-                                            Text(item.speakerLabel ?? item.speakerID ?? (item.mode == "dictation" ? "Dictation" : "Unknown speaker")).font(.caption.weight(.medium))
+                                            Text(TranscriptExport.historyName(item)).font(.caption.weight(.medium))
 
                                             Spacer()
                                             Text(item.startedAt.addingTimeInterval(item.startSeconds), format: .dateTime.month(.abbreviated).day().hour().minute()).font(.caption).foregroundStyle(.secondary)

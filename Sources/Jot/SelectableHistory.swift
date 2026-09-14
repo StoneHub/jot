@@ -29,7 +29,7 @@ struct SelectableHistory: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         let output = NSMutableAttributedString()
         for item in transcripts.reversed() {
-            let speaker = item.speakerLabel ?? item.speakerID ?? (item.mode == "dictation" ? "Dictation" : "Unknown speaker")
+            let speaker = TranscriptExport.historyName(item)
             let timestamp = item.startedAt.addingTimeInterval(item.startSeconds).formatted(date: .abbreviated, time: .shortened)
             output.append(NSAttributedString(string: "\(speaker) · \(timestamp)\n", attributes: [
                 .font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor.secondaryLabelColor
