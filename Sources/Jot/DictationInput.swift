@@ -227,8 +227,8 @@ final class DictationInput {
         var origin = CGPoint.zero; var size = CGSize.zero
         guard AXValueGetValue(positionValue as! AXValue, .cgPoint, &origin), AXValueGetValue(sizeValue as! AXValue, .cgSize, &size),
               size.width > 1, size.height > 1, let primary = NSScreen.screens.first else { return nil }
-        // Accessibility measures from the top-left of the primary display; AppKit from its bottom-left.
-        return CGRect(x: origin.x, y: primary.frame.height - origin.y - size.height, width: size.width, height: size.height)
+        // NSScreen.screens.first is the primary display, the one whose frame origin is (0, 0) and the one Accessibility measures from.
+        return ScreenGeometry.appKitRect(accessibilityOrigin: origin, size: size, primaryScreenHeight: primary.frame.height)
     }
 
     /// Ends a service-cancelled or empty utterance without calling its callbacks again.
