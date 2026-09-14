@@ -48,6 +48,23 @@ final class TranscriptStoreTests: XCTestCase {
         XCTAssertGreaterThan(try store.metrics().databaseBytes, 0)
     }
 
+    func testSessionSummaryFindsOneAmbientSessionWithoutTheListLimit() throws {
+        let store = try TranscriptStore(directory: directory)
+        try store.append(transcript("a1", session: "session-a"))
+        try store.append(transcript("a2", session: "session-a", seconds: 5))
+        try store.append(transcript("b", session: "session-b"))
+        var dictation = transcript("d", session: "dictation-session"); dictation.mode = "dictation"
+        try store.append(dictation)
+        try store.setTitle(sessionID: "session-a", title: "Standup")
+        let found = try XCTUnwrap(store.sessionSummary(id: "session-a"))
+        XCTAssertEqual(found.title, "Standup")
+        XCTAssertEqual(found.transcriptCount, 2)
+        XCTAssertEqual(found.startedAt, Date(timeIntervalSince1970: 100))
+        XCTAssertEqual(found.lastTranscriptAt, Date(timeIntervalSince1970: 107))
+        XCTAssertNil(try store.sessionSummary(id: "dictation-session"), "Sessions are ambient captures only")
+        XCTAssertNil(try store.sessionSummary(id: "missing"))
+    }
+
     func testInvalidTranscriptRejectedAndDirectoryRestricted() throws {
         let store = try TranscriptStore(directory: directory)
         var value = transcript("bad"); value.endSeconds = -1

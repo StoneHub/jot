@@ -430,14 +430,20 @@ final class SpeechService: ObservableObject {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Jot Sessions", isDirectory: true)
     }
 
+    /// The summary and rows an export is built from; an unknown or dictation-only id has neither.
+    private func exportable(_ id: String) throws -> (session: TranscriptSession, rows: [Transcript]) {
+        guard let store else { throw JotError.message("Transcript storage is unavailable.") }
+        let rows = try store.session(id: id)
+        guard !rows.isEmpty, let session = try store.sessionSummary(id: id) else {
+            throw JotError.message("Nothing was transcribed in this session, so there is no file to save.")
+        }
+        return (session, rows)
+    }
+
     /// Writes one session as Markdown into ~/Documents/Jot Sessions and returns the file.
     @discardableResult
     func exportSession(_ id: String) throws -> URL {
-        guard let store else { throw JotError.message("Transcript storage is unavailable.") }
-        let rows = try store.session(id: id)
-        guard !rows.isEmpty, let session = try store.sessions(limit: 200).first(where: { $0.sessionID == id }) else {
-            throw JotError.message("Nothing was transcribed in this session, so there is no file to save.")
-        }
+        let (session, rows) = try exportable(id)
         let url = try TranscriptExport.write(session: session, rows: rows, directory: Self.exportDirectory)
         lastExport = url
         return url
@@ -824,9 +830,8 @@ final class SpeechService: ObservableObject {
                 guard let id = params["id"] as? String, let item = try store?.read(id: id) else { throw JotError.message("Transcript not found") }
                 result = try object(item)
             case "transcripts.export":
-                guard let id = params["sessionID"] as? String, let store else { throw JotError.message("Session not found") }
-                let rows = try store.session(id: id)
-                guard let session = try store.sessions(limit: 200).first(where: { $0.sessionID == id }), !rows.isEmpty else { throw JotError.message("Session not found") }
+                guard let id = params["sessionID"] as? String else { throw JotError.message("sessionID is required") }
+                let (session, rows) = try exportable(id)
                 if params["format"] as? String == "json" { result = try object(TranscriptGrouping.foldContinuations(rows)) }
                 else { result = ["sessionID": id, "text": TranscriptExport.markdown(session: session, rows: rows)] }
             case "speech.transcribe_file":
