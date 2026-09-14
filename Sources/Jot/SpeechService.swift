@@ -110,6 +110,11 @@ final class SpeechService: ObservableObject {
     private var diagnostics = PerformanceDiagnostics(build: .release)
     #endif
     private let diagnosticsBegan = ProcessInfo.processInfo.systemUptime
+    /// Shorter audio is dropped: recognition on it is noise.
+    private static let minimumJobSamples = AudioClock.samples(seconds: 0.2)
+    private static let ambientBreakSamples = AudioClock.samples(seconds: 2)
+    private static let ambientBlockSamples = AudioClock.samples(seconds: 20)
+    private static let dictationLimit = AudioClock.samples(seconds: 60)
     private var inFlightAudioSeconds = 0.0
 
     private func samplePerformance() {
@@ -118,8 +123,8 @@ final class SpeechService: ObservableObject {
         let elapsed = ProcessInfo.processInfo.systemUptime - diagnosticsBegan
         diagnostics.observe(.init(elapsedSeconds: elapsed, footprintMiB: resources.physicalFootprintMiB,
             residentMiB: resources.residentMiB, cpuPercent: resources.processCPUPercent,
-            droppedAudioSeconds: droppedSeconds, bufferedAudioSeconds: Double(capture.bufferedSampleCount + ambient.count + dictation.count) / 16000 + inFlightAudioSeconds,
-            queuedAudioSeconds: jobs.reduce(0) { $0 + Double($1.samples.count) / 16000 }, loadedHistoryRows: history.count,
+            droppedAudioSeconds: droppedSeconds, bufferedAudioSeconds: AudioClock.seconds(samples: capture.bufferedSampleCount + ambient.count + dictation.count) + inFlightAudioSeconds,
+            queuedAudioSeconds: jobs.reduce(0) { $0 + AudioClock.seconds(samples: $1.samples.count) }, loadedHistoryRows: history.count,
             modelsReady: modelState == "ready", ambientEnabled: ambientEnabled, dictationActive: dictationActive,
             inferenceRunning: processing != nil))
     }
@@ -543,7 +548,7 @@ final class SpeechService: ObservableObject {
         UserDefaults.standard.set(true, forKey: "servicePaused")
         capture.stop()
         let packet = capture.drain()
-        let discarded = Double(packet.samples.count + packet.dropped + ambient.count + dictation.count + jobs.reduce(0) { $0 + $1.samples.count }) / 16000
+        let discarded = AudioClock.seconds(samples: packet.samples.count + packet.dropped + ambient.count + dictation.count + jobs.reduce(0) { $0 + $1.samples.count })
         if discarded > 0 { recordEvent("audio_discarded", "Unfinished audio discarded by Pause.") }
         if ambientEnabled { recordEvent("paused", "Service paused.") }
         let outcome = PauseOutcome(automatic: automatic, ambientRequested: ambientRequested, meetingTitle: meetingTitle)
@@ -597,7 +602,7 @@ final class SpeechService: ObservableObject {
         markPerformance(.dictationReleased)
         level = 0
         updateMode()
-        guard dictation.count >= 3200 else { dictation = []; input.discardTarget(); notice = "Too little audio to transcribe."; return }
+        guard dictation.count >= Self.minimumJobSamples else { dictation = []; input.discardTarget(); notice = "Too little audio to transcribe."; return }
         dictationPending = true
         let job = AudioJob(sessionID: UUID().uuidString, startedAt: dictationStarted, offset: 0,
             samples: dictation, mode: "dictation", ticket: dictationTicket)
@@ -619,7 +624,7 @@ final class SpeechService: ObservableObject {
         tickCount += 1
         if Date().timeIntervalSince(lastStatsTime) >= 1 {
             samplePerformance(); lastStatsTime = Date(); refreshPermissions()
-            queuedSeconds = jobs.reduce(0) { $0 + Double($1.samples.count) / 16000 }
+            queuedSeconds = jobs.reduce(0) { $0 + AudioClock.seconds(samples: $1.samples.count) }
             if ambientEnabled || dictationActive, let lastAudioAt, Date().timeIntervalSince(lastAudioAt) > 4 {
                 recordEvent("input_stalled", "No microphone samples for more than four seconds."); pause(automatic: true); notice = "Microphone stopped delivering audio. Resume to reconnect; a capture gap occurred."
             }
@@ -634,33 +639,33 @@ final class SpeechService: ObservableObject {
         lastAudioAt = packet.lastAudio
         if packet.dropped > 0 {
             if dictationActive { cancelDictation() }
-            let lostSeconds = Double(packet.dropped + ambient.count) / 16000
+            let lostSeconds = AudioClock.seconds(samples: packet.dropped + ambient.count)
             droppedSeconds += lostSeconds
             recordEvent("audio_gap", "Capture queue overflow discarded audio.", duration: lostSeconds)
             // End attribution continuity rather than silently stitching across lost audio.
-            ambientOffset += Double(ambient.count + packet.dropped) / 16000; ambient = []
+            ambientOffset += AudioClock.seconds(samples: ambient.count + packet.dropped); ambient = []
             notice = "Audio backlog overflow: a gap was recorded."
         }
         if dictationActive {
-            if dictation.count + packet.samples.count <= 960000 { dictation.append(contentsOf: packet.samples) }
+            if dictation.count + packet.samples.count <= Self.dictationLimit { dictation.append(contentsOf: packet.samples) }
             else { cancelDictation(); notice = "Dictation exceeded 60 seconds; cancelled without inserting a partial prompt." }
         }
         if ambientEnabled {
             ambient.append(contentsOf: packet.samples)
-            silentSeconds = packet.rms < 0.002 ? silentSeconds + Double(packet.samples.count) / 16000 : 0
+            silentSeconds = packet.rms < 0.002 ? silentSeconds + AudioClock.seconds(samples: packet.samples.count) : 0
             // Blocks run up to 20 s and only break on a 2 s silence, so most sentences reach the recognizer whole.
-            if ambient.count >= 320000 || (ambient.count >= 32000 && silentSeconds >= max(2, tuning.bounded.paragraphPause)) { flushAmbient() }
+            if ambient.count >= Self.ambientBlockSamples || (ambient.count >= Self.ambientBreakSamples && silentSeconds >= max(2, tuning.bounded.paragraphPause)) { flushAmbient() }
         }
     }
 
     private func flushAmbient() {
         guard !ambient.isEmpty else { return }
         let samples = ambient; ambient = []; silentSeconds = 0
-        let start = ambientOffset; ambientOffset += Double(samples.count) / 16000
-        guard samples.count >= 3200 else { return }
+        let start = ambientOffset; ambientOffset += AudioClock.seconds(samples: samples.count)
+        guard samples.count >= Self.minimumJobSamples else { return }
         if jobs.filter({ $0.mode == "ambient" }).count >= 3 {
-            droppedSeconds += Double(samples.count) / 16000
-            recordEvent("audio_gap", "Inference queue full; segment discarded.", duration: Double(samples.count) / 16000)
+            droppedSeconds += AudioClock.seconds(samples: samples.count)
+            recordEvent("audio_gap", "Inference queue full; segment discarded.", duration: AudioClock.seconds(samples: samples.count))
             notice = "Inference fell behind; bounded audio queue dropped a segment."
             return
         }
@@ -674,7 +679,7 @@ final class SpeechService: ObservableObject {
         let vocabularySnapshot = dictationVocabulary
         let began = ProcessInfo.processInfo.systemUptime
         let waitSeconds = max(0, began - job.submittedUptime)
-        inFlightAudioSeconds = Double(job.samples.count) / 16000
+        inFlightAudioSeconds = AudioClock.seconds(samples: job.samples.count)
         processing = Task {
             var outcome = PerformanceJob.Outcome.completed
             var inferenceSeconds: Double?
@@ -685,8 +690,8 @@ final class SpeechService: ObservableObject {
                 inferenceSeconds = output.processingSeconds
                 outcome = output.text.isEmpty ? .noSpeech : .completed
                 lastInferenceSeconds = output.processingSeconds
-                processedAudioSeconds += Double(job.samples.count) / 16000
-                lagSeconds = max(0, Date().timeIntervalSince(job.startedAt) - job.offset - Double(job.samples.count) / 16000)
+                processedAudioSeconds += AudioClock.seconds(samples: job.samples.count)
+                lagSeconds = max(0, Date().timeIntervalSince(job.startedAt) - job.offset - AudioClock.seconds(samples: job.samples.count))
                 if job.submittedUptime > historyClearedAt && !deletedSessions.contains(job.sessionID) {
                     for transcript in output.transcripts { try store?.append(transcript) }
                 }
@@ -712,7 +717,7 @@ final class SpeechService: ObservableObject {
             if job.mode == "dictation", job.ticket != dictationTicket { outcome = .cancelled }
             diagnostics.record(.init(elapsedSeconds: ProcessInfo.processInfo.systemUptime - diagnosticsBegan,
                 mode: job.mode == "dictation" ? .dictation : .ambient, outcome: outcome,
-                audioSeconds: Double(job.samples.count) / 16000, queueWaitSeconds: waitSeconds,
+                audioSeconds: AudioClock.seconds(samples: job.samples.count), queueWaitSeconds: waitSeconds,
                 inferenceSeconds: inferenceSeconds, completionSeconds: max(0, ProcessInfo.processInfo.systemUptime - job.submittedUptime)))
             inFlightAudioSeconds = 0
             if job.mode == "dictation", job.ticket == dictationTicket { input.discardTarget(); dictationPending = false }
@@ -795,7 +800,7 @@ final class SpeechService: ObservableObject {
     }
 
     func status() throws -> [String: Any] {
-        let pendingAudioSeconds = jobs.reduce(0.0) { $0 + Double($1.samples.count) / 16000 }
+        let pendingAudioSeconds = jobs.reduce(0.0) { $0 + AudioClock.seconds(samples: $1.samples.count) }
         var result: [String: Any] = ["mode": mode, "models": modelState, "microphoneRunning": capture.running,
             "microphonePermission": AVCaptureDevice.authorizationStatus(for: .audio).rawValue,
             "accessibilityGranted": DictationInput.accessibilityGranted, "fnEnabled": fnEnabled,

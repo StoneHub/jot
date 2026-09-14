@@ -16,6 +16,13 @@ struct AudioJob: Sendable {
     var submittedUptime = ProcessInfo.processInfo.systemUptime
 }
 
+/// The one sample rate every buffer in the app uses; the recognizer models expect 16 kHz mono.
+enum AudioClock {
+    static let sampleRate = 16000
+    static func samples(seconds: Double) -> Int { Int((seconds * Double(sampleRate)).rounded()) }
+    static func seconds(samples: Int) -> Double { Double(samples) / Double(sampleRate) }
+}
+
 struct SpeechOutput: Sendable {
     let transcripts: [Transcript]
     let text: String
@@ -201,6 +208,7 @@ final class MicrophoneCapture: @unchecked Sendable {
     private var rms: Float = 0
     private var selectedInputUID: String?
     private var configurationChangeFilter = AudioConfigurationChangeFilter()
+    private static let queueLimit = AudioClock.samples(seconds: 8)
     var running: Bool { engine.isRunning }
 
     func setInput(uid: String?) throws {
@@ -237,7 +245,7 @@ final class MicrophoneCapture: @unchecked Sendable {
         }
         let source = input.outputFormat(forBus: 0)
         guard source.sampleRate > 0, source.channelCount > 0,
-              let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),
+              let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: Double(AudioClock.sampleRate), channels: 1, interleaved: false),
               let converter = AVAudioConverter(from: source, to: target) else {
             throw JotError.message("No usable microphone input. Check the macOS input device.")
         }
@@ -246,7 +254,7 @@ final class MicrophoneCapture: @unchecked Sendable {
             guard let self else { return }
             self.callbacks.enter()
             defer { self.callbacks.leave() }
-            let capacity = AVAudioFrameCount(ceil(Double(buffer.frameLength) * 16000 / source.sampleRate) + 32)
+            let capacity = AVAudioFrameCount(ceil(Double(buffer.frameLength) * Double(AudioClock.sampleRate) / source.sampleRate) + 32)
             guard let converted = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return }
             var supplied = false
             var error: NSError?
@@ -270,7 +278,7 @@ final class MicrophoneCapture: @unchecked Sendable {
         lastAudio = Date()
         rms = samples.isEmpty ? 0 : sqrt(samples.reduce(0) { $0 + $1 * $1 } / Float(samples.count))
         pending.append(contentsOf: samples)
-        if pending.count > 128000 { let excess = pending.count - 128000; pending.removeFirst(excess); dropped += excess }
+        if pending.count > Self.queueLimit { let excess = pending.count - Self.queueLimit; pending.removeFirst(excess); dropped += excess }
     }
 
     var bufferedSampleCount: Int {
