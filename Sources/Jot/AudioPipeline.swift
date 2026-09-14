@@ -140,54 +140,27 @@ struct AudioInputDevice: Identifiable, Equatable {
 
     static func available() -> [Self] {
         deviceIDs().compactMap { id in
-            guard hasInputStreams(id), let uid = stringProperty(id, kAudioDevicePropertyDeviceUID),
-                  let name = stringProperty(id, kAudioObjectPropertyName) else { return nil }
+            guard hasInputStreams(id), let uid = CoreAudioProperties.string(id, kAudioDevicePropertyDeviceUID),
+                  let name = CoreAudioProperties.string(id, kAudioObjectPropertyName) else { return nil }
             return Self(id: uid, name: name)
         }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     static func defaultName() -> String? {
-        guard let id = deviceIDProperty(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultInputDevice) else { return nil }
-        return stringProperty(id, kAudioObjectPropertyName)
+        guard let id: AudioObjectID = CoreAudioProperties.value(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultInputDevice) else { return nil }
+        return CoreAudioProperties.string(id, kAudioObjectPropertyName)
     }
 
     static func deviceID(for uid: String) -> AudioObjectID? {
-        deviceIDs().first { stringProperty($0, kAudioDevicePropertyDeviceUID) == uid && hasInputStreams($0) }
+        deviceIDs().first { CoreAudioProperties.string($0, kAudioDevicePropertyDeviceUID) == uid && hasInputStreams($0) }
     }
 
     private static func deviceIDs() -> [AudioObjectID] {
-        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
-            mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
-        var byteCount: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &byteCount) == noErr else { return [] }
-        var result = [AudioObjectID](repeating: 0, count: Int(byteCount) / MemoryLayout<AudioObjectID>.size)
-        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &byteCount, &result) == noErr else { return [] }
-        return result
+        CoreAudioProperties.array(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDevices)
     }
 
     private static func hasInputStreams(_ id: AudioObjectID) -> Bool {
-        var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams,
-            mScope: kAudioDevicePropertyScopeInput, mElement: kAudioObjectPropertyElementMain)
-        var byteCount: UInt32 = 0
-        return AudioObjectGetPropertyDataSize(id, &address, 0, nil, &byteCount) == noErr && byteCount > 0
-    }
-
-    private static func deviceIDProperty(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector) -> AudioObjectID? {
-        var address = AudioObjectPropertyAddress(mSelector: selector,
-            mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
-        var value: AudioObjectID = 0
-        var byteCount = UInt32(MemoryLayout<AudioObjectID>.size)
-        guard AudioObjectGetPropertyData(object, &address, 0, nil, &byteCount, &value) == noErr else { return nil }
-        return value
-    }
-
-    private static func stringProperty(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector) -> String? {
-        var address = AudioObjectPropertyAddress(mSelector: selector,
-            mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
-        var value: Unmanaged<CFString>?
-        var byteCount = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
-        guard AudioObjectGetPropertyData(object, &address, 0, nil, &byteCount, &value) == noErr, let value else { return nil }
-        return value.takeRetainedValue() as String
+        (CoreAudioProperties.dataSize(id, kAudioDevicePropertyStreams, scope: kAudioDevicePropertyScopeInput) ?? 0) > 0
     }
 }
 

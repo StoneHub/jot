@@ -46,22 +46,13 @@ public final class DictationSpeakerMute {
         if let source = read(device, kAudioDevicePropertyDataSource, scope: kAudioDevicePropertyScopeOutput) {
             return source == 0x6973706B
         }
-        var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams,
-            mScope: kAudioDevicePropertyScopeOutput, mElement: kAudioObjectPropertyElementMain)
-        var size: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(device, &address, 0, nil, &size) == noErr, size > 0 else { return false }
-        var streams = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
-        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &streams) == noErr else { return false }
+        let streams: [AudioObjectID] = CoreAudioProperties.array(device, kAudioDevicePropertyStreams, scope: kAudioDevicePropertyScopeOutput)
         return streams.contains { read($0, kAudioStreamPropertyTerminalType) == kAudioStreamTerminalTypeSpeaker }
     }
 
     private func read(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector,
                       scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal) -> UInt32? {
-        var address = AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: kAudioObjectPropertyElementMain)
-        var value: UInt32 = 0
-        var size = UInt32(MemoryLayout<UInt32>.size)
-        guard AudioObjectGetPropertyData(object, &address, 0, nil, &size, &value) == noErr else { return nil }
-        return value
+        CoreAudioProperties.value(object, selector, scope: scope)
     }
 
     private func setMute(_ device: AudioObjectID, _ value: UInt32) -> Bool {
