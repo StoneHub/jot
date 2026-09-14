@@ -26,7 +26,7 @@ Build and install Jot using the [instructions below](#build-and-install), then o
 
 Grant microphone and Accessibility access. If Fn triggers a macOS shortcut, set the Fn/Globe action to **Do Nothing** in Keyboard settings.
 
-- **Resume** loads models and enables your selected speech features. **Pause** stops speech processing and unloads models.
+- **Resume** loads models and enables your selected speech features. **Pause** stops speech processing, unloads models, and ends a running meeting without exporting; its transcript stays in **Sessions**. Sleep, an input change, or stalled input pauses Jot automatically and keeps your selected features and a running meeting for **Resume**.
 - **Dictation** and **Ambient transcription** have separate switches. Ambient starts off when you launch Jot.
 - Closing the window keeps Jot in the menu bar. **Open** brings the window back; **Quit** stops the app.
 
@@ -38,7 +38,7 @@ Dictation supports up to 60 seconds per hold. It cancels if focus changes, skips
 
 **Quiet speakers while you talk:** dictation temporarily mutes the built-in speakers and restores their previous mute state on release or cancellation. Headphones and other outputs are left alone. Media continues playing silently. This is enabled by default; turn it off in **Tuning → Mute built-in speakers during dictation**.
 
-**Start meeting** records ambient capture under a name. **End meeting** waits for the last audio, saves the whole transcript as Markdown in `~/Documents/Jot Sessions`, and shows the file in Finder. **Sessions** lists every capture session; open one to read it whole, rename it, name speakers, copy it, or export it.
+**Start meeting** records ambient capture under a name. **End meeting** waits for the last audio, saves the whole transcript as Markdown in `~/Documents/Jot Sessions`, and shows the file in Finder. If the Mac sleeps or the microphone changes during a meeting, **Resume** continues it as a second session with the same name; **End meeting** saves the latest part, and the earlier part can be exported from **Sessions**. **Sessions** lists every capture session; open one to read it whole, rename it, name speakers, copy it, or export it.
 
 In **History**, search transcripts, select text across statements, and press ⌘C to copy. **Load more** adds older results. Cards view supports individual copying and speaker naming. **Clear** in History permanently deletes all saved transcripts and sessions, including rows outside the current search or loaded page. History cards and sessions each have a trash button for individual deletion. Existing exported files are separate. New dictation starts a fresh history.
 

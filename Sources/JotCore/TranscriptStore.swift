@@ -194,7 +194,7 @@ public final class TranscriptStore: @unchecked Sendable {
     /// Ambient and meeting captures only. Each Fn dictation carries its own session id and belongs in History, not here.
     public func sessions(limit: Int = 50) throws -> [TranscriptSession] {
         try locked {
-            let stmt = try prepare("SELECT t.session_id, MIN(t.started_at), MAX(t.started_at + t.end_seconds), COUNT(*), s.title FROM transcripts t LEFT JOIN session_titles s ON s.session_id = t.session_id WHERE t.mode = 'ambient' GROUP BY t.session_id ORDER BY MAX(t.started_at + t.end_seconds) DESC, t.session_id LIMIT ?")
+            let stmt = try prepare("\(Self.sessionSelect) GROUP BY t.session_id ORDER BY MAX(t.started_at + t.end_seconds) DESC, t.session_id LIMIT ?")
             defer { sqlite3_finalize(stmt) }
             sqlite3_bind_int(stmt, 1, Int32(clamp(limit)))
             var result: [TranscriptSession] = []
@@ -202,10 +202,28 @@ public final class TranscriptStore: @unchecked Sendable {
                 let status = sqlite3_step(stmt)
                 if status == SQLITE_DONE { break }
                 guard status == SQLITE_ROW else { throw error() }
-                result.append(TranscriptSession(sessionID: column(stmt, 0)!, startedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 1)), lastTranscriptAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 2)), transcriptCount: Int(sqlite3_column_int64(stmt, 3)), title: column(stmt, 4)))
+                result.append(session(from: stmt))
             }
             return result
         }
+    }
+
+    /// One session by id with no list limit, so export still finds a session older than the newest 200. Ambient only, like sessions().
+    public func sessionSummary(id: String) throws -> TranscriptSession? {
+        try locked {
+            let stmt = try prepare("\(Self.sessionSelect) AND t.session_id = ? GROUP BY t.session_id")
+            defer { sqlite3_finalize(stmt) }
+            bind(id, to: 1, in: stmt)
+            let status = sqlite3_step(stmt)
+            if status == SQLITE_DONE { return nil }
+            guard status == SQLITE_ROW else { throw error() }
+            return session(from: stmt)
+        }
+    }
+
+    private static let sessionSelect = "SELECT t.session_id, MIN(t.started_at), MAX(t.started_at + t.end_seconds), COUNT(*), s.title FROM transcripts t LEFT JOIN session_titles s ON s.session_id = t.session_id WHERE t.mode = 'ambient'"
+    private func session(from stmt: OpaquePointer) -> TranscriptSession {
+        TranscriptSession(sessionID: column(stmt, 0)!, startedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 1)), lastTranscriptAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 2)), transcriptCount: Int(sqlite3_column_int64(stmt, 3)), title: column(stmt, 4))
     }
 
     /// A title names a session for the Sessions list and export file; an empty title removes it.

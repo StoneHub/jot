@@ -193,14 +193,14 @@ final class SpeechService: ObservableObject {
         let center = NSWorkspace.shared.notificationCenter
         observers.append(center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
-                self?.recordEvent("sleep", "Capture paused because the Mac is sleeping."); self?.pause(); self?.notice = "Paused for sleep."
+                self?.recordEvent("sleep", "Capture paused because the Mac is sleeping."); self?.pause(automatic: true); self?.notice = "Paused for sleep."
             }
         })
         observers.append(NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.ambientEnabled || self.dictationActive else { return }
                 if self.capture.shouldIgnoreConfigurationChange() { return }
-                self.recordEvent("device_change", "Audio input configuration changed."); self.pause(); self.notice = "Audio input changed. Resume when ready."
+                self.recordEvent("device_change", "Audio input configuration changed."); self.pause(automatic: true); self.notice = "Audio input changed. Resume when ready."
             }
         })
     }
@@ -247,7 +247,7 @@ final class SpeechService: ObservableObject {
                 UserDefaults.standard.set(true, forKey: "modelsPrepared")
                 cachedModelBytes = ModelCache.bytesOnDisk()
                 if fnRequested { await enableFn() }
-                if ambientRequested { try await activateAmbient() }
+                if ambientRequested { try await activateAmbient(); try continueMeeting() }
                 if lifecycle.acceptsWork(token) { notice = "" }
             } catch {
                 if lifecycle.finishStart(token, succeeded: false) {
@@ -430,14 +430,20 @@ final class SpeechService: ObservableObject {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Jot Sessions", isDirectory: true)
     }
 
+    /// The summary and rows an export is built from; an unknown or dictation-only id has neither.
+    private func exportable(_ id: String) throws -> (session: TranscriptSession, rows: [Transcript]) {
+        guard let store else { throw JotError.message("Transcript storage is unavailable.") }
+        let rows = try store.session(id: id)
+        guard !rows.isEmpty, let session = try store.sessionSummary(id: id) else {
+            throw JotError.message("Nothing was transcribed in this session, so there is no file to save.")
+        }
+        return (session, rows)
+    }
+
     /// Writes one session as Markdown into ~/Documents/Jot Sessions and returns the file.
     @discardableResult
     func exportSession(_ id: String) throws -> URL {
-        guard let store else { throw JotError.message("Transcript storage is unavailable.") }
-        let rows = try store.session(id: id)
-        guard !rows.isEmpty, let session = try store.sessions(limit: 200).first(where: { $0.sessionID == id }) else {
-            throw JotError.message("Nothing was transcribed in this session, so there is no file to save.")
-        }
+        let (session, rows) = try exportable(id)
         let url = try TranscriptExport.write(session: session, rows: rows, directory: Self.exportDirectory)
         lastExport = url
         return url
@@ -456,6 +462,12 @@ final class SpeechService: ObservableObject {
         } catch { meetingTitle = nil; notice = error.localizedDescription }
     }
 
+    /// A meeting kept through an automatic pause records on into a new session under the same name. The earlier part stays in Sessions, and TranscriptExport.write adds " (2)" to a duplicate file name.
+    private func continueMeeting() throws {
+        guard let meetingTitle, ambientEnabled else { return }
+        try store?.setTitle(sessionID: sessionID, title: meetingTitle); refreshSessions()
+    }
+
     /// Stops capture, waits for the queued audio to finish, then writes the file and shows it in Finder.
     @discardableResult
     func endMeeting() async -> URL? {
@@ -463,16 +475,19 @@ final class SpeechService: ObservableObject {
         let id = sessionID
         let generation = lifecycle.generation
         await setAmbient(false)
-        do {
-            try await MeetingExportWait.wait(
-                isValid: { self.lifecycle.acceptsWork(generation) && self.sessionID == id },
-                isComplete: {
-                    self.kickWorker()
-                    return self.jobs.allSatisfy { $0.mode != "ambient" } && self.processing == nil
-                })
-        } catch {
-            notice = "Meeting export interrupted. Saved transcripts remain in Sessions; no file was exported."
-            return nil
+        // Ending while paused skips the wait: the pause already discarded any unfinished audio, so the saved rows are all there is.
+        if lifecycle.acceptsWork(generation) {
+            do {
+                try await MeetingExportWait.wait(
+                    isValid: { self.lifecycle.acceptsWork(generation) && self.sessionID == id },
+                    isComplete: {
+                        self.kickWorker()
+                        return self.jobs.allSatisfy { $0.mode != "ambient" } && self.processing == nil
+                    })
+            } catch {
+                notice = "Meeting export interrupted. Saved transcripts remain in Sessions; no file was exported."
+                return nil
+            }
         }
         meetingTitle = nil
         refreshSessions()
@@ -506,8 +521,8 @@ final class SpeechService: ObservableObject {
         try await activateAmbient()
     }
 
-    /// Stop all speech work immediately, then release models when any active prediction returns.
-    func pause() {
+    /// Stop all speech work immediately, then release models when any active prediction returns. Automatic pauses keep the selection and a running meeting for Resume.
+    func pause(automatic: Bool = false) {
         guard let token = lifecycle.beginPause() else { return }
         markPerformance(.pause)
         UserDefaults.standard.set(true, forKey: "servicePaused")
@@ -516,7 +531,8 @@ final class SpeechService: ObservableObject {
         let discarded = Double(packet.samples.count + packet.dropped + ambient.count + dictation.count + jobs.reduce(0) { $0 + $1.samples.count }) / 16000
         if discarded > 0 { recordEvent("audio_discarded", "Unfinished audio discarded by Pause.") }
         if ambientEnabled { recordEvent("paused", "Service paused.") }
-        ambientRequested = false; ambientEnabled = false
+        let outcome = PauseOutcome(automatic: automatic, ambientRequested: ambientRequested, meetingTitle: meetingTitle)
+        ambientRequested = outcome.ambientRequested; meetingTitle = outcome.meetingTitle; ambientEnabled = false
         cancelDictation(); input.disable(); fnEnabled = false
         ambient.removeAll(keepingCapacity: false); jobs.removeAll(keepingCapacity: false)
         capture.discardBufferedAudio(); queuedSeconds = 0; level = 0
@@ -530,7 +546,8 @@ final class SpeechService: ObservableObject {
             _ = try? await fileTask?.value
             await pipeline.unload()
             if lifecycle.finishPause(token) {
-                modelState = "unloaded"; preparing = false; preparation = nil; notice = ""; updateMode()
+                modelState = "unloaded"; preparing = false; preparation = nil; updateMode()
+                notice = outcome.endedMeeting ? "Meeting stopped. Its transcript is in Sessions." : ""
                 markPerformance(.modelsUnloaded); scheduleTimer()
             }
             pausing = nil
@@ -589,7 +606,7 @@ final class SpeechService: ObservableObject {
             samplePerformance(); lastStatsTime = Date(); refreshPermissions()
             queuedSeconds = jobs.reduce(0) { $0 + Double($1.samples.count) / 16000 }
             if ambientEnabled || dictationActive, let lastAudioAt, Date().timeIntervalSince(lastAudioAt) > 4 {
-                recordEvent("input_stalled", "No microphone samples for more than four seconds."); pause(); notice = "Microphone stopped delivering audio. Resume to reconnect; a capture gap occurred."
+                recordEvent("input_stalled", "No microphone samples for more than four seconds."); pause(automatic: true); notice = "Microphone stopped delivering audio. Resume to reconnect; a capture gap occurred."
             }
         }
         kickWorker()
@@ -824,9 +841,8 @@ final class SpeechService: ObservableObject {
                 guard let id = params["id"] as? String, let item = try store?.read(id: id) else { throw JotError.message("Transcript not found") }
                 result = try object(item)
             case "transcripts.export":
-                guard let id = params["sessionID"] as? String, let store else { throw JotError.message("Session not found") }
-                let rows = try store.session(id: id)
-                guard let session = try store.sessions(limit: 200).first(where: { $0.sessionID == id }), !rows.isEmpty else { throw JotError.message("Session not found") }
+                guard let id = params["sessionID"] as? String else { throw JotError.message("sessionID is required") }
+                let (session, rows) = try exportable(id)
                 if params["format"] as? String == "json" { result = try object(TranscriptGrouping.foldContinuations(rows)) }
                 else { result = ["sessionID": id, "text": TranscriptExport.markdown(session: session, rows: rows)] }
             case "speech.transcribe_file":

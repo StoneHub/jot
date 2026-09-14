@@ -34,6 +34,19 @@ final class ServiceLifecycleTests: XCTestCase {
         XCTAssertTrue(lifecycle.acceptsWork(second))
         XCTAssertFalse(lifecycle.finishPause(pause))
     }
+    func testAutomaticPauseKeepsTheMeetingAndThePauseButtonEndsIt() {
+        let sleep = PauseOutcome(automatic: true, ambientRequested: true, meetingTitle: "Standup")
+        XCTAssertEqual(sleep, PauseOutcome(automatic: true, ambientRequested: true, meetingTitle: "Standup"))
+        XCTAssertTrue(sleep.ambientRequested, "Resume restarts ambient capture after sleep")
+        XCTAssertEqual(sleep.meetingTitle, "Standup")
+        XCTAssertFalse(sleep.endedMeeting)
+        let button = PauseOutcome(automatic: false, ambientRequested: true, meetingTitle: "Standup")
+        XCTAssertFalse(button.ambientRequested)
+        XCTAssertNil(button.meetingTitle)
+        XCTAssertTrue(button.endedMeeting)
+        XCTAssertFalse(PauseOutcome(automatic: false, ambientRequested: true, meetingTitle: nil).endedMeeting, "Plain ambient capture is not a meeting")
+        XCTAssertFalse(PauseOutcome(automatic: true, ambientRequested: false, meetingTitle: nil).ambientRequested)
+    }
     func testPauseIsIdempotentAndFailedLoadCanRetry() throws {
         var lifecycle = ServiceLifecycle()
         XCTAssertNil(lifecycle.beginPause())
