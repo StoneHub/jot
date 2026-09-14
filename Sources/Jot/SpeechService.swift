@@ -50,7 +50,16 @@ final class SpeechService: ObservableObject {
     @Published var micPermission = AVCaptureDevice.authorizationStatus(for: .audio)
     @Published private(set) var inputDevices: [AudioInputDevice] = []
     @Published var selectedInputUID = UserDefaults.standard.string(forKey: "selectedInputUID") ?? ""
+    @Published private(set) var selectedInputName = UserDefaults.standard.string(forKey: "selectedInputName") ?? "Saved microphone"
+    /// True while the saved microphone is unplugged; capture then runs on System Default and the choice is kept.
+    @Published private(set) var selectedInputMissing = false
     @Published private(set) var systemDefaultInputName = "System Default"
+    private var inputWatcher: AudioInputDeviceWatcher?
+    /// Picker rows: every connected input, plus the saved one marked not connected so the selection always matches a tag.
+    var inputRows: [AudioInputDevice] {
+        guard selectedInputMissing else { return inputDevices }
+        return inputDevices + [AudioInputDevice(id: selectedInputUID, name: "\(selectedInputName) (not connected)")]
+    }
     @Published var accessibilityGranted = DictationInput.accessibilityGranted
     @Published private(set) var cachedModelBytes = ModelCache.bytesOnDisk()
     /// Set when a resume would download models that are not cached yet. The view asks before any download starts.
@@ -172,6 +181,7 @@ final class SpeechService: ObservableObject {
     func launch() {
         markPerformance(.launch)
         refreshInputDevices()
+        inputWatcher = AudioInputDeviceWatcher { [weak self] in self?.refreshInputDevices() }
         do { vocabulary = try vocabularyPreferences.load() }
         catch { vocabularyLoadError = "Could not load vocabulary. Saved entries were preserved. " + error.localizedDescription }
         do {
@@ -289,21 +299,26 @@ final class SpeechService: ObservableObject {
     func refreshInputDevices() {
         inputDevices = AudioInputDevice.available()
         systemDefaultInputName = AudioInputDevice.defaultName() ?? "System Default"
-        if !selectedInputUID.isEmpty && !inputDevices.contains(where: { $0.id == selectedInputUID }) {
-            selectedInputUID = ""
-            UserDefaults.standard.removeObject(forKey: "selectedInputUID")
-            notice = "The previous microphone is unavailable; using System Default."
+        if let saved = inputDevices.first(where: { $0.id == selectedInputUID }), saved.name != selectedInputName {
+            selectedInputName = saved.name; UserDefaults.standard.set(saved.name, forKey: "selectedInputName")
         }
-        try? capture.setInput(uid: selectedInputUID.isEmpty ? nil : selectedInputUID)
+        let wasMissing = selectedInputMissing
+        let captureUID = MicrophoneSelection.captureUID(saved: selectedInputUID, available: inputDevices.map(\.id))
+        selectedInputMissing = !selectedInputUID.isEmpty && captureUID == nil
+        if selectedInputMissing && !wasMissing { notice = "\(selectedInputName) is not connected. Using System Default until it returns." }
+        if wasMissing && !selectedInputMissing { notice = capture.running ? "\(selectedInputName) is connected again. Jot uses it when capture next starts." : "\(selectedInputName) is connected again." }
+        capture.setInputForNextStart(uid: captureUID)
     }
 
     func setInput(uid: String) {
         guard canChangeInput else { return }
         do {
-            try capture.setInput(uid: uid.isEmpty ? nil : uid)
+            try capture.setInput(uid: MicrophoneSelection.captureUID(saved: uid, available: inputDevices.map(\.id)))
             selectedInputUID = uid
-            if uid.isEmpty { UserDefaults.standard.removeObject(forKey: "selectedInputUID") }
-            else { UserDefaults.standard.set(uid, forKey: "selectedInputUID") }
+            if let device = inputDevices.first(where: { $0.id == uid }) { selectedInputName = device.name }
+            selectedInputMissing = !uid.isEmpty && !inputDevices.contains { $0.id == uid }
+            if uid.isEmpty { UserDefaults.standard.removeObject(forKey: "selectedInputUID"); UserDefaults.standard.removeObject(forKey: "selectedInputName") }
+            else { UserDefaults.standard.set(uid, forKey: "selectedInputUID"); UserDefaults.standard.set(selectedInputName, forKey: "selectedInputName") }
             notice = ""
         } catch { notice = error.localizedDescription }
     }
@@ -753,6 +768,7 @@ final class SpeechService: ObservableObject {
         if ambientEnabled { recordEvent("stopped", "Application quit; capture ended.") }
         modelCheck?.cancel(); preparation?.cancel(); processing?.cancel(); diagnostic?.cancel(); pausing?.cancel()
         timer?.invalidate(); cancelDictation(); input.disable(); capture.stop(); server?.stop()
+        inputWatcher?.stop(); inputWatcher = nil
         for observer in observers { NSWorkspace.shared.notificationCenter.removeObserver(observer); NotificationCenter.default.removeObserver(observer) }
     }
 

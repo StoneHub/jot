@@ -266,7 +266,7 @@ private struct ServiceControls: View {
             ControlRow(symbol: "mic", title: "Microphone") {
                 Picker("Microphone", selection: Binding(get: { service.selectedInputUID }, set: { service.setInput(uid: $0) })) {
                     Text("System Default (\(service.systemDefaultInputName))").tag("")
-                    ForEach(service.inputDevices) { device in Text(device.name).tag(device.id) }
+                    ForEach(service.inputRows) { device in Text(device.name).tag(device.id) }
                 }
                 .labelsHidden().pickerStyle(.menu)
                 .disabled(!service.canChangeInput)

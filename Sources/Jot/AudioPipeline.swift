@@ -164,6 +164,31 @@ struct AudioInputDevice: Identifiable, Equatable {
     }
 }
 
+/// Calls back on the main queue whenever the input device list or the macOS default input changes.
+final class AudioInputDeviceWatcher {
+    private let selectors: [AudioObjectPropertySelector] = [kAudioHardwarePropertyDevices, kAudioHardwarePropertyDefaultInputDevice]
+    private let listener: AudioObjectPropertyListenerBlock
+
+    init(onChange: @escaping @MainActor () -> Void) {
+        listener = { _, _ in MainActor.assumeIsolated(onChange) }
+        for selector in selectors {
+            var address = Self.address(selector)
+            AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main, listener)
+        }
+    }
+
+    func stop() {
+        for selector in selectors {
+            var address = Self.address(selector)
+            AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main, listener)
+        }
+    }
+
+    private static func address(_ selector: AudioObjectPropertySelector) -> AudioObjectPropertyAddress {
+        AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    }
+}
+
 /// Audio callback owns resampling; only a bounded 8-second RAM queue crosses to the controller.
 final class MicrophoneCapture: @unchecked Sendable {
     private let lock = NSLock()
@@ -180,6 +205,11 @@ final class MicrophoneCapture: @unchecked Sendable {
 
     func setInput(uid: String?) throws {
         guard !engine.isRunning else { throw JotError.message("Pause capture before changing the microphone.") }
+        selectedInputUID = uid
+    }
+
+    /// Device arrivals and removals can land while the engine runs; the running engine is left alone and start() opens this device next time.
+    func setInputForNextStart(uid: String?) {
         selectedInputUID = uid
     }
 
