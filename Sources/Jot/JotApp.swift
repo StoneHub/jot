@@ -409,6 +409,29 @@ struct MenuControls: View {
     }
 }
 
+/// One sheet names a speaker from History or Sessions; the label is scoped to the row's session.
+private struct SpeakerNameSheet: View {
+    let transcript: Transcript
+    let service: SpeechService
+    @Binding var draft: String
+    let onSave: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Name this speaker for this session").font(.headline)
+            TextField("Name", text: $draft).textFieldStyle(.roundedBorder).frame(width: 280)
+            HStack {
+                Button("Cancel", action: onCancel)
+                Spacer()
+                Button("Save") {
+                    if let speaker = transcript.speakerID { service.labelSpeaker(session: transcript.sessionID, speaker: speaker, name: draft) }
+                    onSave()
+                }.disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty).keyboardShortcut(.defaultAction)
+            }
+        }.padding(20)
+    }
+}
 
 /// Every capture session, readable whole at full width; the picker keeps the list out of the reading column.
 private struct SessionsView: View {
@@ -440,22 +463,10 @@ private struct SessionsView: View {
             select(service.sessions.contains { $0.sessionID == selectedID } ? selectedID : service.sessions.first?.sessionID)
         }
         .onChange(of: service.sessions.map(\.transcriptCount)) { _, _ in if let selectedID { rows = service.sessionParagraphs(selectedID) } }
-        .sheet(isPresented: Binding(get: { labelTarget != nil }, set: { if !$0 { labelTarget = nil } })) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Name this speaker for this session").font(.headline)
-                TextField("Name", text: $labelDraft).textFieldStyle(.roundedBorder).frame(width: 280)
-                HStack {
-                    Button("Cancel") { labelTarget = nil }
-                    Spacer()
-                    Button("Save") {
-                        if let target = labelTarget, let speaker = target.speakerID {
-                            service.labelSpeaker(session: target.sessionID, speaker: speaker, name: labelDraft)
-                            rows = service.sessionParagraphs(target.sessionID)
-                        }
-                        labelTarget = nil
-                    }.disabled(labelDraft.trimmingCharacters(in: .whitespaces).isEmpty).keyboardShortcut(.defaultAction)
-                }
-            }.padding(20)
+        .sheet(item: $labelTarget) { target in
+            SpeakerNameSheet(transcript: target, service: service, draft: $labelDraft,
+                onSave: { rows = service.sessionParagraphs(target.sessionID); labelTarget = nil },
+                onCancel: { labelTarget = nil })
         }
     }
 
@@ -547,8 +558,22 @@ struct TranscriptView: View {
     @State private var showHistory = true
     @AppStorage("historyTextView") private var historyTextView = true
     @State private var search = ""
-    @State private var section = "History"
+    @State private var section = Section.history
     @State private var copyReset: Task<Void, Never>?
+
+    private enum Section: String, CaseIterable {
+        case history = "History", sessions = "Sessions", vocabulary = "Vocabulary", activity = "Activity", tuning = "Tuning", models = "Models"
+        var symbol: String {
+            switch self {
+            case .history: "text.alignleft"
+            case .sessions: "rectangle.stack"
+            case .vocabulary: "character.book.closed"
+            case .activity: "chart.xyaxis.line"
+            case .tuning: "slider.horizontal.3"
+            case .models: "square.stack.3d.up"
+            }
+        }
+    }
 
     var body: some View {
         HStack(spacing: 14) {
@@ -557,15 +582,14 @@ struct TranscriptView: View {
                 ServiceControls(service: service)
                     .padding(18).modifier(GlassSurface(tint: Color(nsColor: .controlAccentColor).opacity(0.04)))
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(["History", "Sessions", "Vocabulary", "Activity", "Tuning", "Models"], id: \.self) { item in
+                    ForEach(Section.allCases, id: \.self) { item in
                         Button { section = item } label: {
-                            Label(item, systemImage: item == "Sessions" ? "rectangle.stack" : item == "Vocabulary" ? "character.book.closed" : item == "History" ? "text.alignleft" : (item == "Activity" ? "chart.xyaxis.line" : (item == "Tuning" ? "slider.horizontal.3" : "square.stack.3d.up")))
+                            Label(item.rawValue, systemImage: item.symbol)
                                 .font(.body.weight(section == item ? .semibold : .regular))
                                 .frame(maxWidth: .infinity, alignment: .leading).padding(12)
                                 .contentShape(RoundedRectangle(cornerRadius: 14))
                                 .modifier(NavigationSurface(selected: section == item))
                         }.buttonStyle(.plain)
-
                     }
                 }
                 Spacer()
@@ -582,9 +606,9 @@ struct TranscriptView: View {
             }.padding(8).frame(width: 282)
             VStack(alignment: .leading, spacing: 18) {
                 HStack {
-                    Text(section).font(.system(size: 26, weight: .bold, design: .rounded))
+                    Text(section.rawValue).font(.system(size: 26, weight: .bold, design: .rounded))
                     Spacer()
-                    if section == "History" {
+                    if section == .history {
                         Button("Open History in Finder", systemImage: "folder") {
                             NSWorkspace.shared.activateFileViewerSelecting([JotPaths.directory.appendingPathComponent("transcripts.sqlite3")])
                         }
@@ -592,27 +616,26 @@ struct TranscriptView: View {
                         .accessibilityLabel("Open History in Finder")
                         .modifier(GlassButton())
                         .help("Shows the transcript database. Quit Jot before moving history files to Trash.")
-
                         Button("Clear", systemImage: "clear", role: .destructive) {
                             do { try service.clearHistory(); search = ""; selected = nil; copiedID = nil }
                             catch { service.notice = error.localizedDescription }
                         }.modifier(GlassButton()).help("Delete all saved transcripts and sessions")
-
                         Button(showHistory ? "Hide" : "Show", systemImage: showHistory ? "eye.slash" : "eye") { showHistory.toggle() }
                             .modifier(GlassButton())
-
                     }
                 }
                 if !service.notice.isEmpty {
                     Text(service.notice).font(.callout).foregroundStyle(.secondary)
                         .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 }
-                if section == "History" { history }
-                else if section == "Sessions" { SessionsView(service: service) }
-                else if section == "Vocabulary" { VocabularyView(service: service) }
-                else if section == "Activity" { activity }
-                else if section == "Tuning" { tuning }
-                else { models }
+                switch section {
+                case .history: history
+                case .sessions: SessionsView(service: service)
+                case .vocabulary: VocabularyView(service: service)
+                case .activity: activity
+                case .tuning: tuning
+                case .models: models
+                }
             }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .modifier(GlassSurface())
         }
@@ -624,21 +647,8 @@ struct TranscriptView: View {
         .onAppear { delegate.openAction = { openWindow(id: "main") } }
         .onDisappear { copyReset?.cancel() }
         .onChange(of: service.historyRevision) { _, _ in selected = nil; copiedID = nil }
-
-        .sheet(isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } })) {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Name speaker").font(.headline)
-                TextField("Name for this session", text: $label)
-                HStack {
-                    Button("Cancel") { selected = nil }
-                    Spacer()
-                    Button("Save") {
-                        guard let item = selected, let speaker = item.speakerID else { return }
-                        service.labelSpeaker(session: item.sessionID, speaker: speaker, name: label)
-                        selected = nil
-                    }.disabled(label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }.padding(24).frame(width: 360)
+        .sheet(item: $selected) { item in
+            SpeakerNameSheet(transcript: item, service: service, draft: $label, onSave: { selected = nil }, onCancel: { selected = nil })
         }
     }
 
@@ -648,7 +658,6 @@ struct TranscriptView: View {
                 .textFieldStyle(.roundedBorder)
                 .fixedSize(horizontal: false, vertical: true)
                 .onChange(of: search) { _, value in service.searchHistory(value) }
-
             if showHistory {
                 HStack {
                     Picker("History view", selection: $historyTextView) {
@@ -656,7 +665,6 @@ struct TranscriptView: View {
                         Text("Cards").tag(false)
                     }.pickerStyle(.segmented).labelsHidden().frame(width: 150)
                         .accessibilityLabel("History view")
-
                     if historyTextView {
                         Text("Drag to highlight, then ⌘C. ⌘A selects all loaded text.")
                             .font(.caption).foregroundStyle(.secondary)
@@ -671,14 +679,12 @@ struct TranscriptView: View {
                 SelectableHistory(transcripts: service.history, search: search)
                     .id(service.historyRevision)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-
                 HStack {
                     Text("Oldest to newest · New updates wait while text is selected")
                         .font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     if service.hasMoreHistory {
                         Button("Load more") { service.loadMoreHistory() }
-
                     }
                 }
             } else {
@@ -689,19 +695,14 @@ struct TranscriptView: View {
                                 Button { copy(item) } label: {
                                     VStack(alignment: .leading, spacing: 8) {
                                         HStack {
-                                            Text(item.speakerLabel ?? item.speakerID ?? (item.mode == "dictation" ? "Dictation" : "Unknown speaker")).font(.caption.weight(.medium))
-
+                                            Text(TranscriptExport.historyName(item)).font(.caption.weight(.medium))
                                             Spacer()
                                             Text(item.startedAt.addingTimeInterval(item.startSeconds), format: .dateTime.month(.abbreviated).day().hour().minute()).font(.caption).foregroundStyle(.secondary)
-
                                             Image(systemName: copiedID == item.id ? "checkmark" : "doc.on.doc").foregroundStyle(copiedID == item.id ? .green : .secondary)
-
                                         }
                                         Text(item.text).font(.body).multilineTextAlignment(.leading).foregroundStyle(.primary)
-
                                     }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                                 }.buttonStyle(.plain).help(copiedID == item.id ? "Copied" : "Copy transcript")
-
                                     .accessibilityLabel("Copy \(item.mode) transcript")
                                     .accessibilityValue(copiedID == item.id ? "Copied" : item.text)
                                 HStack {
@@ -715,11 +716,9 @@ struct TranscriptView: View {
                                     }.labelStyle(.iconOnly).buttonStyle(.plain).help("Delete this transcript")
                                 }
                             }.padding(14).background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 14))
-
                         }
                         if service.hasMoreHistory {
                             Button("Load more") { service.loadMoreHistory() }.frame(maxWidth: .infinity)
-
                         }
                     }
                 }
@@ -767,7 +766,6 @@ struct TranscriptView: View {
                     Button("Steadier speakers") { service.tuning = .steady }
                     Button("More detail") { service.tuning = .detailed }
                 }.modifier(GlassButton())
-
                 tuningSlider("Speaker confidence", value: $service.tuning.speakerConfidence, range: 0.45...0.9, step: 0.05,
                     valueText: String(format: "%.0f%%", service.tuning.speakerConfidence * 100),
                     detail: "Higher requires stronger evidence for a speaker label; more speech may remain unknown.")
@@ -778,7 +776,6 @@ struct TranscriptView: View {
                     valueText: String(format: "%.1f s", service.tuning.paragraphPause),
                     detail: "Longer pauses make fewer, longer rows. Nearby history rows from the same speaker are also grouped.")
                 Toggle("Hide filler-only rows", isOn: $service.tuning.hideFillerRows).toggleStyle(.switch)
-
                 Text("Hides rows containing only sounds such as um or uh. Original text is kept. Fillers inside sentences stay visible.")
                     .font(.caption).foregroundStyle(.secondary)
                 Divider()
@@ -794,7 +791,6 @@ struct TranscriptView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack { Text(title).font(.headline); Spacer(); Text(valueText).monospacedDigit().foregroundStyle(.secondary) }
             Slider(value: value, in: range, step: step).accessibilityLabel(title)
-
             Text(detail).font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -810,7 +806,6 @@ struct TranscriptView: View {
                     Spacer()
                     Button(service.checkingModels ? "Checking…" : "Check updates") { service.checkModelUpdates() }
                         .disabled(service.checkingModels).modifier(GlassButton())
-
                 }
                 ForEach(service.modelUpdates) { model in
                     VStack(alignment: .leading, spacing: 8) {
