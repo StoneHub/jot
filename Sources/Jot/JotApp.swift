@@ -559,8 +559,22 @@ struct TranscriptView: View {
     @State private var showHistory = true
     @AppStorage("historyTextView") private var historyTextView = true
     @State private var search = ""
-    @State private var section = "History"
+    @State private var section = Section.history
     @State private var copyReset: Task<Void, Never>?
+
+    private enum Section: String, CaseIterable {
+        case history = "History", sessions = "Sessions", vocabulary = "Vocabulary", activity = "Activity", tuning = "Tuning", models = "Models"
+        var symbol: String {
+            switch self {
+            case .history: "text.alignleft"
+            case .sessions: "rectangle.stack"
+            case .vocabulary: "character.book.closed"
+            case .activity: "chart.xyaxis.line"
+            case .tuning: "slider.horizontal.3"
+            case .models: "square.stack.3d.up"
+            }
+        }
+    }
 
     var body: some View {
         HStack(spacing: 14) {
@@ -569,9 +583,9 @@ struct TranscriptView: View {
                 ServiceControls(service: service)
                     .padding(18).modifier(GlassSurface(tint: Color(nsColor: .controlAccentColor).opacity(0.04)))
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(["History", "Sessions", "Vocabulary", "Activity", "Tuning", "Models"], id: \.self) { item in
+                    ForEach(Section.allCases, id: \.self) { item in
                         Button { section = item } label: {
-                            Label(item, systemImage: item == "Sessions" ? "rectangle.stack" : item == "Vocabulary" ? "character.book.closed" : item == "History" ? "text.alignleft" : (item == "Activity" ? "chart.xyaxis.line" : (item == "Tuning" ? "slider.horizontal.3" : "square.stack.3d.up")))
+                            Label(item.rawValue, systemImage: item.symbol)
                                 .font(.body.weight(section == item ? .semibold : .regular))
                                 .frame(maxWidth: .infinity, alignment: .leading).padding(12)
                                 .contentShape(RoundedRectangle(cornerRadius: 14))
@@ -594,9 +608,9 @@ struct TranscriptView: View {
             }.padding(8).frame(width: 282)
             VStack(alignment: .leading, spacing: 18) {
                 HStack {
-                    Text(section).font(.system(size: 26, weight: .bold, design: .rounded))
+                    Text(section.rawValue).font(.system(size: 26, weight: .bold, design: .rounded))
                     Spacer()
-                    if section == "History" {
+                    if section == .history {
                         Button("Open History in Finder", systemImage: "folder") {
                             NSWorkspace.shared.activateFileViewerSelecting([JotPaths.directory.appendingPathComponent("transcripts.sqlite3")])
                         }
@@ -619,12 +633,14 @@ struct TranscriptView: View {
                     Text(service.notice).font(.callout).foregroundStyle(.secondary)
                         .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 }
-                if section == "History" { history }
-                else if section == "Sessions" { SessionsView(service: service) }
-                else if section == "Vocabulary" { VocabularyView(service: service) }
-                else if section == "Activity" { activity }
-                else if section == "Tuning" { tuning }
-                else { models }
+                switch section {
+                case .history: history
+                case .sessions: SessionsView(service: service)
+                case .vocabulary: VocabularyView(service: service)
+                case .activity: activity
+                case .tuning: tuning
+                case .models: models
+                }
             }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .modifier(GlassSurface())
         }
