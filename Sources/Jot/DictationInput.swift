@@ -216,18 +216,23 @@ final class DictationInput {
         AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), "AXManualAccessibility" as CFString, kCFBooleanTrue)
     }
 
-    /// Screen rectangle of the captured field in AppKit coordinates, or nil when the app does not report one.
+    /// Screen rectangle of the captured field in AppKit coordinates, or nil when the app is not in front or does not report one.
+    /// Called from a repeating main-thread timer, so a busy target app must not be allowed to block the read.
     func targetFrame() -> CGRect? {
-        guard let target else { return nil }
+        guard let target, NSWorkspace.shared.frontmostApplication?.processIdentifier == target.pid else { return nil }
+        // The timeout lives on this element ref, which insert() also reads; it is reset before this synchronous call returns so insert() keeps the default.
+        AXUIElementSetMessagingTimeout(target.field, 0.1)
+        defer { AXUIElementSetMessagingTimeout(target.field, 0) }
         var positionValue: CFTypeRef?; var sizeValue: CFTypeRef?
         guard AXUIElementCopyAttributeValue(target.field, kAXPositionAttribute as CFString, &positionValue) == .success,
               AXUIElementCopyAttributeValue(target.field, kAXSizeAttribute as CFString, &sizeValue) == .success,
-              let positionValue, let sizeValue else { return nil }
+              let positionValue, let sizeValue,
+              CFGetTypeID(positionValue) == AXValueGetTypeID(), CFGetTypeID(sizeValue) == AXValueGetTypeID() else { return nil }
         var origin = CGPoint.zero; var size = CGSize.zero
         guard AXValueGetValue(positionValue as! AXValue, .cgPoint, &origin), AXValueGetValue(sizeValue as! AXValue, .cgSize, &size),
               size.width > 1, size.height > 1, let primary = NSScreen.screens.first else { return nil }
-        // Accessibility measures from the top-left of the primary display; AppKit from its bottom-left.
-        return CGRect(x: origin.x, y: primary.frame.height - origin.y - size.height, width: size.width, height: size.height)
+        // NSScreen.screens.first is the primary display, the one whose frame origin is (0, 0) and the one Accessibility measures from.
+        return ScreenGeometry.appKitRect(accessibilityOrigin: origin, size: size, primaryScreenHeight: primary.frame.height)
     }
 
     /// Ends a service-cancelled or empty utterance without calling its callbacks again.

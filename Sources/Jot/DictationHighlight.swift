@@ -15,7 +15,7 @@ final class DictationHighlight {
         place(panel, around: initial)
         panel.orderFrontRegardless()
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, let panel = self.panel else { return }
                 guard let current = frame() else { self.hide(); return }
