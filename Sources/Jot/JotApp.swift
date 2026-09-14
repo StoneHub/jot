@@ -409,7 +409,6 @@ struct MenuControls: View {
     }
 }
 
-
 /// One sheet names a speaker from History or Sessions; the label is scoped to the row's session.
 private struct SpeakerNameSheet: View {
     let transcript: Transcript
@@ -591,7 +590,6 @@ struct TranscriptView: View {
                                 .contentShape(RoundedRectangle(cornerRadius: 14))
                                 .modifier(NavigationSurface(selected: section == item))
                         }.buttonStyle(.plain)
-
                     }
                 }
                 Spacer()
@@ -618,15 +616,12 @@ struct TranscriptView: View {
                         .accessibilityLabel("Open History in Finder")
                         .modifier(GlassButton())
                         .help("Shows the transcript database. Quit Jot before moving history files to Trash.")
-
                         Button("Clear", systemImage: "clear", role: .destructive) {
                             do { try service.clearHistory(); search = ""; selected = nil; copiedID = nil }
                             catch { service.notice = error.localizedDescription }
                         }.modifier(GlassButton()).help("Delete all saved transcripts and sessions")
-
                         Button(showHistory ? "Hide" : "Show", systemImage: showHistory ? "eye.slash" : "eye") { showHistory.toggle() }
                             .modifier(GlassButton())
-
                     }
                 }
                 if !service.notice.isEmpty {
@@ -652,7 +647,6 @@ struct TranscriptView: View {
         .onAppear { delegate.openAction = { openWindow(id: "main") } }
         .onDisappear { copyReset?.cancel() }
         .onChange(of: service.historyRevision) { _, _ in selected = nil; copiedID = nil }
-
         .sheet(item: $selected) { item in
             SpeakerNameSheet(transcript: item, service: service, draft: $label, onSave: { selected = nil }, onCancel: { selected = nil })
         }
@@ -664,7 +658,6 @@ struct TranscriptView: View {
                 .textFieldStyle(.roundedBorder)
                 .fixedSize(horizontal: false, vertical: true)
                 .onChange(of: search) { _, value in service.searchHistory(value) }
-
             if showHistory {
                 HStack {
                     Picker("History view", selection: $historyTextView) {
@@ -672,7 +665,6 @@ struct TranscriptView: View {
                         Text("Cards").tag(false)
                     }.pickerStyle(.segmented).labelsHidden().frame(width: 150)
                         .accessibilityLabel("History view")
-
                     if historyTextView {
                         Text("Drag to highlight, then ⌘C. ⌘A selects all loaded text.")
                             .font(.caption).foregroundStyle(.secondary)
@@ -687,14 +679,12 @@ struct TranscriptView: View {
                 SelectableHistory(transcripts: service.history, search: search)
                     .id(service.historyRevision)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-
                 HStack {
                     Text("Oldest to newest · New updates wait while text is selected")
                         .font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     if service.hasMoreHistory {
                         Button("Load more") { service.loadMoreHistory() }
-
                     }
                 }
             } else {
@@ -706,18 +696,13 @@ struct TranscriptView: View {
                                     VStack(alignment: .leading, spacing: 8) {
                                         HStack {
                                             Text(TranscriptExport.historyName(item)).font(.caption.weight(.medium))
-
                                             Spacer()
                                             Text(item.startedAt.addingTimeInterval(item.startSeconds), format: .dateTime.month(.abbreviated).day().hour().minute()).font(.caption).foregroundStyle(.secondary)
-
                                             Image(systemName: copiedID == item.id ? "checkmark" : "doc.on.doc").foregroundStyle(copiedID == item.id ? .green : .secondary)
-
                                         }
                                         Text(item.text).font(.body).multilineTextAlignment(.leading).foregroundStyle(.primary)
-
                                     }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                                 }.buttonStyle(.plain).help(copiedID == item.id ? "Copied" : "Copy transcript")
-
                                     .accessibilityLabel("Copy \(item.mode) transcript")
                                     .accessibilityValue(copiedID == item.id ? "Copied" : item.text)
                                 HStack {
@@ -731,11 +716,9 @@ struct TranscriptView: View {
                                     }.labelStyle(.iconOnly).buttonStyle(.plain).help("Delete this transcript")
                                 }
                             }.padding(14).background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 14))
-
                         }
                         if service.hasMoreHistory {
                             Button("Load more") { service.loadMoreHistory() }.frame(maxWidth: .infinity)
-
                         }
                     }
                 }
@@ -783,7 +766,6 @@ struct TranscriptView: View {
                     Button("Steadier speakers") { service.tuning = .steady }
                     Button("More detail") { service.tuning = .detailed }
                 }.modifier(GlassButton())
-
                 tuningSlider("Speaker confidence", value: $service.tuning.speakerConfidence, range: 0.45...0.9, step: 0.05,
                     valueText: String(format: "%.0f%%", service.tuning.speakerConfidence * 100),
                     detail: "Higher requires stronger evidence for a speaker label; more speech may remain unknown.")
@@ -794,7 +776,6 @@ struct TranscriptView: View {
                     valueText: String(format: "%.1f s", service.tuning.paragraphPause),
                     detail: "Longer pauses make fewer, longer rows. Nearby history rows from the same speaker are also grouped.")
                 Toggle("Hide filler-only rows", isOn: $service.tuning.hideFillerRows).toggleStyle(.switch)
-
                 Text("Hides rows containing only sounds such as um or uh. Original text is kept. Fillers inside sentences stay visible.")
                     .font(.caption).foregroundStyle(.secondary)
                 Divider()
@@ -810,7 +791,6 @@ struct TranscriptView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack { Text(title).font(.headline); Spacer(); Text(valueText).monospacedDigit().foregroundStyle(.secondary) }
             Slider(value: value, in: range, step: step).accessibilityLabel(title)
-
             Text(detail).font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -826,7 +806,6 @@ struct TranscriptView: View {
                     Spacer()
                     Button(service.checkingModels ? "Checking…" : "Check updates") { service.checkModelUpdates() }
                         .disabled(service.checkingModels).modifier(GlassButton())
-
                 }
                 ForEach(service.modelUpdates) { model in
                     VStack(alignment: .leading, spacing: 8) {
