@@ -77,12 +77,12 @@ struct VocabularyView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(editing ? "Edit entry" : "Add a word or phrase").font(.headline)
             VStack(alignment: .leading, spacing: 5) {
-                Text("Preferred spelling").font(.caption).foregroundStyle(.secondary)
+                Text("Preferred spelling").font(.body.weight(.medium)).foregroundStyle(.secondary)
                 TextField("For example, SwiftUI", text: $draft.preferred)
                     .textFieldStyle(.roundedBorder).accessibilityLabel("Preferred spelling")
             }
             VStack(alignment: .leading, spacing: 5) {
-                Text("Heard as (optional)").font(.caption).foregroundStyle(.secondary)
+                Text("Heard as (optional)").font(.body.weight(.medium)).foregroundStyle(.secondary)
                 TextField("For example, swift you eye", text: $draft.heard)
                     .textFieldStyle(.roundedBorder).accessibilityLabel("Heard as")
             }
