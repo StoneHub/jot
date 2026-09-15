@@ -1,8 +1,8 @@
 name: Core checks
+# Local validation is the default while Monroe's Mac is available. Run this
+# manually only when work must be validated without that machine.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 jobs:
   core:
     runs-on: macos-latest
