@@ -169,8 +169,10 @@ final class AppUpdater: ObservableObject {
         }
     }
 
+    // Local time, the same format the swap script writes with date(1), so the two halves of one update read in order.
+    private static let stamp: DateFormatter = { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"; return f }()
     private func log(_ message: String) {
-        let line = "\(Date().formatted(.iso8601)) \(message)\n"
+        let line = "\(Self.stamp.string(from: Date())) \(message)\n"
         let url = Self.logURL
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         if let handle = try? FileHandle(forWritingTo: url) {
