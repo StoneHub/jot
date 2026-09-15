@@ -84,6 +84,7 @@ private enum JotMenuIcon {
 @MainActor
 final class JotDelegate: NSObject, NSApplicationDelegate {
     let service = SpeechService()
+    let updater = AppUpdater()
     weak var mainWindow: NSWindow?
     var openAction: (() -> Void)?
     private var closeObserver: NSObjectProtocol?
@@ -413,6 +414,42 @@ struct MenuControls: View {
             }
         }.padding(18).frame(width: 350)
             .modifier(GlassStage()).background(JotBackdrop()).tint(Color(nsColor: .controlAccentColor))
+    }
+}
+
+/// Top of the Models tab: the installed version, an on-demand release check, and the update itself.
+private struct AppUpdateRow: View {
+    @ObservedObject var updater: AppUpdater
+    @ObservedObject var service: SpeechService
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Jot \(JotVersion.current)").font(.headline)
+                Spacer()
+                if case .available(let release) = updater.state {
+                    Link("Release notes", destination: release.pageURL)
+                    Button("Update") { updater.install() }
+                        .disabled(!service.canInstallUpdate).modifier(GlassButton())
+                        .help(service.canInstallUpdate ? "Downloads the release and relaunches Jot." : "Pause capture before updating")
+                } else {
+                    Button(updater.state == .checking ? "Checking…" : "Check for updates") { updater.check() }
+                        .disabled(updater.state == .checking || updater.state == .installing).modifier(GlassButton())
+                }
+            }
+            switch updater.state {
+            case .idle: EmptyView()
+            case .checking: Text("Checking GitHub releases…").font(.callout).foregroundStyle(.secondary)
+            case .upToDate(let version): Text("Jot \(version) is the latest release.").font(.callout).foregroundStyle(.secondary)
+            case .available(let release):
+                Text("Version \(release.version.description) available").font(.callout)
+                if !release.firstNoteLine.isEmpty { Text(release.firstNoteLine).font(.caption).foregroundStyle(.secondary) }
+            case .downloading(let fraction):
+                ProgressView(value: fraction) { Text("Downloading…").font(.caption).foregroundStyle(.secondary) }
+            case .installing: Text("Verifying and installing…").font(.callout).foregroundStyle(.secondary)
+            case .failed(let message): Text(message).font(.callout).foregroundStyle(.red)
+            }
+        }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
     }
 }
 
@@ -817,6 +854,7 @@ struct TranscriptView: View {
     private var models: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                AppUpdateRow(updater: delegate.updater, service: service)
                 HStack {
                     Text(service.modelState.rawValue.capitalized).foregroundStyle(.secondary)
                     if service.cachedModelBytes > 0 {
