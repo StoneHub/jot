@@ -433,7 +433,7 @@ final class SpeechService: ObservableObject {
         lastExport = nil
         historyLimit = 50
         didDeleteHistory()
-        notice = "History cleared."
+        notice = "Dictation history cleared. Sessions were kept."
     }
 
     func canDeleteSession(_ id: String) -> Bool { !(id == activeSessionID && ambientEnabled) }
@@ -731,7 +731,7 @@ final class SpeechService: ObservableObject {
                 lagSeconds = max(0, Date().timeIntervalSince(job.startedAt) - job.offset - AudioClock.seconds(samples: job.samples.count))
                 // Persist recognition before awaiting optional cleanup. Capture keeps draining while we await.
                 let sources = output.transcripts
-                if job.submittedUptime > historyClearedAt && !deletedSessions.contains(job.sessionID) {
+                if (job.mode == .ambient || job.submittedUptime > historyClearedAt) && !deletedSessions.contains(job.sessionID) {
                     for transcript in sources { try store?.append(transcript) }
                 }
                 let originalTexts = sources.map(\.text)
@@ -745,7 +745,7 @@ final class SpeechService: ObservableObject {
                     guard lifecycle.acceptsWork(generation) else { throw CancellationError() }
                     if !(job.mode == .dictation ? cleanUpDictation : cleanUpTranscriptions) { readable = originalTexts }
                 }
-                if job.submittedUptime > historyClearedAt && !deletedSessions.contains(job.sessionID) {
+                if (job.mode == .ambient || job.submittedUptime > historyClearedAt) && !deletedSessions.contains(job.sessionID) {
                     for (source, text) in zip(sources, readable) where source.text != text {
                         try store?.setReadableText(text, for: source)
                     }

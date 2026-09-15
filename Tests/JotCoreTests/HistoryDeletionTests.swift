@@ -7,28 +7,28 @@ final class HistoryDeletionTests: XCTestCase {
     override func setUp() { directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString) }
     override func tearDown() { try? FileManager.default.removeItem(at: directory) }
 
-    private func row(_ id: String, session: String = "a", start: Double = 0, text: String = "hello") -> Transcript {
-        Transcript(id: id, sessionID: session, startedAt: Date(timeIntervalSince1970: 100), startSeconds: start, endSeconds: start + 1, text: text, speakerID: "speaker-1", mode: "ambient")
+    private func row(_ id: String, session: String = "a", start: Double = 0, text: String = "hello", mode: String = "ambient") -> Transcript {
+        Transcript(id: id, sessionID: session, startedAt: Date(timeIntervalSince1970: 100), startSeconds: start, endSeconds: start + 1, text: text, speakerID: mode == "ambient" ? "speaker-1" : nil, mode: mode)
     }
 
-    func testClearDeletesBeyondUIPagesAndStaysEmptyAfterReopen() throws {
+    func testClearRemovesEveryDictationAndKeepsSessions() throws {
         do {
             let store = try TranscriptStore(directory: directory)
-            for index in 0..<450 { try store.append(row("\(index)", start: Double(index))) }
+            for index in 0..<450 { try store.append(row("\(index)", session: "d\(index)", start: Double(index), mode: "dictation")) }
+            try store.appendEvent(CaptureEvent(sessionID: "d1", kind: "processing_error", detail: "failed"))
+            try store.append(row("kept-ambient"))
             try store.setTitle(sessionID: "a", title: "Old meeting")
             try store.label(sessionID: "a", speakerID: "speaker-1", name: "Old speaker")
             try store.appendEvent(CaptureEvent(sessionID: "a", kind: "started", detail: "Started"))
             try store.clearHistory()
-            XCTAssertEqual(try store.metrics().transcriptCount, 0)
-            XCTAssertTrue(try store.events().isEmpty)
+            XCTAssertEqual(try store.metrics().transcriptCount, 1)
+            XCTAssertEqual(try store.events().map(\.sessionID), ["a"])
         }
         let store = try TranscriptStore(directory: directory)
-        XCTAssertTrue(try store.sessions().isEmpty)
-        XCTAssertTrue(try store.search("hello").isEmpty)
-        try store.append(row("new"))
-        XCTAssertNil(try store.read(id: "new")?.speakerLabel)
-        XCTAssertNil(try store.sessions().first?.title)
-        XCTAssertEqual(try store.metrics().transcriptCount, 1)
+        XCTAssertEqual(try store.sessions().first?.title, "Old meeting")
+        XCTAssertEqual(try store.read(id: "kept-ambient")?.speakerLabel, "Old speaker")
+        XCTAssertTrue(try store.search("hello").allSatisfy { $0.mode == "ambient" })
+        XCTAssertNil(try store.read(id: "7"))
     }
 
     func testSessionDeletionKeepsOtherSessionsAndRemovesRelatedMetadata() throws {
@@ -64,14 +64,14 @@ final class HistoryDeletionTests: XCTestCase {
 
     func testFailedDeletionRollsBackAllTables() throws {
         let store = try TranscriptStore(directory: directory)
-        try store.append(row("kept"))
+        try store.append(row("kept")); try store.append(row("gone", session: "d", mode: "dictation"))
         try store.setTitle(sessionID: "a", title: "Keep with transcript")
         var db: OpaquePointer?
         XCTAssertEqual(sqlite3_open(directory.appendingPathComponent("transcripts.sqlite3").path, &db), SQLITE_OK)
         defer { sqlite3_close(db) }
-        XCTAssertEqual(sqlite3_exec(db, "CREATE TRIGGER reject_title_delete BEFORE DELETE ON session_titles BEGIN SELECT RAISE(ABORT, 'test failure'); END", nil, nil, nil), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(db, "CREATE TRIGGER reject_transcript_delete BEFORE DELETE ON transcripts BEGIN SELECT RAISE(ABORT, 'test failure'); END", nil, nil, nil), SQLITE_OK)
         XCTAssertThrowsError(try store.clearHistory())
-        XCTAssertNotNil(try store.read(id: "kept"))
+        XCTAssertNotNil(try store.read(id: "kept")); XCTAssertNotNil(try store.read(id: "gone"))
         XCTAssertEqual(try store.sessions().first?.title, "Keep with transcript")
     }
 

@@ -260,12 +260,14 @@ public final class TranscriptStore: @unchecked Sendable {
         }
     }
 
+    /// Clears the dictation rows History alone owns. Ambient rows belong to their session and are deleted from Sessions.
     public func clearHistory() throws {
         try locked {
             try deletion {
-                for table in ["transcripts", "session_titles", "speaker_labels", "capture_events"] {
-                    try execute("DELETE FROM \(table)")
+                for table in ["session_titles", "speaker_labels", "capture_events"] {
+                    try execute("DELETE FROM \(table) WHERE session_id IN (SELECT session_id FROM transcripts WHERE mode = 'dictation') AND session_id NOT IN (SELECT session_id FROM transcripts WHERE mode = 'ambient')")
                 }
+                try execute("DELETE FROM transcripts WHERE mode = 'dictation'")
             }
         }
     }

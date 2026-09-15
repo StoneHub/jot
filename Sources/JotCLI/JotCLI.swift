@@ -35,7 +35,7 @@ struct JotCLI {
     jot recent [--limit N] [--offset N]
     jot sessions [--limit N]
     jot events [--session ID] [--limit N] [--offset N]
-    jot clear-history                  Delete all saved transcripts and sessions
+    jot clear-history                  Delete all saved dictations; sessions are kept
     jot delete-session <session-id>     Delete one saved session
     jot read <transcript-id>
     jot export <session-id> [--json]    Whole session as Markdown, or folded rows as JSON
