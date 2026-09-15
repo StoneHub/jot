@@ -3,11 +3,13 @@ import Foundation
 /// Renders one session as a readable document. Rows are folded and merged for reading; SQLite keeps the originals.
 public enum TranscriptExport {
     /// Consecutive rows from the same speaker join into one paragraph unless the pause between them reaches `mergeWithin` seconds.
-    public static func paragraphs(_ rows: [Transcript], mergeWithin: Double = 8) -> [Transcript] {
+    public static func paragraphs(_ rows: [Transcript], mergeWithin: Double = 1.5) -> [Transcript] {
         var result: [Transcript] = []
         for row in rows {
             if let previous = result.last, previous.speakerID == row.speakerID, previous.speakerLabel == row.speakerLabel,
-               previous.sessionID == row.sessionID, row.startSeconds - previous.endSeconds < mergeWithin {
+               previous.sessionID == row.sessionID, previous.mode == row.mode,
+               row.startSeconds - previous.endSeconds >= -0.1,
+               row.startSeconds - previous.endSeconds < mergeWithin {
                 result[result.count - 1].text += " " + row.text.trimmingCharacters(in: .whitespaces)
                 result[result.count - 1].endSeconds = max(previous.endSeconds, row.endSeconds)
             } else { result.append(row) }

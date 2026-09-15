@@ -43,7 +43,7 @@ final class TranscriptExportTests: XCTestCase {
     func testSeededSpeakerCarriesAcrossBlockUntilAConfidentChange() {
         // A short uncertain opening keeps the carried speaker; a confident run after a pause still switches.
         let words = [AttributedWord(text: "and then", start: 0, end: 0.6, probabilities: [0.3, 0.3]),
-                     AttributedWord(text: "no way", start: 2.0, end: 3.5, probabilities: [0.1, 0.9])]
+                     AttributedWord(text: "no way", start: 3.0, end: 4.5, probabilities: [0.1, 0.9])]
         XCTAssertEqual(TranscriptGrouping.turns(words, tuning: .init()).map(\.speaker), [nil, "speaker-2"])
         XCTAssertEqual(TranscriptGrouping.turns(words, tuning: .init(), continuing: "speaker-1").map(\.speaker), ["speaker-1", "speaker-2"])
     }
