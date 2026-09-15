@@ -1,23 +1,45 @@
 import XCTest
 @testable import JotCore
 final class TranscriptGroupingTests: XCTestCase {
+    func testBriefUncertaintyKeepsSpeakerButLongUncertaintyDoesNot() {
+        let words = [AttributedWord(text: "We discussed", start: 0, end: 1.5, probabilities: [0.9]),
+                     AttributedWord(text: "the next step", start: 1.5, end: 3, probabilities: []),
+                     AttributedWord(text: "today", start: 3, end: 4.5, probabilities: [0.9]),
+                     AttributedWord(text: "uncertain speech", start: 4.5, end: 7, probabilities: [])]
+        XCTAssertEqual(TranscriptGrouping.turns(words, tuning: .init()).map(\.speaker), ["speaker-1", nil])
+    }
+
+    func testHistoryJoinsUnfinishedSentenceAndPreservesSourceIDs() {
+        let first = Transcript(sessionID: "s", startedAt: .distantPast, startSeconds: 0, endSeconds: 2, text: "You know what I", speakerID: "speaker-1", mode: "ambient")
+        let next = Transcript(sessionID: "s", startedAt: .distantPast, startSeconds: 1.95, endSeconds: 3, text: "mean?", mode: "ambient")
+        let groups = TranscriptGrouping.historyGroups([next, first], tuning: .init())
+        XCTAssertEqual(groups.count, 1)
+        XCTAssertEqual(groups[0].transcript.text, "You know what I mean?")
+        XCTAssertEqual(groups[0].sourceIDs, [first.id, next.id])
+        XCTAssertNil(next.speakerID)
+        var other = next; other.sessionID = "other"
+        XCTAssertEqual(TranscriptGrouping.historyGroups([first, other], tuning: .init()).count, 2)
+    }
     func testHesitationDoesNotCreateSpeakerOrStatement() {
         let words = [AttributedWord(text:"I think",start:0,end:1,probabilities:[0.9,0.1]),
                      AttributedWord(text:"um",start:1,end:1.2,probabilities:[0.1,0.9]),
                      AttributedWord(text:"we should go",start:1.2,end:2.5,probabilities:[0.9,0.1])]
-        let turns = TranscriptGrouping.turns(words,tuning:.init())
+        var tuning = TranscriptionTuning(); tuning.minimumSpeakerTurn = 0.8
+        let turns = TranscriptGrouping.turns(words,tuning:tuning)
         XCTAssertEqual(turns.count,1); XCTAssertEqual(turns[0].speaker,"speaker-1")
         XCTAssertEqual(turns[0].text,"I think um we should go")
     }
     func testSustainedSpeakerChangeStillSplits() {
         let words = [AttributedWord(text:"First person",start:0,end:1,probabilities:[0.9,0.1]),
                      AttributedWord(text:"Second person",start:1,end:2.5,probabilities:[0.1,0.9])]
-        XCTAssertEqual(TranscriptGrouping.turns(words,tuning:.init()).map(\.speaker),["speaker-1","speaker-2"])
+        var tuning = TranscriptionTuning(); tuning.minimumSpeakerTurn = 0.8
+        XCTAssertEqual(TranscriptGrouping.turns(words,tuning:tuning).map(\.speaker),["speaker-1","speaker-2"])
     }
     func testPauseAndConfidenceCanBeTuned() {
         let words = [AttributedWord(text:"One",start:0,end:1,probabilities:[0.6]),
                      AttributedWord(text:"Two",start:2.2,end:3.2,probabilities:[0.6])]
-        XCTAssertEqual(TranscriptGrouping.turns(words,tuning:.init()).count,2)
+        var old = TranscriptionTuning(); old.paragraphPause = 1
+        XCTAssertEqual(TranscriptGrouping.turns(words,tuning:old).count,2)
         XCTAssertNil(TranscriptGrouping.turns(words,tuning:.init())[0].speaker)
         var tuning = TranscriptionTuning(); tuning.speakerConfidence = 0.5; tuning.paragraphPause = 1.5
         let turns = TranscriptGrouping.turns(words,tuning:tuning)

@@ -2,8 +2,8 @@ import Foundation
 
 public struct TranscriptionTuning: Codable, Sendable, Equatable {
     public var speakerConfidence: Double = 0.65
-    public var minimumSpeakerTurn: Double = 0.8
-    public var paragraphPause: Double = 1.0
+    public var minimumSpeakerTurn: Double = 1.2
+    public var paragraphPause: Double = 1.5
     public var hideFillerRows = true
     public init() {}
     public static var steady: Self {
@@ -65,7 +65,10 @@ public enum TranscriptGrouping {
             let duration = words[runEnd - 1].end - words[runStart].start
             let onlyFillers = isFillerOnly(words[runStart..<runEnd].map(\.text).joined(separator: " "))
             if runStart > 0 && words[runStart].start - words[runStart - 1].end >= tuning.paragraphPause { stable = nil }
-            if duration >= tuning.minimumSpeakerTurn && !onlyFillers { stable = candidates[runStart] }
+            // Brief missing/uncertain evidence is not evidence of a new speaker.
+            // A longer uncertain run still becomes unattributed.
+            let confirmation = candidates[runStart] == nil ? max(2, tuning.minimumSpeakerTurn) : tuning.minimumSpeakerTurn
+            if duration >= confirmation && !onlyFillers { stable = candidates[runStart] }
             for index in runStart..<runEnd { candidates[index] = stable }
             runStart = runEnd
         }
@@ -92,6 +95,7 @@ public enum TranscriptGrouping {
             guard result[index].speakerID == nil, result[index].mode == "ambient", previous.mode == "ambient",
                   previous.sessionID == result[index].sessionID,
                   let speaker = previous.speakerID, speaker != "overlap",
+                  result[index].startSeconds - previous.endSeconds >= -0.1,
                   result[index].startSeconds - previous.endSeconds < gap,
                   !endsSentence(previous.text) else { continue }
             result[index].speakerID = speaker
@@ -117,17 +121,17 @@ public enum TranscriptGrouping {
     }
 
     public static func historyGroups(_ source: [Transcript], tuning: TranscriptionTuning) -> [HistoryGroup] {
-        let sorted = source.sorted { $0.startedAt.addingTimeInterval($0.startSeconds) < $1.startedAt.addingTimeInterval($1.startSeconds) }
+        let sorted = foldContinuations(source, gap: tuning.bounded.paragraphPause)
         var result: [HistoryGroup] = []
         for item in sorted {
             if tuning.hideFillerRows && isFillerOnly(item.text) { continue }
             if let previous = result.last?.transcript, item.mode == "ambient", previous.mode == "ambient",
                item.sessionID == previous.sessionID, item.speakerID == previous.speakerID,
                item.speakerLabel == previous.speakerLabel,
-               item.startSeconds >= previous.endSeconds,
+               item.startSeconds >= previous.endSeconds - 0.1,
                item.startSeconds - previous.endSeconds < tuning.bounded.paragraphPause {
                 result[result.count - 1].transcript.text += " " + item.text
-                result[result.count - 1].transcript.endSeconds = item.endSeconds
+                result[result.count - 1].transcript.endSeconds = max(previous.endSeconds, item.endSeconds)
                 result[result.count - 1].sourceIDs.append(item.id)
             } else { result.append(HistoryGroup(transcript: item, sourceIDs: [item.id])) }
         }

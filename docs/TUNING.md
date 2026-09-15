@@ -1,5 +1,9 @@
 # Tune together
 
+Balanced now uses a 1.5-second paragraph pause and a 1.2-second minimum speaker turn, keeping confidence at 0.65. Existing saved settings are preserved; choose Balanced to try the new values.
+
+History now folds unfinished-sentence continuations just like session exports, including up to 100 ms of timestamp overlap. Raw SQLite rows and MCP recent/search results remain unchanged; use MCP session export for readable conversation context. Brief uncertainty under two seconds can retain the preceding speaker during new capture; sustained uncertainty remains unattributed. This is a continuity heuristic, not verified speaker identity.
+
 Open **Tuning** in the native app. Start with Balanced, or use Steadier speakers when brief hesitations cause extra speaker turns.
 
 | Control | Effect | Tradeoff |

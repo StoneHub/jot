@@ -455,7 +455,7 @@ final class SpeechService: ObservableObject {
     /// Folded and merged rows for reading one session. Stored rows are untouched.
     func sessionParagraphs(_ id: String) -> [Transcript] {
         guard let store else { return [] }
-        do { return TranscriptExport.paragraphs(TranscriptGrouping.foldContinuations(try store.session(id: id))) }
+        do { return TranscriptExport.paragraphs(TranscriptGrouping.foldContinuations(try store.session(id: id), gap: tuning.bounded.paragraphPause), mergeWithin: tuning.bounded.paragraphPause) }
         catch { notice = error.localizedDescription; return [] }
     }
 
