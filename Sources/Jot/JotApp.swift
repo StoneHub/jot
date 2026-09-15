@@ -768,6 +768,13 @@ struct TranscriptView: View {
                     Text("Restores the previous mute state when you release your shortcut. Other audio outputs are unchanged. Media keeps playing silently.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Clean up transcriptions", isOn: $service.cleanUpTranscriptions)
+                        .toggleStyle(.switch)
+                        .disabled(service.cleanupAvailability != .available)
+                    Text(service.cleanupAvailability.explanation)
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 HStack {
                     Button("Balanced") { service.tuning = .init() }
                     Button("Steadier speakers") { service.tuning = .steady }

@@ -44,6 +44,10 @@ Dictation supports up to 60 seconds per hold. It cancels if focus changes, skips
 
 In **History**, search transcripts, select text across statements, and press ⌘C to copy. **Load more** adds older results. Cards view supports individual copying and speaker naming. **Clear** in History permanently deletes all saved transcripts and sessions, including rows outside the current search or loaded page. History cards and sessions each have a trash button for individual deletion. Existing exported files are separate. New dictation starts a fresh history.
 
+**Clean up transcriptions:** new dictation, ambient speech, and meetings automatically use Apple's on-device language model when it is available. Turn this off in **Tuning → Clean up transcriptions**. Jot checks macOS 26+ and Apple Intelligence readiness; older systems and unavailable models keep normal transcription. Apple manages model setup and updates in macOS. Jot uses no cloud model, API key, or `fm` server.
+
+Cleanup removes fillers and repetition and improves punctuation within speaker turns. It has a two-second deadline and bypasses oversized input or a busy model. If cleanup fails or changes protected numerical/qualification wording, Jot keeps recognized text. These checks do not guarantee that every rewrite preserves meaning. Cleaned text appears in History, Sessions, copy/export, and CLI/MCP reads; turning cleanup off affects new speech only. Source text remains in local storage and is deleted together with its readable version. Existing history is not rewritten.
+
 **Activity** shows resource use and capture events. **Tuning** adjusts speaker grouping and paragraph breaks; see the [tuning guide](docs/TUNING.md).
 
 **Models → Check updates** checks published model revisions. It does not download updates or verify that your cached weights match the latest release.
