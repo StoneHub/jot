@@ -54,7 +54,9 @@ Open **Vocabulary** to add a preferred spelling such as `SwiftUI`. If Jot mishea
 
 Entries can be edited, disabled, removed, and restored with **Undo remove**. Use the preview to check saved, enabled entries without recording. Matching ignores capitalization, respects whole-word boundaries, and prefers longer phrases at the same position. Replacements are applied once, without chaining into other entries.
 
-Vocabulary applies before Fn dictation is inserted into your target app, using the entries enabled when that dictation began. History and ambient transcripts keep the original recognition. Entries stay in Jot's local preferences; this does not train or change the recognition model.
+Jot converts explicit spoken symbol names such as `forward slash`, `at sign`, `underscore`, and `open parenthesis` into their characters by default. This is the same for Fn dictation, ambient capture, History, Sessions, exports, and transcript access through the CLI or MCP.
+
+Personal vocabulary is then applied before Fn dictation is inserted into your target app, using the entries enabled when that dictation began. Personal entries stay in Jot's local preferences; this does not train or change the recognition model.
 
 ## Tune it to the conversation
 

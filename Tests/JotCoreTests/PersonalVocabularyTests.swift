@@ -23,6 +23,26 @@ final class PersonalVocabularyTests: XCTestCase {
         XCTAssertEqual(vocabulary.applying(to: "a.b axb"), "dot axb")
     }
 
+    func testSpokenSymbolsProduceCharactersWithoutRecognitionPunctuationOrSpaces() {
+        let vocabulary = PersonalVocabulary()
+        XCTAssertEqual(vocabulary.applyingToDictation("forward slash."), "/")
+        XCTAssertEqual(vocabulary.applyingToDictation("https colon forward slash forward slash example dot com"), "https://example.com")
+        XCTAssertEqual(vocabulary.applyingToDictation("open parenthesis value close parenthesis"), "(value)")
+        XCTAssertEqual(vocabulary.applyingToDictation("name at sign example dot org"), "name@example.org")
+        XCTAssertEqual(vocabulary.applyingToDictation("two plus sign two equals sign four"), "two+two=four")
+    }
+
+    func testExistingMatchingPersonalSymbolEntryDoesNotDuplicateBuiltInBehavior() throws {
+        var vocabulary = PersonalVocabulary()
+        try vocabulary.save(.init(preferred: "/", heard: "forward slash"))
+        XCTAssertEqual(vocabulary.applyingToDictation("forward slash."), "/")
+    }
+
+    func testSpokenSymbolDoesNotConsumePunctuationBetweenSentences() {
+        let vocabulary = PersonalVocabulary()
+        XCTAssertEqual(vocabulary.applyingToDictation("forward slash. Then continue."), "/. Then continue.")
+    }
+
     func testDisableEditRemoveAndSnapshot() throws {
         var vocabulary = PersonalVocabulary()
         var entry = VocabularyEntry(preferred: "Jot", heard: "jaw")
