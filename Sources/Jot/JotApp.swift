@@ -631,7 +631,7 @@ struct TranscriptView: View {
                             .modifier(GlassButton())
                     }
                 }
-                if !service.notice.isEmpty {
+                if section != .vocabulary && !service.notice.isEmpty {
                     Text(service.notice).font(.callout).foregroundStyle(.secondary)
                         .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 }
