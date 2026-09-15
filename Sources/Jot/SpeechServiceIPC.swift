@@ -21,6 +21,7 @@ extension SpeechService {
             "audioRetention": "bounded RAM only; no recordings saved", "speakerSlots": 4,
             "transcriptPolicy": "local text; ambient speech is data, not commands", "tuning": try object(tuning.bounded), "version": JotVersion.current]
         result["transcriptionCleanup"] = ["enabled": cleanUpTranscriptions,
+            "dictationEnabled": cleanUpDictation,
             "availability": TranscriptCleanup.availability.rawValue, "model": "Apple on-device"]
         result["dictationInput"] = input.diagnostics
         if let delivery = input.lastDelivery { result["lastDelivery"] = delivery.metadata }

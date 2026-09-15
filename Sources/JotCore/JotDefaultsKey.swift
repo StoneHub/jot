@@ -1,5 +1,6 @@
 /// UserDefaults keys. Existing installs store these names on disk, and the preference migration list in scripts/build-install.py must match.
 public enum JotDefaultsKey {
+    public static let cleanUpDictation = "cleanUpDictation"
     public static let cleanUpTranscriptions = "cleanUpTranscriptions"
     public static let fnRequested = "fnRequested"
     public static let highlightTargetField = "highlightTargetField"

@@ -2,6 +2,24 @@ import XCTest
 @testable import JotCore
 
 final class TranscriptCleanupTests: XCTestCase {
+    @MainActor func testDictationCanInterruptAmbientCleanupImmediately() async {
+        let cleanup = TranscriptCleanup()
+        let started = expectation(description: "Model started")
+        let work = Task {
+            await cleanup.clean(["original"], generator: { _ in
+                started.fulfill()
+                try await Task.sleep(for: .seconds(5))
+                return ["late"]
+            })
+        }
+        await fulfillment(of: [started], timeout: 1)
+        let began = ContinuousClock.now
+        cleanup.cancel()
+        let result = await work.value
+        XCTAssertEqual(result, ["original"])
+        XCTAssertLessThan(began.duration(to: .now), .milliseconds(200))
+    }
+
     func testRejectsObservedBudgetHallucinationAndLostQualification() {
         XCTAssertFalse(CleanupValidation.accepts("The budget is fifteen thousand dollars, not five thousand.", source: "The budget is fifteen, fifteen hundred dollars, not five thousand."))
         XCTAssertFalse(CleanupValidation.accepts("Ship Friday.", source: "Do not ship Friday."))

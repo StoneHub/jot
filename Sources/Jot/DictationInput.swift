@@ -9,7 +9,7 @@ final class DictationInput {
     enum InputError: LocalizedError {
         case accessibilityRequired, eventTapUnavailable, secureField
         case noTextField(app: String, role: String)
-        case targetChanged, shortcutCancelled, clipboardUnavailable, pasteUnavailable
+        case targetChanged, shortcutCancelled, pasteUnavailable
 
         var errorDescription: String? {
             switch self {
@@ -19,7 +19,6 @@ final class DictationInput {
             case .secureField: return "Dictation is unavailable in password fields."
             case .targetChanged: return "Dictation cancelled because the focused application or text field changed."
             case .shortcutCancelled: return "Dictation cancelled because the dictation shortcut was used with another key."
-            case .clipboardUnavailable: return "The clipboard could not be preserved; no text was pasted."
             case .pasteUnavailable: return "The paste shortcut could not be created."
             }
         }
@@ -284,7 +283,14 @@ final class DictationInput {
                 default: break
                 }
             }
-            try paste(text, into: target)
+            // Prefer direct text events. Clipboard fallback is safe only if no direct events were sent.
+            path = try ClipboardInsertion.deliver(paste: {
+                path = "clipboard_hid"
+                try paste(text, into: target)
+            }, type: {
+                path = "unicode_hid"
+                try typeUnicode(text, into: target, generation: generation)
+            })
             for delay in [70_000_000, 130_000_000, 250_000_000, 300_000_000] as [UInt64] {
                 try await Task.sleep(nanoseconds: delay)
                 try validateTransaction(target, generation: generation)
@@ -494,6 +500,24 @@ final class DictationInput {
         target = nil
     }
 
+    private func typeUnicode(_ text: String, into target: Target, generation: Int) throws {
+        guard let source = CGEventSource(stateID: .privateState) else { throw ClipboardInsertion.Failure.directUnavailable }
+        // Construct everything before dispatch: allocation failure must not leave partial text.
+        let events = try UnicodeTyping.chunks(text).map { chunk -> (CGEvent, CGEvent) in
+            guard let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
+                  let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else { throw ClipboardInsertion.Failure.directUnavailable }
+            down.flags = []; up.flags = []
+            down.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: chunk)
+            down.setIntegerValueField(.eventSourceUserData, value: Self.pasteEventMarker)
+            up.setIntegerValueField(.eventSourceUserData, value: Self.pasteEventMarker)
+            return (down, up)
+        }
+        for (down, up) in events {
+            try validateTransaction(target, generation: generation)
+            down.post(tap: .cghidEventTap); up.post(tap: .cghidEventTap)
+        }
+    }
+
     private func paste(_ text: String, into target: Target) throws {
         clipboardRestore?()
         clipboardRestore = nil
@@ -501,14 +525,7 @@ final class DictationInput {
         let generation = pasteGeneration
         let clipboard = NSPasteboard.general
         let originalChangeCount = clipboard.changeCount
-        let saved: [[NSPasteboard.PasteboardType: Data]] = try (clipboard.pasteboardItems ?? []).map { item in
-            var values: [NSPasteboard.PasteboardType: Data] = [:]
-            for type in item.types {
-                guard let data = item.data(forType: type) else { throw InputError.clipboardUnavailable }
-                values[type] = data
-            }
-            return values
-        }
+        let saved = try ClipboardInsertion.snapshot(clipboard)
         guard let source = CGEventSource(stateID: .privateState),
               let down = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true),
               let up = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false) else {
@@ -519,7 +536,7 @@ final class DictationInput {
         down.setIntegerValueField(.eventSourceUserData, value: Self.pasteEventMarker)
         up.setIntegerValueField(.eventSourceUserData, value: Self.pasteEventMarker)
         try validateCurrent(target)
-        guard clipboard.changeCount == originalChangeCount else { throw InputError.clipboardUnavailable }
+        guard clipboard.changeCount == originalChangeCount else { throw ClipboardInsertion.Failure.unavailable }
         clipboard.clearContents()
         let wroteText = clipboard.setString(text, forType: .string)
         let ownedChangeCount = clipboard.changeCount
@@ -534,7 +551,7 @@ final class DictationInput {
             }
             if !items.isEmpty { clipboard.writeObjects(items) }
         }
-        guard wroteText else { restore(); throw InputError.clipboardUnavailable }
+        guard wroteText else { restore(); throw ClipboardInsertion.Failure.unavailable }
         do { try validateCurrent(target) }
         catch { restore(); throw error }
         // Electron apps can ignore PID-directed keyboard events. Normal HID routing

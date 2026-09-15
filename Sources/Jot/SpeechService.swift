@@ -46,6 +46,9 @@ final class SpeechService: ObservableObject {
     @Published var cleanUpTranscriptions = UserDefaults.standard.object(forKey: JotDefaultsKey.cleanUpTranscriptions) as? Bool ?? true {
         didSet { UserDefaults.standard.set(cleanUpTranscriptions, forKey: JotDefaultsKey.cleanUpTranscriptions) }
     }
+    @Published var cleanUpDictation = UserDefaults.standard.bool(forKey: JotDefaultsKey.cleanUpDictation) {
+        didSet { UserDefaults.standard.set(cleanUpDictation, forKey: JotDefaultsKey.cleanUpDictation) }
+    }
     @Published private(set) var cleanupAvailability = TranscriptCleanup.availability
     private let transcriptCleanup = TranscriptCleanup()
 
@@ -611,6 +614,7 @@ final class SpeechService: ObservableObject {
             updateKeepAwakeAssertion()
             dictationVocabulary = vocabulary
             dictation = []; dictationStarted = Date(); dictationTicket = UUID(); dictationActive = true
+            transcriptCleanup.cancel()
             if highlightTargetField { highlight.show(follow: { [weak self] in self?.input.targetFrame() }) }
             updateMode()
             markPerformance(.dictationStarted)
@@ -701,6 +705,8 @@ final class SpeechService: ObservableObject {
 
     private func kickWorker() {
         guard lifecycle.phase == .ready, processing == nil, !jobs.isEmpty else { return }
+        // Dictation is inserted at the front on release. Never start another ambient job ahead of it.
+        if dictationPending && jobs.first?.mode != .dictation { return }
         let job = jobs.removeFirst()
         let generation = lifecycle.generation
         let vocabularySnapshot = dictationVocabulary
@@ -710,6 +716,8 @@ final class SpeechService: ObservableObject {
         processing = Task {
             var outcome = PerformanceJob.Outcome.completed
             var inferenceSeconds: Double?
+            var cleanupSeconds = 0.0
+            var deliverySeconds: Double?
             do {
                 let output = try await pipeline.infer(job, tuning: tuning)
                 try Task.checkCancellation()
@@ -726,11 +734,14 @@ final class SpeechService: ObservableObject {
                 }
                 let originalTexts = sources.map(\.text)
                 var readable = originalTexts
-                if cleanUpTranscriptions {
+                let wantsCleanup = job.mode == .dictation ? cleanUpDictation : (cleanUpTranscriptions && !dictationActive && !dictationPending)
+                if wantsCleanup {
+                    let cleanupBegan = ProcessInfo.processInfo.systemUptime
                     readable = await transcriptCleanup.clean(originalTexts)
+                    cleanupSeconds = ProcessInfo.processInfo.systemUptime - cleanupBegan
                     try Task.checkCancellation()
                     guard lifecycle.acceptsWork(generation) else { throw CancellationError() }
-                    if !cleanUpTranscriptions { readable = originalTexts }
+                    if !(job.mode == .dictation ? cleanUpDictation : cleanUpTranscriptions) { readable = originalTexts }
                 }
                 if job.submittedUptime > historyClearedAt && !deletedSessions.contains(job.sessionID) {
                     for (source, text) in zip(sources, readable) where source.text != text {
@@ -742,6 +753,8 @@ final class SpeechService: ObservableObject {
                     let text = DictationCleanup.applying(to: vocabularySnapshot.applyingToDictation(readable.isEmpty ? output.text : readable.joined(separator: " ")))
                     if text.isEmpty { notice = "No text to insert." }
                     else {
+                        let deliveryBegan = ProcessInfo.processInfo.systemUptime
+                        defer { deliverySeconds = ProcessInfo.processInfo.systemUptime - deliveryBegan }
                         let delivery = try await input.insert(text)
                         if job.ticket == dictationTicket {
                             outcome = delivery.verified ? .completed : .deliveryUnverified
@@ -760,7 +773,8 @@ final class SpeechService: ObservableObject {
             diagnostics.record(.init(elapsedSeconds: ProcessInfo.processInfo.systemUptime - diagnosticsBegan,
                 mode: job.mode == .dictation ? .dictation : .ambient, outcome: outcome,
                 audioSeconds: AudioClock.seconds(samples: job.samples.count), queueWaitSeconds: waitSeconds,
-                inferenceSeconds: inferenceSeconds, completionSeconds: max(0, ProcessInfo.processInfo.systemUptime - job.submittedUptime)))
+                inferenceSeconds: inferenceSeconds, completionSeconds: max(0, ProcessInfo.processInfo.systemUptime - job.submittedUptime),
+                cleanupSeconds: cleanupSeconds, deliverySeconds: deliverySeconds))
             inFlightAudioSeconds = 0
             if job.mode == .dictation, job.ticket == dictationTicket { input.discardTarget(); dictationPending = false }
             processing = nil
