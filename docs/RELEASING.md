@@ -1,4 +1,26 @@
-# Public release checklist
+# Releasing Jot
+
+## Local releases
+
+Releases are cut on Monroe's Mac with `scripts/release.py`; it is the only machine with the signing identity, and the app is signed with an Apple Development certificate, not notarized. That is deliberate: macOS permissions follow the code signature, so every update must be signed with the same identity and installed at `/Applications/Jot.app`. The in-app updater strips the quarantine flag itself, so Gatekeeper never sees the unnotarized download.
+
+```sh
+export JOT_SIGN_IDENTITY="Apple Development: monroes.awesome@gmail.com (Y33U865KBQ)" JOT_SIGN_TEAM="N6GPP46885"
+python3 scripts/release.py patch --notes "What changed" --install
+```
+
+`patch`, `minor`, `major`, or an explicit `X.Y.Z` picks the new version. The script, one printed line per step:
+
+1. Refuses unless it is on `main`, the tree is clean, `HEAD` equals `origin/main` after a fetch, `gh auth status` passes, and a signing identity is set.
+2. Bumps `JotVersion.current`, `project.yml`, and `Resources/Info.plist`. `CFBundleShortVersionString` is the version; `CFBundleVersion` is the number of existing `v*` tags plus one, so it increases every release. Writes `docs/RELEASE-NOTES-<version>.md` from `--notes`.
+3. Runs `swift test`, then `build-install.py --configuration Release --build-only`, and reads `build/release-proof.json`.
+4. Zips the product with `ditto -c -k --sequesterRsrc --keepParent` to `build/Jot-<version>.zip` and writes `build/Jot-<version>.zip.sha256`.
+5. Commits `Release <version>`, creates the annotated tag `v<version>` with the notes as its message, pushes `main --follow-tags`, and runs `gh release create` with the zip and checksum. The asset must be named `Jot-<version>.zip`; the updater asks for exactly that name.
+6. With `--install`, runs `build-install.py --configuration Release` so the same product lands in `/Applications`.
+
+`--dry-run` stops after step 4, prints what it would commit, tag, and publish, and restores the tree.
+
+## Notarized distribution (not in use)
 
 Publish from the default branch after required checks pass. Keep public distribution separate from the installed development app.
 

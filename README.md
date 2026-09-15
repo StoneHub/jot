@@ -54,6 +54,8 @@ Text insertion tries the field's Accessibility API, then direct Unicode keyboard
 
 **Activity** shows resource use and capture events. **Tuning** adjusts speaker grouping and paragraph breaks; see the [tuning guide](docs/TUNING.md).
 
+**Updating Jot:** open **Models** and press **Check for updates**. Jot reads the latest GitHub release; if it is newer, **Update** downloads it, checks the size, signature, and signing team against the running app, removes the quarantine flag, then quits and replaces `/Applications/Jot.app` before relaunching. Update is disabled while capture, dictation, inference, or model setup is running. Each step is appended to `~/Library/Application Support/Jot/update.log`.
+
 **Models → Check updates** checks published model revisions. It does not download updates or verify that your cached weights match the latest release.
 
 ## Personal vocabulary
