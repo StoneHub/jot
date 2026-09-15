@@ -43,6 +43,12 @@ final class SpeechService: ObservableObject {
         }
     }
 
+    @Published var cleanUpTranscriptions = UserDefaults.standard.object(forKey: JotDefaultsKey.cleanUpTranscriptions) as? Bool ?? true {
+        didSet { UserDefaults.standard.set(cleanUpTranscriptions, forKey: JotDefaultsKey.cleanUpTranscriptions) }
+    }
+    @Published private(set) var cleanupAvailability = TranscriptCleanup.availability
+    private let transcriptCleanup = TranscriptCleanup()
+
     func setShortcutRecording(_ active: Bool) { input.isRecordingShortcut = active }
 
     func setShortcut(_ value: DictationShortcut) throws {
@@ -644,6 +650,7 @@ final class SpeechService: ObservableObject {
         tickCount += 1
         if Date().timeIntervalSince(lastStatsTime) >= 1 {
             samplePerformance(); lastStatsTime = Date(); refreshPermissions()
+            cleanupAvailability = TranscriptCleanup.availability
             queuedSeconds = jobs.reduce(0) { $0 + AudioClock.seconds(samples: $1.samples.count) }
             if ambientEnabled || dictationActive, let lastAudioAt, Date().timeIntervalSince(lastAudioAt) > 4 {
                 recordEvent(.inputStalled, "No microphone samples for more than four seconds."); pause(automatic: true); notice = "Microphone stopped delivering audio. Resume to reconnect; a capture gap occurred."
@@ -712,12 +719,27 @@ final class SpeechService: ObservableObject {
                 lastInferenceSeconds = output.processingSeconds
                 processedAudioSeconds += AudioClock.seconds(samples: job.samples.count)
                 lagSeconds = max(0, Date().timeIntervalSince(job.startedAt) - job.offset - AudioClock.seconds(samples: job.samples.count))
+                // Persist recognition before awaiting optional cleanup. Capture keeps draining while we await.
+                let sources = output.transcripts
                 if job.submittedUptime > historyClearedAt && !deletedSessions.contains(job.sessionID) {
-                    for transcript in output.transcripts { try store?.append(transcript) }
+                    for transcript in sources { try store?.append(transcript) }
+                }
+                let originalTexts = sources.map(\.text)
+                var readable = originalTexts
+                if cleanUpTranscriptions {
+                    readable = await transcriptCleanup.clean(originalTexts)
+                    try Task.checkCancellation()
+                    guard lifecycle.acceptsWork(generation) else { throw CancellationError() }
+                    if !cleanUpTranscriptions { readable = originalTexts }
+                }
+                if job.submittedUptime > historyClearedAt && !deletedSessions.contains(job.sessionID) {
+                    for (source, text) in zip(sources, readable) where source.text != text {
+                        try store?.setReadableText(text, for: source)
+                    }
                 }
                 if !output.transcripts.isEmpty { lastTranscriptAt = Date(); refreshRecent(); refreshSessions() }
                 if job.mode == .dictation, job.ticket == dictationTicket {
-                    let text = DictationCleanup.applying(to: vocabularySnapshot.applyingToDictation(output.text))
+                    let text = DictationCleanup.applying(to: vocabularySnapshot.applyingToDictation(readable.isEmpty ? output.text : readable.joined(separator: " ")))
                     if text.isEmpty { notice = "No text to insert." }
                     else {
                         let delivery = try await input.insert(text)

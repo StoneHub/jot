@@ -98,7 +98,7 @@ public final class TranscriptStore: @unchecked Sendable {
         do {
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: databaseURL.path)
             sqlite3_busy_timeout(db, 5_000)
-            try execute("PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS transcripts (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, started_at REAL NOT NULL, start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, text TEXT NOT NULL, speaker_id TEXT, mode TEXT NOT NULL CHECK(mode IN ('ambient','dictation'))); CREATE INDEX IF NOT EXISTS transcript_absolute_time ON transcripts((started_at + start_seconds) DESC, id DESC); CREATE INDEX IF NOT EXISTS transcript_session ON transcripts(session_id); CREATE TABLE IF NOT EXISTS speaker_labels (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY(session_id,speaker_id)); CREATE TABLE IF NOT EXISTS capture_events (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, timestamp REAL NOT NULL, kind TEXT NOT NULL, detail TEXT NOT NULL, duration_seconds REAL CHECK(duration_seconds >= 0)); CREATE INDEX IF NOT EXISTS capture_event_time ON capture_events(timestamp DESC,id DESC); CREATE INDEX IF NOT EXISTS capture_event_session_time ON capture_events(session_id,timestamp DESC,id DESC); CREATE TABLE IF NOT EXISTS session_titles (session_id TEXT PRIMARY KEY, title TEXT NOT NULL); PRAGMA user_version=3;")
+            try execute("PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS transcripts (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, started_at REAL NOT NULL, start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, text TEXT NOT NULL, speaker_id TEXT, mode TEXT NOT NULL CHECK(mode IN ('ambient','dictation'))); CREATE INDEX IF NOT EXISTS transcript_absolute_time ON transcripts((started_at + start_seconds) DESC, id DESC); CREATE INDEX IF NOT EXISTS transcript_session ON transcripts(session_id); CREATE TABLE IF NOT EXISTS speaker_labels (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY(session_id,speaker_id)); CREATE TABLE IF NOT EXISTS capture_events (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, timestamp REAL NOT NULL, kind TEXT NOT NULL, detail TEXT NOT NULL, duration_seconds REAL CHECK(duration_seconds >= 0)); CREATE INDEX IF NOT EXISTS capture_event_time ON capture_events(timestamp DESC,id DESC); CREATE INDEX IF NOT EXISTS capture_event_session_time ON capture_events(session_id,timestamp DESC,id DESC); CREATE TABLE IF NOT EXISTS session_titles (session_id TEXT PRIMARY KEY, title TEXT NOT NULL); CREATE TABLE IF NOT EXISTS transcript_readable (transcript_id TEXT PRIMARY KEY REFERENCES transcripts(id) ON DELETE CASCADE, text TEXT NOT NULL); PRAGMA user_version=4;")
         } catch {
             sqlite3_close(db); db = nil; throw error
         }
@@ -124,10 +124,21 @@ public final class TranscriptStore: @unchecked Sendable {
         }
     }
 
+    /// Derived display text only; source rows stay intact and deletion cascades to this text.
+    public func setReadableText(_ text: String, for source: Transcript) throws {
+        guard !text.isEmpty, text.utf8.count <= 1_000_000 else { throw StoreError.invalid("Invalid readable transcript") }
+        try locked {
+            let stmt = try prepare("INSERT OR REPLACE INTO transcript_readable(transcript_id,text) SELECT id,? FROM transcripts WHERE id=? AND text=?")
+            defer { sqlite3_finalize(stmt) }
+            bind(text, to: 1, in: stmt); bind(source.id, to: 2, in: stmt); bind(source.text, to: 3, in: stmt)
+            try finish(stmt)
+        }
+    }
+
     public func search(_ query: String, limit: Int = 50, offset: Int = 0) throws -> [Transcript] {
         try locked {
             let escaped = query.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "%", with: "\\%").replacingOccurrences(of: "_", with: "\\_")
-            return try rows(where: "WHERE t.text LIKE ? ESCAPE '\\'", value: "%" + escaped + "%", limit: limit, offset: offset)
+            return try rows(where: "WHERE COALESCE(r.text,t.text) LIKE ? ESCAPE '\\'", value: "%" + escaped + "%", limit: limit, offset: offset)
         }
     }
 
@@ -321,7 +332,7 @@ public final class TranscriptStore: @unchecked Sendable {
     }
 
     private func rows(where clause: String, value: String?, limit: Int, offset: Int) throws -> [Transcript] {
-        let stmt = try prepare("SELECT t.id,t.session_id,t.started_at,t.start_seconds,t.end_seconds,t.text,t.speaker_id,t.mode,l.name FROM transcripts t LEFT JOIN speaker_labels l ON t.session_id=l.session_id AND t.speaker_id=l.speaker_id \(clause) ORDER BY (t.started_at + t.start_seconds) DESC,t.id DESC LIMIT ? OFFSET ?")
+        let stmt = try prepare("SELECT t.id,t.session_id,t.started_at,t.start_seconds,t.end_seconds,COALESCE(r.text,t.text),t.speaker_id,t.mode,l.name FROM transcripts t LEFT JOIN transcript_readable r ON r.transcript_id=t.id LEFT JOIN speaker_labels l ON t.session_id=l.session_id AND t.speaker_id=l.speaker_id \(clause) ORDER BY (t.started_at + t.start_seconds) DESC,t.id DESC LIMIT ? OFFSET ?")
         defer { sqlite3_finalize(stmt) }
         var index: Int32 = 1
         if let value { bind(value, to: index, in: stmt); index += 1 }
