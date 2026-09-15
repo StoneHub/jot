@@ -745,7 +745,7 @@ final class SpeechService: ObservableObject {
                         let delivery = try await input.insert(text)
                         if job.ticket == dictationTicket {
                             outcome = delivery.verified ? .completed : .deliveryUnverified
-                            notice = delivery.verified ? "Dictation inserted and verified." : "Speech transcribed; text delivery could not be verified. Check the target field."
+                            notice = delivery.verified ? "" : "Speech transcribed; text delivery could not be verified. Check the target field."
                         }
                     }
                 }
