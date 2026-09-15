@@ -769,10 +769,15 @@ struct TranscriptView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Clean up transcriptions", isOn: $service.cleanUpTranscriptions)
+                    Toggle("Clean up ambient speech and meetings", isOn: $service.cleanUpTranscriptions)
                         .toggleStyle(.switch)
                         .disabled(service.cleanupAvailability != .available)
                     Text(service.cleanupAvailability.explanation)
+                        .font(.caption).foregroundStyle(.secondary)
+                    Toggle("Clean up dictation", isOn: $service.cleanUpDictation)
+                        .toggleStyle(.switch)
+                        .disabled(service.cleanupAvailability != .available)
+                    Text("Adds an Apple Intelligence cleanup pass before inserting text. Leave off for faster dictation.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 HStack {

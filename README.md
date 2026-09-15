@@ -44,9 +44,13 @@ Dictation supports up to 60 seconds per hold. It cancels if focus changes, skips
 
 In **History**, search transcripts, select text across statements, and press ⌘C to copy. **Load more** adds older results. Cards view supports individual copying and speaker naming. **Clear** in History permanently deletes all saved transcripts and sessions, including rows outside the current search or loaded page. History cards and sessions each have a trash button for individual deletion. Existing exported files are separate. New dictation starts a fresh history.
 
-**Clean up transcriptions:** new dictation, ambient speech, and meetings automatically use Apple's on-device language model when it is available. Turn this off in **Tuning → Clean up transcriptions**. Jot checks macOS 26+ and Apple Intelligence readiness; older systems and unavailable models keep normal transcription. Apple manages model setup and updates in macOS. Jot uses no cloud model, API key, or `fm` server.
+**Clean up captured speech:** ambient speech and meetings automatically use Apple's on-device language model when it is available. Control this in **Tuning → Clean up ambient speech and meetings**. Dictation skips this pass by default for faster insertion; opt in separately with **Clean up dictation**. Jot checks macOS 26+ and Apple Intelligence readiness; older systems and unavailable models keep normal transcription. Apple manages model setup and updates in macOS. Jot uses no cloud model, API key, or `fm` server.
 
 Cleanup removes fillers and repetition and improves punctuation within speaker turns. It has a two-second deadline and bypasses oversized input or a busy model. If cleanup fails or changes protected numerical/qualification wording, Jot keeps recognized text. These checks do not guarantee that every rewrite preserves meaning. Cleaned text appears in History, Sessions, copy/export, and CLI/MCP reads; turning cleanup off affects new speech only. Source text remains in local storage and is deleted together with its readable version. Existing history is not rewritten.
+
+Dictation interrupts a waiting ambient cleanup pass and takes priority over queued ambient work. An already-running speech-recognition call finishes before the next job. Ambient cleanup is skipped during dictation. Local `jot diagnostics` job records separate queue wait, recognition, cleanup, and insertion time, including failed deliveries.
+
+Text insertion tries the field's Accessibility API, then direct Unicode keyboard events. Clipboard paste is a fallback only when direct events cannot be created, before any text is dispatched. Jot verifies the field afterward and never retries an unverified insertion with a second method, avoiding duplicate text.
 
 **Activity** shows resource use and capture events. **Tuning** adjusts speaker grouping and paragraph breaks; see the [tuning guide](docs/TUNING.md).
 

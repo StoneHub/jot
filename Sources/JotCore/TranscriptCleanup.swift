@@ -7,7 +7,7 @@ public enum CleanupAvailability: String, Sendable {
     case available, olderSystem, deviceNotEligible, notEnabled, modelNotReady
     public var explanation: String {
         switch self {
-        case .available: return "Uses Apple Intelligence on this Mac for new dictation, ambient speech, and meetings."
+        case .available: return "Uses Apple Intelligence on this Mac to make captured speech more readable."
         case .olderSystem: return "Apple cleanup requires macOS 26 or later. Transcription works without it."
         case .deviceNotEligible: return "Apple cleanup is unavailable on this Mac. Transcription works without it."
         case .notEnabled: return "Apple Intelligence is off in macOS. Transcription works without cleanup."
@@ -43,7 +43,11 @@ public enum CleanupValidation {
 public final class TranscriptCleanup {
     public typealias Generator = @Sendable ([String]) async throws -> [String]
     private var busy = false
+    private var interrupt: (() -> Void)?
     public init() {}
+
+    /// Release a waiting speech worker immediately when dictation takes priority.
+    public func cancel() { interrupt?() }
 
     public static var availability: CleanupAvailability {
         #if canImport(FoundationModels)
@@ -68,7 +72,7 @@ public final class TranscriptCleanup {
         return await withCheckedContinuation { continuation in
             let completion = CleanupCompletion(continuation)
             let request = Task {
-                defer { busy = false }
+                defer { busy = false; interrupt = nil }
                 do {
                     let result: [String]
                     if let generator { result = try await generator(texts) }
@@ -78,6 +82,10 @@ public final class TranscriptCleanup {
                     } : texts
                     completion.finish(Task.isCancelled ? texts : accepted)
                 } catch { completion.finish(texts) }
+            }
+            interrupt = {
+                completion.finish(texts)
+                request.cancel()
             }
             Task {
                 try? await Task.sleep(for: timeout)
