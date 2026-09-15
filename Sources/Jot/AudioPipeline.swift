@@ -113,7 +113,7 @@ actor SpeechPipeline {
         var state = try TdtDecoderState()
         let result = try await asr.transcribe(job.samples, decoderState: &state)
         try Task.checkCancellation()
-        let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = SpokenSymbols.applying(to: result.text.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !text.isEmpty else { return SpeechOutput(transcripts: [], text: "", processingSeconds: Date().timeIntervalSince(begin)) }
         var segments: [Transcript] = []
         if job.mode == .ambient, let timings = result.tokenTimings, !timings.isEmpty {
@@ -127,7 +127,7 @@ actor SpeechPipeline {
             segments = turns.map { turn in
                 Transcript(sessionID: job.sessionID, startedAt: job.startedAt,
                     startSeconds: job.offset + turn.start, endSeconds: job.offset + turn.end,
-                    text: turn.text, speakerID: turn.speaker, mode: job.mode.rawValue)
+                    text: SpokenSymbols.applying(to: turn.text), speakerID: turn.speaker, mode: job.mode.rawValue)
             }
         }
         if segments.isEmpty {

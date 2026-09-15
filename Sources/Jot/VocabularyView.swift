@@ -25,11 +25,11 @@ struct VocabularyView: View {
                     TextField("Enter a phrase to check", text: $sample, axis: .vertical)
                         .textFieldStyle(.roundedBorder).lineLimit(1...4)
                         .accessibilityLabel("Vocabulary preview input")
-                    Text(sample.isEmpty ? "Saved, enabled entries will be applied here." : service.vocabulary.applying(to: sample))
+                    Text(sample.isEmpty ? "Saved entries and built-in spoken symbols will be applied here." : service.vocabulary.applyingToDictation(sample))
                         .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
                         .padding(12).background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 10))
                         .accessibilityLabel("Vocabulary preview result")
-                        .accessibilityValue(sample.isEmpty ? "Saved, enabled entries will be applied here." : service.vocabulary.applying(to: sample))
+                        .accessibilityValue(sample.isEmpty ? "Saved entries and built-in spoken symbols will be applied here." : service.vocabulary.applyingToDictation(sample))
                 }
                 Divider()
                 HStack {

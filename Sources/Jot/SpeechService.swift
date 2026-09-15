@@ -717,7 +717,7 @@ final class SpeechService: ObservableObject {
                 }
                 if !output.transcripts.isEmpty { lastTranscriptAt = Date(); refreshRecent(); refreshSessions() }
                 if job.mode == .dictation, job.ticket == dictationTicket {
-                    let text = DictationCleanup.applying(to: vocabularySnapshot.applying(to: output.text))
+                    let text = DictationCleanup.applying(to: vocabularySnapshot.applyingToDictation(output.text))
                     if text.isEmpty { notice = "No text to insert." }
                     else {
                         let delivery = try await input.insert(text)
