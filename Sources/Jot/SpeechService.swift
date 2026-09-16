@@ -509,6 +509,12 @@ final class SpeechService: ObservableObject {
         catch { notice = error.localizedDescription; return [] }
     }
 
+    /// Rows from any ambient session whose text contains the query, newest first, for the Sessions search.
+    func searchSessions(_ query: String) -> [Transcript] {
+        guard let store, !query.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
+        do { return try store.search(query, mode: "ambient", limit: 50) } catch { notice = error.localizedDescription; return [] }
+    }
+
     func renameSession(_ id: String, title: String) {
         do { try store?.setTitle(sessionID: id, title: title); refreshSessions() }
         catch { notice = error.localizedDescription }

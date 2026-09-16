@@ -489,8 +489,12 @@ struct SpeakerNameSheet: View {
 /// Every capture session, readable whole at full width; the picker keeps the list out of the reading column.
 private struct SessionsView: View {
     @ObservedObject var service: SpeechService
+    /// Picking the recording session opens Live instead of reading it here.
+    let openLive: () -> Void
     @State private var selectedID: String?
     @State private var rows: [Transcript] = []
+    @State private var search = ""
+    @State private var hits: [Transcript] = []
     @State private var renaming = false
     @State private var titleDraft = ""
     @State private var labelTarget: Transcript?
@@ -503,17 +507,22 @@ private struct SessionsView: View {
                 Text("No sessions yet. Start a meeting or switch on ambient transcription.").foregroundStyle(.secondary)
             } else {
                 header
-                if let session = selected {
+                TextField("Search sessions", text: $search).textFieldStyle(.roundedBorder).frame(maxWidth: 360)
+                    .onChange(of: search) { _, value in hits = service.searchSessions(value) }
+                if !search.isEmpty {
+                    searchResults
+                } else if let session = selected {
                     Text("\(session.startedAt.formatted(date: .abbreviated, time: .shortened)) · \(session.transcriptCount) segments · \(TranscriptExport.clock(session.durationSeconds)) · Click a speaker to name them")
                         .font(.caption).foregroundStyle(.secondary)
                     transcript
                 }
             }
         }
-        .onAppear { service.refreshSessions(); if selectedID == nil { select(service.sessions.first?.sessionID) } }
+        .onAppear { service.refreshSessions(); if selectedID == nil { select(readable.first?.sessionID) } }
         .onChange(of: service.historyRevision) { _, _ in
             labelTarget = nil
-            select(service.sessions.contains { $0.sessionID == selectedID } ? selectedID : service.sessions.first?.sessionID)
+            select(readable.contains { $0.sessionID == selectedID } ? selectedID : readable.first?.sessionID)
+            if !search.isEmpty { hits = service.searchSessions(search) }
         }
         .onChange(of: service.sessions.map(\.transcriptCount)) { _, _ in if let selectedID { rows = service.sessionParagraphs(selectedID) } }
         .sheet(item: $labelTarget) { target in
@@ -524,10 +533,14 @@ private struct SessionsView: View {
     }
 
     private var selected: TranscriptSession? { service.sessions.first { $0.sessionID == selectedID } }
+    private func isRecording(_ session: TranscriptSession) -> Bool { session.sessionID == service.activeSessionID && service.ambientEnabled }
+    /// Saved sessions this reader can show; the recording one belongs to Live.
+    private var readable: [TranscriptSession] { service.sessions.filter { !isRecording($0) } }
+    /// The recording session first, then the saved ones newest first.
+    private var ordered: [TranscriptSession] { service.sessions.filter(isRecording) + readable }
 
     private func label(_ session: TranscriptSession) -> String {
-        let recording = session.sessionID == service.activeSessionID && service.meetingTitle != nil ? "● " : ""
-        return "\(recording)\(session.title ?? "Untitled session") · \(session.startedAt.formatted(date: .abbreviated, time: .shortened)) · \(TranscriptExport.clock(session.durationSeconds))"
+        "\(session.title ?? "Untitled session") · \(session.startedAt.formatted(date: .abbreviated, time: .shortened)) · \(TranscriptExport.clock(session.durationSeconds))"
     }
 
     /// One row: which session, rename, copy, export. The session menu scales past the few sessions a list column shows well.
@@ -540,7 +553,10 @@ private struct SessionsView: View {
                 Button("Cancel") { renaming = false }.modifier(GlassButton())
             } else {
                 Picker("Session", selection: Binding(get: { selectedID ?? "" }, set: { select($0) })) {
-                    ForEach(service.sessions) { session in Text(label(session)).tag(session.sessionID) }
+                    ForEach(ordered) { session in
+                        if isRecording(session) { (Text("● ").foregroundStyle(.red) + Text(label(session))).tag(session.sessionID) }
+                        else { Text(label(session)).tag(session.sessionID) }
+                    }
                 }.labelsHidden().pickerStyle(.menu).frame(maxWidth: 480)
                 if let session = selected {
                     Button("Rename", systemImage: "pencil") { titleDraft = session.title ?? ""; renaming = true }
@@ -589,7 +605,27 @@ private struct SessionsView: View {
         }
     }
 
+    /// Matching rows from every session; a click opens that session in the reader.
+    private var searchResults: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 10) {
+                if hits.isEmpty { Text("No matches").foregroundStyle(.secondary) }
+                ForEach(hits) { hit in
+                    Button { select(hit.sessionID); search = "" } label: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("\(service.sessions.first { $0.sessionID == hit.sessionID }?.title ?? "Untitled session") · \(hit.startedAt.addingTimeInterval(hit.startSeconds).formatted(date: .abbreviated, time: .shortened))")
+                                .font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                            Text(hit.text).lineLimit(3).multilineTextAlignment(.leading).foregroundStyle(.primary)
+                        }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                    }.buttonStyle(.plain).padding(12).background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 12))
+                        .help("Open this session")
+                }
+            }.frame(maxWidth: 820, alignment: .leading)
+        }
+    }
+
     private func select(_ id: String?) {
+        if let id, id == service.activeSessionID, service.ambientEnabled { openLive(); return }
         selectedID = id; renaming = false
         rows = id.map(service.sessionParagraphs) ?? []
     }
@@ -718,7 +754,7 @@ struct TranscriptView: View {
                 switch section {
                 case .live: LiveView(service: service)
                 case .dictations: dictations
-                case .sessions: SessionsView(service: service)
+                case .sessions: SessionsView(service: service, openLive: { section = .live })
                 case .people: PeopleView(service: service)
                 case .vocabulary: VocabularyView(service: service)
                 case .activity: activity
