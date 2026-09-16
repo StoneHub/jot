@@ -12,8 +12,7 @@ settings:
     SWIFT_VERSION: '5.0'
     MACOSX_DEPLOYMENT_TARGET: '14.0'
     CODE_SIGN_STYLE: Manual
-    CODE_SIGN_IDENTITY: 'Apple Development: monroes.awesome@gmail.com (Y33U865KBQ)'
-    DEVELOPMENT_TEAM: N6GPP46885
+    CODE_SIGN_IDENTITY: '-'
     ENABLE_HARDENED_RUNTIME: YES
     ARCHS: arm64
   configs:
@@ -50,6 +49,8 @@ targets:
       - path: Resources/Jot.icns
         buildPhase: resources
       - path: Resources/ThirdPartyNotices.txt
+        buildPhase: resources
+      - path: LICENSE
         buildPhase: resources
     info:
       path: Resources/Info.plist

@@ -2,7 +2,7 @@
 
 ## Local releases
 
-Releases are cut on Monroe's Mac with `scripts/release.py`; it is the only machine with the signing identity, and the app is signed with an Apple Development certificate, not notarized. That is deliberate: macOS permissions follow the code signature, so every update must be signed with the same identity and installed at `/Applications/Jot.app`. The in-app updater strips the quarantine flag itself, so Gatekeeper never sees the unnotarized download.
+Official releases are cut on Monroe's Mac with `scripts/release.py`. They require a Developer ID Application certificate for owner team `N6GPP46885`, hardened runtime, and Apple notarization. Every official update uses that team so installed permissions and the updater's signature check remain stable.
 
 ```sh
 python3 scripts/release.py patch --notes "What changed" --install
@@ -13,17 +13,20 @@ python3 scripts/release.py patch --notes "What changed" --install
 1. Refuses unless it is on `main`, the tree is clean, `HEAD` equals `origin/main` after a fetch, `gh auth status` passes, and a signing identity is set.
 2. Bumps `JotVersion.current`, `project.yml`, and `Resources/Info.plist`. `CFBundleShortVersionString` is the version; `CFBundleVersion` is the number of existing `v*` tags plus one, so it increases every release. Writes `docs/RELEASE-NOTES-<version>.md` from `--notes`.
 3. Runs `swift test`, then `build-install.py --configuration Release --build-only`, and reads `build/release-proof.json`.
-4. Zips the product with `ditto -c -k --sequesterRsrc --keepParent` to `build/Jot-<version>.zip` and writes `build/Jot-<version>.zip.sha256`.
-5. Commits `Release <version>`, creates the annotated tag `v<version>` with the notes as its message, pushes `main --follow-tags`, and runs `gh release create` with the zip and checksum. The asset must be named `Jot-<version>.zip`; the updater asks for exactly that name.
-6. With `--install`, runs `build-install.py --configuration Release` so the same product lands in `/Applications`.
+4. Zips the product, submits it to Apple with `notarytool`, and waits for `Accepted` before continuing.
+5. Staples and validates the notarization ticket, verifies the signature and Gatekeeper assessment, then recreates `build/Jot-<version>.zip` and its checksum from the stapled app.
+6. Commits `Release <version>`, creates the annotated tag `v<version>` with the notes as its message, pushes `main --follow-tags`, and runs `gh release create` with the zip and checksum. The asset must be named `Jot-<version>.zip`; the updater asks for exactly that name.
+7. With `--install`, runs `build-install.py --configuration Release` so the same product lands in `/Applications`.
 
-`--dry-run` stops after step 4, prints what it would commit, tag, and publish, and restores the tree.
+`--dry-run` verifies the owner certificate, tests and builds the app, creates an unstapled candidate ZIP, prints the remaining notarization and publication work, and restores the tree without submitting or publishing.
 
-Local builds and releases default to Monroe's Apple Development identity and team `N6GPP46885`. The scripts never select the first certificate in the keychain. `JOT_SIGN_IDENTITY` can select a renewed certificate; the built product must still belong to Monroe's team. Build and install proof record the verified team.
+Local source builds use the developer's own installed signing identity. On Monroe's Mac they prefer his Apple Development identity. `JOT_SIGN_IDENTITY` and `JOT_SIGN_TEAM` select another installed identity. Build and install proof record the verified team.
+
+Official releases are stricter: `release.py` accepts only a Developer ID Application certificate for `N6GPP46885` and requires `JOT_NOTARY_PROFILE`, the name of credentials stored with `xcrun notarytool store-credentials`. It submits the ZIP, waits for `Accepted`, staples and validates the app, checks Gatekeeper, then rebuilds the final ZIP and checksum before publishing.
 
 If an older local installation was signed by a different team, pause capture and run `python3 scripts/build-install.py --configuration Release` once. This preserves local history and backs up the old app. macOS may require permissions again after the signing change. The in-app updater continues to reject cross-team updates.
 
-## Notarized distribution (not in use)
+## Public distribution verification
 
 Publish from the default branch after required checks pass. Keep public distribution separate from the installed development app.
 
@@ -34,6 +37,6 @@ Publish from the default branch after required checks pass. Keep public distribu
 5. Run `xcrun stapler staple` and `xcrun stapler validate` on the app, then `codesign --verify --deep --strict` and `spctl --assess --type execute --verbose=4`. All must pass. Recreate the ZIP after stapling and compute its SHA-256 checksum.
 6. Create the version tag at the verified default-branch commit and a GitHub release with the final ZIP, checksum, requirements, privacy behavior, and release notes. Verify the uploaded download checksum. Do not publish an unnotarized candidate as the finished release.
 
-## First release status
+## Public release status
 
-The initial version is 0.1.0 (build 1). Developer ID signing is available. On September 9, 2026, Gatekeeper rejected the candidate as `Unnotarized Developer ID`; no notarization profile was found in the configured user keychains or credential environment. An authorized notarization credential for the signing team is required before publishing. No version tag or public binary release was created at that checkpoint.
+GitHub releases v0.1.1 through v0.2.1 are marked prerelease because they were local testing builds, not notarized public artifacts. The first supported public release is waiting for a Developer ID Application certificate for owner team `N6GPP46885` and a matching `notarytool` keychain profile. The current Mac has Monroe's Apple Development certificate, which is valid for local development but cannot be notarized for distribution.

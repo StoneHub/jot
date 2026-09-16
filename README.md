@@ -20,7 +20,7 @@ Jot turns your voice into text in the focused field. Hold **Fn** (or your custom
 
 ## Get started
 
-**Download status:** a public notarized app download is not available yet. The first release is being prepared; signing alone does not make the app ready for Gatekeeper distribution. See the [release checklist](docs/RELEASING.md).
+**Download status:** a public notarized app download is not available yet. Existing GitHub assets are prerelease builds for local testing. The first supported public release is being prepared; see the [release checklist](docs/RELEASING.md).
 
 Build and install Jot using the [instructions below](#build-and-install), then open it from Applications. Requires **Apple Silicon and macOS 14 or later**. The first model download needs internet.
 
@@ -128,7 +128,7 @@ The server exposes capture controls, status, model preparation, transcript searc
 
 ## Build and install
 
-The current install path is a source build. Requires Xcode and an installed Developer ID Application signing identity. The project pins FluidAudio to an exact revision. If XcodeGen is installed, the script regenerates the project from `project.yml`.
+The current install path is a source build. It requires Xcode and an installed Apple Development or Developer ID Application signing identity. The installer prefers Monroe's development identity on his Mac; other contributors use their own installed identity or set `JOT_SIGN_IDENTITY` and `JOT_SIGN_TEAM`. The project pins FluidAudio to an exact revision. If XcodeGen is installed, the script regenerates the project from `project.yml`.
 
 ```sh
 swift test
@@ -138,3 +138,9 @@ swift test
 The installer builds, verifies signatures, installs to Applications, and checks the running executable. It refuses to replace the app during capture, inference, or model preparation. Set `JOT_SIGN_IDENTITY` and `JOT_SIGN_TEAM` to override signing defaults. Build logs and installation proof are in `build/`.
 
 See [architecture and limits](docs/ARCHITECTURE.md), [verification](docs/VERIFICATION.md), and [planned work](docs/BACKLOG.md). To build a Release app without changing your installed copy, use `./scripts/build-install.py --configuration Release --build-only`. Debug and Release builds contain no UI feedback tool. A signed local build is not a notarized download or proof of installation on another Mac.
+
+## License and credits
+
+Jot is open source under the [MIT License](LICENSE), copyright 2026 Monroe Stone.
+
+Speech recognition and speaker processing use [FluidAudio](https://github.com/FluidInference/FluidAudio), pinned to a reviewed revision and distributed under Apache License 2.0. Jot's app bundle includes `ThirdPartyNotices.txt` with the licenses and attribution for FluidAudio, its models, and its bundled dependencies.

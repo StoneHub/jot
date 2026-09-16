@@ -12,7 +12,7 @@ import shutil
 import signal
 import subprocess
 import time
-from signing import signing_configuration, verify_signing_team
+from signing import local_signing_configuration, verify_signing_team
 
 root = Path(__file__).resolve().parents[1]
 os.chdir(root)
@@ -27,7 +27,7 @@ developer = subprocess.run(['xcode-select', '-p'], capture_output=True, text=Tru
 if developer.returncode != 0 or not Path(developer.stdout.strip(), 'usr/bin/xcodebuild').exists():
     raise SystemExit('Install Xcode and run: sudo xcode-select --switch /Applications/Xcode.app. '
                      'The Command Line Tools cannot build the Jot app target.')
-identity, team = signing_configuration()
+identity, team = local_signing_configuration()
 if shutil.which('xcodegen'):
     subprocess.run(['xcodegen', 'generate'], check=True)
 args = ['xcodebuild', '-project', 'Jot.xcodeproj', '-scheme', 'Jot',
@@ -40,7 +40,7 @@ with (work / 'build.log').open('w') as log:
 settings = json.loads(subprocess.check_output(args + ['-showBuildSettings', '-json']))
 s = next(item['buildSettings'] for item in settings if item['target'] == 'Jot')
 source = Path(s['TARGET_BUILD_DIR']) / s['FULL_PRODUCT_NAME']
-verify_signing_team(source)
+verify_signing_team(source, team)
 subprocess.run(['codesign', '--verify', '--deep', '--strict', str(source)], check=True)
 subprocess.run([sys.executable, str(root / 'scripts/check-no-feedback.py'), str(source)], check=True)
 if options.configuration == 'Release':
@@ -143,7 +143,7 @@ for _ in range(50):
         current = json.loads(status.stdout)['result']
         command = subprocess.check_output(['ps', '-p', str(current['resources']['processID']), '-o', 'comm='], text=True).strip()
         assert command == str(destination / relative), command
-        proof = dict(configuration=options.configuration, signingTeam=verify_signing_team(destination), source=str(source), installed=str(destination), sha256=digest(destination / relative), running=command, pid=current['resources']['processID'])
+        proof = dict(configuration=options.configuration, signingTeam=verify_signing_team(destination, team), source=str(source), installed=str(destination), sha256=digest(destination / relative), running=command, pid=current['resources']['processID'])
         (work / 'install-proof.json').write_text(json.dumps(proof, indent=2) + '\n')
         print(json.dumps(proof, indent=2))
         break

@@ -3,11 +3,12 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
 import sys
-from signing import signing_configuration
+from signing import official_signing_configuration
 
 root = Path(__file__).resolve().parents[1]
 os.chdir(root)
@@ -19,9 +20,9 @@ parser.add_argument('--install', action='store_true', help='Install the released
 parser.add_argument('--dry-run', action='store_true', help='Bump, test, build, and zip, then restore the tree without committing, tagging, or publishing')
 options = parser.parse_args()
 
-def run(args, quiet=False):
+def run(args, quiet=False, env=None):
     # Quiet commands show their output only when they fail.
-    result = subprocess.run(args, text=True, capture_output=quiet)
+    result = subprocess.run(args, text=True, capture_output=quiet, env=env)
     if result.returncode != 0:
         if quiet:
             print(result.stdout[-4000:], result.stderr[-4000:], sep='\n', file=sys.stderr)
@@ -44,7 +45,13 @@ if out(['git', 'rev-parse', 'HEAD']) != out(['git', 'rev-parse', 'origin/main'])
     raise SystemExit('HEAD differs from origin/main; pull or push first.')
 if subprocess.run(['gh', 'auth', 'status'], capture_output=True).returncode != 0:
     raise SystemExit('gh is not logged in; run gh auth login.')
-identity, team = signing_configuration()
+identity, team = official_signing_configuration()
+notary_profile = os.environ.get('JOT_NOTARY_PROFILE')
+if not notary_profile:
+    raise SystemExit('Set JOT_NOTARY_PROFILE to credentials saved with xcrun notarytool store-credentials.')
+release_environment = os.environ.copy()
+release_environment['JOT_SIGN_IDENTITY'] = identity
+release_environment['JOT_SIGN_TEAM'] = team
 step(f'Preconditions passed on main at {out(["git", "rev-parse", "--short", "HEAD"])}; signing as {identity}')
 
 # b. Version bump. CFBundleVersion is the release count: existing v* tags + 1, so it always increases.
@@ -107,18 +114,35 @@ try:
     step('swift test')
     run(['swift', 'test'], quiet=True)
     step('build-install.py --configuration Release --build-only')
-    run([sys.executable, str(root / 'scripts/build-install.py'), '--configuration', 'Release', '--build-only'], quiet=True)
+    run([sys.executable, str(root / 'scripts/build-install.py'), '--configuration', 'Release', '--build-only'], quiet=True,
+        env=release_environment)
     proof = json.loads((work / 'release-proof.json').read_text())
+    if proof.get('signingTeam') != team:
+        raise SystemExit(f'Release proof reports signing team {proof.get("signingTeam")}, expected {team}.')
     app = Path(proof['source'])
     step(f'Built {app} (executable sha256 {proof["sha256"][:12]}…)')
     built = subprocess.check_output(['defaults', 'read', str(app / 'Contents/Info.plist'), 'CFBundleShortVersionString'], text=True).strip()
     if built != version:
         raise SystemExit(f'Built app reports version {built}, expected {version}.')
 
-    # e. Zip before tagging so a packaging failure leaves no tag behind (order differs from the design note on purpose).
+    # e. Package and notarize before tagging so a distribution failure leaves no tag behind.
     zip_path = work / f'Jot-{version}.zip'
     zip_path.unlink(missing_ok=True)
     run(['ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', str(app), str(zip_path)])
+    if not options.dry_run:
+        submission = run(['xcrun', 'notarytool', 'submit', str(zip_path), '--keychain-profile', notary_profile,
+                          '--wait', '--output-format', 'json'], quiet=True)
+        notarization = json.loads(submission.stdout)
+        if notarization.get('status') != 'Accepted':
+            raise SystemExit(f'Apple notarization ended with {notarization.get("status", "unknown status")} '
+                             f'(submission {notarization.get("id", "unknown")}).')
+        step(f'Apple notarization accepted submission {notarization.get("id")}')
+        run(['xcrun', 'stapler', 'staple', str(app)], quiet=True)
+        run(['xcrun', 'stapler', 'validate', str(app)], quiet=True)
+        run(['codesign', '--verify', '--deep', '--strict', str(app)], quiet=True)
+        run(['spctl', '--assess', '--type', 'execute', '--verbose=4', str(app)], quiet=True)
+        zip_path.unlink()
+        run(['ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', str(app), str(zip_path)])
     digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
     checksum_path = work / f'Jot-{version}.zip.sha256'
     checksum_path.write_text(f'{digest}  {zip_path.name}\n')
@@ -127,7 +151,7 @@ try:
     changed = [str(p.relative_to(root)) for p in edits] + ['Jot.xcodeproj/project.pbxproj']
     if options.dry_run:
         step('Dry run: would commit ' + ', '.join(changed))
-        step(f'Dry run: would tag {tag} and push main --follow-tags')
+        step(f'Dry run: would notarize, staple, tag {tag}, and push main --follow-tags')
         step(f'Dry run: would run gh release create {tag} {zip_path.name} {checksum_path.name} --title "Jot {version}" --notes-file {notes_file.relative_to(root)}')
         restore()
         step('Dry run: tree restored')
@@ -151,4 +175,5 @@ step(f'Release {tag} published: ' + out(['gh', 'release', 'view', tag, '--json',
 # g. Optional install of the same product into /Applications.
 if options.install:
     step('build-install.py --configuration Release (install)')
-    run([sys.executable, str(root / 'scripts/build-install.py'), '--configuration', 'Release'])
+    run([sys.executable, str(root / 'scripts/build-install.py'), '--configuration', 'Release'],
+        env=release_environment)
