@@ -733,6 +733,13 @@ final class SpeechService: ObservableObject {
                 let sources = output.transcripts
                 if (job.mode == .ambient || job.submittedUptime > historyClearedAt) && !deletedSessions.contains(job.sessionID) {
                     for transcript in sources { try store?.append(transcript) }
+                    // Word evidence is kept in the session's clock so a saved session can be regrouped later. Dictation rows keep none.
+                    let words = sources.flatMap { transcript in
+                        (output.wordsByTranscript[transcript.id] ?? []).enumerated().map { position, word in
+                            StoredWord(transcriptID: transcript.id, position: position, word: word.text, startSeconds: job.offset + word.start, endSeconds: job.offset + word.end, probabilities: word.probabilities)
+                        }
+                    }
+                    try store?.appendWords(words)
                 }
                 let originalTexts = sources.map(\.text)
                 var readable = originalTexts

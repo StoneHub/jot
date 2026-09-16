@@ -37,6 +37,8 @@ public struct SpeechTurn: Sendable {
     public let start: Double
     public var end: Double
     public var speaker: String?
+    /// Indexes into the words the turn was built from, so their evidence can be stored with the row.
+    public var wordRange: Range<Int>
 }
 
 public enum TranscriptGrouping {
@@ -86,7 +88,8 @@ public enum TranscriptGrouping {
             if let last = result.last, last.speaker == candidates[index], word.start - last.end < tuning.paragraphPause {
                 result[result.count - 1].text += " " + word.text
                 result[result.count - 1].end = word.end
-            } else { result.append(SpeechTurn(text: word.text, start: word.start, end: word.end, speaker: candidates[index])) }
+                result[result.count - 1].wordRange = last.wordRange.lowerBound..<index + 1
+            } else { result.append(SpeechTurn(text: word.text, start: word.start, end: word.end, speaker: candidates[index], wordRange: index..<index + 1)) }
         }
         return result
     }
