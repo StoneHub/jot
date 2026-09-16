@@ -3,11 +3,11 @@
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+from signing import signing_configuration
 
 root = Path(__file__).resolve().parents[1]
 os.chdir(root)
@@ -44,14 +44,7 @@ if out(['git', 'rev-parse', 'HEAD']) != out(['git', 'rev-parse', 'origin/main'])
     raise SystemExit('HEAD differs from origin/main; pull or push first.')
 if subprocess.run(['gh', 'auth', 'status'], capture_output=True).returncode != 0:
     raise SystemExit('gh is not logged in; run gh auth login.')
-identity = os.environ.get('JOT_SIGN_IDENTITY')
-if not identity:
-    # Same fallback as build-install.py: the first installed Developer ID identity.
-    identities = out(['security', 'find-identity', '-v', '-p', 'codesigning'])
-    candidates = re.findall(r'"(Developer ID Application: [^"]+)"', identities)
-    if not candidates:
-        raise SystemExit('Set JOT_SIGN_IDENTITY (and JOT_SIGN_TEAM) to the identity the installed app is signed with.')
-    identity = candidates[0]
+identity, team = signing_configuration()
 step(f'Preconditions passed on main at {out(["git", "rev-parse", "--short", "HEAD"])}; signing as {identity}')
 
 # b. Version bump. CFBundleVersion is the release count: existing v* tags + 1, so it always increases.

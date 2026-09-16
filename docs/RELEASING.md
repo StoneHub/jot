@@ -5,7 +5,6 @@
 Releases are cut on Monroe's Mac with `scripts/release.py`; it is the only machine with the signing identity, and the app is signed with an Apple Development certificate, not notarized. That is deliberate: macOS permissions follow the code signature, so every update must be signed with the same identity and installed at `/Applications/Jot.app`. The in-app updater strips the quarantine flag itself, so Gatekeeper never sees the unnotarized download.
 
 ```sh
-export JOT_SIGN_IDENTITY="Apple Development: monroes.awesome@gmail.com (Y33U865KBQ)" JOT_SIGN_TEAM="N6GPP46885"
 python3 scripts/release.py patch --notes "What changed" --install
 ```
 
@@ -20,12 +19,16 @@ python3 scripts/release.py patch --notes "What changed" --install
 
 `--dry-run` stops after step 4, prints what it would commit, tag, and publish, and restores the tree.
 
+Local builds and releases default to Monroe's Apple Development identity and team `N6GPP46885`. The scripts never select the first certificate in the keychain. `JOT_SIGN_IDENTITY` can select a renewed certificate; the built product must still belong to Monroe's team. Build and install proof record the verified team.
+
+If an older local installation was signed by a different team, pause capture and run `python3 scripts/build-install.py --configuration Release` once. This preserves local history and backs up the old app. macOS may require permissions again after the signing change. The in-app updater continues to reject cross-team updates.
+
 ## Notarized distribution (not in use)
 
 Publish from the default branch after required checks pass. Keep public distribution separate from the installed development app.
 
 1. Confirm a clean checkout, current `origin/main`, no required unmerged work, and an unused version tag matching `JotVersion.current` in `Sources/JotCore/JotVersion.swift`, `Resources/Info.plist`, and `project.yml`.
-2. Run `swift test` and `./scripts/build-install.py --configuration Release --build-only`. The script resolves the actual Xcode product, verifies Developer ID signatures, rejects DEBUG and feedback artifacts, and writes `build/release-proof.json`.
+2. Run `swift test` and `./scripts/build-install.py --configuration Release --build-only`. The script resolves the actual Xcode product, verifies the owner signing team and signatures, rejects DEBUG and feedback artifacts, and writes `build/release-proof.json`.
 3. Confirm the product contains `ThirdPartyNotices.txt`, no private transcripts, audio recordings, credentials, or development reports. Review README screenshots for private content. Models download separately on first use.
 4. Create a ZIP with `ditto -c -k --sequesterRsrc --keepParent` from the resolved app. Submit it using `xcrun notarytool submit` with an authorized keychain profile and wait for Accepted. Never put credentials into the repository or release logs.
 5. Run `xcrun stapler staple` and `xcrun stapler validate` on the app, then `codesign --verify --deep --strict` and `spctl --assess --type execute --verbose=4`. All must pass. Recreate the ZIP after stapling and compute its SHA-256 checksum.
