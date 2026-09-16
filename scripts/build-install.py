@@ -12,6 +12,7 @@ import shutil
 import signal
 import subprocess
 import time
+from signing import signing_configuration, verify_signing_team
 
 root = Path(__file__).resolve().parents[1]
 os.chdir(root)
@@ -26,20 +27,7 @@ developer = subprocess.run(['xcode-select', '-p'], capture_output=True, text=Tru
 if developer.returncode != 0 or not Path(developer.stdout.strip(), 'usr/bin/xcodebuild').exists():
     raise SystemExit('Install Xcode and run: sudo xcode-select --switch /Applications/Xcode.app. '
                      'The Command Line Tools cannot build the Jot app target.')
-identity = os.environ.get('JOT_SIGN_IDENTITY')
-if not identity:
-    identities = subprocess.check_output(['security', 'find-identity', '-v', '-p', 'codesigning'], text=True)
-    candidates = re.findall(r'"(Developer ID Application: [^"]+)"', identities)
-    if not candidates:
-        raise SystemExit('Set JOT_SIGN_IDENTITY to an installed signing identity. Stable signing preserves macOS permissions.')
-    identity = candidates[0]
-team = os.environ.get('JOT_SIGN_TEAM')
-if not team:
-    # Identity names normally end in the team ID, as in "Developer ID Application: Name (TEAMID)".
-    match = re.search(r'\(([A-Z0-9]+)\)$', identity)
-    if not match:
-        raise SystemExit(f'Cannot read a team ID from JOT_SIGN_IDENTITY ({identity}). Set JOT_SIGN_TEAM as well.')
-    team = match.group(1)
+identity, team = signing_configuration()
 if shutil.which('xcodegen'):
     subprocess.run(['xcodegen', 'generate'], check=True)
 args = ['xcodebuild', '-project', 'Jot.xcodeproj', '-scheme', 'Jot',
@@ -52,6 +40,7 @@ with (work / 'build.log').open('w') as log:
 settings = json.loads(subprocess.check_output(args + ['-showBuildSettings', '-json']))
 s = next(item['buildSettings'] for item in settings if item['target'] == 'Jot')
 source = Path(s['TARGET_BUILD_DIR']) / s['FULL_PRODUCT_NAME']
+verify_signing_team(source)
 subprocess.run(['codesign', '--verify', '--deep', '--strict', str(source)], check=True)
 subprocess.run([sys.executable, str(root / 'scripts/check-no-feedback.py'), str(source)], check=True)
 if options.configuration == 'Release':
@@ -63,7 +52,7 @@ if options.configuration == 'Release':
     if 'DEBUG' in conditions or re.search(r'-D\s*DEBUG\b', flags):
         raise SystemExit('Release build unexpectedly defines DEBUG.')
     (work / 'release-proof.json').write_text(json.dumps(dict(source=str(source),
-        configuration='Release', debugDefined=False, feedbackRuntimeMarkers=False,
+        configuration='Release', signingTeam=team, debugDefined=False, feedbackRuntimeMarkers=False,
         sha256=hashlib.sha256((source / 'Contents/MacOS' / s['EXECUTABLE_NAME']).read_bytes()).hexdigest()), indent=2) + '\n')
 if options.build_only:
     print(json.dumps(dict(source=str(source), configuration=options.configuration, installed=False), indent=2))
@@ -154,7 +143,7 @@ for _ in range(50):
         current = json.loads(status.stdout)['result']
         command = subprocess.check_output(['ps', '-p', str(current['resources']['processID']), '-o', 'comm='], text=True).strip()
         assert command == str(destination / relative), command
-        proof = dict(configuration=options.configuration, source=str(source), installed=str(destination), sha256=digest(destination / relative), running=command, pid=current['resources']['processID'])
+        proof = dict(configuration=options.configuration, signingTeam=verify_signing_team(destination), source=str(source), installed=str(destination), sha256=digest(destination / relative), running=command, pid=current['resources']['processID'])
         (work / 'install-proof.json').write_text(json.dumps(proof, indent=2) + '\n')
         print(json.dumps(proof, indent=2))
         break
