@@ -879,7 +879,8 @@ final class SpeechService: ObservableObject {
             var found: [Transcript] = []
             while found.count < historyLimit + 1 {
                 let count = min(200, historyLimit + 1 - found.count)
-                let page = try historyQuery.isEmpty ? store?.recent(limit: count, offset: found.count) : store?.search(historyQuery, limit: count, offset: found.count)
+                // History is the dictation list; ambient rows are read from Sessions.
+                let page = try historyQuery.isEmpty ? store?.recent(mode: "dictation", limit: count, offset: found.count) : store?.search(historyQuery, mode: "dictation", limit: count, offset: found.count)
                 let items = page ?? []; found.append(contentsOf: items)
                 if items.count < count { break }
             }

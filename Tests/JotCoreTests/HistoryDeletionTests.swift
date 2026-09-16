@@ -31,6 +31,16 @@ final class HistoryDeletionTests: XCTestCase {
         XCTAssertNil(try store.read(id: "7"))
     }
 
+    func testRecentAndSearchCanReadOneKindOfRow() throws {
+        let store = try TranscriptStore(directory: directory)
+        try store.append(row("amb")); try store.append(row("dict", session: "d", start: 5, mode: "dictation"))
+        XCTAssertEqual(try store.recent(mode: "dictation").map(\.id), ["dict"])
+        XCTAssertEqual(try store.recent(mode: "ambient").map(\.id), ["amb"])
+        XCTAssertEqual(try store.recent().count, 2)
+        XCTAssertEqual(try store.search("hello", mode: "dictation").map(\.id), ["dict"])
+        XCTAssertEqual(try store.search("hello").count, 2)
+    }
+
     func testSessionDeletionKeepsOtherSessionsAndRemovesRelatedMetadata() throws {
         let store = try TranscriptStore(directory: directory)
         for session in ["a", "b"] {

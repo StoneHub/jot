@@ -240,10 +240,11 @@ public final class TranscriptStore: @unchecked Sendable {
         return result
     }
 
-    public func search(_ query: String, limit: Int = 50, offset: Int = 0) throws -> [Transcript] {
+    /// Pass mode "dictation" or "ambient" to read one kind of row; nil reads both.
+    public func search(_ query: String, mode: String? = nil, limit: Int = 50, offset: Int = 0) throws -> [Transcript] {
         try locked {
             let escaped = query.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "%", with: "\\%").replacingOccurrences(of: "_", with: "\\_")
-            return try rows(where: "WHERE COALESCE(r.text,t.text) LIKE ? ESCAPE '\\'", value: "%" + escaped + "%", limit: limit, offset: offset)
+            return try rows(where: "WHERE COALESCE(r.text,t.text) LIKE ? ESCAPE '\\'" + modeClause(mode), value: "%" + escaped + "%", limit: limit, offset: offset)
         }
     }
 
@@ -286,8 +287,12 @@ public final class TranscriptStore: @unchecked Sendable {
         }
     }
 
-    public func recent(limit: Int = 50, offset: Int = 0) throws -> [Transcript] {
-        try locked { try rows(where: "", value: nil, limit: limit, offset: offset) }
+    public func recent(mode: String? = nil, limit: Int = 50, offset: Int = 0) throws -> [Transcript] {
+        try locked { try rows(where: mode == nil ? "" : "WHERE 1=1" + modeClause(mode), value: nil, limit: limit, offset: offset) }
+    }
+
+    private func modeClause(_ mode: String?) -> String {
+        switch mode { case "dictation"?: return " AND t.mode = 'dictation'"; case "ambient"?: return " AND t.mode = 'ambient'"; default: return "" }
     }
 
     /// Every row of one session in chronological order, for export. Bounded at 10,000 rows so a response stays inside the socket frame limit.
