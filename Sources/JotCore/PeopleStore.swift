@@ -151,6 +151,16 @@ public enum PeopleMatcher {
             .map { (id: $0.0, distance: $0.1) }
     }
 
+    /// Pairs each session speaker with at most one person and each person with at most one speaker, nearest pair first, all at or under the threshold.
+    public static func assignments(speakers: [String: [Float]], people: [Person], threshold: Float = threshold) -> [(speaker: String, id: String, distance: Float)] {
+        let pairs = speakers.flatMap { speaker, embedding in people.compactMap { person in distance(embedding, person.embedding).map { (speaker: speaker, id: person.id, distance: $0) } } }
+            .filter { $0.distance <= threshold }
+            .sorted { ($0.distance, $0.speaker, $0.id) < ($1.distance, $1.speaker, $1.id) }
+        var result: [(speaker: String, id: String, distance: Float)] = []
+        for pair in pairs where !result.contains(where: { $0.speaker == pair.speaker || $0.id == pair.id }) { result.append(pair) }
+        return result
+    }
+
     /// 1 - cosine similarity: 0 for the same direction, 2 for opposite. Nil for empty, mismatched, or zero-length vectors.
     public static func distance(_ a: [Float], _ b: [Float]) -> Float? {
         guard a.count == b.count, !a.isEmpty else { return nil }

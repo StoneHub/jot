@@ -64,4 +64,16 @@ final class PeopleStoreTests: XCTestCase {
         XCTAssertEqual(PeopleMatcher.distance([1, 0], [-1, 0]), 2); XCTAssertEqual(PeopleMatcher.distance([2, 0], [5, 0]), 0)
         XCTAssertNil(PeopleMatcher.distance([1, 0], [0, 0])); XCTAssertNil(PeopleMatcher.distance([], []))
     }
+
+    func testAssignmentsPairEachSpeakerAndPersonOnceNearestFirst() {
+        let now = Date()
+        let monroe = Person(id: "m", name: "Monroe", embedding: [1, 0], sampleCount: 1, createdAt: now, updatedAt: now)
+        let alice = Person(id: "a", name: "Alice", embedding: [0.6, 0.8], sampleCount: 1, createdAt: now, updatedAt: now)
+        // speaker-1 is closest to Monroe but speaker-2 is even closer to him, so speaker-2 takes Monroe and speaker-1 falls to Alice; speaker-3 is near nobody.
+        let speakers: [String: [Float]] = ["speaker-1": [0.8, 0.6], "speaker-2": [1, 0.1], "speaker-3": [0, -1]]
+        let result = PeopleMatcher.assignments(speakers: speakers, people: [alice, monroe])
+        XCTAssertEqual(result.map(\.speaker), ["speaker-2", "speaker-1"]); XCTAssertEqual(result.map(\.id), ["m", "a"])
+        XCTAssertEqual(result[1].distance, 0.04, accuracy: 1e-6)
+        XCTAssertTrue(PeopleMatcher.assignments(speakers: speakers, people: []).isEmpty)
+    }
 }

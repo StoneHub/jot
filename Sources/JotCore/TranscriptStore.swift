@@ -365,6 +365,23 @@ public final class TranscriptStore: @unchecked Sendable {
         }
     }
 
+    /// The names given so far in one session, by speaker id.
+    public func labels(sessionID: String) throws -> [String: String] {
+        try locked {
+            let stmt = try prepare("SELECT speaker_id,name FROM speaker_labels WHERE session_id = ?")
+            defer { sqlite3_finalize(stmt) }
+            bind(sessionID, to: 1, in: stmt)
+            var result: [String: String] = [:]
+            while true {
+                let status = sqlite3_step(stmt)
+                if status == SQLITE_DONE { break }
+                guard status == SQLITE_ROW else { throw error() }
+                result[column(stmt, 0)!] = column(stmt, 1)!
+            }
+            return result
+        }
+    }
+
     /// Clears the dictation rows History alone owns. Ambient rows belong to their session and are deleted from Sessions.
     public func clearHistory() throws {
         try locked {

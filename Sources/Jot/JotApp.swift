@@ -460,20 +460,25 @@ private struct SpeakerNameSheet: View {
     @Binding var draft: String
     let onSave: () -> Void
     let onCancel: () -> Void
+    /// The pass's embedding for this speaker, when it has run; the toggle is offered only then.
+    @State private var voice: [Float]?
+    @State private var remember = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Name this speaker for this session").font(.headline)
             TextField("Name", text: $draft).textFieldStyle(.roundedBorder).frame(width: 280)
+            if voice != nil { Toggle("Remember this voice", isOn: $remember).toggleStyle(.checkbox) }
             HStack {
                 Button("Cancel", action: onCancel)
                 Spacer()
                 Button("Save") {
-                    if let speaker = transcript.speakerID { service.labelSpeaker(session: transcript.sessionID, speaker: speaker, name: draft) }
+                    if let speaker = transcript.speakerID { service.labelSpeaker(session: transcript.sessionID, speaker: speaker, name: draft, voice: remember ? voice : nil) }
                     onSave()
                 }.disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty).keyboardShortcut(.defaultAction)
             }
         }.padding(20)
+        .onAppear { voice = transcript.speakerID.flatMap { service.passEmbedding(session: transcript.sessionID, speaker: $0) } }
     }
 }
 
