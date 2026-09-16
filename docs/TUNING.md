@@ -14,7 +14,11 @@ Open **Tuning** in the native app. Start with Balanced, or use Steadier speakers
 | Pause between paragraphs | Groups nearby words and same-speaker rows | Longer values create fewer, longer rows and can delay ambient results |
 | Hide filler-only rows | Hides isolated um/uh/hmm rows in history | Original text remains in SQLite and CLI/MCP; fillers within sentences remain visible |
 
-Speaker settings apply to new audio. History presentation changes immediately for paragraph grouping and filler visibility. This does not rerun old audio: recordings are not retained. Source words are not rewritten or deleted. Settings persist and are reported by `jot status` / MCP status.
+Speaker settings apply to new audio and to any session you regroup. History presentation changes immediately for paragraph grouping and filler visibility. This does not rerun old audio: recordings are not retained. Source words are not rewritten or deleted. Settings persist and are reported by `jot status` / MCP status.
+
+## Regroup a saved session
+
+Jot keeps each ambient row's words with their timings and speaker probabilities. **Regroup** in Sessions runs the current Tuning over those words and replaces the session's rows; speaker names, the title, and capture events stay. Cleanup text is not re-run, so regrouped rows show the recognized words. A session recorded before words were kept cannot be regrouped, and a session that is still recording must be stopped first.
 
 ## A short comparison
 
