@@ -94,6 +94,13 @@ public enum TranscriptGrouping {
         return result
     }
 
+    /// Groups a saved session's stored words in one pass over the whole session, keeping their session-clock times. The original block boundaries and carried speaker are not recoverable; a gap of at least the paragraph pause resets the speaker as it does during capture.
+    public static func regroup(words: [StoredWord], tuning: TranscriptionTuning) -> [SpeechTurn] {
+        var result = turns(words.map { AttributedWord(text: $0.word, start: $0.startSeconds, end: $0.endSeconds, probabilities: $0.probabilities) }, tuning: tuning)
+        for index in result.indices { result[index].text = SpokenSymbols.applying(to: result[index].text) }
+        return result
+    }
+
     /// Seconds of clearly attributed speech that confirm a speaker change ahead of the minimum turn.
     static let confidentReplyTurn = 0.3
     /// True when every word gives this speaker a probability well above the tuned threshold and the others none.

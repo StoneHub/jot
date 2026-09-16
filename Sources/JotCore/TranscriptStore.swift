@@ -127,14 +127,41 @@ public final class TranscriptStore: @unchecked Sendable {
               transcript.startSeconds >= 0, transcript.endSeconds >= transcript.startSeconds,
               ["ambient", "dictation"].contains(transcript.mode),
               transcript.text.utf8.count <= 1_000_000 else { throw StoreError.invalid("Invalid transcript fields") }
+        try locked { try insert(transcript) }
+    }
+
+    private func insert(_ transcript: Transcript) throws {
+        let stmt = try prepare("INSERT INTO transcripts(id,session_id,started_at,start_seconds,end_seconds,text,speaker_id,mode) VALUES(?,?,?,?,?,?,?,?)")
+        defer { sqlite3_finalize(stmt) }
+        bind(transcript.id, to: 1, in: stmt); bind(transcript.sessionID, to: 2, in: stmt)
+        sqlite3_bind_double(stmt, 3, transcript.startedAt.timeIntervalSince1970)
+        sqlite3_bind_double(stmt, 4, transcript.startSeconds); sqlite3_bind_double(stmt, 5, transcript.endSeconds)
+        bind(transcript.text, to: 6, in: stmt); bind(transcript.speakerID, to: 7, in: stmt); bind(transcript.mode, to: 8, in: stmt)
+        try finish(stmt)
+    }
+
+    /// Rebuilds one session's ambient rows from turns over its stored words in one transaction. Speaker names, title, and events stay; cleanup text (transcript_readable) goes with the old rows and is not re-run.
+    public func replaceSession(sessionID: String, words: [StoredWord], turns: [SpeechTurn]) throws {
+        guard !words.isEmpty else { throw StoreError.invalid("This session was recorded before Jot kept word timings; it cannot be regrouped.") }
+        guard !turns.isEmpty, turns.allSatisfy({ !$0.wordRange.isEmpty && $0.wordRange.lowerBound >= 0 && $0.wordRange.upperBound <= words.count }) else { throw StoreError.invalid("Turns must cover stored words") }
         try locked {
-            let stmt = try prepare("INSERT INTO transcripts(id,session_id,started_at,start_seconds,end_seconds,text,speaker_id,mode) VALUES(?,?,?,?,?,?,?,?)")
-            defer { sqlite3_finalize(stmt) }
-            bind(transcript.id, to: 1, in: stmt); bind(transcript.sessionID, to: 2, in: stmt)
-            sqlite3_bind_double(stmt, 3, transcript.startedAt.timeIntervalSince1970)
-            sqlite3_bind_double(stmt, 4, transcript.startSeconds); sqlite3_bind_double(stmt, 5, transcript.endSeconds)
-            bind(transcript.text, to: 6, in: stmt); bind(transcript.speakerID, to: 7, in: stmt); bind(transcript.mode, to: 8, in: stmt)
-            try finish(stmt)
+            try deletion {
+                let find = try prepare("SELECT MIN(started_at) FROM transcripts WHERE session_id = ? AND mode = 'ambient'")
+                defer { sqlite3_finalize(find) }
+                bind(sessionID, to: 1, in: find)
+                guard sqlite3_step(find) == SQLITE_ROW, sqlite3_column_type(find, 0) != SQLITE_NULL else { throw StoreError.invalid("No saved session to regroup") }
+                let startedAt = Date(timeIntervalSince1970: sqlite3_column_double(find, 0))
+                let clear = try prepare("DELETE FROM transcripts WHERE session_id = ? AND mode = 'ambient'")
+                defer { sqlite3_finalize(clear) }
+                bind(sessionID, to: 1, in: clear); try finish(clear)
+                for turn in turns {
+                    let transcript = Transcript(sessionID: sessionID, startedAt: startedAt, startSeconds: turn.start, endSeconds: turn.end, text: turn.text, speakerID: turn.speaker, mode: "ambient")
+                    guard transcript.startSeconds >= 0, transcript.endSeconds >= transcript.startSeconds else { throw StoreError.invalid("Invalid transcript fields") }
+                    let rebuilt = words[turn.wordRange].enumerated().map { StoredWord(transcriptID: transcript.id, position: $0.offset, word: $0.element.word, startSeconds: $0.element.startSeconds, endSeconds: $0.element.endSeconds, probabilities: $0.element.probabilities) }
+                    try validate(rebuilt)
+                    try insert(transcript); try insert(rebuilt)
+                }
+            }
         }
     }
 
