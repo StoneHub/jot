@@ -16,4 +16,4 @@ The reported Claude Code Desktop failure has not yet been reproduced. The availa
 
 # Dictation cleanup
 
-Fn delivery removes standalone `uh` (case-insensitive) and adjacent filler punctuation/spacing after applying personal vocabulary. History retains the original recognized text. Compounds such as `uh-huh` and `uh-oh` are preserved. Filler-only output inserts nothing. Ambient transcripts and meeting exports are unaffected.
+Fn delivery removes standalone `uh` (case-insensitive) and adjacent filler punctuation/spacing after applying personal vocabulary. Dictations retains the original recognized text. Compounds such as `uh-huh` and `uh-oh` are preserved. Filler-only output inserts nothing. Ambient transcripts and meeting exports are unaffected.
