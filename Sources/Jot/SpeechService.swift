@@ -187,6 +187,8 @@ final class SpeechService: ObservableObject {
     private var sessionStarted = Date()
     private var ambientOffset = 0.0
     private var ambient: [Float] = []
+    /// The session's audio on disk for the speaker pass; nil while no ambient session runs.
+    private var sessionAudio: SessionAudioFile?
     private var silentSeconds = 0.0
     private var dictation: [Float] = []
     private var dictationActive = false
@@ -227,6 +229,7 @@ final class SpeechService: ObservableObject {
             if let data = UserDefaults.standard.data(forKey: JotDefaultsKey.transcriptionTuning),
                let saved = try? JSONDecoder().decode(TranscriptionTuning.self, from: data) { tuning = saved.bounded }
             refreshRecent(); refreshSessions()
+            for stale in SessionAudioFile.discardStale(except: sessionID) { recordEvent(.audioDiscarded, "Session audio left by an earlier run was deleted.", session: stale) }
             if let data = UserDefaults.standard.data(forKey: JotDefaultsKey.modelUpdateChecks),
                let saved = try? JSONDecoder().decode([ModelUpdate].self, from: data) { modelUpdates = saved }
             if UserDefaults.standard.bool(forKey: JotDefaultsKey.modelsPrepared), !UserDefaults.standard.bool(forKey: JotDefaultsKey.servicePaused) { prepare() }
@@ -419,7 +422,7 @@ final class SpeechService: ObservableObject {
             guard lifecycle.phase == .ready else { ambientEnabled = false; updateMode(); return }
             if !dictationActive { capture.stop(); updateKeepAwakeAssertion() }
             drainAudio()
-            if ambientEnabled { flushAmbient(); recordEvent(.ambientOff, "Ambient transcription switched off.") }
+            if ambientEnabled { flushAmbient(); recordEvent(.ambientOff, "Ambient transcription switched off."); endSessionAudio() }
             ambientEnabled = false; updateMode(); level = 0; kickWorker()
         }
     }
@@ -559,6 +562,7 @@ final class SpeechService: ObservableObject {
         try capture.start()
         sessionID = UUID().uuidString; sessionStarted = Date(); ambientOffset = 0; activeSessionID = sessionID
         ambient = []; silentSeconds = 0; ambientEnabled = true; updateKeepAwakeAssertion(); updateMode()
+        sessionAudio = SessionAudioFile(sessionID: sessionID)
         recordEvent(.started, "Ambient microphone capture started."); notice = ""
     }
 
@@ -581,6 +585,7 @@ final class SpeechService: ObservableObject {
         let discarded = AudioClock.seconds(samples: packet.samples.count + packet.dropped + ambient.count + dictation.count + jobs.reduce(0) { $0 + $1.samples.count })
         if discarded > 0 { recordEvent(.audioDiscarded, "Unfinished audio discarded by Pause.") }
         if ambientEnabled { recordEvent(.paused, "Service paused.") }
+        endSessionAudio()
         let outcome = PauseOutcome(automatic: automatic, ambientRequested: ambientRequested, meetingTitle: meetingTitle)
         ambientRequested = outcome.ambientRequested; meetingTitle = outcome.meetingTitle; ambientEnabled = false
         cancelDictation(); input.disable(); fnEnabled = false
@@ -677,6 +682,7 @@ final class SpeechService: ObservableObject {
             recordEvent(.audioGap, "Capture queue overflow discarded audio.", duration: lostSeconds)
             // End attribution continuity rather than silently stitching across lost audio.
             ambientOffset += AudioClock.seconds(samples: ambient.count + packet.dropped); ambient = []
+            sessionAudio?.appendSilence(samples: packet.dropped)
             notice = "Audio backlog overflow: a gap was recorded."
         }
         if dictationActive {
@@ -685,10 +691,16 @@ final class SpeechService: ObservableObject {
         }
         if ambientEnabled {
             ambient.append(contentsOf: packet.samples)
+            sessionAudio?.append(packet.samples)
             silentSeconds = packet.rms < 0.002 ? silentSeconds + AudioClock.seconds(samples: packet.samples.count) : 0
             // Blocks run up to 20 s and only break on a 2 s silence, so most sentences reach the recognizer whole.
             if ambient.count >= Self.ambientBlockSamples || (ambient.count >= Self.ambientBreakSamples && silentSeconds >= max(2, tuning.bounded.paragraphPause)) { flushAmbient() }
         }
+    }
+
+    /// The file is deleted as soon as the session ends; the speaker pass will read it first in a later commit.
+    private func endSessionAudio() {
+        sessionAudio?.discard(); sessionAudio = nil
     }
 
     private func flushAmbient() {
