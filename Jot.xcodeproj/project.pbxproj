@@ -27,6 +27,7 @@
 		68A990392B7CAAB061ADC290 /* Jot.icns in Resources */ = {isa = PBXBuildFile; fileRef = 78ECFD6E5E5AF02BE9088B4A /* Jot.icns */; };
 		6A34209658A335507BD1D20E /* DictationCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83ACD6F41350D0FEEF8F9394 /* DictationCleanup.swift */; };
 		6E92D801CF7E0C6D4471E466 /* AudioPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1724E7761CB8156A220EF24 /* AudioPipeline.swift */; };
+		6F6AFCF5F313C08DE94D202C /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = CF8E8E7D8E656AB679CA76DA /* LICENSE */; };
 		71AC618677A95E2FCEBEFCEC /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23353B724C7968C1C5209FA0 /* AppUpdater.swift */; };
 		7F7F23DCD4A5FFD39B920C97 /* DictationSpeakerMute.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6646658769779D619884AA27 /* DictationSpeakerMute.swift */; };
 		826FA796B9F9ADF21CBC9447 /* SpeakerPassStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6426715E1DD091B61B49DB51 /* SpeakerPassStore.swift */; };
@@ -142,6 +143,7 @@
 		CAF736D13A8D0B0B5B88B3D6 /* SpeakerPassRelabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerPassRelabel.swift; sourceTree = "<group>"; };
 		CBDB9C8F81FE456A8328BCE4 /* TranscriptStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStore.swift; sourceTree = "<group>"; };
 		CDE54F5568B2E1009E317C26 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
+		CF8E8E7D8E656AB679CA76DA /* LICENSE */ = {isa = PBXFileReference; path = LICENSE; sourceTree = "<group>"; };
 		D08CE824AF0B228F66A9DE7F /* ModelUpdate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelUpdate.swift; sourceTree = "<group>"; };
 		D1812288F51560118033D92A /* LocalService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalService.swift; sourceTree = "<group>"; };
 		D2E098CDE7120087F5C947F0 /* JotCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = JotCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -210,6 +212,7 @@
 		6E53C37D5E2365B4F3839C63 = {
 			isa = PBXGroup;
 			children = (
+				CF8E8E7D8E656AB679CA76DA /* LICENSE */,
 				2662DB7F70702632B0247607 /* Jot */,
 				DAED3F62949CD7FDFB9AB122 /* JotCLI */,
 				C1DEE3EB4427813127E7E1D0 /* JotCore */,
@@ -367,15 +370,12 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					3F3C802B5B316E1F2CF65158 = {
-						DevelopmentTeam = N6GPP46885;
 						ProvisioningStyle = Manual;
 					};
 					B0C2456737C67D0846A9A98E = {
-						DevelopmentTeam = N6GPP46885;
 						ProvisioningStyle = Manual;
 					};
 					BCFD8FABA83FE0B14C12D0C1 = {
-						DevelopmentTeam = N6GPP46885;
 						ProvisioningStyle = Manual;
 					};
 				};
@@ -411,6 +411,7 @@
 			files = (
 				A4B98AD49438BD1121F60475 /* Assets.xcassets in Resources */,
 				68A990392B7CAAB061ADC290 /* Jot.icns in Resources */,
+				6F6AFCF5F313C08DE94D202C /* LICENSE in Resources */,
 				0C6637B88C039C4EEEB58198 /* ThirdPartyNotices.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -562,11 +563,10 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_IDENTITY = "Apple Development: monroes.awesome@gmail.com (Y33U865KBQ)";
+				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = N6GPP46885;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -732,12 +732,11 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_IDENTITY = "Apple Development: monroes.awesome@gmail.com (Y33U865KBQ)";
+				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = N6GPP46885;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

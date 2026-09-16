@@ -11,6 +11,7 @@ final class AppUpdater: ObservableObject {
     @Published private(set) var state = State.idle
     static let latestURL = URL(string: "https://api.github.com/repos/StoneHub/jot/releases/latest")!
     static let installPath = "/Applications/Jot.app"
+    static let officialTeamIdentifier = "N6GPP46885"
     static let logURL = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Application Support/Jot/update.log")
     private var progressObservation: NSKeyValueObservation?
 
@@ -29,7 +30,15 @@ final class AppUpdater: ObservableObject {
                 guard http.statusCode == 200 else { throw UpdateError("GitHub answered \(http.statusCode).") }
                 let release = try ReleaseInfo.latest(from: data) { "Jot-\($0).zip" }
                 guard let installed = SemanticVersion.parse(JotVersion.current) else { throw UpdateError("Installed version \(JotVersion.current) is not a version.") }
-                state = release.version > installed ? .available(release) : .upToDate(JotVersion.current)
+                if release.version > installed {
+                    let runningTeam = try Self.teamIdentifier(of: Bundle.main.bundleURL)
+                    guard runningTeam == Self.officialTeamIdentifier else {
+                        throw UpdateError("This source-built copy is signed by team \(runningTeam). Install an official Jot download once to use automatic updates.")
+                    }
+                    state = .available(release)
+                } else {
+                    state = .upToDate(JotVersion.current)
+                }
             } catch {
                 state = .failed(error.localizedDescription)
             }
