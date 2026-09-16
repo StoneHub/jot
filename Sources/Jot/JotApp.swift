@@ -683,6 +683,38 @@ private struct PeopleView: View {
     }
 }
 
+/// The latest service notice at the bottom right of the content pane; it fades after six seconds unless a new one replaces it.
+private struct NoticeToast: View {
+    let notice: String
+    @State private var visible = false
+    private static let successWords = ["finished", "cleared", "deleted", "regrouped", "saved", "copied", "connected again"]
+    private static let failureWords = ["fail", "could not", "error", "interrupted"]
+    /// Green for a notice that reports something done, orange for everything else.
+    private var success: Bool {
+        let lower = notice.lowercased()
+        return Self.successWords.contains { lower.contains($0) } && !Self.failureWords.contains { lower.contains($0) }
+    }
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle().fill(success ? Color.green : Color.orange).frame(width: 7, height: 7)
+            Text(notice).font(.callout).lineLimit(3).fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 9)
+        .modifier(GlassSurface(radius: 12))
+        .frame(maxWidth: 440, alignment: .trailing)
+        .opacity(visible ? 1 : 0)
+        .allowsHitTesting(false)
+        .accessibilityHidden(!visible)
+        .task(id: notice) {
+            guard !notice.isEmpty else { visible = false; return }
+            withAnimation(.easeOut(duration: 0.2)) { visible = true }
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeIn(duration: 0.4)) { visible = false }
+        }
+    }
+}
+
 struct TranscriptView: View {
     @ObservedObject var service: SpeechService
     let delegate: JotDelegate
@@ -695,7 +727,9 @@ struct TranscriptView: View {
     @State private var copyReset: Task<Void, Never>?
 
     private enum Section: String, CaseIterable {
-        case live = "Live", dictations = "Dictations", sessions = "Sessions", people = "People", vocabulary = "Vocabulary", activity = "Activity", tuning = "Tuning", models = "Models"
+        case live = "Live", dictations = "Dictations", sessions = "Sessions", people = "People", tuning = "Tuning", vocabulary = "Vocabulary", models = "Models & updates", activity = "Activity"
+        /// The four under the Settings heading, drawn quieter than the places where transcripts live.
+        var isSetting: Bool { self == .tuning || self == .vocabulary || self == .models || self == .activity }
         var symbol: String {
             switch self {
             case .live: "dot.radiowaves.left.and.right"
@@ -717,20 +751,10 @@ struct TranscriptView: View {
                 ServiceControls(service: service)
                     .padding(18).modifier(GlassSurface(tint: Color(nsColor: .controlAccentColor).opacity(0.04)))
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Section.allCases, id: \.self) { item in
-                        Button { section = item } label: {
-                            HStack(spacing: 8) {
-                                Label(item.rawValue, systemImage: item.symbol)
-                                    .font(.body.weight(section == item ? .semibold : .regular))
-                                Spacer(minLength: 0)
-                                if item == .live && service.ambientEnabled { Circle().fill(.red).frame(width: 8, height: 8).accessibilityLabel("Recording") }
-                                if let count = count(item) { countPill(count) }
-                            }
-                                .frame(maxWidth: .infinity, alignment: .leading).padding(12)
-                                .contentShape(RoundedRectangle(cornerRadius: 14))
-                                .modifier(NavigationSurface(selected: section == item))
-                        }.buttonStyle(.plain)
-                    }
+                    ForEach(Section.allCases.filter { !$0.isSetting }, id: \.self) { item in navigationRow(item) }
+                    Text("Settings").font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
+                        .padding(.horizontal, 12).padding(.top, 10)
+                    ForEach(Section.allCases.filter(\.isSetting), id: \.self) { item in navigationRow(item) }
                 }
                 Spacer()
                 HStack(spacing: 14) {
@@ -747,10 +771,6 @@ struct TranscriptView: View {
             VStack(alignment: .leading, spacing: 18) {
                 // Live draws its own title row so the recording chips sit beside it.
                 if section != .live { titleRow }
-                if section != .vocabulary && !service.notice.isEmpty {
-                    Text(service.notice).font(.callout).foregroundStyle(.secondary)
-                        .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-                }
                 switch section {
                 case .live: LiveView(service: service)
                 case .dictations: dictations
@@ -763,6 +783,7 @@ struct TranscriptView: View {
                 }
             }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .modifier(GlassSurface())
+                .overlay(alignment: .bottomTrailing) { NoticeToast(notice: service.notice).padding(20) }
         }
         .padding(16)
         .modifier(GlassStage())
@@ -796,6 +817,21 @@ struct TranscriptView: View {
                     .modifier(GlassButton())
             }
         }
+    }
+    private func navigationRow(_ item: Section) -> some View {
+        Button { section = item } label: {
+            HStack(spacing: 8) {
+                Label(item.rawValue, systemImage: item.symbol)
+                    .font(item.isSetting ? .callout.weight(section == item ? .semibold : .regular) : .body.weight(section == item ? .semibold : .regular))
+                    .foregroundStyle(item.isSetting && section != item ? Color.secondary : Color.primary)
+                Spacer(minLength: 0)
+                if item == .live && service.ambientEnabled { Circle().fill(.red).frame(width: 8, height: 8).accessibilityLabel("Recording") }
+                if let count = count(item) { countPill(count) }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, item.isSetting ? 8 : 12)
+            .contentShape(RoundedRectangle(cornerRadius: 14))
+            .modifier(NavigationSurface(selected: section == item))
+        }.buttonStyle(.plain)
     }
     private func count(_ item: Section) -> Int? {
         switch item {
@@ -883,6 +919,10 @@ struct TranscriptView: View {
     private var activity: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                if !service.notice.isEmpty {
+                    Text(service.notice).font(.callout).foregroundStyle(.secondary)
+                        .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                }
                 Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 18) {
                     GridRow { metric("Process CPU", String(format: "%.1f%%", service.resources.processCPUPercent)); metric("Memory", String(format: "%.0f MB", service.resources.residentMiB)) }
                     GridRow { metric("Memory footprint", String(format: "%.0f MB", service.resources.physicalFootprintMiB)); metric("Thermal state", service.resources.thermalState.capitalized) }
