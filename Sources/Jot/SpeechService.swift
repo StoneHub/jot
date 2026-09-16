@@ -463,14 +463,20 @@ final class SpeechService: ObservableObject {
         notice = "Session deleted."
     }
 
-    /// Rebuilds a saved session's rows from its stored words under the current Tuning. Cleanup text is not re-run.
+    /// Rebuilds a saved session's rows from its stored words under the current Tuning: from the speaker pass's segments when the session has them, otherwise from the live probabilities. Cleanup text is not re-run.
     func regroupSession(_ id: String) throws {
         guard canDeleteSession(id) else { throw JotError.message("Stop recording this session before regrouping it.") }
         guard let store else { throw JotError.message("Transcript storage is unavailable.") }
         let words = try store.words(sessionID: id)
-        try store.replaceSession(sessionID: id, words: words, turns: TranscriptGrouping.regroup(words: words, tuning: tuning))
+        let segments = try speakerStore?.segments(sessionID: id) ?? []
+        if segments.isEmpty {
+            try store.replaceSession(sessionID: id, words: words, turns: TranscriptGrouping.regroup(words: words, tuning: tuning))
+            notice = "Session regrouped with the current tuning."
+        } else {
+            try store.replaceSession(sessionID: id, words: words, turns: SpeakerPassRelabel.turns(words: words, segments: segments.map { ($0.speakerID, $0.start, $0.end) }, tuning: tuning))
+            notice = "Session regrouped from the speaker pass."
+        }
         didDeleteHistory()
-        notice = "Session regrouped with the current tuning."
     }
 
     func deleteHistoryCard(_ item: Transcript) throws {
@@ -730,16 +736,22 @@ final class SpeechService: ObservableObject {
         speakerPassQueue = Task { await previous?.value; await runSpeakerPass(file) }
     }
 
-    /// The pass runs off the main actor; only its outcome lands here. An export that already happened used the live labels, and this phase does not relabel rows.
+    /// The pass runs off the main actor; only its outcome lands here. An export that already happened used the live labels; the saved rows are rebuilt from the pass once the session's last audio block is recognized.
     private func runSpeakerPass(_ file: SessionAudioFile) async {
         let id = file.sessionID
         speakerPassRunning = true
         defer { speakerPassRunning = false }
         do {
             guard let audio = try await file.finish() else { return }
-            let result = try await pipeline.speakerPass.run(url: audio.url)
+            let result = SpeakerPassRelabel.renumbered(try await pipeline.speakerPass.run(url: audio.url))
+            try await MeetingExportWait.wait(isValid: { true }, isComplete: { self.jobs.allSatisfy { $0.sessionID != id } && self.processing == nil })
             guard !deletedSessions.contains(id) else { return }
             try speakerStore?.replace(sessionID: id, result: result)
+            // The pass is authoritative: a name given to "speaker-2" while the live labels were showing stays on that id, which the pass may have given to another voice. Naming normally happens after the pass anyway.
+            if let store, !result.segments.isEmpty, case let words = try store.words(sessionID: id), !words.isEmpty {
+                try store.replaceSession(sessionID: id, words: words, turns: SpeakerPassRelabel.turns(words: words, segments: result.segments, tuning: tuning))
+                didDeleteHistory()
+            }
             let count = result.speakers.count
             let scope = audio.truncated ? " (first two hours)" : ""
             recordEvent(.speakerPass, "Speaker pass found \(count) speaker\(count == 1 ? "" : "s") in \(TranscriptExport.clock(result.durationSeconds)) of audio\(scope), \(String(format: "%.1f", result.processingSeconds)) s of processing.", duration: result.durationSeconds, session: id)

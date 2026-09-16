@@ -544,7 +544,7 @@ private struct SessionsView: View {
                 Button("Regroup", systemImage: "arrow.triangle.2.circlepath") {
                     do { try service.regroupSession(session.sessionID) }
                     catch { service.notice = error.localizedDescription }
-                }.modifier(GlassButton()).help("Re-applies the Tuning sliders to this session's saved words")
+                }.modifier(GlassButton()).help("Rebuilds this session's rows from its speaker pass, or from the Tuning sliders when it has none")
                 Button("Export", systemImage: "square.and.arrow.up") {
                     do { NSWorkspace.shared.activateFileViewerSelecting([try service.exportSession(session.sessionID)]) }
                     catch { service.notice = error.localizedDescription }
@@ -843,7 +843,7 @@ struct TranscriptView: View {
                 Text("Hides rows containing only sounds such as um or uh. Original text is kept. Fillers inside sentences stay visible.")
                     .font(.caption).foregroundStyle(.secondary)
                 Divider()
-                Text("Speaker settings apply to new audio and to any session you Regroup from Sessions. Paragraph grouping and filler visibility also update saved history.")
+                Text("Speaker settings apply to new audio and to any session you Regroup that has no speaker pass. Paragraph grouping and filler visibility also update saved history.")
                     .font(.callout).foregroundStyle(.secondary)
                 Text("Try the same short scene twice. Change one setting, then compare words, speaker changes, and paragraph breaks separately.")
                     .font(.callout).foregroundStyle(.secondary)
