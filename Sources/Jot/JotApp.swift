@@ -279,16 +279,14 @@ private struct ServiceControls: View {
                 })).labelsHidden().toggleStyle(.switch)
             }.help("Hold \(service.shortcut.displayName) to dictate into the focused text field.")
             ControlRow(title: "Hold to talk", secondary: true) { ShortcutSettings(service: service) }
-            ControlRow(symbol: "mic", title: "Ambient transcription") {
+            ControlRow(symbol: "mic", title: "Ambient", caption: "Transcribe everything heard") {
                 Toggle("Ambient transcription", isOn: Binding(get: { service.ambientEnabled }, set: { enabled in
                     Task { await service.setAmbient(enabled) }
                 })).labelsHidden().toggleStyle(.switch).disabled(service.lifecycle.phase != .ready)
             }.help("Continuously transcribe the microphone while the service is running.")
-            Toggle("Keep Mac awake during ambient capture", isOn: $service.keepMacAwakeWhileListening)
-                .toggleStyle(.switch)
-                .padding(.leading, 30)
-            Text("Prevents idle sleep while ambient transcription or a meeting is recording. It releases when ambient capture stops.")
-                .font(.caption).foregroundStyle(.secondary).padding(.leading, 30)
+            ControlRow(title: "Keep Mac awake", caption: "While ambient is on", secondary: true) {
+                Toggle("Keep Mac awake while ambient is on", isOn: $service.keepMacAwakeWhileListening).labelsHidden().toggleStyle(.switch)
+            }.help("Prevents idle sleep while ambient transcription or a meeting is recording.")
             if service.isPaused && (service.fnRequested || service.ambientRequested) {
                 Text("Selected features start when you resume.").font(.caption).foregroundStyle(.secondary).padding(.leading, 30)
             }
@@ -702,11 +700,11 @@ private struct NoticeToast: View {
         .padding(.horizontal, 14).padding(.vertical, 9)
         .modifier(GlassSurface(radius: 12))
         .frame(maxWidth: 440, alignment: .trailing)
-        .opacity(visible ? 1 : 0)
+        .opacity(visible && !notice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 1 : 0)
         .allowsHitTesting(false)
         .accessibilityHidden(!visible)
         .task(id: notice) {
-            guard !notice.isEmpty else { visible = false; return }
+            guard !notice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { visible = false; return }
             withAnimation(.easeOut(duration: 0.2)) { visible = true }
             try? await Task.sleep(nanoseconds: 6_000_000_000)
             guard !Task.isCancelled else { return }
@@ -746,17 +744,20 @@ struct TranscriptView: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 20) {
-                JotBrand().padding(.horizontal, 8)
-                ServiceControls(service: service)
-                    .padding(18).modifier(GlassSurface(tint: Color(nsColor: .controlAccentColor).opacity(0.04)))
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Section.allCases.filter { !$0.isSetting }, id: \.self) { item in navigationRow(item) }
-                    Text("Settings").font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
-                        .padding(.horizontal, 12).padding(.top, 10)
-                    ForEach(Section.allCases.filter(\.isSetting), id: \.self) { item in navigationRow(item) }
+            VStack(alignment: .leading, spacing: 12) {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 20) {
+                        JotBrand().padding(.horizontal, 8)
+                        ServiceControls(service: service)
+                            .padding(18).modifier(GlassSurface(tint: Color(nsColor: .controlAccentColor).opacity(0.04)))
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(Section.allCases.filter { !$0.isSetting }, id: \.self) { item in navigationRow(item) }
+                            Text("Settings").font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
+                                .padding(.horizontal, 12).padding(.top, 10)
+                            ForEach(Section.allCases.filter(\.isSetting), id: \.self) { item in navigationRow(item) }
+                        }
+                    }.padding(.bottom, 8)
                 }
-                Spacer()
                 HStack(spacing: 14) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("CPU").font(.caption).foregroundStyle(.secondary)
