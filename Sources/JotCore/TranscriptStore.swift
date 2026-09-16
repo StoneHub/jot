@@ -354,7 +354,7 @@ public final class TranscriptStore: @unchecked Sendable {
         }
     }
 
-    /// Labels apply only to one session; this does not enroll or recognize a voice.
+    /// Labels are per session. Remembering the voice behind a label is a separate, explicit step through PeopleStore.
     public func label(sessionID: String, speakerID: String, name: String) throws {
         guard !sessionID.isEmpty, !speakerID.isEmpty, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, name.count <= 200 else { throw StoreError.invalid("Session, speaker, and a name of at most 200 characters are required") }
         try locked {
