@@ -942,6 +942,13 @@ final class SpeechService: ObservableObject {
     func refreshPeople() {
         do { people = try peopleStore?.list() ?? [] } catch { notice = error.localizedDescription }
     }
+    func renamePerson(_ id: String, name: String) {
+        do { try peopleStore?.rename(id: id, name: name); refreshPeople() } catch { notice = error.localizedDescription }
+    }
+    /// Forgets the voice only; names already written into sessions stay.
+    func deletePerson(_ id: String) {
+        do { try peopleStore?.delete(id: id); refreshPeople(); notice = "Person deleted. Their voice is forgotten." } catch { notice = error.localizedDescription }
+    }
     func checkModelUpdates() {
         guard !checkingModels else { return }
         checkingModels = true

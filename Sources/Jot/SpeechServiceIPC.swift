@@ -91,6 +91,12 @@ extension SpeechService {
                 let output = try await fileTask.value
                 guard lifecycle.acceptsWork(token) else { throw CancellationError() }
                 result = ["text": output.text, "transcripts": try object(output.transcripts), "processingSeconds": output.processingSeconds, "persisted": false]
+            case "people.list":
+                let iso = ISO8601DateFormatter()
+                result = try peopleStore?.list().map { ["id": $0.id, "name": $0.name, "sampleCount": $0.sampleCount, "createdAt": iso.string(from: $0.createdAt), "updatedAt": iso.string(from: $0.updatedAt)] } ?? []
+            case "people.delete":
+                guard let id = params["id"] as? String else { throw JotError.message("id is required") }
+                try peopleStore?.delete(id: id); refreshPeople(); result = ["deleted": true]
             case "speakers.label":
                 guard let session = params["sessionID"] as? String, let speaker = params["speakerID"] as? String, let name = params["name"] as? String else { throw JotError.message("sessionID, speakerID and name are required") }
                 try store?.label(sessionID: session, speakerID: speaker, name: name); refreshRecent(); result = ["updated": true]
