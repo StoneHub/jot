@@ -10,6 +10,7 @@ Open **Tuning** in the native app. Start with Balanced, or use Steadier speakers
 | --- | --- | --- |
 | Speaker confidence | Requires a stronger speaker score | Higher values can leave more speech unknown |
 | Minimum speaker turn | Requires sustained evidence before changing the current speaker | Short real replies can stay with the preceding speaker |
+| (built in) | A reply of 0.3 s or more whose voice the diarizer is sure about (0.85 or higher, nobody else above the confidence setting) switches speaker regardless of the minimum turn | A quiet or mumbled short reply still merges |
 | Pause between paragraphs | Groups nearby words and same-speaker rows | Longer values create fewer, longer rows and can delay ambient results |
 | Hide filler-only rows | Hides isolated um/uh/hmm rows in history | Original text remains in SQLite and CLI/MCP; fillers within sentences remain visible |
 

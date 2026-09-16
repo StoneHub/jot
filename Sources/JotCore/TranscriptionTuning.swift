@@ -67,7 +67,11 @@ public enum TranscriptGrouping {
             if runStart > 0 && words[runStart].start - words[runStart - 1].end >= tuning.paragraphPause { stable = nil }
             // Brief missing/uncertain evidence is not evidence of a new speaker.
             // A longer uncertain run still becomes unattributed.
-            let confirmation = candidates[runStart] == nil ? max(2, tuning.minimumSpeakerTurn) : tuning.minimumSpeakerTurn
+            var confirmation = candidates[runStart] == nil ? max(2, tuning.minimumSpeakerTurn) : tuning.minimumSpeakerTurn
+            // A short reply ("Yeah.", "Good man.") from a clearly different voice counts sooner than the minimum turn.
+            if let candidate = candidates[runStart], candidate != "overlap", candidate != stable, confident(words[runStart..<runEnd], speaker: candidate, tuning: tuning) {
+                confirmation = min(confirmation, Self.confidentReplyTurn)
+            }
             if duration >= confirmation && !onlyFillers { stable = candidates[runStart] }
             for index in runStart..<runEnd { candidates[index] = stable }
             runStart = runEnd
@@ -85,6 +89,19 @@ public enum TranscriptGrouping {
             } else { result.append(SpeechTurn(text: word.text, start: word.start, end: word.end, speaker: candidates[index])) }
         }
         return result
+    }
+
+    /// Seconds of clearly attributed speech that confirm a speaker change ahead of the minimum turn.
+    static let confidentReplyTurn = 0.3
+    /// True when every word gives this speaker a probability well above the tuned threshold and the others none.
+    private static func confident(_ words: ArraySlice<AttributedWord>, speaker: String, tuning: TranscriptionTuning) -> Bool {
+        guard let index = Int(speaker.dropFirst("speaker-".count)).map({ $0 - 1 }) else { return false }
+        let floor = max(0.85, tuning.speakerConfidence + 0.15)
+        return words.allSatisfy { word in
+            let p = word.probabilities.prefix(4)
+            guard p.indices.contains(index), Double(p[index]) >= floor else { return false }
+            return p.enumerated().allSatisfy { $0.offset == index || Double($0.element) < tuning.speakerConfidence }
+        }
     }
 
     /// Export-time repair: an unattributed ambient row that picks up a speaker's unfinished sentence within `gap` seconds inherits that speaker. Stored rows are unchanged.
