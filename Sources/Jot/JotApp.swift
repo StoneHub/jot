@@ -208,7 +208,7 @@ struct GlassButton: ViewModifier {
         else { content.buttonStyle(.bordered) }
     }
 }
-private struct PrimaryGlassButton: ViewModifier {
+struct PrimaryGlassButton: ViewModifier {
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *) { content.buttonStyle(.glassProminent) }
         else { content.buttonStyle(.borderedProminent) }
@@ -412,6 +412,10 @@ struct MenuControls: View {
                 Spacer()
                 Button("Quit") { NSApp.terminate(nil) }.buttonStyle(.plain)
             }
+            if service.ambientEnabled, let last = service.recent.first(where: { $0.sessionID == service.activeSessionID }) {
+                Text(last.text).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
+                    .help("Last transcribed sentence")
+            }
         }.padding(18).frame(width: 350)
             .modifier(GlassStage()).background(JotBackdrop()).tint(Color(nsColor: .controlAccentColor))
     }
@@ -453,8 +457,8 @@ private struct AppUpdateRow: View {
     }
 }
 
-/// One sheet names a speaker from History or Sessions; the label is scoped to the row's session.
-private struct SpeakerNameSheet: View {
+/// One sheet names a speaker from Live or Sessions; the label is scoped to the row's session.
+struct SpeakerNameSheet: View {
     let transcript: Transcript
     let service: SpeechService
     @Binding var draft: String
@@ -653,13 +657,14 @@ struct TranscriptView: View {
     @State private var showHistory = true
     @AppStorage(JotDefaultsKey.historyTextView) private var historyTextView = true
     @State private var search = ""
-    @State private var section = Section.history
+    @State private var section = Section.live
     @State private var copyReset: Task<Void, Never>?
 
     private enum Section: String, CaseIterable {
-        case history = "History", sessions = "Sessions", people = "People", vocabulary = "Vocabulary", activity = "Activity", tuning = "Tuning", models = "Models"
+        case live = "Live", history = "History", sessions = "Sessions", people = "People", vocabulary = "Vocabulary", activity = "Activity", tuning = "Tuning", models = "Models"
         var symbol: String {
             switch self {
+            case .live: "dot.radiowaves.left.and.right"
             case .history: "text.alignleft"
             case .sessions: "rectangle.stack"
             case .people: "person.2"
@@ -680,8 +685,12 @@ struct TranscriptView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(Section.allCases, id: \.self) { item in
                         Button { section = item } label: {
-                            Label(item.rawValue, systemImage: item.symbol)
-                                .font(.body.weight(section == item ? .semibold : .regular))
+                            HStack(spacing: 8) {
+                                Label(item.rawValue, systemImage: item.symbol)
+                                    .font(.body.weight(section == item ? .semibold : .regular))
+                                Spacer(minLength: 0)
+                                if item == .live && service.ambientEnabled { Circle().fill(.red).frame(width: 8, height: 8).accessibilityLabel("Recording") }
+                            }
                                 .frame(maxWidth: .infinity, alignment: .leading).padding(12)
                                 .contentShape(RoundedRectangle(cornerRadius: 14))
                                 .modifier(NavigationSurface(selected: section == item))
@@ -701,30 +710,14 @@ struct TranscriptView: View {
                 }.padding(.horizontal, 8)
             }.padding(8).frame(width: 282)
             VStack(alignment: .leading, spacing: 18) {
-                HStack {
-                    Text(section.rawValue).font(.system(size: 26, weight: .bold, design: .rounded))
-                    Spacer()
-                    if section == .history {
-                        Button("Open History in Finder", systemImage: "folder") {
-                            NSWorkspace.shared.activateFileViewerSelecting([JotPaths.directory.appendingPathComponent("transcripts.sqlite3")])
-                        }
-                        .labelStyle(.iconOnly)
-                        .accessibilityLabel("Open History in Finder")
-                        .modifier(GlassButton())
-                        .help("Shows the transcript database. Quit Jot before moving history files to Trash.")
-                        Button("Clear", systemImage: "clear", role: .destructive) {
-                            do { try service.clearHistory(); search = ""; selected = nil; copiedID = nil }
-                            catch { service.notice = error.localizedDescription }
-                        }.modifier(GlassButton()).help("Delete every saved dictation. Sessions are deleted from the Sessions tab.")
-                        Button(showHistory ? "Hide" : "Show", systemImage: showHistory ? "eye.slash" : "eye") { showHistory.toggle() }
-                            .modifier(GlassButton())
-                    }
-                }
+                // Live draws its own title row so the recording chips sit beside it.
+                if section != .live { titleRow }
                 if section != .vocabulary && !service.notice.isEmpty {
                     Text(service.notice).font(.callout).foregroundStyle(.secondary)
                         .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 }
                 switch section {
+                case .live: LiveView(service: service)
                 case .history: history
                 case .sessions: SessionsView(service: service)
                 case .people: PeopleView(service: service)
@@ -744,8 +737,32 @@ struct TranscriptView: View {
         .onAppear { delegate.openAction = { openWindow(id: "main") } }
         .onDisappear { copyReset?.cancel() }
         .onChange(of: service.historyRevision) { _, _ in selected = nil; copiedID = nil }
+        // Capture starting is the one moment Live is opened for the user; after that the choice is theirs.
+        .onChange(of: service.ambientEnabled) { _, on in if on { section = .live } }
         .sheet(item: $selected) { item in
             SpeakerNameSheet(transcript: item, service: service, draft: $label, onSave: { selected = nil }, onCancel: { selected = nil })
+        }
+    }
+
+    private var titleRow: some View {
+        HStack {
+            Text(section.rawValue).font(.system(size: 26, weight: .bold, design: .rounded))
+            Spacer()
+            if section == .history {
+                Button("Open History in Finder", systemImage: "folder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([JotPaths.directory.appendingPathComponent("transcripts.sqlite3")])
+                }
+                .labelStyle(.iconOnly)
+                .accessibilityLabel("Open History in Finder")
+                .modifier(GlassButton())
+                .help("Shows the transcript database. Quit Jot before moving history files to Trash.")
+                Button("Clear", systemImage: "clear", role: .destructive) {
+                    do { try service.clearHistory(); search = ""; selected = nil; copiedID = nil }
+                    catch { service.notice = error.localizedDescription }
+                }.modifier(GlassButton()).help("Delete every saved dictation. Sessions are deleted from the Sessions tab.")
+                Button(showHistory ? "Hide" : "Show", systemImage: showHistory ? "eye.slash" : "eye") { showHistory.toggle() }
+                    .modifier(GlassButton())
+            }
         }
     }
 

@@ -196,7 +196,8 @@ final class SpeechService: ObservableObject {
     var diagnostic: Task<SpeechOutput, Error>?
     private var tickCount = 0
     var sessionID = UUID().uuidString
-    private var sessionStarted = Date()
+    /// Wall-clock start of the current ambient session; Live counts elapsed time from it.
+    private(set) var sessionStarted = Date()
     private var ambientOffset = 0.0
     private var ambient: [Float] = []
     /// The session's audio on disk for the speaker pass; nil while no ambient session runs.
@@ -545,6 +546,13 @@ final class SpeechService: ObservableObject {
             try store?.setTitle(sessionID: sessionID, title: trimmed)
             refreshSessions()
         } catch { meetingTitle = nil; notice = error.localizedDescription }
+    }
+
+    /// Renames the running meeting: the name goes on its session now and on any continuation after an automatic pause.
+    func renameMeeting(_ title: String) {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard meetingTitle != nil, !trimmed.isEmpty, let id = activeSessionID else { return }
+        meetingTitle = trimmed; renameSession(id, title: trimmed)
     }
 
     /// A meeting kept through an automatic pause records on into a new session under the same name. The earlier part stays in Sessions, and TranscriptExport.write adds " (2)" to a duplicate file name.
