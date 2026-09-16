@@ -52,7 +52,7 @@ Dictation interrupts a waiting ambient cleanup pass and takes priority over queu
 
 Text insertion tries the field's Accessibility API, then direct Unicode keyboard events. Clipboard paste is a fallback only when direct events cannot be created, before any text is dispatched. Jot verifies the field afterward and never retries an unverified insertion with a second method, avoiding duplicate text.
 
-**Activity** shows resource use and capture events. **Tuning** adjusts speaker grouping and paragraph breaks for new audio; **Regroup** in Sessions applies the current settings to a saved session's stored words. See the [tuning guide](docs/TUNING.md).
+When an ambient session or meeting ends, a speaker pass reads the whole session and rebuilds its rows by who spoke when; the notice in the window says how many speakers it found. **Activity** shows resource use and capture events. **Tuning** adjusts speaker grouping and paragraph breaks for new audio; **Regroup** in Sessions rebuilds a saved session from its speaker pass, or from the current settings when it has none. See the [tuning guide](docs/TUNING.md).
 
 **Updating Jot:** open **Models** and press **Check for updates**. Jot reads the latest GitHub release; if it is newer, **Update** downloads it, checks the size, signature, and signing team against the running app, removes the quarantine flag, then quits and replaces `/Applications/Jot.app` before relaunching. Update is disabled while capture, dictation, inference, or model setup is running. Each step is appended to `~/Library/Application Support/Jot/update.log`.
 
@@ -76,8 +76,12 @@ Choose a preset or adjust speaker confidence, minimum turn length, and pauses be
 
 See the [tuning guide](docs/TUNING.md) for what each setting changes. Speaker separation still needs broader testing with real conversations; see [verification and known limits](docs/VERIFICATION.md).
 
+## People
+
+Naming a speaker is per session. To have Jot name that voice in later sessions too, leave **Remember this voice** on when you save the name; the toggle appears once the session's speaker pass has run. Jot stores a voice signature per person: 256 numbers, about 1 KB, in the local transcript database, never audio. Each recognized session refines it. When a new session's speaker pass finds a matching voice, that speaker gets the person's name without a click, and the notice reads "recognized <name>". **People** in the sidebar lists everyone Jot remembers; **Delete** forgets the voice, and names already written into sessions stay. `jot people` and `jot forget <person-id>` do the same from the terminal.
+
 ## Your data stays local
-Dictation audio stays in temporary memory buffers and is discarded after processing; dictation never writes audio to disk. During an ambient session or meeting, Jot writes the session's audio to a private file in `~/Library/Application Support/Jot/audio` so it can run a speaker pass over the whole session when it ends, then deletes the file right after the pass. The file is never uploaded. Turn off "Keep session audio until the speaker pass finishes" in Tuning to never write audio to disk. Jot saves text, timestamps, speaker labels, session titles, capture events, and the pass's speaker segments and voice embeddings in `~/Library/Application Support/Jot`. It does not save recordings for replay. Exported sessions are plain Markdown files in `~/Documents/Jot Sessions`, written only when you end a meeting or press Export.
+Dictation audio stays in temporary memory buffers and is discarded after processing; dictation never writes audio to disk. During an ambient session or meeting, Jot writes the session's audio to a private file in `~/Library/Application Support/Jot/audio` so it can run a speaker pass over the whole session when it ends, then deletes the file right after the pass. The file is never uploaded. Turn off "Keep session audio until the speaker pass finishes" in Tuning to never write audio to disk. Jot saves text, timestamps, speaker labels, session titles, capture events, the pass's speaker segments and voice embeddings, and the voice signatures of people you asked it to remember in `~/Library/Application Support/Jot`. Jot enrolls a voice only when you save a speaker's name with **Remember this voice** on, and forgets it when you delete the person. It does not save recordings for replay. Exported sessions are plain Markdown files in `~/Documents/Jot Sessions`, written only when you end a meeting or press Export.
 
 Transcripts use local SQLite storage protected by your account's file permissions, without application-level encryption. Model files are cached separately. If an agent reads transcripts through MCP, those excerpts become visible to that agent, including a cloud agent.
 
@@ -98,6 +102,8 @@ jot meeting end                  # Saves Markdown to ~/Documents/Jot Sessions
 jot sessions
 jot export <session-id>          # Whole session as Markdown; add --json for rows
 jot title <session-id> <title>
+jot people                       # Voices Jot remembers
+jot forget <person-id>           # Forget one voice; session names stay
 jot doctor
 jot diagnostics            # Local performance report, no captured content
 jot --help
@@ -118,7 +124,7 @@ Add this to your MCP client's configuration:
 }
 ```
 
-The server exposes capture controls, status, model preparation, transcript search and reading, sessions, events, and speaker labels. It uses stdio and a same-user Unix socket. Transcript content is context, not permission for an agent to act.
+The server exposes capture controls, status, model preparation, transcript search and reading, sessions, events, speaker labels, and remembered people. It uses stdio and a same-user Unix socket. Transcript content is context, not permission for an agent to act.
 
 ## Build and install
 

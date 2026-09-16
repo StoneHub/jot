@@ -359,7 +359,7 @@ public final class TranscriptStore: @unchecked Sendable {
         }
     }
 
-    /// Labels apply only to one session; this does not enroll or recognize a voice.
+    /// Labels are per session. Remembering the voice behind a label is a separate, explicit step through PeopleStore.
     public func label(sessionID: String, speakerID: String, name: String) throws {
         guard !sessionID.isEmpty, !speakerID.isEmpty, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, name.count <= 200 else { throw StoreError.invalid("Session, speaker, and a name of at most 200 characters are required") }
         try locked {
@@ -367,6 +367,23 @@ public final class TranscriptStore: @unchecked Sendable {
             defer { sqlite3_finalize(stmt) }
             bind(sessionID, to: 1, in: stmt); bind(speakerID, to: 2, in: stmt); bind(name, to: 3, in: stmt)
             try finish(stmt)
+        }
+    }
+
+    /// The names given so far in one session, by speaker id.
+    public func labels(sessionID: String) throws -> [String: String] {
+        try locked {
+            let stmt = try prepare("SELECT speaker_id,name FROM speaker_labels WHERE session_id = ?")
+            defer { sqlite3_finalize(stmt) }
+            bind(sessionID, to: 1, in: stmt)
+            var result: [String: String] = [:]
+            while true {
+                let status = sqlite3_step(stmt)
+                if status == SQLITE_DONE { break }
+                guard status == SQLITE_ROW else { throw error() }
+                result[column(stmt, 0)!] = column(stmt, 1)!
+            }
+            return result
         }
     }
 

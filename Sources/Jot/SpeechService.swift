@@ -185,6 +185,9 @@ final class SpeechService: ObservableObject {
     private let keepAwake = KeepAwakeAssertion()
     var store: TranscriptStore?
     var speakerStore: SpeakerPassStore?
+    var peopleStore: PeopleStore?
+    /// Voices Jot remembers, for the People screen and for naming matching speakers after a pass.
+    @Published private(set) var people: [Person] = []
     private var server: LocalServiceServer?
     private var timer: Timer?
     var diagnosticActive = false
@@ -234,6 +237,7 @@ final class SpeechService: ObservableObject {
         do {
             store = try TranscriptStore()
             speakerStore = try SpeakerPassStore()
+            peopleStore = try PeopleStore(); refreshPeople()
             let service = LocalServiceServer { [weak self] data in
                 guard let self else { return Data("{\"ok\":false,\"error\":\"Service unavailable\"}".utf8) }
                 return await self.handle(data)
@@ -463,14 +467,20 @@ final class SpeechService: ObservableObject {
         notice = "Session deleted."
     }
 
-    /// Rebuilds a saved session's rows from its stored words under the current Tuning. Cleanup text is not re-run.
+    /// Rebuilds a saved session's rows from its stored words under the current Tuning: from the speaker pass's segments when the session has them, otherwise from the live probabilities. Cleanup text is not re-run.
     func regroupSession(_ id: String) throws {
         guard canDeleteSession(id) else { throw JotError.message("Stop recording this session before regrouping it.") }
         guard let store else { throw JotError.message("Transcript storage is unavailable.") }
         let words = try store.words(sessionID: id)
-        try store.replaceSession(sessionID: id, words: words, turns: TranscriptGrouping.regroup(words: words, tuning: tuning))
+        let segments = try speakerStore?.segments(sessionID: id) ?? []
+        if segments.isEmpty {
+            try store.replaceSession(sessionID: id, words: words, turns: TranscriptGrouping.regroup(words: words, tuning: tuning))
+            notice = "Session regrouped with the current tuning."
+        } else {
+            try store.replaceSession(sessionID: id, words: words, turns: SpeakerPassRelabel.turns(words: words, segments: segments.map { ($0.speakerID, $0.start, $0.end) }, tuning: tuning))
+            notice = "Session regrouped from the speaker pass."
+        }
         didDeleteHistory()
-        notice = "Session regrouped with the current tuning."
     }
 
     func deleteHistoryCard(_ item: Transcript) throws {
@@ -730,24 +740,48 @@ final class SpeechService: ObservableObject {
         speakerPassQueue = Task { await previous?.value; await runSpeakerPass(file) }
     }
 
-    /// The pass runs off the main actor; only its outcome lands here. An export that already happened used the live labels, and this phase does not relabel rows.
+    /// The pass runs off the main actor; only its outcome lands here. An export that already happened used the live labels; the saved rows are rebuilt from the pass once the session's last audio block is recognized.
     private func runSpeakerPass(_ file: SessionAudioFile) async {
         let id = file.sessionID
         speakerPassRunning = true
         defer { speakerPassRunning = false }
         do {
             guard let audio = try await file.finish() else { return }
-            let result = try await pipeline.speakerPass.run(url: audio.url)
+            let result = SpeakerPassRelabel.renumbered(try await pipeline.speakerPass.run(url: audio.url))
+            try await MeetingExportWait.wait(isValid: { true }, isComplete: { self.jobs.allSatisfy { $0.sessionID != id } && self.processing == nil })
             guard !deletedSessions.contains(id) else { return }
             try speakerStore?.replace(sessionID: id, result: result)
+            // The pass is authoritative: a name given to "speaker-2" while the live labels were showing stays on that id, which the pass may have given to another voice. Naming normally happens after the pass anyway.
+            var recognized: [String] = []
+            if let store, !result.segments.isEmpty, case let words = try store.words(sessionID: id), !words.isEmpty {
+                try store.replaceSession(sessionID: id, words: words, turns: SpeakerPassRelabel.turns(words: words, segments: result.segments, tuning: tuning))
+                recognized = try recognizeSpeakers(result.speakers, session: id)
+                didDeleteHistory()
+            }
             let count = result.speakers.count
             let scope = audio.truncated ? " (first two hours)" : ""
             recordEvent(.speakerPass, "Speaker pass found \(count) speaker\(count == 1 ? "" : "s") in \(TranscriptExport.clock(result.durationSeconds)) of audio\(scope), \(String(format: "%.1f", result.processingSeconds)) s of processing.", duration: result.durationSeconds, session: id)
-            notice = "Speaker pass finished: \(count) speakers."
+            notice = "Speaker pass finished: \(count) speakers" + (recognized.isEmpty ? "." : ", recognized \(recognized.joined(separator: ", ")).")
         } catch {
             recordEvent(.processingError, "Speaker pass: \(error.localizedDescription)", session: id)
             notice = "Speaker pass failed: \(error.localizedDescription)"
         }
+    }
+
+    /// Names each session speaker whose voice matches a remembered person, unless the speaker was named already, and folds the session's embedding into that person so the voice improves over time. Returns the names recognized.
+    private func recognizeSpeakers(_ speakers: [String: [Float]], session id: String) throws -> [String] {
+        guard let store, let peopleStore else { return [] }
+        let people = try peopleStore.list()
+        let labels = try store.labels(sessionID: id)
+        var recognized: [String] = []
+        for match in PeopleMatcher.assignments(speakers: speakers, people: people) {
+            guard let person = people.first(where: { $0.id == match.id }), let embedding = speakers[match.speaker] else { continue }
+            if labels[match.speaker] == nil { try store.label(sessionID: id, speakerID: match.speaker, name: person.name) }
+            try peopleStore.updateEmbedding(id: person.id, with: embedding)
+            recognized.append(person.name)
+        }
+        if !recognized.isEmpty { refreshPeople() }
+        return recognized
     }
 
     private func flushAmbient() {
@@ -890,9 +924,31 @@ final class SpeechService: ObservableObject {
             historySources = Dictionary(uniqueKeysWithValues: groups.map { ($0.transcript.id, $0.sourceIDs) })
         } catch { notice = error.localizedDescription }
     }
-    func labelSpeaker(session: String, speaker: String, name: String) {
-        do { try store?.label(sessionID: session, speakerID: speaker, name: name); refreshRecent() }
-        catch { notice = error.localizedDescription }
+    /// Names one speaker in one session. With a voice, the name is also remembered: the embedding joins the person of that name, or starts a new one.
+    func labelSpeaker(session: String, speaker: String, name: String, voice: [Float]? = nil) {
+        do {
+            try store?.label(sessionID: session, speakerID: speaker, name: name); refreshRecent()
+            if let voice, let peopleStore {
+                let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let person = try peopleStore.list().first(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) { try peopleStore.updateEmbedding(id: person.id, with: voice) }
+                else { try peopleStore.add(name: trimmed, embedding: voice) }
+                refreshPeople()
+            }
+        } catch { notice = error.localizedDescription }
+    }
+    /// The speaker pass's voice embedding for one speaker of one session; nil before the pass or for a speaker it did not find.
+    func passEmbedding(session: String, speaker: String) -> [Float]? {
+        (try? speakerStore?.speakers(sessionID: session))?.first { $0.speakerID == speaker }?.embedding
+    }
+    func refreshPeople() {
+        do { people = try peopleStore?.list() ?? [] } catch { notice = error.localizedDescription }
+    }
+    func renamePerson(_ id: String, name: String) {
+        do { try peopleStore?.rename(id: id, name: name); refreshPeople() } catch { notice = error.localizedDescription }
+    }
+    /// Forgets the voice only; names already written into sessions stay.
+    func deletePerson(_ id: String) {
+        do { try peopleStore?.delete(id: id); refreshPeople(); notice = "Person deleted. Their voice is forgotten." } catch { notice = error.localizedDescription }
     }
     func checkModelUpdates() {
         guard !checkingModels else { return }

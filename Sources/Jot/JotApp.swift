@@ -460,20 +460,25 @@ private struct SpeakerNameSheet: View {
     @Binding var draft: String
     let onSave: () -> Void
     let onCancel: () -> Void
+    /// The pass's embedding for this speaker, when it has run; the toggle is offered only then.
+    @State private var voice: [Float]?
+    @State private var remember = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Name this speaker for this session").font(.headline)
             TextField("Name", text: $draft).textFieldStyle(.roundedBorder).frame(width: 280)
+            if voice != nil { Toggle("Remember this voice", isOn: $remember).toggleStyle(.checkbox) }
             HStack {
                 Button("Cancel", action: onCancel)
                 Spacer()
                 Button("Save") {
-                    if let speaker = transcript.speakerID { service.labelSpeaker(session: transcript.sessionID, speaker: speaker, name: draft) }
+                    if let speaker = transcript.speakerID { service.labelSpeaker(session: transcript.sessionID, speaker: speaker, name: draft, voice: remember ? voice : nil) }
                     onSave()
                 }.disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty).keyboardShortcut(.defaultAction)
             }
         }.padding(20)
+        .onAppear { voice = transcript.speakerID.flatMap { service.passEmbedding(session: transcript.sessionID, speaker: $0) } }
     }
 }
 
@@ -544,7 +549,7 @@ private struct SessionsView: View {
                 Button("Regroup", systemImage: "arrow.triangle.2.circlepath") {
                     do { try service.regroupSession(session.sessionID) }
                     catch { service.notice = error.localizedDescription }
-                }.modifier(GlassButton()).help("Re-applies the Tuning sliders to this session's saved words")
+                }.modifier(GlassButton()).help("Rebuilds this session's rows from its speaker pass, or from the Tuning sliders when it has none")
                 Button("Export", systemImage: "square.and.arrow.up") {
                     do { NSWorkspace.shared.activateFileViewerSelecting([try service.exportSession(session.sessionID)]) }
                     catch { service.notice = error.localizedDescription }
@@ -596,6 +601,48 @@ private struct SessionsView: View {
     }
 }
 
+/// The voices Jot remembers. Deleting one forgets the voice; names already written into sessions stay.
+private struct PeopleView: View {
+    @ObservedObject var service: SpeechService
+    @State private var renamingID: String?
+    @State private var nameDraft = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Jot recognizes these voices in new sessions. Delete a person and their voice is forgotten.")
+                .font(.callout).foregroundStyle(.secondary)
+            if service.people.isEmpty {
+                Text("No one yet. Name a speaker in Sessions with \"Remember this voice\" on.").foregroundStyle(.secondary)
+            }
+            ForEach(service.people) { person in
+                HStack(spacing: 10) {
+                    if renamingID == person.id {
+                        TextField("Name", text: $nameDraft).textFieldStyle(.roundedBorder).frame(maxWidth: 280).onSubmit { commitRename(person) }
+                        Button("Save") { commitRename(person) }.modifier(PrimaryGlassButton())
+                        Button("Cancel") { renamingID = nil }.modifier(GlassButton())
+                    } else {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(person.name).font(.headline)
+                            Text("\(person.sampleCount) voice sample\(person.sampleCount == 1 ? "" : "s")").font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Rename", systemImage: "pencil") { nameDraft = person.name; renamingID = person.id }
+                            .labelStyle(.iconOnly).modifier(GlassButton()).help("Rename this person")
+                        Button("Delete", systemImage: "trash", role: .destructive) { service.deletePerson(person.id) }
+                            .labelStyle(.iconOnly).modifier(GlassButton()).help("Forget this voice")
+                    }
+                }.padding(14).frame(maxWidth: 820, alignment: .leading)
+                    .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+            }
+        }.frame(maxWidth: .infinity, alignment: .topLeading)
+        .onAppear { service.refreshPeople() }
+    }
+
+    private func commitRename(_ person: Person) {
+        service.renamePerson(person.id, name: nameDraft); renamingID = nil
+    }
+}
+
 struct TranscriptView: View {
     @ObservedObject var service: SpeechService
     let delegate: JotDelegate
@@ -610,11 +657,12 @@ struct TranscriptView: View {
     @State private var copyReset: Task<Void, Never>?
 
     private enum Section: String, CaseIterable {
-        case history = "History", sessions = "Sessions", vocabulary = "Vocabulary", activity = "Activity", tuning = "Tuning", models = "Models"
+        case history = "History", sessions = "Sessions", people = "People", vocabulary = "Vocabulary", activity = "Activity", tuning = "Tuning", models = "Models"
         var symbol: String {
             switch self {
             case .history: "text.alignleft"
             case .sessions: "rectangle.stack"
+            case .people: "person.2"
             case .vocabulary: "character.book.closed"
             case .activity: "chart.xyaxis.line"
             case .tuning: "slider.horizontal.3"
@@ -679,6 +727,7 @@ struct TranscriptView: View {
                 switch section {
                 case .history: history
                 case .sessions: SessionsView(service: service)
+                case .people: PeopleView(service: service)
                 case .vocabulary: VocabularyView(service: service)
                 case .activity: activity
                 case .tuning: tuning
@@ -843,7 +892,7 @@ struct TranscriptView: View {
                 Text("Hides rows containing only sounds such as um or uh. Original text is kept. Fillers inside sentences stay visible.")
                     .font(.caption).foregroundStyle(.secondary)
                 Divider()
-                Text("Speaker settings apply to new audio and to any session you Regroup from Sessions. Paragraph grouping and filler visibility also update saved history.")
+                Text("Speaker settings apply to new audio and to any session you Regroup that has no speaker pass. Paragraph grouping and filler visibility also update saved history.")
                     .font(.callout).foregroundStyle(.secondary)
                 Text("Try the same short scene twice. Change one setting, then compare words, speaker changes, and paragraph breaks separately.")
                     .font(.callout).foregroundStyle(.secondary)
