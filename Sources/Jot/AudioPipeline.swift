@@ -30,6 +30,8 @@ struct SpeechOutput: Sendable {
     let transcripts: [Transcript]
     let text: String
     let processingSeconds: Double
+    /// The words each ambient transcript was built from, keyed by Transcript.id, with times relative to the job like AttributedWord.
+    var wordsByTranscript: [String: [AttributedWord]] = [:]
 }
 
 /// One inference worker. The controller never submits overlapping jobs.
@@ -116,6 +118,7 @@ actor SpeechPipeline {
         let text = SpokenSymbols.applying(to: result.text.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !text.isEmpty else { return SpeechOutput(transcripts: [], text: "", processingSeconds: Date().timeIntervalSince(begin)) }
         var segments: [Transcript] = []
+        var wordsByTranscript: [String: [AttributedWord]] = [:]
         if job.mode == .ambient, let timings = result.tokenTimings, !timings.isEmpty {
             let words = buildWordTimings(from: timings)
             let attributed = words.map { word -> AttributedWord in
@@ -129,12 +132,13 @@ actor SpeechPipeline {
                     startSeconds: job.offset + turn.start, endSeconds: job.offset + turn.end,
                     text: SpokenSymbols.applying(to: turn.text), speakerID: turn.speaker, mode: job.mode.rawValue)
             }
+            wordsByTranscript = Dictionary(uniqueKeysWithValues: zip(segments, turns).map { ($0.id, Array(attributed[$1.wordRange])) })
         }
         if segments.isEmpty {
             segments = [Transcript(sessionID: job.sessionID, startedAt: job.startedAt, startSeconds: job.offset,
                 endSeconds: job.offset + Double(job.samples.count) / 16000, text: text, speakerID: nil, mode: job.mode.rawValue)]
         }
-        return SpeechOutput(transcripts: segments, text: text, processingSeconds: Date().timeIntervalSince(begin))
+        return SpeechOutput(transcripts: segments, text: text, processingSeconds: Date().timeIntervalSince(begin), wordsByTranscript: wordsByTranscript)
     }
 }
 

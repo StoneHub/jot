@@ -37,6 +37,8 @@ public struct SpeechTurn: Sendable {
     public let start: Double
     public var end: Double
     public var speaker: String?
+    /// Indexes into the words the turn was built from, so their evidence can be stored with the row.
+    public var wordRange: Range<Int>
 }
 
 public enum TranscriptGrouping {
@@ -86,8 +88,16 @@ public enum TranscriptGrouping {
             if let last = result.last, last.speaker == candidates[index], word.start - last.end < tuning.paragraphPause {
                 result[result.count - 1].text += " " + word.text
                 result[result.count - 1].end = word.end
-            } else { result.append(SpeechTurn(text: word.text, start: word.start, end: word.end, speaker: candidates[index])) }
+                result[result.count - 1].wordRange = last.wordRange.lowerBound..<index + 1
+            } else { result.append(SpeechTurn(text: word.text, start: word.start, end: word.end, speaker: candidates[index], wordRange: index..<index + 1)) }
         }
+        return result
+    }
+
+    /// Groups a saved session's stored words in one pass over the whole session, keeping their session-clock times. The original block boundaries and carried speaker are not recoverable; a gap of at least the paragraph pause resets the speaker as it does during capture.
+    public static func regroup(words: [StoredWord], tuning: TranscriptionTuning) -> [SpeechTurn] {
+        var result = turns(words.map { AttributedWord(text: $0.word, start: $0.startSeconds, end: $0.endSeconds, probabilities: $0.probabilities) }, tuning: tuning)
+        for index in result.indices { result[index].text = SpokenSymbols.applying(to: result[index].text) }
         return result
     }
 

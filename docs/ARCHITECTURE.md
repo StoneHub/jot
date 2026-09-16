@@ -8,7 +8,7 @@ FluidAudio is pinned at `5c19d5e12320e22bbfb7a1877b089d2665a69add`. Parakeet v3 
 
 ## Bounds and lifecycle
 
-Ambient speaker attribution uses user-adjustable confidence and minimum-turn duration. Short candidate changes and isolated hesitations retain the preceding confirmed speaker within each inference block; sustained changes create a new turn. This can also merge a genuine short reply. Paragraph pause controls both quiet-boundary flushing and turn grouping. History may combine nearby same-speaker rows and hide filler-only rows without changing stored source text. Settings persist locally and are exposed by status.
+Ambient speaker attribution uses user-adjustable confidence and minimum-turn duration. Short candidate changes and isolated hesitations retain the preceding confirmed speaker within each inference block; sustained changes create a new turn. This can also merge a genuine short reply. Paragraph pause controls both quiet-boundary flushing and turn grouping. History may combine nearby same-speaker rows and hide filler-only rows without changing stored source text. Settings persist locally and are exposed by status. `transcript_words` keeps, for each ambient row, its recognized words with start and end times in the session's clock and the diarizer's four speaker probabilities, never audio; Regroup rebuilds a session's rows from them under the current settings.
 
 - Callback-to-controller queue: 8 seconds of mono float audio.
 - Dictation accumulation: 60 seconds; overflow cancels insertion.

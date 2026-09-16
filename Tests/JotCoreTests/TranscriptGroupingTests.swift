@@ -37,6 +37,7 @@ final class TranscriptGroupingTests: XCTestCase {
         // 0.95 for speaker 2 confirms the half-second reply; 0.7 is not clear enough and stays with the current speaker.
         XCTAssertEqual(TranscriptGrouping.turns(words, tuning: .init()).map(\.speaker), ["speaker-1", "speaker-2", "speaker-1"])
         XCTAssertEqual(TranscriptGrouping.turns(words, tuning: .init()).map(\.text).last, "Alright, Yeah.")
+        XCTAssertEqual(TranscriptGrouping.turns(words, tuning: .init()).map(\.wordRange), [0..<1, 1..<2, 2..<4])
     }
     func testSustainedSpeakerChangeStillSplits() {
         let words = [AttributedWord(text:"First person",start:0,end:1,probabilities:[0.9,0.1]),

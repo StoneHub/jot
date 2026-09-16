@@ -447,6 +447,16 @@ final class SpeechService: ObservableObject {
         notice = "Session deleted."
     }
 
+    /// Rebuilds a saved session's rows from its stored words under the current Tuning. Cleanup text is not re-run.
+    func regroupSession(_ id: String) throws {
+        guard canDeleteSession(id) else { throw JotError.message("Stop recording this session before regrouping it.") }
+        guard let store else { throw JotError.message("Transcript storage is unavailable.") }
+        let words = try store.words(sessionID: id)
+        try store.replaceSession(sessionID: id, words: words, turns: TranscriptGrouping.regroup(words: words, tuning: tuning))
+        didDeleteHistory()
+        notice = "Session regrouped with the current tuning."
+    }
+
     func deleteHistoryCard(_ item: Transcript) throws {
         guard let store else { throw JotError.message("Transcript storage is unavailable.") }
         try store.deleteTranscripts(ids: historySources[item.id] ?? [item.id])
@@ -733,6 +743,13 @@ final class SpeechService: ObservableObject {
                 let sources = output.transcripts
                 if (job.mode == .ambient || job.submittedUptime > historyClearedAt) && !deletedSessions.contains(job.sessionID) {
                     for transcript in sources { try store?.append(transcript) }
+                    // Word evidence is kept in the session's clock so a saved session can be regrouped later. Dictation rows keep none.
+                    let words = sources.flatMap { transcript in
+                        (output.wordsByTranscript[transcript.id] ?? []).enumerated().map { position, word in
+                            StoredWord(transcriptID: transcript.id, position: position, word: word.text, startSeconds: job.offset + word.start, endSeconds: job.offset + word.end, probabilities: word.probabilities)
+                        }
+                    }
+                    try store?.appendWords(words)
                 }
                 let originalTexts = sources.map(\.text)
                 var readable = originalTexts

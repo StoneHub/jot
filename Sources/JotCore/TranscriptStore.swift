@@ -59,6 +59,20 @@ public struct CaptureEvent: Codable, Sendable, Identifiable {
     }
 }
 
+/// One recognized word behind an ambient transcript row: its timing in the session's clock and the diarizer's four speaker probabilities. No audio.
+public struct StoredWord: Codable, Sendable {
+    public var transcriptID: String
+    public var position: Int
+    public var word: String
+    public var startSeconds: Double
+    public var endSeconds: Double
+    public var probabilities: [Float]
+    public init(transcriptID: String, position: Int, word: String, startSeconds: Double, endSeconds: Double, probabilities: [Float]) {
+        self.transcriptID = transcriptID; self.position = position; self.word = word
+        self.startSeconds = startSeconds; self.endSeconds = endSeconds; self.probabilities = probabilities
+    }
+}
+
 public struct StoreMetrics: Codable, Sendable {
     public let transcriptCount: Int
     public let sessionCount: Int
@@ -98,7 +112,7 @@ public final class TranscriptStore: @unchecked Sendable {
         do {
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: databaseURL.path)
             sqlite3_busy_timeout(db, 5_000)
-            try execute("PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS transcripts (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, started_at REAL NOT NULL, start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, text TEXT NOT NULL, speaker_id TEXT, mode TEXT NOT NULL CHECK(mode IN ('ambient','dictation'))); CREATE INDEX IF NOT EXISTS transcript_absolute_time ON transcripts((started_at + start_seconds) DESC, id DESC); CREATE INDEX IF NOT EXISTS transcript_session ON transcripts(session_id); CREATE TABLE IF NOT EXISTS speaker_labels (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY(session_id,speaker_id)); CREATE TABLE IF NOT EXISTS capture_events (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, timestamp REAL NOT NULL, kind TEXT NOT NULL, detail TEXT NOT NULL, duration_seconds REAL CHECK(duration_seconds >= 0)); CREATE INDEX IF NOT EXISTS capture_event_time ON capture_events(timestamp DESC,id DESC); CREATE INDEX IF NOT EXISTS capture_event_session_time ON capture_events(session_id,timestamp DESC,id DESC); CREATE TABLE IF NOT EXISTS session_titles (session_id TEXT PRIMARY KEY, title TEXT NOT NULL); CREATE TABLE IF NOT EXISTS transcript_readable (transcript_id TEXT PRIMARY KEY REFERENCES transcripts(id) ON DELETE CASCADE, text TEXT NOT NULL); PRAGMA user_version=4;")
+            try execute("PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS transcripts (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, started_at REAL NOT NULL, start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, text TEXT NOT NULL, speaker_id TEXT, mode TEXT NOT NULL CHECK(mode IN ('ambient','dictation'))); CREATE INDEX IF NOT EXISTS transcript_absolute_time ON transcripts((started_at + start_seconds) DESC, id DESC); CREATE INDEX IF NOT EXISTS transcript_session ON transcripts(session_id); CREATE TABLE IF NOT EXISTS speaker_labels (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY(session_id,speaker_id)); CREATE TABLE IF NOT EXISTS capture_events (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, timestamp REAL NOT NULL, kind TEXT NOT NULL, detail TEXT NOT NULL, duration_seconds REAL CHECK(duration_seconds >= 0)); CREATE INDEX IF NOT EXISTS capture_event_time ON capture_events(timestamp DESC,id DESC); CREATE INDEX IF NOT EXISTS capture_event_session_time ON capture_events(session_id,timestamp DESC,id DESC); CREATE TABLE IF NOT EXISTS session_titles (session_id TEXT PRIMARY KEY, title TEXT NOT NULL); CREATE TABLE IF NOT EXISTS transcript_readable (transcript_id TEXT PRIMARY KEY REFERENCES transcripts(id) ON DELETE CASCADE, text TEXT NOT NULL); CREATE TABLE IF NOT EXISTS transcript_words (transcript_id TEXT NOT NULL REFERENCES transcripts(id) ON DELETE CASCADE, position INTEGER NOT NULL, word TEXT NOT NULL, start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, p1 REAL, p2 REAL, p3 REAL, p4 REAL, PRIMARY KEY(transcript_id, position)); PRAGMA user_version=5;")
         } catch {
             sqlite3_close(db); db = nil; throw error
         }
@@ -113,14 +127,41 @@ public final class TranscriptStore: @unchecked Sendable {
               transcript.startSeconds >= 0, transcript.endSeconds >= transcript.startSeconds,
               ["ambient", "dictation"].contains(transcript.mode),
               transcript.text.utf8.count <= 1_000_000 else { throw StoreError.invalid("Invalid transcript fields") }
+        try locked { try insert(transcript) }
+    }
+
+    private func insert(_ transcript: Transcript) throws {
+        let stmt = try prepare("INSERT INTO transcripts(id,session_id,started_at,start_seconds,end_seconds,text,speaker_id,mode) VALUES(?,?,?,?,?,?,?,?)")
+        defer { sqlite3_finalize(stmt) }
+        bind(transcript.id, to: 1, in: stmt); bind(transcript.sessionID, to: 2, in: stmt)
+        sqlite3_bind_double(stmt, 3, transcript.startedAt.timeIntervalSince1970)
+        sqlite3_bind_double(stmt, 4, transcript.startSeconds); sqlite3_bind_double(stmt, 5, transcript.endSeconds)
+        bind(transcript.text, to: 6, in: stmt); bind(transcript.speakerID, to: 7, in: stmt); bind(transcript.mode, to: 8, in: stmt)
+        try finish(stmt)
+    }
+
+    /// Rebuilds one session's ambient rows from turns over its stored words in one transaction. Speaker names, title, and events stay; cleanup text (transcript_readable) goes with the old rows and is not re-run.
+    public func replaceSession(sessionID: String, words: [StoredWord], turns: [SpeechTurn]) throws {
+        guard !words.isEmpty else { throw StoreError.invalid("This session was recorded before Jot kept word timings; it cannot be regrouped.") }
+        guard !turns.isEmpty, turns.allSatisfy({ !$0.wordRange.isEmpty && $0.wordRange.lowerBound >= 0 && $0.wordRange.upperBound <= words.count }) else { throw StoreError.invalid("Turns must cover stored words") }
         try locked {
-            let stmt = try prepare("INSERT INTO transcripts(id,session_id,started_at,start_seconds,end_seconds,text,speaker_id,mode) VALUES(?,?,?,?,?,?,?,?)")
-            defer { sqlite3_finalize(stmt) }
-            bind(transcript.id, to: 1, in: stmt); bind(transcript.sessionID, to: 2, in: stmt)
-            sqlite3_bind_double(stmt, 3, transcript.startedAt.timeIntervalSince1970)
-            sqlite3_bind_double(stmt, 4, transcript.startSeconds); sqlite3_bind_double(stmt, 5, transcript.endSeconds)
-            bind(transcript.text, to: 6, in: stmt); bind(transcript.speakerID, to: 7, in: stmt); bind(transcript.mode, to: 8, in: stmt)
-            try finish(stmt)
+            try deletion {
+                let find = try prepare("SELECT MIN(started_at) FROM transcripts WHERE session_id = ? AND mode = 'ambient'")
+                defer { sqlite3_finalize(find) }
+                bind(sessionID, to: 1, in: find)
+                guard sqlite3_step(find) == SQLITE_ROW, sqlite3_column_type(find, 0) != SQLITE_NULL else { throw StoreError.invalid("No saved session to regroup") }
+                let startedAt = Date(timeIntervalSince1970: sqlite3_column_double(find, 0))
+                let clear = try prepare("DELETE FROM transcripts WHERE session_id = ? AND mode = 'ambient'")
+                defer { sqlite3_finalize(clear) }
+                bind(sessionID, to: 1, in: clear); try finish(clear)
+                for turn in turns {
+                    let transcript = Transcript(sessionID: sessionID, startedAt: startedAt, startSeconds: turn.start, endSeconds: turn.end, text: turn.text, speakerID: turn.speaker, mode: "ambient")
+                    guard transcript.startSeconds >= 0, transcript.endSeconds >= transcript.startSeconds else { throw StoreError.invalid("Invalid transcript fields") }
+                    let rebuilt = words[turn.wordRange].enumerated().map { StoredWord(transcriptID: transcript.id, position: $0.offset, word: $0.element.word, startSeconds: $0.element.startSeconds, endSeconds: $0.element.endSeconds, probabilities: $0.element.probabilities) }
+                    try validate(rebuilt)
+                    try insert(transcript); try insert(rebuilt)
+                }
+            }
         }
     }
 
@@ -133,6 +174,70 @@ public final class TranscriptStore: @unchecked Sendable {
             bind(text, to: 1, in: stmt); bind(source.id, to: 2, in: stmt); bind(source.text, to: 3, in: stmt)
             try finish(stmt)
         }
+    }
+
+    /// The words one inference block produced, in one transaction. Each word must belong to a saved transcript; positions and start times must ascend within a transcript.
+    public func appendWords(_ words: [StoredWord]) throws {
+        guard words.count <= 20_000 else { throw StoreError.invalid("Too many words in one batch") }
+        try validate(words)
+        try locked {
+            try execute("BEGIN IMMEDIATE")
+            do { try insert(words); try execute("COMMIT") }
+            catch { try? execute("ROLLBACK"); throw error }
+        }
+    }
+
+    /// Every stored word of one session in time order, the input for regrouping or a later speaker pass.
+    public func words(sessionID: String) throws -> [StoredWord] {
+        try locked { try words(where: "JOIN transcripts t ON t.id = w.transcript_id WHERE t.session_id = ?", value: sessionID) }
+    }
+
+    public func words(transcriptID: String) throws -> [StoredWord] {
+        try locked { try words(where: "WHERE w.transcript_id = ?", value: transcriptID) }
+    }
+
+    private func validate(_ words: [StoredWord]) throws {
+        var previous: StoredWord?
+        for word in words {
+            guard !word.transcriptID.isEmpty, word.word.utf8.count <= 1_000, word.position >= 0,
+                  word.startSeconds.isFinite, word.endSeconds.isFinite, word.startSeconds >= 0, word.endSeconds >= word.startSeconds,
+                  word.probabilities.count <= 4, word.probabilities.allSatisfy(\.isFinite) else { throw StoreError.invalid("Invalid word fields") }
+            if let previous, previous.transcriptID == word.transcriptID {
+                guard word.position > previous.position, word.startSeconds >= previous.startSeconds else { throw StoreError.invalid("Words must ascend within a transcript") }
+            }
+            previous = word
+        }
+    }
+
+    /// Caller holds the lock and the transaction; the words were validated already.
+    private func insert(_ words: [StoredWord]) throws {
+        let stmt = try prepare("INSERT INTO transcript_words(transcript_id,position,word,start_seconds,end_seconds,p1,p2,p3,p4) VALUES(?,?,?,?,?,?,?,?,?)")
+        defer { sqlite3_finalize(stmt) }
+        for word in words {
+            sqlite3_reset(stmt)
+            bind(word.transcriptID, to: 1, in: stmt); sqlite3_bind_int64(stmt, 2, Int64(word.position)); bind(word.word, to: 3, in: stmt)
+            sqlite3_bind_double(stmt, 4, word.startSeconds); sqlite3_bind_double(stmt, 5, word.endSeconds)
+            for slot in 0..<4 {
+                if slot < word.probabilities.count { sqlite3_bind_double(stmt, Int32(6 + slot), Double(word.probabilities[slot])) } else { sqlite3_bind_null(stmt, Int32(6 + slot)) }
+            }
+            try finish(stmt)
+        }
+    }
+
+    private func words(where clause: String, value: String) throws -> [StoredWord] {
+        let stmt = try prepare("SELECT w.transcript_id,w.position,w.word,w.start_seconds,w.end_seconds,w.p1,w.p2,w.p3,w.p4 FROM transcript_words w \(clause) ORDER BY w.start_seconds,w.position")
+        defer { sqlite3_finalize(stmt) }
+        bind(value, to: 1, in: stmt)
+        var result: [StoredWord] = []
+        while true {
+            let status = sqlite3_step(stmt)
+            if status == SQLITE_DONE { break }
+            guard status == SQLITE_ROW else { throw error() }
+            let probabilities = (Int32(5)..<9).prefix { sqlite3_column_type(stmt, $0) != SQLITE_NULL }.map { Float(sqlite3_column_double(stmt, $0)) }
+            result.append(StoredWord(transcriptID: column(stmt, 0)!, position: Int(sqlite3_column_int64(stmt, 1)), word: column(stmt, 2)!,
+                startSeconds: sqlite3_column_double(stmt, 3), endSeconds: sqlite3_column_double(stmt, 4), probabilities: probabilities))
+        }
+        return result
     }
 
     public func search(_ query: String, limit: Int = 50, offset: Int = 0) throws -> [Transcript] {
