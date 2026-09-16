@@ -44,6 +44,13 @@ final class SpeechService: ObservableObject {
             updateKeepAwakeAssertion()
         }
     }
+    /// Off means no audio reaches disk and no speaker pass runs. Switching off mid-session deletes that session's file; switching on waits for the next session, since a file that starts mid-session would misplace every segment.
+    @Published var keepAudioForSpeakerPass = UserDefaults.standard.object(forKey: JotDefaultsKey.keepAudioForSpeakerPass) as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(keepAudioForSpeakerPass, forKey: JotDefaultsKey.keepAudioForSpeakerPass)
+            if !keepAudioForSpeakerPass { sessionAudio?.discard(); sessionAudio = nil }
+        }
+    }
 
     @Published var cleanUpTranscriptions = UserDefaults.standard.object(forKey: JotDefaultsKey.cleanUpTranscriptions) as? Bool ?? true {
         didSet { UserDefaults.standard.set(cleanUpTranscriptions, forKey: JotDefaultsKey.cleanUpTranscriptions) }
@@ -562,7 +569,7 @@ final class SpeechService: ObservableObject {
         try capture.start()
         sessionID = UUID().uuidString; sessionStarted = Date(); ambientOffset = 0; activeSessionID = sessionID
         ambient = []; silentSeconds = 0; ambientEnabled = true; updateKeepAwakeAssertion(); updateMode()
-        sessionAudio = SessionAudioFile(sessionID: sessionID)
+        if keepAudioForSpeakerPass { sessionAudio = SessionAudioFile(sessionID: sessionID) }
         recordEvent(.started, "Ambient microphone capture started."); notice = ""
     }
 

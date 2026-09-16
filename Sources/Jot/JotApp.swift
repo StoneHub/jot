@@ -804,6 +804,10 @@ struct TranscriptView: View {
                         .toggleStyle(.switch)
                     Text("Restores the previous mute state when you release your shortcut. Other audio outputs are unchanged. Media keeps playing silently.")
                         .font(.caption).foregroundStyle(.secondary)
+                    Toggle("Keep session audio until the speaker pass finishes", isOn: $service.keepAudioForSpeakerPass)
+                        .toggleStyle(.switch)
+                    Text("Audio is deleted right after the pass. Turn off to never write audio to disk.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Clean up ambient speech and meetings", isOn: $service.cleanUpTranscriptions)
