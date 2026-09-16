@@ -13,6 +13,7 @@ enum CaptureEventKind: String {
     case started, paused, stopped, sleep
     case ambientOff = "ambient_off", deviceChange = "device_change", inputStalled = "input_stalled"
     case audioGap = "audio_gap", audioDiscarded = "audio_discarded", processingError = "processing_error"
+    case speakerPass = "speaker_pass"
 }
 
 @MainActor
@@ -183,6 +184,7 @@ final class SpeechService: ObservableObject {
     private let sampler = ResourceSampler()
     private let keepAwake = KeepAwakeAssertion()
     var store: TranscriptStore?
+    var speakerStore: SpeakerPassStore?
     private var server: LocalServiceServer?
     private var timer: Timer?
     var diagnosticActive = false
@@ -196,6 +198,9 @@ final class SpeechService: ObservableObject {
     private var ambient: [Float] = []
     /// The session's audio on disk for the speaker pass; nil while no ambient session runs.
     private var sessionAudio: SessionAudioFile?
+    @Published private(set) var speakerPassRunning = false
+    /// Passes run one at a time in session order; a pass survives a pause and finishes on its own.
+    private var speakerPassQueue: Task<Void, Never>?
     private var silentSeconds = 0.0
     private var dictation: [Float] = []
     private var dictationActive = false
@@ -228,6 +233,7 @@ final class SpeechService: ObservableObject {
         catch { vocabularyLoadError = "Could not load vocabulary. Saved entries were preserved. " + error.localizedDescription }
         do {
             store = try TranscriptStore()
+            speakerStore = try SpeakerPassStore()
             let service = LocalServiceServer { [weak self] data in
                 guard let self else { return Data("{\"ok\":false,\"error\":\"Service unavailable\"}".utf8) }
                 return await self.handle(data)
@@ -429,7 +435,7 @@ final class SpeechService: ObservableObject {
             guard lifecycle.phase == .ready else { ambientEnabled = false; updateMode(); return }
             if !dictationActive { capture.stop(); updateKeepAwakeAssertion() }
             drainAudio()
-            if ambientEnabled { flushAmbient(); recordEvent(.ambientOff, "Ambient transcription switched off."); endSessionAudio() }
+            if ambientEnabled { flushAmbient(); recordEvent(.ambientOff, "Ambient transcription switched off."); endSessionAudio(runPass: true) }
             ambientEnabled = false; updateMode(); level = 0; kickWorker()
         }
     }
@@ -592,7 +598,7 @@ final class SpeechService: ObservableObject {
         let discarded = AudioClock.seconds(samples: packet.samples.count + packet.dropped + ambient.count + dictation.count + jobs.reduce(0) { $0 + $1.samples.count })
         if discarded > 0 { recordEvent(.audioDiscarded, "Unfinished audio discarded by Pause.") }
         if ambientEnabled { recordEvent(.paused, "Service paused.") }
-        endSessionAudio()
+        endSessionAudio(runPass: automatic)
         let outcome = PauseOutcome(automatic: automatic, ambientRequested: ambientRequested, meetingTitle: meetingTitle)
         ambientRequested = outcome.ambientRequested; meetingTitle = outcome.meetingTitle; ambientEnabled = false
         cancelDictation(); input.disable(); fnEnabled = false
@@ -705,9 +711,33 @@ final class SpeechService: ObservableObject {
         }
     }
 
-    /// The file is deleted as soon as the session ends; the speaker pass will read it first in a later commit.
-    private func endSessionAudio() {
-        sessionAudio?.discard(); sessionAudio = nil
+    /// The normal end and an automatic pause run the pass, since Resume starts a new session and this one is complete. The Pause button discards the file along with the rest of its unfinished audio.
+    private func endSessionAudio(runPass: Bool) {
+        guard let file = sessionAudio else { return }
+        sessionAudio = nil
+        guard runPass else { file.discard(); return }
+        let previous = speakerPassQueue
+        speakerPassQueue = Task { await previous?.value; await runSpeakerPass(file) }
+    }
+
+    /// The pass runs off the main actor; only its outcome lands here. An export that already happened used the live labels, and this phase does not relabel rows.
+    private func runSpeakerPass(_ file: SessionAudioFile) async {
+        let id = file.sessionID
+        speakerPassRunning = true
+        defer { speakerPassRunning = false }
+        do {
+            guard let audio = try await file.finish() else { return }
+            let result = try await pipeline.speakerPass.run(url: audio.url)
+            guard !deletedSessions.contains(id) else { return }
+            try speakerStore?.replace(sessionID: id, result: result)
+            let count = result.speakers.count
+            let scope = audio.truncated ? " (first two hours)" : ""
+            recordEvent(.speakerPass, "Speaker pass found \(count) speaker\(count == 1 ? "" : "s") in \(TranscriptExport.clock(result.durationSeconds)) of audio\(scope), \(String(format: "%.1f", result.processingSeconds)) s of processing.", duration: result.durationSeconds, session: id)
+            notice = "Speaker pass finished: \(count) speakers."
+        } catch {
+            recordEvent(.processingError, "Speaker pass: \(error.localizedDescription)", session: id)
+            notice = "Speaker pass failed: \(error.localizedDescription)"
+        }
     }
 
     private func flushAmbient() {

@@ -15,7 +15,7 @@ extension SpeechService {
             "microphonePermission": AVCaptureDevice.authorizationStatus(for: .audio).rawValue,
             "accessibilityGranted": DictationInput.accessibilityGranted, "fnEnabled": fnEnabled,
             "dictationShortcut": shortcut.displayName, "fnRequested": fnRequested, "ambientRequested": ambientRequested, "ambientEnabled": ambientEnabled, "keepMacAwakeWhileListening": keepMacAwakeWhileListening, "keepAwakeActive": keepAwakeActive, "servicePhase": lifecycle.phase.rawValue,
-            "notice": notice, "sessionID": sessionID, "inferenceRunning": processing != nil || diagnosticActive, "resources": try object(resources),
+            "notice": notice, "sessionID": sessionID, "inferenceRunning": processing != nil || diagnosticActive, "speakerPassRunning": speakerPassRunning, "resources": try object(resources),
             "droppedAudioSeconds": droppedSeconds, "queuedAudioSeconds": pendingAudioSeconds, "processingLagSeconds": lagSeconds,
             "lastInferenceSeconds": lastInferenceSeconds, "processedAudioSeconds": processedAudioSeconds,
             "audioRetention": keepAudioForSpeakerPass ? "session audio kept until the speaker pass finishes, then deleted" : "bounded RAM only; no recordings saved", "speakerSlots": 4,

@@ -30,7 +30,7 @@ final class ModelCacheTests: XCTestCase {
 
     func testExpectedTotalMatchesTheListedModelsSoThePromptAndRowsAgree() {
         XCTAssertEqual(ModelCache.expectedBytes, ModelCache.expected.reduce(0) { $0 + $1.bytes })
-        XCTAssertEqual(ModelCache.expected.count, 3)
+        XCTAssertEqual(ModelCache.expected.count, 5)
         XCTAssertTrue(ModelCache.expected.allSatisfy { $0.bytes > 0 && !$0.purpose.isEmpty })
     }
 
