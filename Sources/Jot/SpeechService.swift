@@ -80,6 +80,8 @@ final class SpeechService: ObservableObject {
     @Published var history: [Transcript] = []
     @Published var events: [CaptureEvent] = []
     @Published var hasMoreHistory = false
+    /// Every saved dictation row, for the Dictations count in the sidebar.
+    @Published private(set) var dictationCount = 0
     @Published var modelUpdates = ModelUpdate.defaults
     @Published var checkingModels = false
     @Published var micPermission = AVCaptureDevice.authorizationStatus(for: .audio)
@@ -454,7 +456,7 @@ final class SpeechService: ObservableObject {
         lastExport = nil
         historyLimit = 50
         didDeleteHistory()
-        notice = "Dictation history cleared. Sessions were kept."
+        notice = "Dictations cleared. Sessions were kept."
     }
 
     func canDeleteSession(_ id: String) -> Bool { !(id == activeSessionID && ambientEnabled) }
@@ -927,6 +929,7 @@ final class SpeechService: ObservableObject {
                 if items.count < count { break }
             }
             hasMoreHistory = found.count > historyLimit
+            dictationCount = try store?.count(mode: "dictation") ?? 0
             let groups = TranscriptGrouping.historyGroups(Array(found.prefix(historyLimit)), tuning: tuning)
             history = groups.map(\.transcript)
             historySources = Dictionary(uniqueKeysWithValues: groups.map { ($0.transcript.id, $0.sourceIDs) })

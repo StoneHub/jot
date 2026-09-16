@@ -18,7 +18,7 @@ struct SelectableHistory: NSViewRepresentable {
         text.drawsBackground = false
         text.textContainerInset = NSSize(width: 10, height: 12)
         text.delegate = context.coordinator
-        text.setAccessibilityLabel("Selectable transcript history")
+        text.setAccessibilityLabel("Selectable dictations")
         scroll.drawsBackground = false
         scroll.hasHorizontalScroller = false
         scroll.hasVerticalScroller = true

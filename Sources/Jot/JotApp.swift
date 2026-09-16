@@ -651,8 +651,6 @@ struct TranscriptView: View {
     @ObservedObject var service: SpeechService
     let delegate: JotDelegate
     @Environment(\.openWindow) private var openWindow
-    @State private var selected: Transcript?
-    @State private var label = ""
     @State private var copiedID: String?
     @State private var showHistory = true
     @AppStorage(JotDefaultsKey.historyTextView) private var historyTextView = true
@@ -661,11 +659,11 @@ struct TranscriptView: View {
     @State private var copyReset: Task<Void, Never>?
 
     private enum Section: String, CaseIterable {
-        case live = "Live", history = "History", sessions = "Sessions", people = "People", vocabulary = "Vocabulary", activity = "Activity", tuning = "Tuning", models = "Models"
+        case live = "Live", dictations = "Dictations", sessions = "Sessions", people = "People", vocabulary = "Vocabulary", activity = "Activity", tuning = "Tuning", models = "Models"
         var symbol: String {
             switch self {
             case .live: "dot.radiowaves.left.and.right"
-            case .history: "text.alignleft"
+            case .dictations: "text.alignleft"
             case .sessions: "rectangle.stack"
             case .people: "person.2"
             case .vocabulary: "character.book.closed"
@@ -690,6 +688,7 @@ struct TranscriptView: View {
                                     .font(.body.weight(section == item ? .semibold : .regular))
                                 Spacer(minLength: 0)
                                 if item == .live && service.ambientEnabled { Circle().fill(.red).frame(width: 8, height: 8).accessibilityLabel("Recording") }
+                                if let count = count(item) { countPill(count) }
                             }
                                 .frame(maxWidth: .infinity, alignment: .leading).padding(12)
                                 .contentShape(RoundedRectangle(cornerRadius: 14))
@@ -718,7 +717,7 @@ struct TranscriptView: View {
                 }
                 switch section {
                 case .live: LiveView(service: service)
-                case .history: history
+                case .dictations: dictations
                 case .sessions: SessionsView(service: service)
                 case .people: PeopleView(service: service)
                 case .vocabulary: VocabularyView(service: service)
@@ -736,28 +735,25 @@ struct TranscriptView: View {
         .background(WindowAttachment(attach: delegate.attach))
         .onAppear { delegate.openAction = { openWindow(id: "main") } }
         .onDisappear { copyReset?.cancel() }
-        .onChange(of: service.historyRevision) { _, _ in selected = nil; copiedID = nil }
+        .onChange(of: service.historyRevision) { _, _ in copiedID = nil }
         // Capture starting is the one moment Live is opened for the user; after that the choice is theirs.
         .onChange(of: service.ambientEnabled) { _, on in if on { section = .live } }
-        .sheet(item: $selected) { item in
-            SpeakerNameSheet(transcript: item, service: service, draft: $label, onSave: { selected = nil }, onCancel: { selected = nil })
-        }
     }
 
     private var titleRow: some View {
         HStack {
             Text(section.rawValue).font(.system(size: 26, weight: .bold, design: .rounded))
             Spacer()
-            if section == .history {
-                Button("Open History in Finder", systemImage: "folder") {
+            if section == .dictations {
+                Button("Open Dictations in Finder", systemImage: "folder") {
                     NSWorkspace.shared.activateFileViewerSelecting([JotPaths.directory.appendingPathComponent("transcripts.sqlite3")])
                 }
                 .labelStyle(.iconOnly)
-                .accessibilityLabel("Open History in Finder")
+                .accessibilityLabel("Open Dictations in Finder")
                 .modifier(GlassButton())
-                .help("Shows the transcript database. Quit Jot before moving history files to Trash.")
+                .help("Shows the transcript database. Quit Jot before moving its files to Trash.")
                 Button("Clear", systemImage: "clear", role: .destructive) {
-                    do { try service.clearHistory(); search = ""; selected = nil; copiedID = nil }
+                    do { try service.clearHistory(); search = ""; copiedID = nil }
                     catch { service.notice = error.localizedDescription }
                 }.modifier(GlassButton()).help("Delete every saved dictation. Sessions are deleted from the Sessions tab.")
                 Button(showHistory ? "Hide" : "Show", systemImage: showHistory ? "eye.slash" : "eye") { showHistory.toggle() }
@@ -765,20 +761,31 @@ struct TranscriptView: View {
             }
         }
     }
+    private func count(_ item: Section) -> Int? {
+        switch item {
+        case .dictations: service.dictationCount
+        case .sessions: service.sessions.count
+        default: nil
+        }
+    }
+    private func countPill(_ count: Int) -> some View {
+        Text(count, format: .number).font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+            .padding(.horizontal, 7).padding(.vertical, 2).background(.quaternary.opacity(0.5), in: Capsule())
+    }
 
-    private var history: some View {
+    private var dictations: some View {
         VStack(alignment: .leading, spacing: 14) {
-            TextField("Search transcripts", text: $search)
+            TextField("Search dictations", text: $search)
                 .textFieldStyle(.roundedBorder)
                 .fixedSize(horizontal: false, vertical: true)
                 .onChange(of: search) { _, value in service.searchHistory(value) }
             if showHistory {
                 HStack {
-                    Picker("History view", selection: $historyTextView) {
+                    Picker("Dictations view", selection: $historyTextView) {
                         Text("Text").tag(true)
                         Text("Cards").tag(false)
                     }.pickerStyle(.segmented).labelsHidden().frame(width: 150)
-                        .accessibilityLabel("History view")
+                        .accessibilityLabel("Dictations view")
                     if historyTextView {
                         Text("Drag to highlight, then ⌘C. ⌘A selects all loaded text.")
                             .font(.caption).foregroundStyle(.secondary)
@@ -786,9 +793,9 @@ struct TranscriptView: View {
                 }
             }
             if !showHistory {
-                empty("History hidden", symbol: "eye.slash")
+                empty("Dictations hidden", symbol: "eye.slash")
             } else if service.history.isEmpty {
-                empty(search.isEmpty ? "No transcripts yet" : "No matches", symbol: "text.alignleft")
+                empty(search.isEmpty ? "No dictations yet" : "No matches", symbol: "text.alignleft")
             } else if historyTextView {
                 SelectableHistory(transcripts: service.history, search: search)
                     .id(service.historyRevision)
@@ -820,9 +827,6 @@ struct TranscriptView: View {
                                     .accessibilityLabel("Copy \(item.mode) transcript")
                                     .accessibilityValue(copiedID == item.id ? "Copied" : item.text)
                                 HStack {
-                                    if item.speakerID != nil && item.speakerID != "overlap" {
-                                        Button("Name speaker") { selected = item; label = item.speakerLabel ?? "" }.font(.caption).buttonStyle(.link)
-                                    }
                                     Spacer()
                                     Button("Delete transcript", systemImage: "trash", role: .destructive) {
                                         do { try service.deleteHistoryCard(item) }
@@ -904,12 +908,12 @@ struct TranscriptView: View {
                     detail: "Higher reduces speaker changes from brief hesitations. Short real replies may stay with the previous speaker.")
                 tuningSlider("Pause between paragraphs", value: $service.tuning.paragraphPause, range: 0.3...2.5, step: 0.1,
                     valueText: String(format: "%.1f s", service.tuning.paragraphPause),
-                    detail: "Longer pauses make fewer, longer rows. Nearby history rows from the same speaker are also grouped.")
+                    detail: "Longer pauses make fewer, longer rows. Nearby dictation rows from the same speaker are also grouped.")
                 Toggle("Hide filler-only rows", isOn: $service.tuning.hideFillerRows).toggleStyle(.switch)
                 Text("Hides rows containing only sounds such as um or uh. Original text is kept. Fillers inside sentences stay visible.")
                     .font(.caption).foregroundStyle(.secondary)
                 Divider()
-                Text("Speaker settings apply to new audio and to any session you Regroup that has no speaker pass. Paragraph grouping and filler visibility also update saved history.")
+                Text("Speaker settings apply to new audio and to any session you Regroup that has no speaker pass. Paragraph grouping and filler visibility also update saved dictations.")
                     .font(.callout).foregroundStyle(.secondary)
                 Text("Try the same short scene twice. Change one setting, then compare words, speaker changes, and paragraph breaks separately.")
                     .font(.callout).foregroundStyle(.secondary)
