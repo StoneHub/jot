@@ -352,7 +352,7 @@ private struct ModelDownloadPrompt: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Download speech models?").font(.headline)
-            Text("Jot downloads \(ModelCache.formatted(bytes)) once, then transcribes on this Mac without sending audio anywhere.")
+            Text("Jot downloads \(ModelCache.formatted(bytes)) once, then transcribes and separates speakers on this Mac without sending audio anywhere.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             ForEach(ModelCache.expected) { model in
                 HStack(alignment: .firstTextBaseline) {
