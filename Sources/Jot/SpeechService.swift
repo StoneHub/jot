@@ -80,6 +80,8 @@ final class SpeechService: ObservableObject {
     @Published var history: [Transcript] = []
     @Published var events: [CaptureEvent] = []
     @Published var hasMoreHistory = false
+    /// Every saved dictation row, for the Dictations count in the sidebar.
+    @Published private(set) var dictationCount = 0
     @Published var modelUpdates = ModelUpdate.defaults
     @Published var checkingModels = false
     @Published var micPermission = AVCaptureDevice.authorizationStatus(for: .audio)
@@ -196,7 +198,8 @@ final class SpeechService: ObservableObject {
     var diagnostic: Task<SpeechOutput, Error>?
     private var tickCount = 0
     var sessionID = UUID().uuidString
-    private var sessionStarted = Date()
+    /// Wall-clock start of the current ambient session; Live counts elapsed time from it.
+    private(set) var sessionStarted = Date()
     private var ambientOffset = 0.0
     private var ambient: [Float] = []
     /// The session's audio on disk for the speaker pass; nil while no ambient session runs.
@@ -453,7 +456,7 @@ final class SpeechService: ObservableObject {
         lastExport = nil
         historyLimit = 50
         didDeleteHistory()
-        notice = "Dictation history cleared. Sessions were kept."
+        notice = "Dictations cleared. Sessions were kept."
     }
 
     func canDeleteSession(_ id: String) -> Bool { !(id == activeSessionID && ambientEnabled) }
@@ -506,6 +509,12 @@ final class SpeechService: ObservableObject {
         catch { notice = error.localizedDescription; return [] }
     }
 
+    /// Rows from any ambient session whose text contains the query, newest first, for the Sessions search.
+    func searchSessions(_ query: String) -> [Transcript] {
+        guard let store, !query.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
+        do { return try store.search(query, mode: "ambient", limit: 50) } catch { notice = error.localizedDescription; return [] }
+    }
+
     func renameSession(_ id: String, title: String) {
         do { try store?.setTitle(sessionID: id, title: title); refreshSessions() }
         catch { notice = error.localizedDescription }
@@ -545,6 +554,13 @@ final class SpeechService: ObservableObject {
             try store?.setTitle(sessionID: sessionID, title: trimmed)
             refreshSessions()
         } catch { meetingTitle = nil; notice = error.localizedDescription }
+    }
+
+    /// Renames the running meeting: the name goes on its session now and on any continuation after an automatic pause.
+    func renameMeeting(_ title: String) {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard meetingTitle != nil, !trimmed.isEmpty, let id = activeSessionID else { return }
+        meetingTitle = trimmed; renameSession(id, title: trimmed)
     }
 
     /// A meeting kept through an automatic pause records on into a new session under the same name. The earlier part stays in Sessions, and TranscriptExport.write adds " (2)" to a duplicate file name.
@@ -919,6 +935,7 @@ final class SpeechService: ObservableObject {
                 if items.count < count { break }
             }
             hasMoreHistory = found.count > historyLimit
+            dictationCount = try store?.count(mode: "dictation") ?? 0
             let groups = TranscriptGrouping.historyGroups(Array(found.prefix(historyLimit)), tuning: tuning)
             history = groups.map(\.transcript)
             historySources = Dictionary(uniqueKeysWithValues: groups.map { ($0.transcript.id, $0.sourceIDs) })

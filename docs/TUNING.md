@@ -2,7 +2,7 @@
 
 Balanced now uses a 1.5-second paragraph pause and a 1.2-second minimum speaker turn, keeping confidence at 0.65. Existing saved settings are preserved; choose Balanced to try the new values.
 
-History now folds unfinished-sentence continuations just like session exports, including up to 100 ms of timestamp overlap. Raw SQLite rows and MCP recent/search results remain unchanged; use MCP session export for readable conversation context. Brief uncertainty under two seconds can retain the preceding speaker during new capture; sustained uncertainty remains unattributed. This is a continuity heuristic, not verified speaker identity.
+Dictations now folds unfinished-sentence continuations just like session exports, including up to 100 ms of timestamp overlap. Raw SQLite rows and MCP recent/search results remain unchanged; use MCP session export for readable conversation context. Brief uncertainty under two seconds can retain the preceding speaker during new capture; sustained uncertainty remains unattributed. This is a continuity heuristic, not verified speaker identity.
 
 Open **Tuning** in the native app. Start with Balanced, or use Steadier speakers when brief hesitations cause extra speaker turns.
 
@@ -12,9 +12,9 @@ Open **Tuning** in the native app. Start with Balanced, or use Steadier speakers
 | Minimum speaker turn | Requires sustained evidence before changing the current speaker | Short real replies can stay with the preceding speaker |
 | (built in) | A reply of 0.3 s or more whose voice the diarizer is sure about (0.85 or higher, nobody else above the confidence setting) switches speaker regardless of the minimum turn | A quiet or mumbled short reply still merges |
 | Pause between paragraphs | Groups nearby words and same-speaker rows | Longer values create fewer, longer rows and can delay ambient results |
-| Hide filler-only rows | Hides isolated um/uh/hmm rows in history | Original text remains in SQLite and CLI/MCP; fillers within sentences remain visible |
+| Hide filler-only rows | Hides isolated um/uh/hmm rows in Dictations | Original text remains in SQLite and CLI/MCP; fillers within sentences remain visible |
 
-Speaker settings apply to new audio and to any session you regroup. History presentation changes immediately for paragraph grouping and filler visibility. This does not rerun old audio: recordings are not retained. Source words are not rewritten or deleted. Settings persist and are reported by `jot status` / MCP status.
+Speaker settings apply to new audio and to any session you regroup. Dictations presentation changes immediately for paragraph grouping and filler visibility. This does not rerun old audio: recordings are not retained. Source words are not rewritten or deleted. Settings persist and are reported by `jot status` / MCP status.
 
 ## Regroup a saved session
 

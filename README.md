@@ -6,17 +6,17 @@
 <p align="center"><strong>Hold Fn. Speak. Done.</strong><br>Local dictation and ambient transcription for your Mac.</p>
 <p align="center">Apple Silicon · macOS 14+ · SwiftUI · CLI + MCP</p>
 
-![Jot running on macOS, showing a single test dictation in searchable history](docs/images/jot-history.jpg)
+![Jot running on macOS, showing a single test dictation in searchable Dictations](docs/images/jot-history.jpg)
 
 Jot turns your voice into text in the focused field. Hold **Fn** (or your custom shortcut) to dictate, or switch on **ambient transcription** to keep a searchable transcript with up to four speaker labels you can name per session. Speech recognition runs on your Mac through [FluidAudio](https://github.com/FluidInference/FluidAudio).
 
 - **Speak into your apps.** Release Fn to insert your words without sending the message.
-- **Keep the words.** Search local history, select text across statements, or copy a single card.
+- **Keep the words.** Search local dictations, select text across statements, or copy a single card.
 - **Stay in control.** Separate dictation and ambient switches. Pause stops processing and unloads models.
 - **Give agents context.** Search and read transcripts through the bundled CLI and MCP server.
 - **Feel at home on the Mac.** System accent colors, native Liquid Glass on macOS 26, and material fallbacks on earlier versions.
 
-*Screenshot shows an earlier Jot build with a harmless test dictation. The current app also includes Sessions, Vocabulary, and configurable dictation controls.*
+*Screenshot shows an earlier Jot build with a harmless test dictation. The current app also includes Live, Sessions, Vocabulary, and configurable dictation controls.*
 
 ## Get started
 
@@ -40,13 +40,13 @@ Dictation supports up to 60 seconds per hold. It cancels if focus changes, skips
 
 **Keep Mac awake during ambient capture:** turn this on beneath **Ambient transcription** to prevent idle sleep while ambient capture or a meeting is recording. It releases automatically when ambient capture stops, and does not block manual sleep, lid close, shutdown, or battery-critical sleep.
 
-**Start meeting** records ambient capture under a name. **End meeting** waits for the last audio, saves the whole transcript as Markdown in `~/Documents/Jot Sessions`, and shows the file in Finder. If the Mac sleeps or the microphone changes during a meeting, **Resume** continues it as a second session with the same name; **End meeting** saves the latest part, and the earlier part can be exported from **Sessions**. **Sessions** lists every capture session; open one to read it whole, rename it, name speakers, copy it, or export it.
+**Start meeting** records ambient capture under a name. **End meeting** waits for the last audio, saves the whole transcript as Markdown in `~/Documents/Jot Sessions`, and shows the file in Finder. If the Mac sleeps or the microphone changes during a meeting, **Resume** continues it as a second session with the same name; **End meeting** saves the latest part, and the earlier part can be exported from **Sessions**. **Sessions** lists every capture session; open one to read it whole, rename it, name speakers, copy it, or export it. **Live** shows the session being recorded as it grows, with the meeting name, elapsed time, and speaker chips you can click to name.
 
-**History** lists your dictations. Search them, select text across statements, and press ⌘C to copy. **Load more** adds older results. Cards view supports individual copying. **Clear** in History permanently deletes every saved dictation, including rows outside the current search or loaded page. Ambient and meeting transcripts live in **Sessions**, which has its own delete. History cards and sessions each have a trash button for individual deletion. Existing exported files are separate. New dictation starts a fresh history.
+**Dictations** lists your dictations. Search them, select text across statements, and press ⌘C to copy. **Load more** adds older results. Cards view supports individual copying. **Clear** in Dictations permanently deletes every saved dictation, including rows outside the current search or loaded page. Ambient and meeting transcripts live in **Sessions**, which has its own delete and a search across every saved session. Dictation cards and sessions each have a trash button for individual deletion. Existing exported files are separate. New dictation starts a fresh list.
 
 **Clean up captured speech:** ambient speech and meetings automatically use Apple's on-device language model when it is available. Control this in **Tuning → Clean up ambient speech and meetings**. Dictation skips this pass by default for faster insertion; opt in separately with **Clean up dictation**. Jot checks macOS 26+ and Apple Intelligence readiness; older systems and unavailable models keep normal transcription. Apple manages model setup and updates in macOS. Jot uses no cloud model, API key, or `fm` server.
 
-Cleanup removes fillers and repetition and improves punctuation within speaker turns. It has a two-second deadline and bypasses oversized input or a busy model. If cleanup fails or changes protected numerical/qualification wording, Jot keeps recognized text. These checks do not guarantee that every rewrite preserves meaning. Cleaned text appears in History, Sessions, copy/export, and CLI/MCP reads; turning cleanup off affects new speech only. Source text remains in local storage and is deleted together with its readable version. Existing history is not rewritten.
+Cleanup removes fillers and repetition and improves punctuation within speaker turns. It has a two-second deadline and bypasses oversized input or a busy model. If cleanup fails or changes protected numerical/qualification wording, Jot keeps recognized text. These checks do not guarantee that every rewrite preserves meaning. Cleaned text appears in Dictations, Sessions, copy/export, and CLI/MCP reads; turning cleanup off affects new speech only. Source text remains in local storage and is deleted together with its readable version. Existing rows are not rewritten.
 
 Dictation interrupts a waiting ambient cleanup pass and takes priority over queued ambient work. An already-running speech-recognition call finishes before the next job. Ambient cleanup is skipped during dictation. Local `jot diagnostics` job records separate queue wait, recognition, cleanup, and insertion time, including failed deliveries.
 
@@ -54,9 +54,9 @@ Text insertion tries the field's Accessibility API, then direct Unicode keyboard
 
 When an ambient session or meeting ends, a speaker pass reads the whole session and rebuilds its rows by who spoke when; the notice in the window says how many speakers it found. **Activity** shows resource use and capture events. **Tuning** adjusts speaker grouping and paragraph breaks for new audio; **Regroup** in Sessions rebuilds a saved session from its speaker pass, or from the current settings when it has none. See the [tuning guide](docs/TUNING.md).
 
-**Updating Jot:** open **Models** and press **Check for updates**. Jot reads the latest GitHub release; if it is newer, **Update** downloads it, checks the size, signature, and signing team against the running app, removes the quarantine flag, then quits and replaces `/Applications/Jot.app` before relaunching. Update is disabled while capture, dictation, inference, or model setup is running. Each step is appended to `~/Library/Application Support/Jot/update.log`.
+**Updating Jot:** open **Models & updates** and press **Check for updates**. Jot reads the latest GitHub release; if it is newer, **Update** downloads it, checks the size, signature, and signing team against the running app, removes the quarantine flag, then quits and replaces `/Applications/Jot.app` before relaunching. Update is disabled while capture, dictation, inference, or model setup is running. Each step is appended to `~/Library/Application Support/Jot/update.log`.
 
-**Models → Check updates** checks published model revisions. It does not download updates or verify that your cached weights match the latest release.
+**Models & updates → Check updates** checks published model revisions. It does not download updates or verify that your cached weights match the latest release.
 
 ## Personal vocabulary
 
@@ -64,7 +64,7 @@ Open **Vocabulary** to add a preferred spelling such as `SwiftUI`. If Jot mishea
 
 Entries can be edited, disabled, removed, and restored with **Undo remove**. Use the preview to check saved, enabled entries without recording. Matching ignores capitalization, respects whole-word boundaries, and prefers longer phrases at the same position. Replacements are applied once, without chaining into other entries.
 
-Jot converts explicit spoken symbol names such as `forward slash`, `at sign`, `underscore`, and `open parenthesis` into their characters by default. This is the same for Fn dictation, ambient capture, History, Sessions, exports, and transcript access through the CLI or MCP.
+Jot converts explicit spoken symbol names such as `forward slash`, `at sign`, `underscore`, and `open parenthesis` into their characters by default. This is the same for Fn dictation, ambient capture, Dictations, Sessions, exports, and transcript access through the CLI or MCP.
 
 Personal vocabulary is then applied before Fn dictation is inserted into your target app, using the entries enabled when that dictation began. Personal entries stay in Jot's local preferences; this does not train or change the recognition model.
 

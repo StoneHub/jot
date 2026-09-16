@@ -291,6 +291,16 @@ public final class TranscriptStore: @unchecked Sendable {
         try locked { try rows(where: mode == nil ? "" : "WHERE 1=1" + modeClause(mode), value: nil, limit: limit, offset: offset) }
     }
 
+    /// How many rows of one kind exist, for the sidebar counts; nil counts both kinds.
+    public func count(mode: String? = nil) throws -> Int {
+        try locked {
+            let stmt = try prepare("SELECT COUNT(*) FROM transcripts t WHERE 1=1" + modeClause(mode))
+            defer { sqlite3_finalize(stmt) }
+            guard sqlite3_step(stmt) == SQLITE_ROW else { throw error() }
+            return Int(sqlite3_column_int64(stmt, 0))
+        }
+    }
+
     private func modeClause(_ mode: String?) -> String {
         switch mode { case "dictation"?: return " AND t.mode = 'dictation'"; case "ambient"?: return " AND t.mode = 'ambient'"; default: return "" }
     }

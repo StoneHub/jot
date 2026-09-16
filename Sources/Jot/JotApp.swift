@@ -208,7 +208,7 @@ struct GlassButton: ViewModifier {
         else { content.buttonStyle(.bordered) }
     }
 }
-private struct PrimaryGlassButton: ViewModifier {
+struct PrimaryGlassButton: ViewModifier {
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *) { content.buttonStyle(.glassProminent) }
         else { content.buttonStyle(.borderedProminent) }
@@ -412,6 +412,10 @@ struct MenuControls: View {
                 Spacer()
                 Button("Quit") { NSApp.terminate(nil) }.buttonStyle(.plain)
             }
+            if service.ambientEnabled, let last = service.recent.first(where: { $0.sessionID == service.activeSessionID }) {
+                Text(last.text).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
+                    .help("Last transcribed sentence")
+            }
         }.padding(18).frame(width: 350)
             .modifier(GlassStage()).background(JotBackdrop()).tint(Color(nsColor: .controlAccentColor))
     }
@@ -453,8 +457,8 @@ private struct AppUpdateRow: View {
     }
 }
 
-/// One sheet names a speaker from History or Sessions; the label is scoped to the row's session.
-private struct SpeakerNameSheet: View {
+/// One sheet names a speaker from Live or Sessions; the label is scoped to the row's session.
+struct SpeakerNameSheet: View {
     let transcript: Transcript
     let service: SpeechService
     @Binding var draft: String
@@ -485,8 +489,12 @@ private struct SpeakerNameSheet: View {
 /// Every capture session, readable whole at full width; the picker keeps the list out of the reading column.
 private struct SessionsView: View {
     @ObservedObject var service: SpeechService
+    /// Picking the recording session opens Live instead of reading it here.
+    let openLive: () -> Void
     @State private var selectedID: String?
     @State private var rows: [Transcript] = []
+    @State private var search = ""
+    @State private var hits: [Transcript] = []
     @State private var renaming = false
     @State private var titleDraft = ""
     @State private var labelTarget: Transcript?
@@ -499,17 +507,22 @@ private struct SessionsView: View {
                 Text("No sessions yet. Start a meeting or switch on ambient transcription.").foregroundStyle(.secondary)
             } else {
                 header
-                if let session = selected {
+                TextField("Search sessions", text: $search).textFieldStyle(.roundedBorder).frame(maxWidth: 360)
+                    .onChange(of: search) { _, value in hits = service.searchSessions(value) }
+                if !search.isEmpty {
+                    searchResults
+                } else if let session = selected {
                     Text("\(session.startedAt.formatted(date: .abbreviated, time: .shortened)) · \(session.transcriptCount) segments · \(TranscriptExport.clock(session.durationSeconds)) · Click a speaker to name them")
                         .font(.caption).foregroundStyle(.secondary)
                     transcript
                 }
             }
         }
-        .onAppear { service.refreshSessions(); if selectedID == nil { select(service.sessions.first?.sessionID) } }
+        .onAppear { service.refreshSessions(); if selectedID == nil { select(readable.first?.sessionID) } }
         .onChange(of: service.historyRevision) { _, _ in
             labelTarget = nil
-            select(service.sessions.contains { $0.sessionID == selectedID } ? selectedID : service.sessions.first?.sessionID)
+            select(readable.contains { $0.sessionID == selectedID } ? selectedID : readable.first?.sessionID)
+            if !search.isEmpty { hits = service.searchSessions(search) }
         }
         .onChange(of: service.sessions.map(\.transcriptCount)) { _, _ in if let selectedID { rows = service.sessionParagraphs(selectedID) } }
         .sheet(item: $labelTarget) { target in
@@ -520,10 +533,14 @@ private struct SessionsView: View {
     }
 
     private var selected: TranscriptSession? { service.sessions.first { $0.sessionID == selectedID } }
+    private func isRecording(_ session: TranscriptSession) -> Bool { session.sessionID == service.activeSessionID && service.ambientEnabled }
+    /// Saved sessions this reader can show; the recording one belongs to Live.
+    private var readable: [TranscriptSession] { service.sessions.filter { !isRecording($0) } }
+    /// The recording session first, then the saved ones newest first.
+    private var ordered: [TranscriptSession] { service.sessions.filter(isRecording) + readable }
 
     private func label(_ session: TranscriptSession) -> String {
-        let recording = session.sessionID == service.activeSessionID && service.meetingTitle != nil ? "● " : ""
-        return "\(recording)\(session.title ?? "Untitled session") · \(session.startedAt.formatted(date: .abbreviated, time: .shortened)) · \(TranscriptExport.clock(session.durationSeconds))"
+        "\(session.title ?? "Untitled session") · \(session.startedAt.formatted(date: .abbreviated, time: .shortened)) · \(TranscriptExport.clock(session.durationSeconds))"
     }
 
     /// One row: which session, rename, copy, export. The session menu scales past the few sessions a list column shows well.
@@ -536,7 +553,10 @@ private struct SessionsView: View {
                 Button("Cancel") { renaming = false }.modifier(GlassButton())
             } else {
                 Picker("Session", selection: Binding(get: { selectedID ?? "" }, set: { select($0) })) {
-                    ForEach(service.sessions) { session in Text(label(session)).tag(session.sessionID) }
+                    ForEach(ordered) { session in
+                        if isRecording(session) { (Text("● ").foregroundStyle(.red) + Text(label(session))).tag(session.sessionID) }
+                        else { Text(label(session)).tag(session.sessionID) }
+                    }
                 }.labelsHidden().pickerStyle(.menu).frame(maxWidth: 480)
                 if let session = selected {
                     Button("Rename", systemImage: "pencil") { titleDraft = session.title ?? ""; renaming = true }
@@ -585,7 +605,27 @@ private struct SessionsView: View {
         }
     }
 
+    /// Matching rows from every session; a click opens that session in the reader.
+    private var searchResults: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 10) {
+                if hits.isEmpty { Text("No matches").foregroundStyle(.secondary) }
+                ForEach(hits) { hit in
+                    Button { select(hit.sessionID); search = "" } label: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("\(service.sessions.first { $0.sessionID == hit.sessionID }?.title ?? "Untitled session") · \(hit.startedAt.addingTimeInterval(hit.startSeconds).formatted(date: .abbreviated, time: .shortened))")
+                                .font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                            Text(hit.text).lineLimit(3).multilineTextAlignment(.leading).foregroundStyle(.primary)
+                        }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                    }.buttonStyle(.plain).padding(12).background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 12))
+                        .help("Open this session")
+                }
+            }.frame(maxWidth: 820, alignment: .leading)
+        }
+    }
+
     private func select(_ id: String?) {
+        if let id, id == service.activeSessionID, service.ambientEnabled { openLive(); return }
         selectedID = id; renaming = false
         rows = id.map(service.sessionParagraphs) ?? []
     }
@@ -643,24 +683,57 @@ private struct PeopleView: View {
     }
 }
 
+/// The latest service notice at the bottom right of the content pane; it fades after six seconds unless a new one replaces it.
+private struct NoticeToast: View {
+    let notice: String
+    @State private var visible = false
+    private static let successWords = ["finished", "cleared", "deleted", "regrouped", "saved", "copied", "connected again"]
+    private static let failureWords = ["fail", "could not", "error", "interrupted"]
+    /// Green for a notice that reports something done, orange for everything else.
+    private var success: Bool {
+        let lower = notice.lowercased()
+        return Self.successWords.contains { lower.contains($0) } && !Self.failureWords.contains { lower.contains($0) }
+    }
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle().fill(success ? Color.green : Color.orange).frame(width: 7, height: 7)
+            Text(notice).font(.callout).lineLimit(3).fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 9)
+        .modifier(GlassSurface(radius: 12))
+        .frame(maxWidth: 440, alignment: .trailing)
+        .opacity(visible ? 1 : 0)
+        .allowsHitTesting(false)
+        .accessibilityHidden(!visible)
+        .task(id: notice) {
+            guard !notice.isEmpty else { visible = false; return }
+            withAnimation(.easeOut(duration: 0.2)) { visible = true }
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeIn(duration: 0.4)) { visible = false }
+        }
+    }
+}
+
 struct TranscriptView: View {
     @ObservedObject var service: SpeechService
     let delegate: JotDelegate
     @Environment(\.openWindow) private var openWindow
-    @State private var selected: Transcript?
-    @State private var label = ""
     @State private var copiedID: String?
     @State private var showHistory = true
     @AppStorage(JotDefaultsKey.historyTextView) private var historyTextView = true
     @State private var search = ""
-    @State private var section = Section.history
+    @State private var section = Section.live
     @State private var copyReset: Task<Void, Never>?
 
     private enum Section: String, CaseIterable {
-        case history = "History", sessions = "Sessions", people = "People", vocabulary = "Vocabulary", activity = "Activity", tuning = "Tuning", models = "Models"
+        case live = "Live", dictations = "Dictations", sessions = "Sessions", people = "People", tuning = "Tuning", vocabulary = "Vocabulary", models = "Models & updates", activity = "Activity"
+        /// The four under the Settings heading, drawn quieter than the places where transcripts live.
+        var isSetting: Bool { self == .tuning || self == .vocabulary || self == .models || self == .activity }
         var symbol: String {
             switch self {
-            case .history: "text.alignleft"
+            case .live: "dot.radiowaves.left.and.right"
+            case .dictations: "text.alignleft"
             case .sessions: "rectangle.stack"
             case .people: "person.2"
             case .vocabulary: "character.book.closed"
@@ -678,15 +751,10 @@ struct TranscriptView: View {
                 ServiceControls(service: service)
                     .padding(18).modifier(GlassSurface(tint: Color(nsColor: .controlAccentColor).opacity(0.04)))
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Section.allCases, id: \.self) { item in
-                        Button { section = item } label: {
-                            Label(item.rawValue, systemImage: item.symbol)
-                                .font(.body.weight(section == item ? .semibold : .regular))
-                                .frame(maxWidth: .infinity, alignment: .leading).padding(12)
-                                .contentShape(RoundedRectangle(cornerRadius: 14))
-                                .modifier(NavigationSurface(selected: section == item))
-                        }.buttonStyle(.plain)
-                    }
+                    ForEach(Section.allCases.filter { !$0.isSetting }, id: \.self) { item in navigationRow(item) }
+                    Text("Settings").font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
+                        .padding(.horizontal, 12).padding(.top, 10)
+                    ForEach(Section.allCases.filter(\.isSetting), id: \.self) { item in navigationRow(item) }
                 }
                 Spacer()
                 HStack(spacing: 14) {
@@ -701,32 +769,12 @@ struct TranscriptView: View {
                 }.padding(.horizontal, 8)
             }.padding(8).frame(width: 282)
             VStack(alignment: .leading, spacing: 18) {
-                HStack {
-                    Text(section.rawValue).font(.system(size: 26, weight: .bold, design: .rounded))
-                    Spacer()
-                    if section == .history {
-                        Button("Open History in Finder", systemImage: "folder") {
-                            NSWorkspace.shared.activateFileViewerSelecting([JotPaths.directory.appendingPathComponent("transcripts.sqlite3")])
-                        }
-                        .labelStyle(.iconOnly)
-                        .accessibilityLabel("Open History in Finder")
-                        .modifier(GlassButton())
-                        .help("Shows the transcript database. Quit Jot before moving history files to Trash.")
-                        Button("Clear", systemImage: "clear", role: .destructive) {
-                            do { try service.clearHistory(); search = ""; selected = nil; copiedID = nil }
-                            catch { service.notice = error.localizedDescription }
-                        }.modifier(GlassButton()).help("Delete every saved dictation. Sessions are deleted from the Sessions tab.")
-                        Button(showHistory ? "Hide" : "Show", systemImage: showHistory ? "eye.slash" : "eye") { showHistory.toggle() }
-                            .modifier(GlassButton())
-                    }
-                }
-                if section != .vocabulary && !service.notice.isEmpty {
-                    Text(service.notice).font(.callout).foregroundStyle(.secondary)
-                        .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-                }
+                // Live draws its own title row so the recording chips sit beside it.
+                if section != .live { titleRow }
                 switch section {
-                case .history: history
-                case .sessions: SessionsView(service: service)
+                case .live: LiveView(service: service)
+                case .dictations: dictations
+                case .sessions: SessionsView(service: service, openLive: { section = .live })
                 case .people: PeopleView(service: service)
                 case .vocabulary: VocabularyView(service: service)
                 case .activity: activity
@@ -735,6 +783,7 @@ struct TranscriptView: View {
                 }
             }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .modifier(GlassSurface())
+                .overlay(alignment: .bottomTrailing) { NoticeToast(notice: service.notice).padding(20) }
         }
         .padding(16)
         .modifier(GlassStage())
@@ -743,25 +792,72 @@ struct TranscriptView: View {
         .background(WindowAttachment(attach: delegate.attach))
         .onAppear { delegate.openAction = { openWindow(id: "main") } }
         .onDisappear { copyReset?.cancel() }
-        .onChange(of: service.historyRevision) { _, _ in selected = nil; copiedID = nil }
-        .sheet(item: $selected) { item in
-            SpeakerNameSheet(transcript: item, service: service, draft: $label, onSave: { selected = nil }, onCancel: { selected = nil })
-        }
+        .onChange(of: service.historyRevision) { _, _ in copiedID = nil }
+        // Capture starting is the one moment Live is opened for the user; after that the choice is theirs.
+        .onChange(of: service.ambientEnabled) { _, on in if on { section = .live } }
     }
 
-    private var history: some View {
+    private var titleRow: some View {
+        HStack {
+            Text(section.rawValue).font(.system(size: 26, weight: .bold, design: .rounded))
+            Spacer()
+            if section == .dictations {
+                Button("Open Dictations in Finder", systemImage: "folder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([JotPaths.directory.appendingPathComponent("transcripts.sqlite3")])
+                }
+                .labelStyle(.iconOnly)
+                .accessibilityLabel("Open Dictations in Finder")
+                .modifier(GlassButton())
+                .help("Shows the transcript database. Quit Jot before moving its files to Trash.")
+                Button("Clear", systemImage: "clear", role: .destructive) {
+                    do { try service.clearHistory(); search = ""; copiedID = nil }
+                    catch { service.notice = error.localizedDescription }
+                }.modifier(GlassButton()).help("Delete every saved dictation. Sessions are deleted from the Sessions tab.")
+                Button(showHistory ? "Hide" : "Show", systemImage: showHistory ? "eye.slash" : "eye") { showHistory.toggle() }
+                    .modifier(GlassButton())
+            }
+        }
+    }
+    private func navigationRow(_ item: Section) -> some View {
+        Button { section = item } label: {
+            HStack(spacing: 8) {
+                Label(item.rawValue, systemImage: item.symbol)
+                    .font(item.isSetting ? .callout.weight(section == item ? .semibold : .regular) : .body.weight(section == item ? .semibold : .regular))
+                    .foregroundStyle(item.isSetting && section != item ? Color.secondary : Color.primary)
+                Spacer(minLength: 0)
+                if item == .live && service.ambientEnabled { Circle().fill(.red).frame(width: 8, height: 8).accessibilityLabel("Recording") }
+                if let count = count(item) { countPill(count) }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, item.isSetting ? 8 : 12)
+            .contentShape(RoundedRectangle(cornerRadius: 14))
+            .modifier(NavigationSurface(selected: section == item))
+        }.buttonStyle(.plain)
+    }
+    private func count(_ item: Section) -> Int? {
+        switch item {
+        case .dictations: service.dictationCount
+        case .sessions: service.sessions.count
+        default: nil
+        }
+    }
+    private func countPill(_ count: Int) -> some View {
+        Text(count, format: .number).font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+            .padding(.horizontal, 7).padding(.vertical, 2).background(.quaternary.opacity(0.5), in: Capsule())
+    }
+
+    private var dictations: some View {
         VStack(alignment: .leading, spacing: 14) {
-            TextField("Search transcripts", text: $search)
+            TextField("Search dictations", text: $search)
                 .textFieldStyle(.roundedBorder)
                 .fixedSize(horizontal: false, vertical: true)
                 .onChange(of: search) { _, value in service.searchHistory(value) }
             if showHistory {
                 HStack {
-                    Picker("History view", selection: $historyTextView) {
+                    Picker("Dictations view", selection: $historyTextView) {
                         Text("Text").tag(true)
                         Text("Cards").tag(false)
                     }.pickerStyle(.segmented).labelsHidden().frame(width: 150)
-                        .accessibilityLabel("History view")
+                        .accessibilityLabel("Dictations view")
                     if historyTextView {
                         Text("Drag to highlight, then ⌘C. ⌘A selects all loaded text.")
                             .font(.caption).foregroundStyle(.secondary)
@@ -769,9 +865,9 @@ struct TranscriptView: View {
                 }
             }
             if !showHistory {
-                empty("History hidden", symbol: "eye.slash")
+                empty("Dictations hidden", symbol: "eye.slash")
             } else if service.history.isEmpty {
-                empty(search.isEmpty ? "No transcripts yet" : "No matches", symbol: "text.alignleft")
+                empty(search.isEmpty ? "No dictations yet" : "No matches", symbol: "text.alignleft")
             } else if historyTextView {
                 SelectableHistory(transcripts: service.history, search: search)
                     .id(service.historyRevision)
@@ -803,9 +899,6 @@ struct TranscriptView: View {
                                     .accessibilityLabel("Copy \(item.mode) transcript")
                                     .accessibilityValue(copiedID == item.id ? "Copied" : item.text)
                                 HStack {
-                                    if item.speakerID != nil && item.speakerID != "overlap" {
-                                        Button("Name speaker") { selected = item; label = item.speakerLabel ?? "" }.font(.caption).buttonStyle(.link)
-                                    }
                                     Spacer()
                                     Button("Delete transcript", systemImage: "trash", role: .destructive) {
                                         do { try service.deleteHistoryCard(item) }
@@ -826,6 +919,10 @@ struct TranscriptView: View {
     private var activity: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                if !service.notice.isEmpty {
+                    Text(service.notice).font(.callout).foregroundStyle(.secondary)
+                        .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                }
                 Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 18) {
                     GridRow { metric("Process CPU", String(format: "%.1f%%", service.resources.processCPUPercent)); metric("Memory", String(format: "%.0f MB", service.resources.residentMiB)) }
                     GridRow { metric("Memory footprint", String(format: "%.0f MB", service.resources.physicalFootprintMiB)); metric("Thermal state", service.resources.thermalState.capitalized) }
@@ -887,12 +984,12 @@ struct TranscriptView: View {
                     detail: "Higher reduces speaker changes from brief hesitations. Short real replies may stay with the previous speaker.")
                 tuningSlider("Pause between paragraphs", value: $service.tuning.paragraphPause, range: 0.3...2.5, step: 0.1,
                     valueText: String(format: "%.1f s", service.tuning.paragraphPause),
-                    detail: "Longer pauses make fewer, longer rows. Nearby history rows from the same speaker are also grouped.")
+                    detail: "Longer pauses make fewer, longer rows. Nearby dictation rows from the same speaker are also grouped.")
                 Toggle("Hide filler-only rows", isOn: $service.tuning.hideFillerRows).toggleStyle(.switch)
                 Text("Hides rows containing only sounds such as um or uh. Original text is kept. Fillers inside sentences stay visible.")
                     .font(.caption).foregroundStyle(.secondary)
                 Divider()
-                Text("Speaker settings apply to new audio and to any session you Regroup that has no speaker pass. Paragraph grouping and filler visibility also update saved history.")
+                Text("Speaker settings apply to new audio and to any session you Regroup that has no speaker pass. Paragraph grouping and filler visibility also update saved dictations.")
                     .font(.callout).foregroundStyle(.secondary)
                 Text("Try the same short scene twice. Change one setting, then compare words, speaker changes, and paragraph breaks separately.")
                     .font(.callout).foregroundStyle(.secondary)

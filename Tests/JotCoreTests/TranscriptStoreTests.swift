@@ -44,6 +44,10 @@ final class TranscriptStoreTests: XCTestCase {
         XCTAssertEqual(try store.recent(limit: Int.max).count, 200)
         XCTAssertEqual(try store.recent(limit: 2, offset: 2).map(\.id), ["202", "201"])
         XCTAssertEqual(try store.search("hello", limit: 2, offset: 2).map(\.id), ["202", "201"])
+        try store.append(Transcript(id: "d", sessionID: "dictation-a", startedAt: Date(timeIntervalSince1970: 100), startSeconds: 0, endSeconds: 1, text: "note", mode: "dictation"))
+        XCTAssertEqual(try store.count(mode: "dictation"), 1)
+        XCTAssertEqual(try store.count(mode: "ambient"), 205)
+        XCTAssertEqual(try store.count(), 206)
         XCTAssertEqual(try store.sessions().first?.lastTranscriptAt, Date(timeIntervalSince1970: 306))
         XCTAssertGreaterThan(try store.metrics().databaseBytes, 0)
     }
