@@ -6,6 +6,7 @@ public enum JotDefaultsKey {
     public static let highlightTargetField = "highlightTargetField"
     public static let muteSpeakersDuringDictation = "muteSpeakersDuringDictation"
     public static let keepMacAwakeWhileListening = "keepMacAwakeWhileListening"
+    public static let keepAudioForSpeakerPass = "keepAudioForSpeakerPass"
     public static let selectedInputUID = "selectedInputUID"
     public static let selectedInputName = "selectedInputName"
     public static let transcriptionTuning = "transcriptionTuning"

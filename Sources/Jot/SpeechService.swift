@@ -13,6 +13,7 @@ enum CaptureEventKind: String {
     case started, paused, stopped, sleep
     case ambientOff = "ambient_off", deviceChange = "device_change", inputStalled = "input_stalled"
     case audioGap = "audio_gap", audioDiscarded = "audio_discarded", processingError = "processing_error"
+    case speakerPass = "speaker_pass"
 }
 
 @MainActor
@@ -42,6 +43,13 @@ final class SpeechService: ObservableObject {
         didSet {
             UserDefaults.standard.set(keepMacAwakeWhileListening, forKey: JotDefaultsKey.keepMacAwakeWhileListening)
             updateKeepAwakeAssertion()
+        }
+    }
+    /// Off means no audio reaches disk and no speaker pass runs. Switching off mid-session deletes that session's file; switching on waits for the next session, since a file that starts mid-session would misplace every segment.
+    @Published var keepAudioForSpeakerPass = UserDefaults.standard.object(forKey: JotDefaultsKey.keepAudioForSpeakerPass) as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(keepAudioForSpeakerPass, forKey: JotDefaultsKey.keepAudioForSpeakerPass)
+            if !keepAudioForSpeakerPass { sessionAudio?.discard(); sessionAudio = nil }
         }
     }
 
@@ -176,6 +184,7 @@ final class SpeechService: ObservableObject {
     private let sampler = ResourceSampler()
     private let keepAwake = KeepAwakeAssertion()
     var store: TranscriptStore?
+    var speakerStore: SpeakerPassStore?
     private var server: LocalServiceServer?
     private var timer: Timer?
     var diagnosticActive = false
@@ -187,6 +196,11 @@ final class SpeechService: ObservableObject {
     private var sessionStarted = Date()
     private var ambientOffset = 0.0
     private var ambient: [Float] = []
+    /// The session's audio on disk for the speaker pass; nil while no ambient session runs.
+    private var sessionAudio: SessionAudioFile?
+    @Published private(set) var speakerPassRunning = false
+    /// Passes run one at a time in session order; a pass survives a pause and finishes on its own.
+    private var speakerPassQueue: Task<Void, Never>?
     private var silentSeconds = 0.0
     private var dictation: [Float] = []
     private var dictationActive = false
@@ -219,6 +233,7 @@ final class SpeechService: ObservableObject {
         catch { vocabularyLoadError = "Could not load vocabulary. Saved entries were preserved. " + error.localizedDescription }
         do {
             store = try TranscriptStore()
+            speakerStore = try SpeakerPassStore()
             let service = LocalServiceServer { [weak self] data in
                 guard let self else { return Data("{\"ok\":false,\"error\":\"Service unavailable\"}".utf8) }
                 return await self.handle(data)
@@ -227,6 +242,7 @@ final class SpeechService: ObservableObject {
             if let data = UserDefaults.standard.data(forKey: JotDefaultsKey.transcriptionTuning),
                let saved = try? JSONDecoder().decode(TranscriptionTuning.self, from: data) { tuning = saved.bounded }
             refreshRecent(); refreshSessions()
+            for stale in SessionAudioFile.discardStale(except: sessionID) { recordEvent(.audioDiscarded, "Session audio left by an earlier run was deleted.", session: stale) }
             if let data = UserDefaults.standard.data(forKey: JotDefaultsKey.modelUpdateChecks),
                let saved = try? JSONDecoder().decode([ModelUpdate].self, from: data) { modelUpdates = saved }
             if UserDefaults.standard.bool(forKey: JotDefaultsKey.modelsPrepared), !UserDefaults.standard.bool(forKey: JotDefaultsKey.servicePaused) { prepare() }
@@ -419,7 +435,7 @@ final class SpeechService: ObservableObject {
             guard lifecycle.phase == .ready else { ambientEnabled = false; updateMode(); return }
             if !dictationActive { capture.stop(); updateKeepAwakeAssertion() }
             drainAudio()
-            if ambientEnabled { flushAmbient(); recordEvent(.ambientOff, "Ambient transcription switched off.") }
+            if ambientEnabled { flushAmbient(); recordEvent(.ambientOff, "Ambient transcription switched off."); endSessionAudio(runPass: true) }
             ambientEnabled = false; updateMode(); level = 0; kickWorker()
         }
     }
@@ -569,6 +585,7 @@ final class SpeechService: ObservableObject {
         try capture.start()
         sessionID = UUID().uuidString; sessionStarted = Date(); ambientOffset = 0; activeSessionID = sessionID
         ambient = []; silentSeconds = 0; ambientEnabled = true; updateKeepAwakeAssertion(); updateMode()
+        if keepAudioForSpeakerPass { sessionAudio = SessionAudioFile(sessionID: sessionID) }
         recordEvent(.started, "Ambient microphone capture started."); notice = ""
     }
 
@@ -591,6 +608,7 @@ final class SpeechService: ObservableObject {
         let discarded = AudioClock.seconds(samples: packet.samples.count + packet.dropped + ambient.count + dictation.count + jobs.reduce(0) { $0 + $1.samples.count })
         if discarded > 0 { recordEvent(.audioDiscarded, "Unfinished audio discarded by Pause.") }
         if ambientEnabled { recordEvent(.paused, "Service paused.") }
+        endSessionAudio(runPass: automatic)
         let outcome = PauseOutcome(automatic: automatic, ambientRequested: ambientRequested, meetingTitle: meetingTitle)
         ambientRequested = outcome.ambientRequested; meetingTitle = outcome.meetingTitle; ambientEnabled = false
         cancelDictation(); input.disable(); fnEnabled = false
@@ -687,6 +705,7 @@ final class SpeechService: ObservableObject {
             recordEvent(.audioGap, "Capture queue overflow discarded audio.", duration: lostSeconds)
             // End attribution continuity rather than silently stitching across lost audio.
             ambientOffset += AudioClock.seconds(samples: ambient.count + packet.dropped); ambient = []
+            sessionAudio?.appendSilence(samples: packet.dropped)
             notice = "Audio backlog overflow: a gap was recorded."
         }
         if dictationActive {
@@ -695,9 +714,39 @@ final class SpeechService: ObservableObject {
         }
         if ambientEnabled {
             ambient.append(contentsOf: packet.samples)
+            sessionAudio?.append(packet.samples)
             silentSeconds = packet.rms < 0.002 ? silentSeconds + AudioClock.seconds(samples: packet.samples.count) : 0
             // Blocks run up to 20 s and only break on a 2 s silence, so most sentences reach the recognizer whole.
             if ambient.count >= Self.ambientBlockSamples || (ambient.count >= Self.ambientBreakSamples && silentSeconds >= max(2, tuning.bounded.paragraphPause)) { flushAmbient() }
+        }
+    }
+
+    /// The normal end and an automatic pause run the pass, since Resume starts a new session and this one is complete. The Pause button discards the file along with the rest of its unfinished audio.
+    private func endSessionAudio(runPass: Bool) {
+        guard let file = sessionAudio else { return }
+        sessionAudio = nil
+        guard runPass else { file.discard(); return }
+        let previous = speakerPassQueue
+        speakerPassQueue = Task { await previous?.value; await runSpeakerPass(file) }
+    }
+
+    /// The pass runs off the main actor; only its outcome lands here. An export that already happened used the live labels, and this phase does not relabel rows.
+    private func runSpeakerPass(_ file: SessionAudioFile) async {
+        let id = file.sessionID
+        speakerPassRunning = true
+        defer { speakerPassRunning = false }
+        do {
+            guard let audio = try await file.finish() else { return }
+            let result = try await pipeline.speakerPass.run(url: audio.url)
+            guard !deletedSessions.contains(id) else { return }
+            try speakerStore?.replace(sessionID: id, result: result)
+            let count = result.speakers.count
+            let scope = audio.truncated ? " (first two hours)" : ""
+            recordEvent(.speakerPass, "Speaker pass found \(count) speaker\(count == 1 ? "" : "s") in \(TranscriptExport.clock(result.durationSeconds)) of audio\(scope), \(String(format: "%.1f", result.processingSeconds)) s of processing.", duration: result.durationSeconds, session: id)
+            notice = "Speaker pass finished: \(count) speakers."
+        } catch {
+            recordEvent(.processingError, "Speaker pass: \(error.localizedDescription)", session: id)
+            notice = "Speaker pass failed: \(error.localizedDescription)"
         }
     }
 

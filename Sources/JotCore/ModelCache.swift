@@ -18,11 +18,13 @@ public enum ModelCache {
             .appendingPathComponent("FluidAudio/Models", isDirectory: true)
     }
 
-    /// Measured from a completed first download on 2026-09-08 against the FluidAudio revision pinned in project.yml.
+    /// Measured from a completed first download on 2026-09-08 against the FluidAudio revision pinned in project.yml. The speaker pass rows were measured on 2026-09-16 from the same revision: pyannote is Segmentation.mlmodelc, WeSpeaker is the rest of the speaker-diarization folder (Embedding, FBank, PldaRho, and the PLDA and xvector JSON files).
     public static let expected: [ModelDownload] = [
         ModelDownload(name: "Parakeet v3", purpose: "Turns speech into words", bytes: 483_257_242),
         ModelDownload(name: "Sortformer", purpose: "Separates who is speaking", bytes: 240_559_364),
-        ModelDownload(name: "Silero", purpose: "Detects when speech starts and stops", bytes: 1_063_427)
+        ModelDownload(name: "Silero", purpose: "Detects when speech starts and stops", bytes: 1_063_427),
+        ModelDownload(name: "Pyannote segmentation", purpose: "Finds each speaker's turns after a session ends", bytes: 6_006_888),
+        ModelDownload(name: "WeSpeaker", purpose: "Tells the voices in a session apart", bytes: 15_770_030)
     ]
 
     public static var expectedBytes: Int64 { expected.reduce(0) { $0 + $1.bytes } }

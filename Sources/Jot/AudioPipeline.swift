@@ -45,6 +45,8 @@ actor SpeechPipeline {
     private var probabilities: [Int: [Float]] = [:]
     /// Last confirmed speaker of the previous ambient block, carried forward while audio stays continuous.
     private var lastSpeaker: String?
+    /// Prepared and released with the live models, but run on its own actor so a long pass never blocks live inference.
+    nonisolated let speakerPass = SpeakerPass()
 
     func prepare() async throws {
         if asr == nil {
@@ -68,9 +70,12 @@ actor SpeechPipeline {
             manager.initialize(models: models)
             diarizer = manager
         }
+        try Task.checkCancellation()
+        try await speakerPass.prepare()
     }
 
-    func unload() {
+    func unload() async {
+        await speakerPass.unload()
         asr = nil; vad = nil; diarizer = nil; lastSpeaker = nil
         probabilities.removeAll(keepingCapacity: false)
         sessionID = ""; expectedOffset = 0; baseOffset = 0

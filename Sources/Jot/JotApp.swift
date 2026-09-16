@@ -352,7 +352,7 @@ private struct ModelDownloadPrompt: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Download speech models?").font(.headline)
-            Text("Jot downloads \(ModelCache.formatted(bytes)) once, then transcribes on this Mac without sending audio anywhere.")
+            Text("Jot downloads \(ModelCache.formatted(bytes)) once, then transcribes and separates speakers on this Mac without sending audio anywhere.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             ForEach(ModelCache.expected) { model in
                 HStack(alignment: .firstTextBaseline) {
@@ -807,6 +807,10 @@ struct TranscriptView: View {
                     Toggle("Mute built-in speakers during dictation", isOn: $service.muteSpeakersDuringDictation)
                         .toggleStyle(.switch)
                     Text("Restores the previous mute state when you release your shortcut. Other audio outputs are unchanged. Media keeps playing silently.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Toggle("Keep session audio until the speaker pass finishes", isOn: $service.keepAudioForSpeakerPass)
+                        .toggleStyle(.switch)
+                    Text("Audio is deleted right after the pass. Turn off to never write audio to disk.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 VStack(alignment: .leading, spacing: 6) {

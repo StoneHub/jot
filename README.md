@@ -77,7 +77,7 @@ Choose a preset or adjust speaker confidence, minimum turn length, and pauses be
 See the [tuning guide](docs/TUNING.md) for what each setting changes. Speaker separation still needs broader testing with real conversations; see [verification and known limits](docs/VERIFICATION.md).
 
 ## Your data stays local
-Audio stays in temporary memory buffers and is discarded after processing. Jot saves text, timestamps, speaker labels, session titles, and capture events in `~/Library/Application Support/Jot`. It does not save recordings for replay. Exported sessions are plain Markdown files in `~/Documents/Jot Sessions`, written only when you end a meeting or press Export.
+Dictation audio stays in temporary memory buffers and is discarded after processing; dictation never writes audio to disk. During an ambient session or meeting, Jot writes the session's audio to a private file in `~/Library/Application Support/Jot/audio` so it can run a speaker pass over the whole session when it ends, then deletes the file right after the pass. The file is never uploaded. Turn off "Keep session audio until the speaker pass finishes" in Tuning to never write audio to disk. Jot saves text, timestamps, speaker labels, session titles, capture events, and the pass's speaker segments and voice embeddings in `~/Library/Application Support/Jot`. It does not save recordings for replay. Exported sessions are plain Markdown files in `~/Documents/Jot Sessions`, written only when you end a meeting or press Export.
 
 Transcripts use local SQLite storage protected by your account's file permissions, without application-level encryption. Model files are cached separately. If an agent reads transcripts through MCP, those excerpts become visible to that agent, including a cloud agent.
 
