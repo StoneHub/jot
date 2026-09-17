@@ -134,6 +134,8 @@ final class AppUpdater: ObservableObject {
             [ -e "$previous" ] && mv "$previous" "$target"
         fi
         open "$target" && note "launched $target"
+        # One Jot on disk: the copy kept for rollback goes once the new app has launched.
+        [ -e "$previous" ] && rm -rf "$previous" && note "removed the previous app"
         """
         try text.write(to: script, atomically: true, encoding: .utf8)
         let previous = staging.appending(path: "Jot-previous.app")

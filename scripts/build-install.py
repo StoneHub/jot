@@ -32,7 +32,7 @@ if shutil.which('xcodegen'):
     subprocess.run(['xcodegen', 'generate'], check=True)
 args = ['xcodebuild', '-project', 'Jot.xcodeproj', '-scheme', 'Jot',
         '-configuration', options.configuration, '-destination', 'platform=macOS,arch=arm64',
-        '-derivedDataPath', 'build/DerivedData', '-clonedSourcePackagesDirPath', 'build/SourcePackages',
+        '-derivedDataPath', 'build/DerivedData.noindex', '-clonedSourcePackagesDirPath', 'build/SourcePackages',
         'CODE_SIGN_STYLE=Manual', f'CODE_SIGN_IDENTITY={identity}', f'DEVELOPMENT_TEAM={team}']
 print(f'Building; log: {work / "build.log"}', flush=True)
 with (work / 'build.log').open('w') as log:
@@ -109,7 +109,8 @@ if old_preferences.returncode == 0:
 subprocess.run(['codesign', '--verify', '--deep', '--strict', str(source)], check=True)
 # ditto merges existing directories: Debug-only dylibs would invalidate a Release seal.
 # The runtime is already idle/stopped. Preserve its bundle and install into an empty path.
-backup = work / 'app-backups' / str(time.time_ns()) / destination.name
+# Spotlight skips .noindex folders, so a rollback copy never shows up as a second Jot.
+backup = work / 'app-backups.noindex' / str(time.time_ns()) / destination.name
 had_previous = destination.exists()
 if had_previous:
     backup.parent.mkdir(parents=True)
@@ -128,8 +129,6 @@ except BaseException:
     if had_previous:
         shutil.move(str(backup), str(destination))
     raise
-if had_previous:
-    print(f'Previous app preserved: {backup}', flush=True)
 link = Path.home() / '.local/bin/jot'
 link.parent.mkdir(parents=True, exist_ok=True)
 if not link.exists() and not link.is_symlink():
@@ -146,6 +145,9 @@ for _ in range(50):
         proof = dict(configuration=options.configuration, signingTeam=verify_signing_team(destination, team), source=str(source), installed=str(destination), sha256=digest(destination / relative), running=command, pid=current['resources']['processID'])
         (work / 'install-proof.json').write_text(json.dumps(proof, indent=2) + '\n')
         print(json.dumps(proof, indent=2))
+        # The new app is running from /Applications, so the rollback copy has done its job.
+        if had_previous:
+            shutil.rmtree(backup.parent, ignore_errors=True)
         break
     time.sleep(.2)
 else:

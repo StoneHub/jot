@@ -91,6 +91,21 @@ final class JotDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
+        redirectToInstalledCopy()
+    }
+    /// A Release build opened from anywhere but /Applications is a stale copy; hand off to the installed app instead of recording with old code.
+    private func redirectToInstalledCopy() {
+        #if !DEBUG
+        let installed = AppUpdater.installPath
+        guard Bundle.main.bundlePath != installed, FileManager.default.fileExists(atPath: installed) else { return }
+        let alert = NSAlert()
+        alert.messageText = "This is an old copy of Jot"
+        alert.informativeText = "The installed Jot is in Applications. This copy will close and open that one."
+        alert.addButton(withTitle: "Open Jot")
+        alert.runModal()
+        NSWorkspace.shared.open(URL(fileURLWithPath: installed))
+        exit(0)
+        #endif
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
