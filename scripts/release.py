@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
-from signing import official_signing_configuration
+from signing import local_signing_configuration, official_signing_configuration
 
 root = Path(__file__).resolve().parents[1]
 os.chdir(root)
@@ -17,6 +17,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('bump', help='patch, minor, major, or an explicit X.Y.Z')
 parser.add_argument('--notes', help='Release notes; written to docs/RELEASE-NOTES-<version>.md and used for the tag and release')
 parser.add_argument('--install', action='store_true', help='Install the released product into /Applications afterwards')
+parser.add_argument('--local', action='store_true', help='Publish a pre-release signed with the local development identity, without notarization')
 parser.add_argument('--dry-run', action='store_true', help='Bump, test, build, and zip, then restore the tree without committing, tagging, or publishing')
 options = parser.parse_args()
 
@@ -45,10 +46,11 @@ if out(['git', 'rev-parse', 'HEAD']) != out(['git', 'rev-parse', 'origin/main'])
     raise SystemExit('HEAD differs from origin/main; pull or push first.')
 if subprocess.run(['gh', 'auth', 'status'], capture_output=True).returncode != 0:
     raise SystemExit('gh is not logged in; run gh auth login.')
-identity, team = official_signing_configuration()
+# A local release is signed with the development identity and skips notarization; it installs only on Macs that trust that certificate.
+identity, team = local_signing_configuration() if options.local else official_signing_configuration()
 notary_profile = os.environ.get('JOT_NOTARY_PROFILE')
-if not notary_profile:
-    raise SystemExit('Set JOT_NOTARY_PROFILE to credentials saved with xcrun notarytool store-credentials.')
+if not options.local and not notary_profile:
+    raise SystemExit('Set JOT_NOTARY_PROFILE to credentials saved with xcrun notarytool store-credentials, or pass --local.')
 release_environment = os.environ.copy()
 release_environment['JOT_SIGN_IDENTITY'] = identity
 release_environment['JOT_SIGN_TEAM'] = team
@@ -129,7 +131,7 @@ try:
     zip_path = work / f'Jot-{version}.zip'
     zip_path.unlink(missing_ok=True)
     run(['ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', str(app), str(zip_path)])
-    if not options.dry_run:
+    if not options.dry_run and not options.local:
         submission = run(['xcrun', 'notarytool', 'submit', str(zip_path), '--keychain-profile', notary_profile,
                           '--wait', '--output-format', 'json'], quiet=True)
         notarization = json.loads(submission.stdout)
@@ -151,7 +153,7 @@ try:
     changed = [str(p.relative_to(root)) for p in edits] + ['Jot.xcodeproj/project.pbxproj']
     if options.dry_run:
         step('Dry run: would commit ' + ', '.join(changed))
-        step(f'Dry run: would notarize, staple, tag {tag}, and push main --follow-tags')
+        step(f'Dry run: would {"tag" if options.local else "notarize, staple, tag"} {tag} and push main --follow-tags')
         step(f'Dry run: would run gh release create {tag} {zip_path.name} {checksum_path.name} --title "Jot {version}" --notes-file {notes_file.relative_to(root)}')
         restore()
         step('Dry run: tree restored')
@@ -169,7 +171,10 @@ step(f'Committed "Release {version}" and tagged {tag}')
 # f. Publish. The asset must be named Jot-<version>.zip; AppUpdater looks for exactly that name.
 run(['git', 'push', 'origin', 'main', '--follow-tags'])
 step('Pushed main and tag')
-run(['gh', 'release', 'create', tag, str(zip_path), str(checksum_path), '--title', f'Jot {version}', '--notes-file', str(notes_file)])
+publish = ['gh', 'release', 'create', tag, str(zip_path), str(checksum_path), '--title', f'Jot {version}', '--notes-file', str(notes_file)]
+if options.local:
+    publish.append('--prerelease')
+run(publish)
 step(f'Release {tag} published: ' + out(['gh', 'release', 'view', tag, '--json', 'url', '--jq', '.url']))
 
 # g. Optional install of the same product into /Applications.

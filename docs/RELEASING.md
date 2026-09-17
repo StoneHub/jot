@@ -18,6 +18,16 @@ python3 scripts/release.py patch --notes "What changed" --install
 6. Commits `Release <version>`, creates the annotated tag `v<version>` with the notes as its message, pushes `main --follow-tags`, and runs `gh release create` with the zip and checksum. The asset must be named `Jot-<version>.zip`; the updater asks for exactly that name.
 7. With `--install`, runs `build-install.py --configuration Release` so the same product lands in `/Applications`.
 
+## Local pre-releases
+
+Until the Developer ID certificate and notarization credentials exist, `--local` publishes a release signed with the installed development identity:
+
+```sh
+python3 scripts/release.py patch --notes "What changed" --local --install
+```
+
+It runs the same steps without notarization and marks the GitHub release as a pre-release. The in-app updater accepts it: it strips the quarantine flag and requires the download's TeamIdentifier to match the running app, so the build installs on Macs that trust that development certificate and nowhere else.
+
 `--dry-run` verifies the owner certificate, tests and builds the app, creates an unstapled candidate ZIP, prints the remaining notarization and publication work, and restores the tree without submitting or publishing.
 
 Local source builds use the developer's own installed signing identity. On Monroe's Mac they prefer his Apple Development identity. `JOT_SIGN_IDENTITY` and `JOT_SIGN_TEAM` select another installed identity. Build and install proof record the verified team.
