@@ -42,6 +42,7 @@ final class SpeechService: ObservableObject {
     @Published var keepMacAwakeWhileListening = UserDefaults.standard.bool(forKey: JotDefaultsKey.keepMacAwakeWhileListening) {
         didSet {
             UserDefaults.standard.set(keepMacAwakeWhileListening, forKey: JotDefaultsKey.keepMacAwakeWhileListening)
+            if !keepMacAwakeWhileListening { sleepResume.cancel() }
             updateKeepAwakeAssertion()
         }
     }
@@ -195,6 +196,7 @@ final class SpeechService: ObservableObject {
     var diagnosticActive = false
     private var preparation: Task<Void, Never>?
     private var pausing: Task<Void, Never>?
+    private var sleepResume = SleepResumePolicy()
     var diagnostic: Task<SpeechOutput, Error>?
     private var tickCount = 0
     var sessionID = UUID().uuidString
@@ -259,7 +261,16 @@ final class SpeechService: ObservableObject {
         let center = NSWorkspace.shared.notificationCenter
         observers.append(center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
-                self?.recordEvent(.sleep, "Capture paused because the Mac is sleeping."); self?.pause(automatic: true); self?.notice = "Paused for sleep."
+                guard let self else { return }
+                self.sleepResume.willSleep(ambientRunning: self.ambientEnabled, keepAwake: self.keepMacAwakeWhileListening)
+                self.recordEvent(.sleep, "Capture paused because the Mac is sleeping."); self.pause(automatic: true); self.notice = "Paused for sleep."
+            }
+        })
+        observers.append(center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.sleepResume.didWake()
+                self.resumeAfterSleepIfReady()
             }
         })
         observers.append(NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: nil, queue: .main) { [weak self] _ in
@@ -274,6 +285,13 @@ final class SpeechService: ObservableObject {
     var isPaused: Bool { lifecycle.phase == .paused || lifecycle.phase == .pausing || lifecycle.phase == .failed }
     var isTransitioning: Bool { lifecycle.phase == .starting || lifecycle.phase == .pausing }
     var keepAwakeActive: Bool { keepAwake.isActive }
+
+    private func resumeAfterSleepIfReady() {
+        guard sleepResume.takeResume(phase: lifecycle.phase) else { return }
+        guard keepMacAwakeWhileListening, ambientRequested else { return }
+        refreshInputDevices()
+        prepare()
+    }
 
     private func scheduleTimer() {
         timer?.invalidate()
@@ -293,6 +311,7 @@ final class SpeechService: ObservableObject {
 
     /// Resume. The first resume downloads models, so it asks before spending bandwidth.
     func prepare(confirmingDownload: Bool = false) {
+        sleepResume.cancel()
         cachedModelBytes = ModelCache.bytesOnDisk()
         if cachedModelBytes == 0 && !confirmingDownload {
             downloadPrompt = ModelCache.expectedBytes
@@ -438,6 +457,7 @@ final class SpeechService: ObservableObject {
             do { try await activateAmbient() }
             catch { ambientRequested = false; notice = error.localizedDescription }
         } else {
+            sleepResume.cancel()
             ambientRequested = false
             guard lifecycle.phase == .ready else { ambientEnabled = false; updateMode(); return }
             if !dictationActive { capture.stop(); updateKeepAwakeAssertion() }
@@ -625,6 +645,7 @@ final class SpeechService: ObservableObject {
 
     /// Stop all speech work immediately, then release models when any active prediction returns. Automatic pauses keep the selection and a running meeting for Resume.
     func pause(automatic: Bool = false) {
+        if !automatic { sleepResume.cancel() }
         guard let token = lifecycle.beginPause() else { return }
         markPerformance(.pause)
         UserDefaults.standard.set(true, forKey: JotDefaultsKey.servicePaused)
@@ -655,6 +676,7 @@ final class SpeechService: ObservableObject {
                 markPerformance(.modelsUnloaded); scheduleTimer()
             }
             pausing = nil
+            resumeAfterSleepIfReady()
         }
     }
 

@@ -2,6 +2,48 @@ import XCTest
 @testable import JotCore
 
 final class ServiceLifecycleTests: XCTestCase {
+    func testSleepResumeWaitsForWakeAndUnloadInEitherOrder() {
+        for wakeFirst in [true, false] {
+            var policy = SleepResumePolicy()
+            policy.willSleep(ambientRunning: true, keepAwake: true)
+            // Duplicate sleep notifications must not erase the interrupted capture.
+            policy.willSleep(ambientRunning: false, keepAwake: true)
+            if wakeFirst {
+                policy.didWake()
+                XCTAssertFalse(policy.takeResume(phase: .pausing))
+            } else {
+                XCTAssertFalse(policy.takeResume(phase: .paused))
+                policy.didWake()
+            }
+            XCTAssertTrue(policy.takeResume(phase: .paused))
+            policy.didWake()
+            XCTAssertFalse(policy.takeResume(phase: .paused), "Wake must not restart capture twice")
+        }
+    }
+
+    func testSleepResumeRequiresRunningAmbientAndOptIn() {
+        for (ambient, optedIn) in [(false, false), (false, true), (true, false)] {
+            var policy = SleepResumePolicy()
+            policy.willSleep(ambientRunning: ambient, keepAwake: optedIn)
+            policy.didWake()
+            XCTAssertFalse(policy.takeResume(phase: .paused))
+        }
+    }
+
+    func testExplicitCancellationPreventsResumeEvenWhileUnloading() {
+        for wakeFirst in [true, false] {
+            var policy = SleepResumePolicy()
+            policy.willSleep(ambientRunning: true, keepAwake: true)
+            if wakeFirst { policy.didWake() }
+            policy.cancel() // Pause, Stop, ambient off, or keep-awake off.
+            policy.didWake()
+            XCTAssertFalse(policy.takeResume(phase: .paused))
+            policy.willSleep(ambientRunning: true, keepAwake: true)
+            policy.didWake()
+            XCTAssertTrue(policy.takeResume(phase: .paused), "A later capture can opt in again")
+        }
+    }
+
     func testJotInputSelectionNotificationsAreBrieflyIgnored() {
         var filter = AudioConfigurationChangeFilter()
         XCTAssertFalse(filter.shouldIgnore(at: 10))

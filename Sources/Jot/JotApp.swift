@@ -286,7 +286,7 @@ private struct ServiceControls: View {
             }.help("Continuously transcribe the microphone while the service is running.")
             ControlRow(title: "Keep Mac awake", caption: "While ambient is on", secondary: true) {
                 Toggle("Keep Mac awake while ambient is on", isOn: $service.keepMacAwakeWhileListening).labelsHidden().toggleStyle(.switch)
-            }.help("Prevents idle sleep while ambient transcription or a meeting is recording.")
+            }.help("Prevents idle sleep during ambient transcription or a meeting, and resumes capture after the Mac wakes. Closing the lid can still put the Mac to sleep.")
             if service.isPaused && (service.fnRequested || service.ambientRequested) {
                 Text("Selected features start when you resume.").font(.caption).foregroundStyle(.secondary).padding(.leading, 30)
             }

@@ -1,5 +1,25 @@
 import Foundation
 
+/// A sleep interruption may resume only after wake and model unloading, and only
+/// when the user had opted in while ambient capture was running.
+public struct SleepResumePolicy: Sendable {
+    private var sleeping = false
+    private var pending = false
+    public init() {}
+    public mutating func willSleep(ambientRunning: Bool, keepAwake: Bool) {
+        guard !sleeping else { return }
+        sleeping = true
+        pending = ambientRunning && keepAwake
+    }
+    public mutating func didWake() { sleeping = false }
+    public mutating func cancel() { pending = false }
+    public mutating func takeResume(phase: ServiceLifecycle.Phase) -> Bool {
+        guard pending, !sleeping, phase == .paused else { return false }
+        pending = false
+        return true
+    }
+}
+
 /// Generation checks prevent work that started before Pause from reactivating capture.
 public struct ServiceLifecycle: Sendable {
     public enum Phase: String, Codable, Sendable { case paused, starting, ready, pausing, failed }
