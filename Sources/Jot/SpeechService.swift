@@ -13,7 +13,7 @@ enum CaptureEventKind: String {
     case started, paused, stopped, sleep
     case ambientOff = "ambient_off", deviceChange = "device_change", inputStalled = "input_stalled"
     case audioGap = "audio_gap", audioDiscarded = "audio_discarded", processingError = "processing_error"
-    case speakerPass = "speaker_pass"
+    case speakerPass = "speaker_pass", sessionSplit = "session_split"
 }
 
 @MainActor
@@ -45,6 +45,10 @@ final class SpeechService: ObservableObject {
             if !keepMacAwakeWhileListening { sleepResume.cancel() }
             updateKeepAwakeAssertion()
         }
+    }
+    /// Minutes of quiet that end an ambient session; 0 keeps one session until capture stops. A named meeting never splits.
+    @Published var newSessionAfterSilence = UserDefaults.standard.object(forKey: JotDefaultsKey.newSessionAfterSilence) as? Int ?? SessionSplit.defaultMinutes {
+        didSet { UserDefaults.standard.set(newSessionAfterSilence, forKey: JotDefaultsKey.newSessionAfterSilence) }
     }
     /// Off means no audio reaches disk and no speaker pass runs. Switching off mid-session deletes that session's file; switching on waits for the next session, since a file that starts mid-session would misplace every segment.
     @Published var keepAudioForSpeakerPass = UserDefaults.standard.object(forKey: JotDefaultsKey.keepAudioForSpeakerPass) as? Bool ?? true {
@@ -202,6 +206,8 @@ final class SpeechService: ObservableObject {
     var sessionID = UUID().uuidString
     /// Wall-clock start of the current ambient session; Live counts elapsed time from it.
     private(set) var sessionStarted = Date()
+    /// When this session last produced a row, so a quiet stretch can be measured.
+    private var lastAmbientRowAt: Date?
     private var ambientOffset = 0.0
     private var ambient: [Float] = []
     /// The session's audio on disk for the speaker pass; nil while no ambient session runs.
@@ -630,7 +636,7 @@ final class SpeechService: ObservableObject {
         if !capture.running { lastAudioAt = Date() }
         try capture.start()
         sessionID = UUID().uuidString; sessionStarted = Date(); ambientOffset = 0; activeSessionID = sessionID
-        ambient = []; silentSeconds = 0; ambientEnabled = true; updateKeepAwakeAssertion(); updateMode()
+        ambient = []; silentSeconds = 0; lastAmbientRowAt = nil; ambientEnabled = true; updateKeepAwakeAssertion(); updateMode()
         if keepAudioForSpeakerPass { sessionAudio = SessionAudioFile(sessionID: sessionID) }
         recordEvent(.started, "Ambient microphone capture started."); notice = ""
     }
@@ -737,6 +743,9 @@ final class SpeechService: ObservableObject {
             if ambientEnabled || dictationActive, let lastAudioAt, Date().timeIntervalSince(lastAudioAt) > 4 {
                 recordEvent(.inputStalled, "No microphone samples for more than four seconds."); pause(automatic: true); notice = "Microphone stopped delivering audio. Resume to reconnect; a capture gap occurred."
             }
+            if ambientEnabled, SessionSplit.shouldStart(silenceMinutes: newSessionAfterSilence,
+                silenceSeconds: Date().timeIntervalSince(lastAmbientRowAt ?? sessionStarted),
+                isMeeting: meetingTitle != nil, workPending: !jobs.isEmpty || processing != nil) { rotateSession() }
         }
         kickWorker()
     }
@@ -770,6 +779,18 @@ final class SpeechService: ObservableObject {
     }
 
     /// The normal end and an automatic pause run the pass, since Resume starts a new session and this one is complete. The Pause button discards the file along with the rest of its unfinished audio.
+    /// Capture keeps running; only the session it feeds changes, so the speaker pass and Live both start fresh on the next speech.
+    private func rotateSession() {
+        let spoken = lastAmbientRowAt != nil
+        flushAmbient()
+        if spoken { recordEvent(.sessionSplit, "New session started after \(newSessionAfterSilence) minutes of quiet.") }
+        endSessionAudio(runPass: spoken)
+        sessionID = UUID().uuidString; sessionStarted = Date(); ambientOffset = 0; activeSessionID = sessionID
+        ambient = []; silentSeconds = 0; lastAmbientRowAt = nil
+        if keepAudioForSpeakerPass { sessionAudio = SessionAudioFile(sessionID: sessionID) }
+        refreshSessions()
+    }
+
     private func endSessionAudio(runPass: Bool) {
         guard let file = sessionAudio else { return }
         sessionAudio = nil
@@ -888,7 +909,10 @@ final class SpeechService: ObservableObject {
                         try store?.setReadableText(text, for: source)
                     }
                 }
-                if !output.transcripts.isEmpty { lastTranscriptAt = Date(); refreshRecent(); refreshSessions() }
+                if !output.transcripts.isEmpty {
+                    lastTranscriptAt = Date(); refreshRecent(); refreshSessions()
+                    if job.mode == .ambient, job.sessionID == sessionID { lastAmbientRowAt = Date() }
+                }
                 if job.mode == .dictation, job.ticket == dictationTicket {
                     let text = DictationCleanup.applying(to: vocabularySnapshot.applyingToDictation(readable.isEmpty ? output.text : readable.joined(separator: " ")))
                     if text.isEmpty { notice = "No text to insert." }
