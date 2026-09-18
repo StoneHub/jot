@@ -14,6 +14,8 @@ struct LiveView: View {
     @State private var working = false
     /// True while the feed is scrolled to its end; new rows then keep the end in view, a reader who scrolled up is left alone.
     @State private var pinned = true
+    /// Set by Clear: lines up to this moment stay in the session but are hidden here.
+    @State private var clearedThrough: Date?
 
     private var running: Bool { service.ambientEnabled }
     /// The recording session, or the newest saved one while idle.
@@ -25,24 +27,33 @@ struct LiveView: View {
         return names
     }
     /// Changes whenever a row arrives or the last row's text grows, so the feed knows to follow.
-    private var feedKey: String { "\(rows.count):\(rows.last?.text.count ?? 0)" }
+    private var feedKey: String { "\(shown.count):\(shown.last?.text.count ?? 0)" }
+    private var shown: [Transcript] {
+        guard let clearedThrough else { return rows }
+        return rows.filter { $0.startedAt.addingTimeInterval($0.startSeconds) > clearedThrough }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             header
             if running || service.meetingTitle != nil {
-                feed(rows)
+                if shown.isEmpty && clearedThrough != nil {
+                    Text("Cleared. New lines appear here.").font(.callout).foregroundStyle(.secondary)
+                    Spacer()
+                } else {
+                    feed(shown)
+                }
             } else {
                 Text("Not listening").font(.callout).foregroundStyle(.secondary)
-                if !rows.isEmpty {
+                if !shown.isEmpty {
                     Text("Last session").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                    feed(Array(rows.suffix(5)))
+                    feed(Array(shown.suffix(5)))
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear(perform: refresh)
-        .onChange(of: service.activeSessionID) { _, _ in refresh() }
+        .onChange(of: service.activeSessionID) { _, _ in clearedThrough = nil; refresh() }
         .onChange(of: service.ambientEnabled) { _, _ in refresh() }
         .onChange(of: service.sessions.map(\.transcriptCount)) { _, _ in refresh() }
         .onChange(of: service.historyRevision) { _, _ in labelTarget = nil; refresh() }
@@ -66,7 +77,20 @@ struct LiveView: View {
                 if !recognized.isEmpty { chip("recognized \(recognized.joined(separator: ", "))", color: .green, dot: true) }
             }
             Spacer()
+            clearButton
             tools
+        }
+    }
+
+    /// Clear hides what is on screen. Sessions keeps every line, so nothing is deleted here.
+    @ViewBuilder private var clearButton: some View {
+        if clearedThrough != nil {
+            Button("Show all") { clearedThrough = nil }.modifier(GlassButton())
+                .help("Show the lines Clear hid.").accessibilityIdentifier("live-show-all")
+        } else if !shown.isEmpty && !renaming && !naming {
+            Button("Clear") { clearedThrough = shown.last.map { $0.startedAt.addingTimeInterval($0.startSeconds) } }
+                .modifier(GlassButton())
+                .help("Hide what is on screen. Sessions keeps every line.").accessibilityIdentifier("live-clear")
         }
     }
 
