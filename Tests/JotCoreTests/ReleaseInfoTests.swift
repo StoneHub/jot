@@ -39,4 +39,24 @@ final class ReleaseInfoTests: XCTestCase {
         let noBody = payload.replacingOccurrences(of: "\"body\": \"\\nFixes the thing.\\n\\nMore detail below.\"", with: "\"body\": null")
         XCTAssertEqual(try ReleaseInfo.latest(from: Data(noBody.utf8)) { "Jot-\($0).zip" }.firstNoteLine, "")
     }
+    func testNewestPrefersTheHighestVersionAndSkipsDrafts() throws {
+        let list = """
+        [{"tag_name":"v0.2.2","html_url":"https://example.com/2","body":"two","draft":false,
+          "assets":[{"name":"Jot-0.2.2.zip","browser_download_url":"https://example.com/Jot-0.2.2.zip","size":12}]},
+         {"tag_name":"v0.3.0","html_url":"https://example.com/3","body":"draft","draft":true,
+          "assets":[{"name":"Jot-0.3.0.zip","browser_download_url":"https://example.com/Jot-0.3.0.zip","size":13}]},
+         {"tag_name":"v0.2.10","html_url":"https://example.com/10","body":"ten","draft":false,
+          "assets":[{"name":"Jot-0.2.10.zip","browser_download_url":"https://example.com/Jot-0.2.10.zip","size":14}]}]
+        """
+        let release = try ReleaseInfo.newest(from: Data(list.utf8)) { "Jot-\($0).zip" }
+        XCTAssertEqual(release.tag, "v0.2.10")
+        XCTAssertEqual(release.assetSize, 14)
+        let noAsset = """
+        [{"tag_name":"v0.4.0","html_url":"https://example.com/4","body":"","assets":[]}]
+        """
+        XCTAssertThrowsError(try ReleaseInfo.newest(from: Data(noAsset.utf8)) { "Jot-\($0).zip" }) { error in
+            XCTAssertEqual(error as? ReleaseInfo.ParseError, .noRelease)
+        }
+    }
+
 }

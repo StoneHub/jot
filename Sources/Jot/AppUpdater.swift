@@ -9,7 +9,8 @@ final class AppUpdater: ObservableObject {
         case idle, checking, upToDate(String), available(ReleaseInfo), downloading(Double), installing, failed(String)
     }
     @Published private(set) var state = State.idle
-    static let latestURL = URL(string: "https://api.github.com/repos/StoneHub/jot/releases/latest")!
+    // The list endpoint, not /releases/latest: development-signed builds publish as pre-releases, which that endpoint hides.
+    static let latestURL = URL(string: "https://api.github.com/repos/StoneHub/jot/releases?per_page=20")!
     static let installPath = "/Applications/Jot.app"
     static let officialTeamIdentifier = "N6GPP46885"
     static let logURL = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Application Support/Jot/update.log")
@@ -28,7 +29,7 @@ final class AppUpdater: ObservableObject {
                 // GitHub answers 404 while the repository has no release at all.
                 if http.statusCode == 404 { state = .upToDate(JotVersion.current); return }
                 guard http.statusCode == 200 else { throw UpdateError("GitHub answered \(http.statusCode).") }
-                let release = try ReleaseInfo.latest(from: data) { "Jot-\($0).zip" }
+                let release = try ReleaseInfo.newest(from: data) { "Jot-\($0).zip" }
                 guard let installed = SemanticVersion.parse(JotVersion.current) else { throw UpdateError("Installed version \(JotVersion.current) is not a version.") }
                 if release.version > installed {
                     let runningTeam = try Self.teamIdentifier(of: Bundle.main.bundleURL)
