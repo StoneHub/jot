@@ -4,6 +4,9 @@ options:
   deploymentTarget:
     macOS: '14.0'
 packages:
+  AppleFM:
+    url: https://github.com/StoneHub/apple-fm-swift.git
+    revision: 737fac9e7147403f2777e0901f02452e8fc25ae7
   FluidAudio:
     url: https://github.com/FluidInference/FluidAudio.git
     revision: 5c19d5e12320e22bbfb7a1877b089d2665a69add
@@ -29,6 +32,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: space.jot.core
     dependencies:
+      - package: AppleFM
       - sdk: libsqlite3.tbd
   JotCLI:
     type: tool

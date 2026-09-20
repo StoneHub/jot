@@ -116,3 +116,16 @@ The full signed Release build also passed the feedback-removal artifact guard an
 A live CLI report contained multiple samples plus launch, resume, model-load-started, and models-ready markers, with the Debug build label and no captured-content fields. Per-job timing math is tested; an actual spoken dictation under this new build has not been used as a controlled performance benchmark.
 
 ![Restored Activity interface without feedback tools](evidence/activity-without-feedback.jpg)
+
+## Shared AppleFM cleanup — 2026-09-20
+
+Jot now uses AppleFM for typed availability and native structured generation. The transcript schema, instructions, protected-token validation, entry count/order policy, 2400-byte input bound, greedy sampling, 1200-token response bound, two-second deadline, cancellation, and raw fallback remain in Jot. This starts from PR #31's live transcript replacement behavior.
+
+- Final AppleFM revision: `737fac9e7147403f2777e0901f02452e8fc25ae7` (merged framework PR #1; identical file tree to the worker-tested revision), pinned in both package manifests, the generated Xcode project, and both resolution files. No local dependency override remains.
+- `swift test`: all 126 tests passed against the remotely fetched dependency. Added coverage checks exact raw fallback after errors, the combined UTF-8 boundary, no overlapping generation after dictation interruption, and original text preservation after derived text updates and reopening storage. Existing timeout/no-backlog and live replacement tests pass.
+- `./scripts/build-install.py --configuration Release --build-only`: passed. The current resolved app is `build/DerivedData.noindex/Build/Products/Release/Jot.app`; signing, strict bundle verification, DEBUG exclusion, and feedback exclusion passed. Its bundled `jot --help` ran successfully.
+- Mach-O inspection reports minimum macOS 14.0 for Jot, JotCore, and the bundled CLI, with weak FoundationModels linkage in JotCore. An actual macOS 14 runtime was not available.
+- A standalone harness linked to the built JotCore exercised `TranscriptCleanup.clean` with two synthetic entries. Valid changed output arrived in 1.26 seconds with a 15-second diagnostic allowance, then 0.83 seconds with the normal two-second deadline. A shorter initial fixture was returned unchanged by both shared and original direct native generation; it did not establish changed-output behavior. No captured transcripts were used.
+- Independent review found no behavior issues; its missing root lockfile finding was resolved. No installed app was replaced or restarted during this validation. Installed/runtime delivery and public distribution remain separate.
+
+Parent final review: both resolution files and both build systems use the merged framework revision. All 126 tests and the signed Release build passed again after resolving that final pin. Framework tree equality was verified before reusing the live synthetic generation evidence.

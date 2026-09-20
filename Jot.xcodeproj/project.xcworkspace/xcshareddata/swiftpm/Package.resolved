@@ -1,6 +1,14 @@
 {
-  "originHash" : "d526b956b2941e51520eb1a181d281939054defb03feb9302533a12952391e2e",
+  "originHash" : "0a257ae3dabd1727f4124c2704bd782370f0e27a821ae96fa44123a16d50c0d1",
   "pins" : [
+    {
+      "identity" : "apple-fm-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/StoneHub/apple-fm-swift.git",
+      "state" : {
+        "revision" : "737fac9e7147403f2777e0901f02452e8fc25ae7"
+      }
+    },
     {
       "identity" : "fluidaudio",
       "kind" : "remoteSourceControl",

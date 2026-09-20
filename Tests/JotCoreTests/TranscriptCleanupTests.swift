@@ -47,6 +47,49 @@ final class TranscriptCleanupTests: XCTestCase {
         XCTAssertLessThan(began.duration(to: .now), .milliseconds(200))
     }
 
+    @MainActor func testDictationInterruptionKeepsUncooperativeGeneratorBusy() async {
+        let cleanup = TranscriptCleanup()
+        let started = expectation(description: "Model started")
+        let finished = expectation(description: "Model finished")
+        let gate = CleanupGeneratorGate()
+        let source = ["  um original\n", "Do not ship Friday."]
+        let work = Task {
+            await cleanup.clean(source, generator: { _ in
+                await gate.wait(started: started)
+                finished.fulfill()
+                return ["Original.", "Do not ship Friday."]
+            })
+        }
+        await fulfillment(of: [started], timeout: 1)
+        let began = ContinuousClock.now
+        cleanup.cancel()
+        let result = await work.value
+        XCTAssertEqual(result, source, "Interruption must preserve the exact raw entries")
+        XCTAssertLessThan(began.duration(to: .now), .milliseconds(200))
+
+        let bypass = await cleanup.clean(["next"], generator: { _ in
+            XCTFail("Dictation cancellation must not allow overlapping model calls")
+            return ["wrong"]
+        })
+        XCTAssertEqual(bypass, ["next"])
+        await gate.release()
+        await fulfillment(of: [finished], timeout: 1)
+    }
+
+    @MainActor func testGeneratorFailurePreservesExactRawTextAndAllowsNextRequest() async {
+        struct ModelFailure: Error {}
+        let cleanup = TranscriptCleanup()
+        let source = ["  um café\n", "Do not ship Friday."]
+        let result = await cleanup.clean(source, generator: { received in
+            XCTAssertEqual(received, source)
+            throw ModelFailure()
+        })
+        XCTAssertEqual(result, source)
+
+        let recovered = await cleanup.clean(["um recovered"], generator: { _ in ["Recovered."] })
+        XCTAssertEqual(recovered, ["Recovered."])
+    }
+
     func testRejectsObservedBudgetHallucinationAndLostQualification() {
         XCTAssertFalse(CleanupValidation.accepts("The budget is fifteen thousand dollars, not five thousand.", source: "The budget is fifteen, fifteen hundred dollars, not five thousand."))
         XCTAssertFalse(CleanupValidation.accepts("Ship Friday.", source: "Do not ship Friday."))
@@ -89,6 +132,26 @@ final class TranscriptCleanupTests: XCTestCase {
         XCTAssertEqual(result, source)
     }
 
+    @MainActor func testInputLimitCountsCombinedUTF8BytesAndIncludesBoundary() async {
+        let cleanup = TranscriptCleanup()
+        let source = [String(repeating: "é", count: 600), String(repeating: "é", count: 600)]
+        let called = expectation(description: "Exactly 2400 bytes reaches the model")
+        let accepted = await cleanup.clean(source, generator: { received in
+            called.fulfill()
+            XCTAssertEqual(received, source)
+            return received
+        })
+        await fulfillment(of: [called], timeout: 1)
+        XCTAssertEqual(accepted, source)
+
+        let oversized = source + ["a"]
+        let bypass = await cleanup.clean(oversized, generator: { _ in
+            XCTFail("The byte budget applies across all entries, including multibyte text")
+            return []
+        })
+        XCTAssertEqual(bypass, oversized)
+    }
+
     func testReadableTextSurvivesReopenAndCannotResurrectDeletedHistory() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -102,10 +165,33 @@ final class TranscriptCleanupTests: XCTestCase {
         XCTAssertEqual(try store.read(id: source.id)?.text, "Hello.")
         XCTAssertEqual(try store.search("Hello.").count, 1)
         XCTAssertEqual(try store.session(id: "session").first?.text, "Hello.")
+        try store.setReadableText("Hello again.", for: source)
+        XCTAssertEqual(try store.read(id: source.id)?.text, "Hello again.",
+                       "The original source must still match after storing and reopening derived text")
         try store.deleteTranscripts(ids: [source.id])
         try store.setReadableText("late output", for: source)
         XCTAssertNil(try store.read(id: source.id))
         try store.append(source)
         XCTAssertEqual(try store.read(id: source.id)?.text, "um hello", "Derived text must cascade on deletion")
+    }
+}
+
+/// Keeps model work alive until explicitly released, even when its task is cancelled.
+private actor CleanupGeneratorGate {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var released = false
+
+    func wait(started: XCTestExpectation) async {
+        await withCheckedContinuation { continuation in
+            if released { continuation.resume() }
+            else { self.continuation = continuation }
+            started.fulfill()
+        }
+    }
+
+    func release() {
+        released = true
+        continuation?.resume()
+        continuation = nil
     }
 }

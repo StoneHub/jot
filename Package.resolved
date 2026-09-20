@@ -1,0 +1,13 @@
+{
+  "pins" : [
+    {
+      "identity" : "apple-fm-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/StoneHub/apple-fm-swift.git",
+      "state" : {
+        "revision" : "737fac9e7147403f2777e0901f02452e8fc25ae7"
+      }
+    }
+  ],
+  "version" : 2
+}
