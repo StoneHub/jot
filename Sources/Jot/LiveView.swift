@@ -26,8 +26,8 @@ struct LiveView: View {
         for name in rows.compactMap(\.speakerLabel) where !name.isEmpty && !names.contains(name) { names.append(name) }
         return names
     }
-    /// Changes whenever a row arrives or the last row's text grows, so the feed knows to follow.
-    private var feedKey: String { "\(shown.count):\(shown.last?.text.count ?? 0)" }
+    /// Follow text replacements too, including equal-length edits and changes above the last row.
+    private var feedKey: [String] { shown.flatMap { [$0.id, $0.text] } }
     private var shown: [Transcript] {
         guard let clearedThrough else { return rows }
         return rows.filter { $0.startedAt.addingTimeInterval($0.startSeconds) > clearedThrough }
@@ -56,6 +56,7 @@ struct LiveView: View {
         .onChange(of: service.activeSessionID) { _, _ in clearedThrough = nil; refresh() }
         .onChange(of: service.ambientEnabled) { _, _ in refresh() }
         .onChange(of: service.sessions.map(\.transcriptCount)) { _, _ in refresh() }
+        .onChange(of: service.transcriptRevision) { _, _ in refresh() }
         .onChange(of: service.historyRevision) { _, _ in labelTarget = nil; refresh() }
         .sheet(item: $labelTarget) { target in
             SpeakerNameSheet(transcript: target, service: service, draft: $labelDraft,
