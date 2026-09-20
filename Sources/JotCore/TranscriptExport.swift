@@ -10,7 +10,8 @@ public enum TranscriptExport {
                previous.sessionID == row.sessionID, previous.mode == row.mode,
                row.startSeconds - previous.endSeconds >= -0.1,
                row.startSeconds - previous.endSeconds < mergeWithin {
-                result[result.count - 1].text += " " + row.text.trimmingCharacters(in: .whitespaces)
+                result[result.count - 1].text = [previous.text, row.text.trimmingCharacters(in: .whitespaces)]
+                    .filter { !$0.isEmpty }.joined(separator: " ")
                 result[result.count - 1].endSeconds = max(previous.endSeconds, row.endSeconds)
             } else { result.append(row) }
         }

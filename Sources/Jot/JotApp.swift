@@ -639,7 +639,7 @@ private struct SessionsView: View {
     private func select(_ id: String?) {
         if let id, id == service.activeSessionID, service.ambientEnabled { openLive(); return }
         selectedID = id; renaming = false
-        rows = id.map(service.sessionParagraphs) ?? []
+        rows = id.map { service.sessionParagraphs($0) } ?? []
     }
     private func commitRename(_ session: TranscriptSession) {
         service.renameSession(session.sessionID, title: titleDraft); renaming = false

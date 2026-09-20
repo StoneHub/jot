@@ -12,6 +12,8 @@ struct LiveView: View {
     @State private var renaming = false
     @State private var titleDraft = ""
     @State private var working = false
+    @State private var selectedRows = Set<String>()
+    @State private var displayedCleanupRevision = 0
     /// True while the feed is scrolled to its end; new rows then keep the end in view, a reader who scrolled up is left alone.
     @State private var pinned = true
     /// Set by Clear: lines up to this moment stay in the session but are hidden here.
@@ -57,7 +59,7 @@ struct LiveView: View {
         .onChange(of: service.ambientEnabled) { _, _ in refresh() }
         .onChange(of: service.sessions.map(\.transcriptCount)) { _, _ in refresh() }
         .onChange(of: service.transcriptRevision) { _, _ in refresh() }
-        .onChange(of: service.historyRevision) { _, _ in labelTarget = nil; refresh() }
+        .onChange(of: service.historyRevision) { _, _ in selectedRows.removeAll(); labelTarget = nil; refresh() }
         .sheet(item: $labelTarget) { target in
             SpeakerNameSheet(transcript: target, service: service, draft: $labelDraft,
                 onSave: { refresh(); labelTarget = nil },
@@ -89,7 +91,7 @@ struct LiveView: View {
             Button("Show all") { clearedThrough = nil }.modifier(GlassButton())
                 .help("Show the lines Clear hid.").accessibilityIdentifier("live-show-all")
         } else if !shown.isEmpty && !renaming && !naming {
-            Button("Clear") { clearedThrough = shown.last.map { $0.startedAt.addingTimeInterval($0.startSeconds) } }
+            Button("Clear") { selectedRows.removeAll(); clearedThrough = shown.last.map { $0.startedAt.addingTimeInterval($0.startSeconds) } }
                 .modifier(GlassButton())
                 .help("Hide what is on screen. Sessions keeps every line.").accessibilityIdentifier("live-clear")
         }
@@ -146,7 +148,12 @@ struct LiveView: View {
                 Text(row.startedAt.addingTimeInterval(row.startSeconds), format: .dateTime.hour().minute())
                     .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
             }.frame(width: 150, alignment: .leading)
-            Text(row.text).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            LiveTranscriptText(text: row.text, cleanupRevision: displayedCleanupRevision) { selected in
+                if selected { selectedRows.insert(row.id) }
+                else {
+                    if selectedRows.remove(row.id) != nil && selectedRows.isEmpty { refresh() }
+                }
+            }.frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -177,7 +184,11 @@ struct LiveView: View {
         .background((color ?? Color.primary).opacity(color == nil ? 0.08 : 0.16), in: Capsule())
     }
 
-    private func refresh() { rows = shownID.map(service.sessionParagraphs) ?? [] }
+    private func refresh() {
+        guard selectedRows.isEmpty else { return }
+        displayedCleanupRevision = service.cleanupRevision
+        rows = shownID.map { service.sessionParagraphs($0, minimumMergeGap: 1.21) } ?? []
+    }
     private func commitRename() {
         service.renameMeeting(titleDraft); renaming = false
     }

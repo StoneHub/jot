@@ -142,3 +142,14 @@ Resume now starts the microphone; Pause stops new capture, saves pending recogni
 - Final fixture comparison: full-file recognition of 57.43 seconds took 2.24 seconds. The same passage repeated twice (114.85 seconds) ran through 40 streaming jobs, including an empty final flush, in 8.56 seconds of accelerated harness time. Both passages survived without the prior six seam-word duplicates. Punctuation and ordinary ASR wording still differed. This measures processing a fixture, not wall-clock live display latency. Deterministic checks cover the seven-second window bound, final-tail flush, boundary deduplication, genuine repeated words, and resets.
 
 The harness does not establish physical Fn timing, target-app Accessibility behavior, or real conversational accuracy. Those remain live-use checks. Force-quit preserves committed recognition, not an unrecognized audio tail. No new raw-audio recovery file or public release is introduced.
+
+## Phrase cleanup and visible replacement — 2026-09-20
+
+The fragment-level model contract could leave short Live rows unchanged or fail its exact-entry-count check. Cleanup now submits one assembled phrase, then maps the result back to the original row IDs. Recognition still publishes first.
+
+- `swift test`: 154 tests pass, including phrase boundaries, source-ID preservation, filler-only row removal, protected numbers, atomic derived writes, and deletion during cleanup.
+- `JotRecoveryChecks --cleanup-model`: the real controller publishes three synthetic recognition fragments, then the actual on-device Foundation Model removes “uh” from the joined sentence and persists the replacement. No microphone or personal transcript was used. The delayed model check verifies both queued phrases eventually clean while recognition continues; this supersedes the busy-second-row fallback result recorded above.
+- `swiftc -parse-as-library Sources/Jot/LiveTranscriptText.swift scripts/check-live-text.swift -o build/check-live-text && build/check-live-text`: native AppKit checks pass for immediate raw additions, unchanged selected text and selection range, cleanup after selection release, and Reduce Motion. This verifies transition scheduling, not a human-observed animation.
+- `./scripts/build-install.py --configuration Release --build-only`: signed Release build passes strict signing, DEBUG exclusion, and feedback exclusion. Xcode resolves the product under `build/DerivedData.noindex/Build/Products/Release/Jot.app`.
+
+Local logs live in ignored `build/phrase-all-tests.log`, `build/phrase-real-model-check.log`, and `build/phrase-release.log`. Installed/runtime proof is recorded separately by the installer. No before/after screenshot of personal Live content is published; visual animation acceptance remains a live-use check.

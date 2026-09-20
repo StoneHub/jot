@@ -81,7 +81,8 @@ for app, cli, executable in [(destination, helper, s['EXECUTABLE_NAME']),
     if (current['microphoneRunning'] or current['queuedAudioSeconds'] > 0
             or current.get('inferenceRunning') or current['models'] in ('preparing', 'unloading')
             or current.get('servicePhase') == 'pausing'
-            or recovery.get('attemptPending') or recovery.get('recoveryRunning')):
+            or recovery.get('attemptPending') or recovery.get('recoveryRunning')
+            or recovery.get('cleanupPending', 0) > 0):
         raise SystemExit('Build succeeded. Pause capture and wait for inference/model setup before installing.')
     pid = current['resources']['processID']
     command = subprocess.check_output(['ps', '-p', str(pid), '-o', 'comm='], text=True).strip()

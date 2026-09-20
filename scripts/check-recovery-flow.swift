@@ -124,10 +124,46 @@ struct RecoveryFlowChecks {
         }
         print("PASS: Pause during model preparation or failed preparation does not enqueue unprocessable final audio.")
 
+        if CommandLine.arguments.contains("--cleanup-model") { try await checkPhraseCleanupModel() }
+
         if let flag = CommandLine.arguments.firstIndex(of: "--audio"), CommandLine.arguments.count > flag + 1 {
             try await checkRealRecognition(URL(fileURLWithPath: CommandLine.arguments[flag + 1]))
         }
         print("Recovery controller checks passed. These checks do not establish physical Fn or cross-app Accessibility behavior.")
+    }
+
+    @MainActor static func checkPhraseCleanupModel() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("jot-phrase-model-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = try TranscriptStore(directory: directory)
+        let probe = Probe()
+        let fragments = ["I think uh", "we could get", "faster output to the live view."]
+        let service = SpeechService(dependencies: .init(infer: { _, job, _ in
+            guard let index = job.samples.first.map(Int.init), index > 0 else {
+                return SpeechOutput(transcripts: [], text: "", processingSeconds: 0)
+            }
+            let text = fragments[index - 1]
+            let row = Transcript(sessionID: job.sessionID, startedAt: job.startedAt,
+                startSeconds: job.offset, endSeconds: job.offset + 3, text: text, speakerID: "speaker-1", mode: "ambient")
+            return SpeechOutput(transcripts: [row], text: text, processingSeconds: 0)
+        }, deliver: { _, text in try probe.deliver(text) }, now: { probe.now }))
+        service.keepAudioForSpeakerPass = false; service.cleanUpTranscriptions = true
+        service.beginRecoveryVerification(store: store, startedAt: probe.now)
+        for index in 1...3 {
+            probe.now += 3
+            service.ingestRecoveryVerification(samples: Array(repeating: Float(index), count: 48_000), at: probe.now)
+            while try store.session(id: service.activeSessionID!).count < index {
+                try await Task.sleep(for: .milliseconds(5))
+            }
+        }
+        let before = try store.session(id: service.activeSessionID!).map(\.text)
+        precondition(before == fragments, "Recognition did not publish before phrase cleanup")
+        await service.waitForRecoveryVerification()
+        let after = try store.session(id: service.activeSessionID!).map(\.text).joined(separator: " ")
+        precondition(after == "I think we could get faster output to the live view.", "Real model did not clean the complete phrase: \(after)")
+        precondition(service.recoveryDiagnostics["cleanupRequested"] as? Int == 1, "Transport fragments became separate cleanup requests")
+        service.shutdown()
+        print("PASS: actual Foundation Model cleans the three published fragments as one phrase and persists their replacement.")
     }
 
     static func checkRecognitionCommitWindow() {
@@ -254,6 +290,9 @@ struct RecoveryFlowChecks {
         for index in 1...2 {
             probe.now += 3
             cleaned.ingestRecoveryVerification(samples: Array(repeating: Float(index), count: 48_000), at: probe.now)
+            // Each explicit quiet boundary completes a phrase. The next phrase
+            // must be queued while cleanup is busy, not discarded as raw forever.
+            cleaned.flushRecoveryVerification()
             while try cleanedStore.session(id: cleaned.activeSessionID!).count < index {
                 try await Task.sleep(for: .milliseconds(5))
             }
@@ -262,8 +301,8 @@ struct RecoveryFlowChecks {
         precondition(raw.map(\.text) == ["segment1", "segment2"], "Raw text did not publish before delayed cleanup")
         await cleaned.waitForRecoveryVerification()
         let readable = try cleanedStore.session(id: cleaned.activeSessionID!)
-        precondition(readable.map(\.text) == ["Segment1", "segment2"], "Cleaned text did not replace the first readable row while the busy fallback retained the second")
-        precondition(cleaned.recoveryDiagnostics["cleanupApplied"] as? Int == 1, "Cleanup outcome was not reported")
+        precondition(readable.map(\.text) == ["Segment1", "Segment2"], "Phrase cleanup dropped work while the model was busy")
+        precondition(cleaned.recoveryDiagnostics["cleanupApplied"] as? Int == 2, "Cleanup outcome was not reported")
         cleaned.shutdown()
         print("PASS: raw text publishes before delayed cleanup; the next recognition completes while cleanup runs, then the first row is replaced.")
     }

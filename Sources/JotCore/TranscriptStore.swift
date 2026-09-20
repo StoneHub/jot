@@ -289,6 +289,35 @@ public final class TranscriptStore: @unchecked Sendable {
         }
     }
 
+    /// A phrase may remove all the filler from one constituent row. Apply the
+    /// complete edit atomically, only if every original row still exists unchanged.
+    @discardableResult public func setReadablePhrase(_ texts: [String], for sources: [Transcript]) throws -> Bool {
+        guard texts.count == sources.count, !sources.isEmpty,
+              texts.reduce(0, { $0 + $1.utf8.count }) <= 1_000_000 else {
+            throw StoreError.invalid("Invalid readable phrase")
+        }
+        return try locked {
+            try execute("BEGIN IMMEDIATE")
+            do {
+                for source in sources {
+                    let check = try prepare("SELECT 1 FROM transcripts WHERE id=? AND text=?")
+                    bind(source.id, to: 1, in: check); bind(source.text, to: 2, in: check)
+                    let exists = sqlite3_step(check) == SQLITE_ROW
+                    sqlite3_finalize(check)
+                    if !exists { try execute("ROLLBACK"); return false }
+                }
+                for (source, text) in zip(sources, texts) {
+                    let stmt = try prepare("INSERT OR REPLACE INTO transcript_readable(transcript_id,text) VALUES(?,?)")
+                    bind(source.id, to: 1, in: stmt); bind(text, to: 2, in: stmt)
+                    defer { sqlite3_finalize(stmt) }
+                    try finish(stmt)
+                }
+                try execute("COMMIT")
+                return true
+            } catch { try? execute("ROLLBACK"); throw error }
+        }
+    }
+
     /// The words one inference block produced, in one transaction. Each word must belong to a saved transcript; positions and start times must ascend within a transcript.
     public func appendWords(_ words: [StoredWord]) throws {
         guard words.count <= 20_000 else { throw StoreError.invalid("Too many words in one batch") }
