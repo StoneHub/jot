@@ -35,9 +35,11 @@
 		66B8957514BEDD3D82E0A662 /* AppleFM in Frameworks */ = {isa = PBXBuildFile; productRef = 82EA2AAAF0F7562ED7F86957 /* AppleFM */; };
 		68A990392B7CAAB061ADC290 /* Jot.icns in Resources */ = {isa = PBXBuildFile; fileRef = 78ECFD6E5E5AF02BE9088B4A /* Jot.icns */; };
 		6A34209658A335507BD1D20E /* DictationCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83ACD6F41350D0FEEF8F9394 /* DictationCleanup.swift */; };
+		6C90A1DD9BB31EBC7165639F /* PhraseCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82F2EA91CC53C86941193E3C /* PhraseCleanup.swift */; };
 		6E92D801CF7E0C6D4471E466 /* AudioPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1724E7761CB8156A220EF24 /* AudioPipeline.swift */; };
 		6F6AFCF5F313C08DE94D202C /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = CF8E8E7D8E656AB679CA76DA /* LICENSE */; };
 		71AC618677A95E2FCEBEFCEC /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23353B724C7968C1C5209FA0 /* AppUpdater.swift */; };
+		76F97CF4DF9E0347AD45D880 /* LiveTranscriptText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64DFC6286492A052B21DE7FA /* LiveTranscriptText.swift */; };
 		7F7F23DCD4A5FFD39B920C97 /* DictationSpeakerMute.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6646658769779D619884AA27 /* DictationSpeakerMute.swift */; };
 		826FA796B9F9ADF21CBC9447 /* SpeakerPassStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6426715E1DD091B61B49DB51 /* SpeakerPassStore.swift */; };
 		8A1D4112F82882F7B6696C79 /* TranscriptCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95C80CCA8DD0EA57CBD8F177 /* TranscriptCleanup.swift */; };
@@ -138,6 +140,7 @@
 		5B8AED40D2D1296EEBFE89FA /* ClipboardInsertion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardInsertion.swift; sourceTree = "<group>"; };
 		5D0BF24005EE0C2BB76EEAC0 /* JotCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JotCLI.swift; sourceTree = "<group>"; };
 		6426715E1DD091B61B49DB51 /* SpeakerPassStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerPassStore.swift; sourceTree = "<group>"; };
+		64DFC6286492A052B21DE7FA /* LiveTranscriptText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranscriptText.swift; sourceTree = "<group>"; };
 		651850351DF0D76098A021B7 /* ReleaseInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleaseInfo.swift; sourceTree = "<group>"; };
 		6646658769779D619884AA27 /* DictationSpeakerMute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationSpeakerMute.swift; sourceTree = "<group>"; };
 		7415694705568E2457081A4F /* DictationShortcut.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationShortcut.swift; sourceTree = "<group>"; };
@@ -147,6 +150,7 @@
 		7F8706CA0A472D88DA09E8DC /* Jot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Jot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8056EA6CBA3EA3C1DC87BCCA /* PersonalVocabulary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalVocabulary.swift; sourceTree = "<group>"; };
 		82A3D8CCC3D071ABC0F5EE69 /* DictationInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationInput.swift; sourceTree = "<group>"; };
+		82F2EA91CC53C86941193E3C /* PhraseCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhraseCleanup.swift; sourceTree = "<group>"; };
 		83ACD6F41350D0FEEF8F9394 /* DictationCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationCleanup.swift; sourceTree = "<group>"; };
 		87AE9B1836DA9D504389E51A /* ServiceLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceLifecycle.swift; sourceTree = "<group>"; };
 		8F2995B6746A085B7F078A93 /* CaptureRecovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureRecovery.swift; sourceTree = "<group>"; };
@@ -232,6 +236,7 @@
 				82A3D8CCC3D071ABC0F5EE69 /* DictationInput.swift */,
 				EBA0F84BDC3CF425D094A331 /* JotApp.swift */,
 				3EEFF7CD54878C9E034B716A /* KeepAwakeAssertion.swift */,
+				64DFC6286492A052B21DE7FA /* LiveTranscriptText.swift */,
 				5A608DB6E5CA06D36C6CE0E6 /* LiveView.swift */,
 				75A2B17AAF1631913D5A8DCC /* ResourceStats.swift */,
 				DF4F7EA10A696D822E25FABC /* SelectableHistory.swift */,
@@ -306,6 +311,7 @@
 				91F8074E00354A4D7035E920 /* PeopleStore.swift */,
 				95995C31AC896BE76C27532F /* PerformanceDiagnostics.swift */,
 				8056EA6CBA3EA3C1DC87BCCA /* PersonalVocabulary.swift */,
+				82F2EA91CC53C86941193E3C /* PhraseCleanup.swift */,
 				651850351DF0D76098A021B7 /* ReleaseInfo.swift */,
 				ADA7E9C72BDB6EB8F6F5A74C /* ScreenGeometry.swift */,
 				36EED2B8F9A3A149CE94E3D2 /* SemanticVersion.swift */,
@@ -535,6 +541,7 @@
 				09AFFFF3AF1BE6A912FA1BA0 /* DictationInput.swift in Sources */,
 				48A035BE8890396E0ED43AAE /* JotApp.swift in Sources */,
 				E3CF5ED8A4671E6F1AF3972D /* KeepAwakeAssertion.swift in Sources */,
+				76F97CF4DF9E0347AD45D880 /* LiveTranscriptText.swift in Sources */,
 				0643D545CF0AC17B78F5D0BA /* LiveView.swift in Sources */,
 				B3AB2422EE65311C8F9EEEEA /* ResourceStats.swift in Sources */,
 				F8582FACF33F73EA96F027A9 /* SelectableHistory.swift in Sources */,
@@ -568,6 +575,7 @@
 				BB62B9AEF02E2A87C1A773DB /* PeopleStore.swift in Sources */,
 				FAFD6EC5E32678410DBEB658 /* PerformanceDiagnostics.swift in Sources */,
 				CE41316CF2FC8414E69CEF14 /* PersonalVocabulary.swift in Sources */,
+				6C90A1DD9BB31EBC7165639F /* PhraseCleanup.swift in Sources */,
 				BAB3AC30EDE7DC1B06ABB0FB /* ReleaseInfo.swift in Sources */,
 				4A683EECC9D93C309638A843 /* ScreenGeometry.swift in Sources */,
 				F3DD0C31026B4C194DD8EE61 /* SemanticVersion.swift in Sources */,

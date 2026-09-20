@@ -25,6 +25,16 @@ Ambient speaker attribution uses user-adjustable confidence and minimum-turn dur
 - Pause immediately stops the microphone and shortcut listener, finishes saving captured recognition work, then invalidates the generation and unloads models. It retains recognized speech and failed delivery attempts. UI/CLI/MCP remain available. An explicit Pause remains paused across launch; a sleep interruption resumes previous listening intent after wake independently of Keep Mac awake. An input change or stalled input leaves a notice requesting Resume. `ambient-off` is a compatibility alias for Pause. Ending a named meeting exports that session while listening continues in a fresh unnamed session.
 - Quit stops the app and socket. In-flight/unflushed audio can be lost at quit; already committed transcripts remain.
 
+## Live cleanup
+
+`PhraseCleanup` groups already-persisted recognition rows into one same-session, same-speaker request. It flushes at a final recognition boundary, a speaker/session change, a gap over 1.2 seconds, or before exceeding 12 seconds or 2,000 UTF-8 bytes across rows. A sentence-ending phrase of at least eight words can flush sooner. An individually oversized row retains the existing model input-limit fallback. Raw recognition stays visible throughout; the capture cadence is unchanged.
+
+One separate live-cleanup worker drains at most eight waiting phrases, without competing for the dictation cleaner's actor. A busy generator gets up to five 200-millisecond retries; overload or invalid output leaves raw text intact. Text-only cleanup can finish after Pause stops the microphone. Installation waits for it to drain; Quit cancels it. Diagnostics distinguish queued work, buffered source rows, and cleanup outcomes without exposing text.
+
+The model edits one joined phrase. Deterministic word alignment distributes its result across stable source IDs, including empty readable text when a filler-only row disappears. `TranscriptStore.setReadablePhrase` commits all derived rows atomically only if every original still exists unchanged. Raw text and timed words remain untouched. No schema migration or retrospective rewrite is introduced.
+
+Live uses native selectable text with a 220-millisecond crossfade only for cleanup revisions. Raw appends do not animate. A selected row freezes the displayed feed and revision until selection clears; Reduce Motion disables the fade. Live's minimum paragraph merge gap matches phrase assembly so fragments remain one readable paragraph.
+
 ## Delivery and access
 
 A global event tap observes Fn/Globe or a persisted modifier-plus-key shortcut. Fn events pass through unchanged. Custom trigger key-down, repeat, and key-up events are consumed; unrelated keys and modifier events pass through. `ShortcutTracker` owns the physical-key state independently of capture, so modifier-first release finishes only once and autorepeat cannot restart a recording. The shortcut recorder temporarily suspends the global handler while editing. A focus observer and application identity guard the captured field. AX insertion is preferred; the fallback restores the prior clipboard only if it has not been changed since staging. The app never submits the resulting text.
