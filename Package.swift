@@ -4,7 +4,7 @@ let package = Package(name: "JotCore", platforms: [.macOS(.v14)], products: [
     .library(name: "JotCore", targets: ["JotCore"]),
     .executable(name: "jot", targets: ["JotCLI"])
 ], dependencies: [
-    .package(url: "https://github.com/StoneHub/apple-fm-swift.git", revision: "8019bca5a9be4f03007b6afbfaf0d8962a8abda7")
+    .package(url: "https://github.com/StoneHub/apple-fm-swift.git", revision: "737fac9e7147403f2777e0901f02452e8fc25ae7")
 ], targets: [
     .target(name: "JotCore", dependencies: [.product(name: "AppleFM", package: "apple-fm-swift")],
             linkerSettings: [.linkedLibrary("sqlite3")]),
