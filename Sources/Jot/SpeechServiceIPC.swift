@@ -24,6 +24,7 @@ extension SpeechService {
             "dictationEnabled": cleanUpDictation,
             "availability": TranscriptCleanup.availability.rawValue, "model": "Apple on-device"]
         result["dictationInput"] = input.diagnostics
+        result["dictationRecovery"] = recoveryDiagnostics
         if let delivery = input.lastDelivery { result["lastDelivery"] = delivery.metadata }
         if let lastAudioAt { result["lastAudioAt"] = ISO8601DateFormatter().string(from: lastAudioAt) }
         if let lastTranscriptAt { result["lastTranscriptAt"] = ISO8601DateFormatter().string(from: lastTranscriptAt) }
@@ -80,16 +81,30 @@ extension SpeechService {
                 if params["format"] as? String == "json" { result = try object(TranscriptGrouping.foldContinuations(rows)) }
                 else { result = ["sessionID": id, "text": TranscriptExport.markdown(session: session, rows: rows)] }
             case "speech.transcribe_file":
-                guard modelState == .ready, !capture.running, processing == nil, jobs.isEmpty, !diagnosticActive else { throw JotError.message("Diagnostic transcription requires ready models and idle capture/inference.") }
+                guard lifecycle.phase == .paused, !capture.running, processing == nil, jobs.isEmpty, !diagnosticActive else { throw JotError.message("Pause Jot before diagnostic file transcription.") }
+                guard ModelCache.bytesOnDisk() > 0 else { throw JotError.message("Prepare speech models before diagnostic file transcription.") }
                 guard let path = params["path"] as? String else { throw JotError.message("path is required") }
                 diagnosticActive = true
                 defer { diagnosticActive = false }
                 let token = lifecycle.generation
-                let fileTask = Task { try await pipeline.testFile(URL(fileURLWithPath: path), tuning: tuning) }
+                // Resume now always listens. File diagnostics use an isolated pipeline
+                // while paused, so they never reset the live speaker timeline.
+                let filePipeline = SpeechPipeline()
+                let fileTask = Task {
+                    do {
+                        try await filePipeline.prepare()
+                        let output = try await filePipeline.testFile(URL(fileURLWithPath: path), tuning: tuning)
+                        await filePipeline.unload()
+                        return output
+                    } catch {
+                        await filePipeline.unload()
+                        throw error
+                    }
+                }
                 diagnostic = fileTask
                 defer { diagnostic = nil }
                 let output = try await fileTask.value
-                guard lifecycle.acceptsWork(token) else { throw CancellationError() }
+                guard lifecycle.generation == token else { throw CancellationError() }
                 result = ["text": output.text, "transcripts": try object(output.transcripts), "processingSeconds": output.processingSeconds, "persisted": false]
             case "people.list":
                 let iso = ISO8601DateFormatter()

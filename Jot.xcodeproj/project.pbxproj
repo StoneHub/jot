@@ -8,15 +8,23 @@
 
 /* Begin PBXBuildFile section */
 		00074A8DD9DA7968F26870BE /* VocabularyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D61874EB855429080562675D /* VocabularyView.swift */; };
+		043FD1FDD0EF1146B99F9B5B /* DictationHighlight.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE1CC811540F74F27A08E5AF /* DictationHighlight.swift */; };
 		0643D545CF0AC17B78F5D0BA /* LiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A608DB6E5CA06D36C6CE0E6 /* LiveView.swift */; };
+		0716C14AD00BDA6BD9FB35AB /* SpeechServiceIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42A30D435B413C60B77D5B35 /* SpeechServiceIPC.swift */; };
 		09AFFFF3AF1BE6A912FA1BA0 /* DictationInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82A3D8CCC3D071ABC0F5EE69 /* DictationInput.swift */; };
 		0C6637B88C039C4EEEB58198 /* ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = 2AF537A90CCFD9AEEF273426 /* ThirdPartyNotices.txt */; };
+		0F17B8853D38D40260052561 /* CaptureRecovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F2995B6746A085B7F078A93 /* CaptureRecovery.swift */; };
 		132C26A14258A6D3C8F0920D /* JotDefaultsKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = B02C95F663096FB499C5FD80 /* JotDefaultsKey.swift */; };
+		13899AFFBA889828C7A0DC82 /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */; };
 		2052BA77D29D43FFCE0A5BCD /* SessionAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = F73AD2F430744CB727A9459D /* SessionAudio.swift */; };
 		289C368E513B52686DE68A8B /* TranscriptionTuning.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF9B1EC9EF58D7AA79B27628 /* TranscriptionTuning.swift */; };
+		2CD3721C53751D791BCA1546 /* AudioPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1724E7761CB8156A220EF24 /* AudioPipeline.swift */; };
 		2D62FA2C153FEDA91143654A /* LocalService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1812288F51560118033D92A /* LocalService.swift */; };
+		2D66B6A637FF533C7053FFE9 /* JotCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D2E098CDE7120087F5C947F0 /* JotCore.framework */; };
+		31D0FBE140B2935F2B0A84CF /* check-recovery-flow.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA5056B84E7AD6B092886919 /* check-recovery-flow.swift */; };
 		3DD394A4CDE801E64E1CFA12 /* SpeakerAssignment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91BE6EEF6AD6F736A1D00FE4 /* SpeakerAssignment.swift */; };
 		44270DB6A337277CD915775F /* MeetingExportWait.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4D583EF07B940C30081D6E /* MeetingExportWait.swift */; };
+		46763F17227E20457A2F24FC /* DictationInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82A3D8CCC3D071ABC0F5EE69 /* DictationInput.swift */; };
 		48A035BE8890396E0ED43AAE /* JotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBA0F84BDC3CF425D094A331 /* JotApp.swift */; };
 		4A683EECC9D93C309638A843 /* ScreenGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADA7E9C72BDB6EB8F6F5A74C /* ScreenGeometry.swift */; };
 		4E3572709CC582019CA27ACE /* SpeechServiceIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42A30D435B413C60B77D5B35 /* SpeechServiceIPC.swift */; };
@@ -41,6 +49,8 @@
 		A4B98AD49438BD1121F60475 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FF011AF3F4B42BB9B97A069F /* Assets.xcassets */; };
 		A84D2F3520652FB64F16B110 /* TranscriptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBDB9C8F81FE456A8328BCE4 /* TranscriptStore.swift */; };
 		AE5F58B04CE443D34C9291BA /* SessionSplit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C33A3E252A64EE9389B3646 /* SessionSplit.swift */; };
+		B2F7BA8FE06A847F539FEC30 /* ResourceStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75A2B17AAF1631913D5A8DCC /* ResourceStats.swift */; };
+		B35C2539D0016CA07D5E8AC2 /* ShortcutSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B091B8659394C293AB6A5B14 /* ShortcutSettings.swift */; };
 		B3AB2422EE65311C8F9EEEEA /* ResourceStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75A2B17AAF1631913D5A8DCC /* ResourceStats.swift */; };
 		B8375EF5701D6ACC915D64F2 /* AudioConfigurationChangeFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABF19F7C8406F23ECE65D4FB /* AudioConfigurationChangeFilter.swift */; };
 		B8963CAA9974229526F3C449 /* SpeakerPassRelabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAF736D13A8D0B0B5B88B3D6 /* SpeakerPassRelabel.swift */; };
@@ -48,17 +58,21 @@
 		BB1B00EDC2CC0B7F551C8C00 /* TranscriptExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C7CFFD942425F7F2F26AD45 /* TranscriptExport.swift */; };
 		BB62B9AEF02E2A87C1A773DB /* PeopleStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91F8074E00354A4D7035E920 /* PeopleStore.swift */; };
 		C4A3067F86EC76FBB07066E5 /* ServiceLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87AE9B1836DA9D504389E51A /* ServiceLifecycle.swift */; };
+		C506214D7858C4C9EBB151C4 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 6228A33C6AD2B6E6F3AB1ED3 /* FluidAudio */; };
 		C7E8515F5287174F11A8353B /* ClipboardInsertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B8AED40D2D1296EEBFE89FA /* ClipboardInsertion.swift */; };
 		CB99DD1789813FB24F791413 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = CDE54F5568B2E1009E317C26 /* libsqlite3.tbd */; };
 		CE41316CF2FC8414E69CEF14 /* PersonalVocabulary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8056EA6CBA3EA3C1DC87BCCA /* PersonalVocabulary.swift */; };
 		D283C88CF89D912165283C80 /* JotCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D2E098CDE7120087F5C947F0 /* JotCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D2C247EB99AD43C79AB4C8A3 /* MicrophoneSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1C5114298E41FD0B34E6B8C /* MicrophoneSelection.swift */; };
+		D592BB9126902B61352E81E5 /* KeepAwakeAssertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EEFF7CD54878C9E034B716A /* KeepAwakeAssertion.swift */; };
 		D5D8145305034318CEFA19C7 /* ModelUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D08CE824AF0B228F66A9DE7F /* ModelUpdate.swift */; };
 		E3CF5ED8A4671E6F1AF3972D /* KeepAwakeAssertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EEFF7CD54878C9E034B716A /* KeepAwakeAssertion.swift */; };
 		E5AC6A21952912C803142B66 /* ShortcutSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B091B8659394C293AB6A5B14 /* ShortcutSettings.swift */; };
 		E627399561B1AC9DAB0B0408 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 9B4DFBF48C95EF86F6CFAB88 /* FluidAudio */; };
 		E7E4D5D9AA889DAD7DFCB9C8 /* JotVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8260B75D679FF88E8921F1B /* JotVersion.swift */; };
 		E94231E2378EBD6BF68D1415 /* SpeakerPass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95640C31071C4C2A307F4A6F /* SpeakerPass.swift */; };
+		EC4003D9C37B4EE4BF9F0F1D /* SessionAudioFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74B630DD768233386E24B60B /* SessionAudioFile.swift */; };
+		F0A303028A7207F0062C5CDD /* SpeakerPass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95640C31071C4C2A307F4A6F /* SpeakerPass.swift */; };
 		F39E2781C6B2CA0959B89114 /* JotCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D2E098CDE7120087F5C947F0 /* JotCore.framework */; };
 		F3DD0C31026B4C194DD8EE61 /* SemanticVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36EED2B8F9A3A149CE94E3D2 /* SemanticVersion.swift */; };
 		F8582FACF33F73EA96F027A9 /* SelectableHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF4F7EA10A696D822E25FABC /* SelectableHistory.swift */; };
@@ -67,6 +81,13 @@
 
 /* Begin PBXContainerItemProxy section */
 		044E948A06574F8FBB49C546 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5729D6C2EC45B150D2A5B40B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BCFD8FABA83FE0B14C12D0C1;
+			remoteInfo = JotCore;
+		};
+		198EC222EE720523BAC8FCFB /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 5729D6C2EC45B150D2A5B40B /* Project object */;
 			proxyType = 1;
@@ -105,6 +126,7 @@
 
 /* Begin PBXFileReference section */
 		1C33A3E252A64EE9389B3646 /* SessionSplit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSplit.swift; sourceTree = "<group>"; };
+		22DFD1104FF0F55F21DFA91C /* JotRecoveryChecks */ = {isa = PBXFileReference; includeInIndex = 0; path = JotRecoveryChecks; sourceTree = BUILT_PRODUCTS_DIR; };
 		23353B724C7968C1C5209FA0 /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
 		2AF537A90CCFD9AEEF273426 /* ThirdPartyNotices.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ThirdPartyNotices.txt; sourceTree = "<group>"; };
 		2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechService.swift; sourceTree = "<group>"; };
@@ -127,6 +149,7 @@
 		82A3D8CCC3D071ABC0F5EE69 /* DictationInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationInput.swift; sourceTree = "<group>"; };
 		83ACD6F41350D0FEEF8F9394 /* DictationCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationCleanup.swift; sourceTree = "<group>"; };
 		87AE9B1836DA9D504389E51A /* ServiceLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceLifecycle.swift; sourceTree = "<group>"; };
+		8F2995B6746A085B7F078A93 /* CaptureRecovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureRecovery.swift; sourceTree = "<group>"; };
 		91BE6EEF6AD6F736A1D00FE4 /* SpeakerAssignment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerAssignment.swift; sourceTree = "<group>"; };
 		91F8074E00354A4D7035E920 /* PeopleStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleStore.swift; sourceTree = "<group>"; };
 		95640C31071C4C2A307F4A6F /* SpeakerPass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerPass.swift; sourceTree = "<group>"; };
@@ -153,6 +176,7 @@
 		D61874EB855429080562675D /* VocabularyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabularyView.swift; sourceTree = "<group>"; };
 		D8260B75D679FF88E8921F1B /* JotVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JotVersion.swift; sourceTree = "<group>"; };
 		DF4F7EA10A696D822E25FABC /* SelectableHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectableHistory.swift; sourceTree = "<group>"; };
+		EA5056B84E7AD6B092886919 /* check-recovery-flow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "check-recovery-flow.swift"; sourceTree = "<group>"; };
 		EBA0F84BDC3CF425D094A331 /* JotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JotApp.swift; sourceTree = "<group>"; };
 		F73AD2F430744CB727A9459D /* SessionAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionAudio.swift; sourceTree = "<group>"; };
 		FDE6F4ADB49011C1E67086A3 /* JotCLI */ = {isa = PBXFileReference; includeInIndex = 0; path = JotCLI; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -161,6 +185,15 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		333D8C572A523F6A843671A1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2D66B6A637FF533C7053FFE9 /* JotCore.framework in Frameworks */,
+				C506214D7858C4C9EBB151C4 /* FluidAudio in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		48DF1907E02DF43DAB8D8A7B /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -221,6 +254,7 @@
 				DAED3F62949CD7FDFB9AB122 /* JotCLI */,
 				C1DEE3EB4427813127E7E1D0 /* JotCore */,
 				8B06638858A04B172277FDD9 /* Resources */,
+				B072D96241B8C696D88D7E1F /* scripts */,
 				9EAFF92D7689097233BB0737 /* Frameworks */,
 				CC1E4E01C7217031616028C3 /* Products */,
 			);
@@ -244,10 +278,19 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
+		B072D96241B8C696D88D7E1F /* scripts */ = {
+			isa = PBXGroup;
+			children = (
+				EA5056B84E7AD6B092886919 /* check-recovery-flow.swift */,
+			);
+			path = scripts;
+			sourceTree = "<group>";
+		};
 		C1DEE3EB4427813127E7E1D0 /* JotCore */ = {
 			isa = PBXGroup;
 			children = (
 				ABF19F7C8406F23ECE65D4FB /* AudioConfigurationChangeFilter.swift */,
+				8F2995B6746A085B7F078A93 /* CaptureRecovery.swift */,
 				5B8AED40D2D1296EEBFE89FA /* ClipboardInsertion.swift */,
 				A175F3EDC540CE511A831EF1 /* CoreAudioProperties.swift */,
 				83ACD6F41350D0FEEF8F9394 /* DictationCleanup.swift */,
@@ -288,6 +331,7 @@
 				7F8706CA0A472D88DA09E8DC /* Jot.app */,
 				FDE6F4ADB49011C1E67086A3 /* JotCLI */,
 				D2E098CDE7120087F5C947F0 /* JotCore.framework */,
+				22DFD1104FF0F55F21DFA91C /* JotRecoveryChecks */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -321,6 +365,26 @@
 			);
 			productName = JotCLI;
 			productReference = FDE6F4ADB49011C1E67086A3 /* JotCLI */;
+			productType = "com.apple.product-type.tool";
+		};
+		6D8AAD3F0927A334A58CD310 /* JotRecoveryChecks */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C961919F84F5BEAAB859EFC3 /* Build configuration list for PBXNativeTarget "JotRecoveryChecks" */;
+			buildPhases = (
+				90EAA78687568FCB6E4FC21F /* Sources */,
+				333D8C572A523F6A843671A1 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				9E665C5064D344F616C181E6 /* PBXTargetDependency */,
+			);
+			name = JotRecoveryChecks;
+			packageProductDependencies = (
+				6228A33C6AD2B6E6F3AB1ED3 /* FluidAudio */,
+			);
+			productName = JotRecoveryChecks;
+			productReference = 22DFD1104FF0F55F21DFA91C /* JotRecoveryChecks */;
 			productType = "com.apple.product-type.tool";
 		};
 		B0C2456737C67D0846A9A98E /* Jot */ = {
@@ -378,6 +442,9 @@
 					3F3C802B5B316E1F2CF65158 = {
 						ProvisioningStyle = Manual;
 					};
+					6D8AAD3F0927A334A58CD310 = {
+						ProvisioningStyle = Manual;
+					};
 					B0C2456737C67D0846A9A98E = {
 						ProvisioningStyle = Manual;
 					};
@@ -406,6 +473,7 @@
 			targets = (
 				BCFD8FABA83FE0B14C12D0C1 /* JotCore */,
 				3F3C802B5B316E1F2CF65158 /* JotCLI */,
+				6D8AAD3F0927A334A58CD310 /* JotRecoveryChecks */,
 				B0C2456737C67D0846A9A98E /* Jot */,
 			);
 		};
@@ -484,6 +552,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B8375EF5701D6ACC915D64F2 /* AudioConfigurationChangeFilter.swift in Sources */,
+				0F17B8853D38D40260052561 /* CaptureRecovery.swift in Sources */,
 				C7E8515F5287174F11A8353B /* ClipboardInsertion.swift in Sources */,
 				95FFB72ABC0B6C3B3A3241C9 /* CoreAudioProperties.swift in Sources */,
 				6A34209658A335507BD1D20E /* DictationCleanup.swift in Sources */,
@@ -516,6 +585,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		90EAA78687568FCB6E4FC21F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2CD3721C53751D791BCA1546 /* AudioPipeline.swift in Sources */,
+				043FD1FDD0EF1146B99F9B5B /* DictationHighlight.swift in Sources */,
+				46763F17227E20457A2F24FC /* DictationInput.swift in Sources */,
+				D592BB9126902B61352E81E5 /* KeepAwakeAssertion.swift in Sources */,
+				B2F7BA8FE06A847F539FEC30 /* ResourceStats.swift in Sources */,
+				EC4003D9C37B4EE4BF9F0F1D /* SessionAudioFile.swift in Sources */,
+				B35C2539D0016CA07D5E8AC2 /* ShortcutSettings.swift in Sources */,
+				F0A303028A7207F0062C5CDD /* SpeakerPass.swift in Sources */,
+				13899AFFBA889828C7A0DC82 /* SpeechService.swift in Sources */,
+				0716C14AD00BDA6BD9FB35AB /* SpeechServiceIPC.swift in Sources */,
+				31D0FBE140B2935F2B0A84CF /* check-recovery-flow.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -523,6 +610,11 @@
 			isa = PBXTargetDependency;
 			target = BCFD8FABA83FE0B14C12D0C1 /* JotCore */;
 			targetProxy = 4D4719C7AC50409BF97A6E35 /* PBXContainerItemProxy */;
+		};
+		9E665C5064D344F616C181E6 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BCFD8FABA83FE0B14C12D0C1 /* JotCore */;
+			targetProxy = 198EC222EE720523BAC8FCFB /* PBXContainerItemProxy */;
 		};
 		AFC0799D5E6582BEB35A9B52 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -537,6 +629,17 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		0F9B20D48F1A7D20145B6429 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path";
+				PRODUCT_BUNDLE_IDENTIFIER = space.jot.JotRecoveryChecks;
+				PRODUCT_NAME = JotRecoveryChecks;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
 		10812DA83C667A24F16A2E4D /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -656,6 +759,17 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = space.jot.JotCLI;
 				PRODUCT_NAME = jot;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		8E84A0D6C5781E5F8326835F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path";
+				PRODUCT_BUNDLE_IDENTIFIER = space.jot.JotRecoveryChecks;
+				PRODUCT_NAME = JotRecoveryChecks;
 				SDKROOT = macosx;
 			};
 			name = Release;
@@ -798,6 +912,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
+		C961919F84F5BEAAB859EFC3 /* Build configuration list for PBXNativeTarget "JotRecoveryChecks" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0F9B20D48F1A7D20145B6429 /* Debug */,
+				8E84A0D6C5781E5F8326835F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		D19C9A8BD450B596109DFFC9 /* Build configuration list for PBXNativeTarget "Jot" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -829,6 +952,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		6228A33C6AD2B6E6F3AB1ED3 /* FluidAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 469DC1BBB30D99516E1567A4 /* XCRemoteSwiftPackageReference "FluidAudio" */;
+			productName = FluidAudio;
+		};
 		82EA2AAAF0F7562ED7F86957 /* AppleFM */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 161C2A47ABAA85FA7E9AE48B /* XCRemoteSwiftPackageReference "apple-fm-swift" */;

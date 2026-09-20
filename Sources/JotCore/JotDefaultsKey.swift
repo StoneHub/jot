@@ -17,4 +17,5 @@ public enum JotDefaultsKey {
     public static let historyTextView = "historyTextView"
     public static let dictationShortcut = "dictationShortcut"
     public static let personalVocabulary = "personalVocabulary"
+    public static let recoveryLookbackSeconds = "recoveryLookbackSeconds"
 }

@@ -37,7 +37,7 @@ final class WordEvidenceTests: XCTestCase {
         XCTAssertEqual(words[3].probabilities, [], "Missing diarizer frames are stored as NULL and read back as no evidence")
         XCTAssertEqual(words[1].startSeconds, 1.2)
         XCTAssertTrue(try store.words(sessionID: "other").isEmpty)
-        XCTAssertEqual(try count("PRAGMA user_version"), 5)
+        XCTAssertEqual(try count("PRAGMA user_version"), 7)
     }
 
     func testInvalidWordBatchesAreRefusedWhole() throws {
@@ -139,6 +139,6 @@ final class WordEvidenceTests: XCTestCase {
         XCTAssertEqual(try store.read(id: "old")?.text, "kept")
         XCTAssertTrue(try store.words(sessionID: "s").isEmpty)
         XCTAssertEqual(try count("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='transcript_words'"), 1)
-        XCTAssertEqual(try count("PRAGMA user_version"), 5)
+        XCTAssertEqual(try count("PRAGMA user_version"), 7)
     }
 }

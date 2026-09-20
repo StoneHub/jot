@@ -16,8 +16,30 @@ enum CaptureEventKind: String {
     case speakerPass = "speaker_pass", sessionSplit = "session_split"
 }
 
+/// Injectable seams for the agent-runnable recovery harness. Production still uses
+/// the real local pipeline and accessibility delivery; no socket or product UI is
+/// involved in synthetic verification.
+struct SpeechServiceDependencies {
+    var infer: @MainActor (SpeechPipeline, AudioJob, TranscriptionTuning) async throws -> SpeechOutput
+    var deliver: @MainActor (DictationInput, String) async throws -> DictationInput.DeliveryResult
+    var now: @MainActor () -> Date
+    var cleanup: @MainActor (TranscriptCleanup, [String]) async -> CleanupResult = { cleaner, texts in
+        await cleaner.cleanWithOutcome(texts)
+    }
+
+    static let live = SpeechServiceDependencies(
+        infer: { pipeline, job, tuning in try await pipeline.infer(job, tuning: tuning) },
+        deliver: { input, text in try await input.insert(text) },
+        now: Date.init)
+}
+
 @MainActor
 final class SpeechService: ObservableObject {
+    private let dependencies: SpeechServiceDependencies
+
+    init(dependencies: SpeechServiceDependencies = .live) {
+        self.dependencies = dependencies
+    }
     @Published var lifecycle = ServiceLifecycle()
     @Published var fnRequested = UserDefaults.standard.bool(forKey: JotDefaultsKey.fnRequested)
     @Published private(set) var shortcut = ShortcutPreferences().load()
@@ -42,7 +64,6 @@ final class SpeechService: ObservableObject {
     @Published var keepMacAwakeWhileListening = UserDefaults.standard.bool(forKey: JotDefaultsKey.keepMacAwakeWhileListening) {
         didSet {
             UserDefaults.standard.set(keepMacAwakeWhileListening, forKey: JotDefaultsKey.keepMacAwakeWhileListening)
-            if !keepMacAwakeWhileListening { sleepResume.cancel() }
             updateKeepAwakeAssertion()
         }
     }
@@ -64,6 +85,14 @@ final class SpeechService: ObservableObject {
     @Published var cleanUpDictation = UserDefaults.standard.bool(forKey: JotDefaultsKey.cleanUpDictation) {
         didSet { UserDefaults.standard.set(cleanUpDictation, forKey: JotDefaultsKey.cleanUpDictation) }
     }
+    @Published var recoveryLookbackSeconds = UserDefaults.standard.object(forKey: JotDefaultsKey.recoveryLookbackSeconds) as? Int ?? 120 {
+        didSet {
+            let bounded = min(600, max(15, recoveryLookbackSeconds))
+            if bounded != recoveryLookbackSeconds { recoveryLookbackSeconds = bounded; return }
+            UserDefaults.standard.set(bounded, forKey: JotDefaultsKey.recoveryLookbackSeconds)
+        }
+    }
+    @Published private(set) var recoveryNotice = ""
     @Published private(set) var cleanupAvailability = TranscriptCleanup.availability
     private let transcriptCleanup = TranscriptCleanup()
 
@@ -156,10 +185,15 @@ final class SpeechService: ObservableObject {
     private let diagnosticsBegan = ProcessInfo.processInfo.systemUptime
     /// Shorter audio is dropped: recognition on it is noise.
     private static let minimumJobSamples = AudioClock.samples(seconds: 0.2)
-    private static let ambientBreakSamples = AudioClock.samples(seconds: 2)
-    private static let ambientBlockSamples = AudioClock.samples(seconds: 20)
-    private static let dictationLimit = AudioClock.samples(seconds: 60)
+    private let chunkScheduler = CaptureChunkScheduler(sampleRate: AudioClock.sampleRate,
+        maximumSeconds: 3, minimumSeconds: 0.2, silenceSeconds: 0.7)
     private var inFlightAudioSeconds = 0.0
+    private var cleanupTasks: [UUID: Task<Void, Never>] = [:]
+    private var cleanupRequestedCount = 0
+    private var cleanupCompletedCount = 0
+    private var cleanupAppliedCount = 0
+    private var cleanupBypassedCount = 0
+    private var cleanupOutcomeCounts: [String: Int] = [:]
 
     func samplePerformance() {
         resources = sampler.sample()
@@ -167,7 +201,7 @@ final class SpeechService: ObservableObject {
         let elapsed = ProcessInfo.processInfo.systemUptime - diagnosticsBegan
         diagnostics.observe(.init(elapsedSeconds: elapsed, footprintMiB: resources.physicalFootprintMiB,
             residentMiB: resources.residentMiB, cpuPercent: resources.processCPUPercent,
-            droppedAudioSeconds: droppedSeconds, bufferedAudioSeconds: AudioClock.seconds(samples: capture.bufferedSampleCount + ambient.count + dictation.count) + inFlightAudioSeconds,
+            droppedAudioSeconds: droppedSeconds, bufferedAudioSeconds: AudioClock.seconds(samples: capture.bufferedSampleCount + ambient.count) + inFlightAudioSeconds,
             queuedAudioSeconds: jobs.reduce(0) { $0 + AudioClock.seconds(samples: $1.samples.count) }, loadedHistoryRows: history.count,
             modelsReady: modelState == .ready, ambientEnabled: ambientEnabled, dictationActive: dictationActive,
             inferenceRunning: processing != nil))
@@ -217,14 +251,24 @@ final class SpeechService: ObservableObject {
     @Published private(set) var speakerPassRunning = false
     /// Passes run one at a time in session order; a pass survives a pause and finishes on its own.
     private var speakerPassQueue: Task<Void, Never>?
-    private var silentSeconds = 0.0
-    private var dictation: [Float] = []
+    private var consecutiveSilentSamples = 0
     private var dictationActive = false
     private var dictationPending = false
     private var dictationTicket = UUID()
     private var dictationStarted = Date()
+    private var currentAttempt: DictationAttempt?
+    private var attemptEndOffset: Double?
+    private var completedOffsets: [String: Double] = [:]
+    private var recoveryTask: Task<Void, Never>?
+    private var recoveryDeliveryTask: Task<Void, Never>?
+    private var discardedAttemptIDs = Set<String>()
+    private var attemptHadGap = false
+    private var deliveryStateSaveFailed = false
+    private var recognitionFailures = 0
+    private var pauseRequested = false
     var jobs: [AudioJob] = []
     var processing: Task<Void, Never>?
+    private var processingJob: AudioJob?
     private var observers: [NSObjectProtocol] = []
     private var lastStatsTime = Date.distantPast
     lazy var input: DictationInput = {
@@ -232,12 +276,16 @@ final class SpeechService: ObservableObject {
         result.shortcut = shortcut
         result.canStart = { [weak self] in
             guard let self else { return false }
-            return self.lifecycle.phase == .ready && self.modelState == .ready && !self.dictationPending && !self.dictationActive && !self.diagnosticActive
+            return self.lifecycle.phase == .ready && self.modelState == .ready && self.ambientEnabled && !self.pauseRequested && !self.dictationPending && !self.dictationActive && !self.diagnosticActive
         }
         result.onError = { [weak self] error in
             self?.notice = error.localizedDescription
-            self?.cancelDictation()
+            if self?.dictationActive == true {
+                self?.recoveryNotice = "Speech is still being saved. Use the recovery gesture in a text field to insert it."
+            }
         }
+        result.onRecover = { [weak self] in self?.recoverRecentDictation() }
+        result.onDiscardTap = { [weak self] in self?.cancelTapDictation() }
         return result
     }()
 
@@ -249,6 +297,7 @@ final class SpeechService: ObservableObject {
         catch { vocabularyLoadError = "Could not load vocabulary. Saved entries were preserved. " + error.localizedDescription }
         do {
             store = try TranscriptStore()
+            try store?.finalizeInterruptedDictationAttempts()
             speakerStore = try SpeakerPassStore()
             peopleStore = try PeopleStore(); refreshPeople()
             let service = LocalServiceServer { [weak self] data in
@@ -259,10 +308,18 @@ final class SpeechService: ObservableObject {
             if let data = UserDefaults.standard.data(forKey: JotDefaultsKey.transcriptionTuning),
                let saved = try? JSONDecoder().decode(TranscriptionTuning.self, from: data) { tuning = saved.bounded }
             refreshRecent(); refreshSessions()
+            if let attempt = try store?.latestRecoverableDictationAttempt() {
+                recoveryNotice = attempt.hasGap
+                    ? "Partial dictation was saved. Review it in Sessions; recovery can insert the recognized portion."
+                    : "Saved dictation is ready to retry in the current text field."
+            }
             for stale in SessionAudioFile.discardStale(except: sessionID) { recordEvent(.audioDiscarded, "Session audio left by an earlier run was deleted.", session: stale) }
             if let data = UserDefaults.standard.data(forKey: JotDefaultsKey.modelUpdateChecks),
                let saved = try? JSONDecoder().decode([ModelUpdate].self, from: data) { modelUpdates = saved }
-            if UserDefaults.standard.bool(forKey: JotDefaultsKey.modelsPrepared), !UserDefaults.standard.bool(forKey: JotDefaultsKey.servicePaused) { prepare() }
+            if UserDefaults.standard.bool(forKey: JotDefaultsKey.modelsPrepared), !UserDefaults.standard.bool(forKey: JotDefaultsKey.servicePaused) {
+                ambientRequested = true
+                prepare()
+            }
         } catch { notice = "Service startup: \(error.localizedDescription)" }
         promptForPermissionsAtLaunch()
         scheduleTimer()
@@ -290,13 +347,13 @@ final class SpeechService: ObservableObject {
         })
     }
 
-    var isPaused: Bool { lifecycle.phase == .paused || lifecycle.phase == .pausing || lifecycle.phase == .failed }
-    var isTransitioning: Bool { lifecycle.phase == .starting || lifecycle.phase == .pausing }
+    var isPaused: Bool { pauseRequested || lifecycle.phase == .paused || lifecycle.phase == .pausing || lifecycle.phase == .failed }
+    var isTransitioning: Bool { pauseRequested || lifecycle.phase == .starting || lifecycle.phase == .pausing }
     var keepAwakeActive: Bool { keepAwake.isActive }
 
     private func resumeAfterSleepIfReady() {
         guard sleepResume.takeResume(phase: lifecycle.phase) else { return }
-        guard keepMacAwakeWhileListening, ambientRequested else { return }
+        guard ambientRequested else { return }
         refreshInputDevices()
         prepare()
     }
@@ -319,7 +376,16 @@ final class SpeechService: ObservableObject {
 
     /// Resume. The first resume downloads models, so it asks before spending bandwidth.
     func prepare(confirmingDownload: Bool = false) {
+        guard !pauseRequested else {
+            notice = "Pause is still saving captured speech. Resume when it finishes."
+            return
+        }
+        guard !diagnosticActive else {
+            notice = "Wait for the file diagnostic to finish before resuming listening."
+            return
+        }
         sleepResume.cancel()
+        ambientRequested = true
         cachedModelBytes = ModelCache.bytesOnDisk()
         if cachedModelBytes == 0 && !confirmingDownload {
             downloadPrompt = ModelCache.expectedBytes
@@ -341,7 +407,7 @@ final class SpeechService: ObservableObject {
                 UserDefaults.standard.set(true, forKey: JotDefaultsKey.modelsPrepared)
                 cachedModelBytes = ModelCache.bytesOnDisk()
                 if fnRequested { await enableFn() }
-                if ambientRequested { try await activateAmbient(); try continueMeeting() }
+                try await activateAmbient(); try continueMeeting()
                 if lifecycle.acceptsWork(token) { notice = "" }
             } catch {
                 if lifecycle.finishStart(token, succeeded: false) {
@@ -451,27 +517,17 @@ final class SpeechService: ObservableObject {
 
     func disableFn() {
         fnRequested = false; UserDefaults.standard.set(false, forKey: JotDefaultsKey.fnRequested)
-        cancelDictation(); input.disable(); fnEnabled = false; notice = ""
+        if dictationActive { endDictation() }
+        input.disable(); fnEnabled = false
     }
 
     func setAmbient(_ enabled: Bool) async {
         if enabled {
-            guard lifecycle.phase == .ready else {
-                ambientRequested = false
-                notice = "Resume Jot before enabling ambient transcription."
-                return
-            }
             ambientRequested = true
-            do { try await activateAmbient() }
-            catch { ambientRequested = false; notice = error.localizedDescription }
+            do { try await startAmbient() }
+            catch { notice = error.localizedDescription }
         } else {
-            sleepResume.cancel()
-            ambientRequested = false
-            guard lifecycle.phase == .ready else { ambientEnabled = false; updateMode(); return }
-            if !dictationActive { capture.stop(); updateKeepAwakeAssertion() }
-            drainAudio()
-            if ambientEnabled { flushAmbient(); recordEvent(.ambientOff, "Ambient transcription switched off."); endSessionAudio(runPass: true) }
-            ambientEnabled = false; updateMode(); level = 0; kickWorker()
+            pause()
         }
     }
 
@@ -479,6 +535,11 @@ final class SpeechService: ObservableObject {
 
     func clearHistory() throws {
         guard let store else { throw JotError.message("Transcript storage is unavailable.") }
+        if let id = currentAttempt?.id { discardedAttemptIDs.insert(id) }
+        recoveryTask?.cancel(); recoveryTask = nil
+        recoveryDeliveryTask?.cancel(); recoveryDeliveryTask = nil
+        currentAttempt = nil; dictationActive = false; dictationPending = false
+        speakerMute.end(); highlight.hide(); input.discardTarget()
         try store.clearHistory()
         historyClearedAt = ProcessInfo.processInfo.systemUptime
         lastExport = nil
@@ -516,7 +577,9 @@ final class SpeechService: ObservableObject {
 
     func deleteHistoryCard(_ item: Transcript) throws {
         guard let store else { throw JotError.message("Transcript storage is unavailable.") }
-        try store.deleteTranscripts(ids: historySources[item.id] ?? [item.id])
+        let ids = historySources[item.id] ?? [item.id]
+        discardedAttemptIDs.formUnion(ids)
+        try store.deleteTranscripts(ids: ids)
         didDeleteHistory()
         notice = "Transcript deleted."
     }
@@ -597,28 +660,39 @@ final class SpeechService: ObservableObject {
         try store?.setTitle(sessionID: sessionID, title: meetingTitle); refreshSessions()
     }
 
-    /// Stops capture, waits for the queued audio to finish, then writes the file and shows it in Finder.
+    /// Closes and exports the named session while continuous listening immediately
+    /// continues in a fresh untitled session.
     @discardableResult
     func endMeeting() async -> URL? {
+        guard !pauseRequested else {
+            notice = "Wait for Pause to finish before exporting the meeting."
+            return nil
+        }
+        guard !dictationActive, !dictationPending else {
+            notice = "Finish the held dictation before ending the meeting."
+            return nil
+        }
         lastExport = nil
         let id = sessionID
         let generation = lifecycle.generation
-        await setAmbient(false)
-        // Ending while paused skips the wait: the pause already discarded any unfinished audio, so the saved rows are all there is.
+        if ambientEnabled { drainAudio(); flushAmbient(final: true) }
+        let throughOffset = ambientOffset
+        endSessionAudio(runPass: true)
+        meetingTitle = nil
+        if ambientEnabled {
+            sessionID = UUID().uuidString; sessionStarted = dependencies.now(); ambientOffset = 0; activeSessionID = sessionID
+            ambient = []; consecutiveSilentSamples = 0; lastAmbientRowAt = nil
+            if keepAudioForSpeakerPass { sessionAudio = SessionAudioFile(sessionID: sessionID) }
+            recordEvent(.started, "Listening continued in a fresh session after meeting export.")
+            kickWorker()
+        }
         if lifecycle.acceptsWork(generation) {
-            do {
-                try await MeetingExportWait.wait(
-                    isValid: { self.lifecycle.acceptsWork(generation) && self.sessionID == id },
-                    isComplete: {
-                        self.kickWorker()
-                        return self.jobs.allSatisfy { $0.mode != .ambient } && self.processing == nil
-                    })
-            } catch {
+            await waitUntilProcessed(sessionID: id, through: throughOffset)
+            if !lifecycle.acceptsWork(generation) {
                 notice = "Meeting export interrupted. Saved transcripts remain in Sessions; no file was exported."
                 return nil
             }
         }
-        meetingTitle = nil
         refreshSessions()
         // A meeting with nothing transcribed ends quietly; there is no file to show.
         guard (try? store?.session(id: id).isEmpty) == false else { return nil }
@@ -631,14 +705,14 @@ final class SpeechService: ObservableObject {
 
     private func activateAmbient() async throws {
         let token = lifecycle.generation
-        guard lifecycle.acceptsWork(token), !diagnosticActive else { throw JotError.message("Resume the service before listening.") }
+        guard lifecycle.acceptsWork(token), !diagnosticActive, !pauseRequested else { throw JotError.message("Resume the service before listening.") }
         guard await requestMic() else { throw JotError.message("Microphone permission is required.") }
-        guard lifecycle.acceptsWork(token), ambientRequested else { return }
+        guard lifecycle.acceptsWork(token), ambientRequested, !pauseRequested else { return }
         guard !ambientEnabled else { return }
         if !capture.running { lastAudioAt = Date() }
         try capture.start()
         sessionID = UUID().uuidString; sessionStarted = Date(); ambientOffset = 0; activeSessionID = sessionID
-        ambient = []; silentSeconds = 0; lastAmbientRowAt = nil; ambientEnabled = true; updateKeepAwakeAssertion(); updateMode()
+        ambient = []; consecutiveSilentSamples = 0; lastAmbientRowAt = nil; ambientEnabled = true; updateKeepAwakeAssertion(); updateMode()
         if keepAudioForSpeakerPass { sessionAudio = SessionAudioFile(sessionID: sessionID) }
         recordEvent(.started, "Ambient microphone capture started."); notice = ""
     }
@@ -651,39 +725,50 @@ final class SpeechService: ObservableObject {
         try await activateAmbient()
     }
 
-    /// Stop all speech work immediately, then release models when any active prediction returns. Automatic pauses keep the selection and a running meeting for Resume.
+    /// Stop the microphone immediately, save already captured chunks, then release
+    /// models. Automatic pauses keep listening intent and a running meeting for Resume.
     func pause(automatic: Bool = false) {
         if !automatic { sleepResume.cancel() }
-        guard let token = lifecycle.beginPause() else { return }
+        guard !pauseRequested, lifecycle.phase != .paused, lifecycle.phase != .pausing else { return }
+        pauseRequested = true
         markPerformance(.pause)
         UserDefaults.standard.set(true, forKey: JotDefaultsKey.servicePaused)
         capture.stop()
+        drainAudio()
+        if ambientEnabled { flushAmbient(final: true) }
         updateKeepAwakeAssertion()
-        let packet = capture.drain()
-        let discarded = AudioClock.seconds(samples: packet.samples.count + packet.dropped + ambient.count + dictation.count + jobs.reduce(0) { $0 + $1.samples.count })
-        if discarded > 0 { recordEvent(.audioDiscarded, "Unfinished audio discarded by Pause.") }
         if ambientEnabled { recordEvent(.paused, "Service paused.") }
         endSessionAudio(runPass: automatic)
         let outcome = PauseOutcome(automatic: automatic, ambientRequested: ambientRequested, meetingTitle: meetingTitle)
-        ambientRequested = outcome.ambientRequested; meetingTitle = outcome.meetingTitle; ambientEnabled = false
-        cancelDictation(); input.disable(); fnEnabled = false
-        ambient.removeAll(keepingCapacity: false); jobs.removeAll(keepingCapacity: false)
-        capture.discardBufferedAudio(); queuedSeconds = 0; level = 0
-        let loadingTask = preparation, worker = processing, fileTask = diagnostic
-        loadingTask?.cancel(); worker?.cancel(); fileTask?.cancel()
-        modelState = .unloading; updateMode(); notice = "Releasing models…"
-        scheduleTimer()
+        ambientRequested = outcome.ambientRequested; meetingTitle = outcome.meetingTitle
+        input.disable(); fnEnabled = false
+        if dictationActive { endDictation() }
+        let loadingTask = preparation, fileTask = diagnostic
+        loadingTask?.cancel(); fileTask?.cancel()
+        notice = jobs.isEmpty && processing == nil ? "Releasing models…" : "Saving captured speech before Pause…"
         pausing = Task {
             await loadingTask?.value
-            await worker?.value
             _ = try? await fileTask?.value
+            while processing != nil || !jobs.isEmpty {
+                kickWorker()
+                try? await Task.sleep(for: .milliseconds(20))
+            }
+            if let recoveryTask { await recoveryTask.value }
+            if let recoveryDeliveryTask { await recoveryDeliveryTask.value }
+            guard let token = lifecycle.beginPause() else {
+                pauseRequested = false; pausing = nil; return
+            }
+            ambientEnabled = false; level = 0; queuedSeconds = 0
+            for task in cleanupTasks.values { task.cancel() }
+            cleanupTasks.removeAll()
+            modelState = .unloading; updateMode(); notice = "Releasing models…"; scheduleTimer()
             await pipeline.unload()
             if lifecycle.finishPause(token) {
                 modelState = .unloaded; preparing = false; preparation = nil; updateMode()
                 notice = outcome.endedMeeting ? "Meeting stopped. Its transcript is in Sessions." : ""
                 markPerformance(.modelsUnloaded); scheduleTimer()
             }
-            pausing = nil
+            pauseRequested = false; pausing = nil
             resumeAfterSleepIfReady()
         }
     }
@@ -691,47 +776,68 @@ final class SpeechService: ObservableObject {
     func stop() { ambientRequested = false; pause() }
 
     func beginDictation() {
-        guard lifecycle.phase == .ready, modelState == .ready, !dictationPending else { return }
+        guard lifecycle.phase == .ready, modelState == .ready, ambientEnabled,
+              !pauseRequested, !dictationPending, !dictationActive else { return }
+        // Close the pre-gesture chunk so the held range starts on an exact timeline
+        // boundary even when the target field could not be acquired.
         drainAudio()
-        do {
-            if !capture.running { lastAudioAt = Date() }
-            if muteSpeakersDuringDictation { speakerMute.begin() }
-            try capture.start()
-            updateKeepAwakeAssertion()
-            dictationVocabulary = vocabulary
-            dictation = []; dictationStarted = Date(); dictationTicket = UUID(); dictationActive = true
-            transcriptCleanup.cancel()
-            if highlightTargetField { highlight.show(follow: { [weak self] in self?.input.targetFrame() }) }
-            updateMode()
-            markPerformance(.dictationStarted)
-            notice = "Listening for dictation… release \(shortcut.displayName) to insert."
-        } catch { cancelDictation(); notice = error.localizedDescription }
+        flushAmbient(final: true)
+        if muteSpeakersDuringDictation { speakerMute.begin() }
+        dictationVocabulary = vocabulary
+        transcriptCleanup.cancel()
+        dictationStarted = sessionStarted.addingTimeInterval(ambientOffset)
+        dictationTicket = UUID(); dictationActive = true; attemptHadGap = false
+        let attempt = DictationAttempt(id: dictationTicket.uuidString, sessionID: sessionID,
+            startedAt: dictationStarted, state: .capturing, updatedAt: dictationStarted)
+        currentAttempt = attempt
+        do { try store?.saveDictationAttempt(attempt) }
+        catch { recoveryNotice = "Dictation started, but its recovery record could not be saved." }
+        if highlightTargetField { highlight.show(follow: { [weak self] in self?.input.targetFrame() }) }
+        updateMode()
+        markPerformance(.dictationStarted)
+        notice = "Listening for dictation… release \(shortcut.displayName) to insert."
     }
 
     func endDictation() {
         speakerMute.end(); highlight.hide()
-        guard dictationActive else { return }
-        if !ambientEnabled { capture.stop(); updateKeepAwakeAssertion() }
+        guard dictationActive, var attempt = currentAttempt else { return }
         drainAudio()
-        guard dictationActive else { return }
+        flushAmbient(final: true)
         dictationActive = false
+        dictationPending = true
         markPerformance(.dictationReleased)
         level = 0
         updateMode()
-        guard dictation.count >= Self.minimumJobSamples else { dictation = []; input.discardTarget(); notice = "Too little audio to transcribe."; return }
-        dictationPending = true
-        let job = AudioJob(sessionID: UUID().uuidString, startedAt: dictationStarted, offset: 0,
-            samples: dictation, mode: .dictation, ticket: dictationTicket)
-        dictation = []; jobs.insert(job, at: 0); notice = "Transcribing dictation locally…"; kickWorker()
+        attempt.endedAt = max(attempt.startedAt, sessionStarted.addingTimeInterval(ambientOffset))
+        attempt.state = .recognizing
+        attempt.updatedAt = attempt.endedAt!
+        currentAttempt = attempt
+        attemptEndOffset = ambientOffset
+        do { try store?.saveDictationAttempt(attempt) }
+        catch { recoveryNotice = "Dictation ended, but its recovery record could not be updated." }
+        notice = "Finishing saved dictation…"
+        kickWorker()
+        recoveryTask?.cancel()
+        recoveryTask = Task { [weak self] in
+            await self?.finishDictationAttempt(id: attempt.id, throughOffset: self?.attemptEndOffset ?? 0)
+        }
     }
 
-    private func cancelDictation() {
+    /// A tap explicitly discards only the current held intent. Continuous listening
+    /// rows and the recovery window remain untouched.
+    func cancelTapDictation() {
         speakerMute.end(); highlight.hide()
         if dictationActive || dictationPending { markPerformance(.dictationCancelled) }
         input.discardTarget()
-        dictationActive = false; dictationPending = false; dictationTicket = UUID(); dictation = []
-        jobs.removeAll { $0.mode == .dictation }
-        if !ambientEnabled { capture.stop(); updateKeepAwakeAssertion() }
+        if let id = currentAttempt?.id {
+            discardedAttemptIDs.insert(id)
+            try? store?.deleteDictationAttempt(id: id)
+        }
+        recoveryTask?.cancel(); recoveryTask = nil
+        dictationActive = false; dictationPending = false; dictationTicket = UUID()
+        currentAttempt = nil; attemptEndOffset = nil
+        attemptHadGap = false
+        recoveryNotice = "Current dictation discarded. Listening history was kept."
         updateMode()
     }
 
@@ -742,10 +848,11 @@ final class SpeechService: ObservableObject {
             samplePerformance(); lastStatsTime = Date(); refreshPermissions()
             cleanupAvailability = TranscriptCleanup.availability
             queuedSeconds = jobs.reduce(0) { $0 + AudioClock.seconds(samples: $1.samples.count) }
-            if ambientEnabled || dictationActive, let lastAudioAt, Date().timeIntervalSince(lastAudioAt) > 4 {
+            if !pauseRequested, ambientEnabled || dictationActive, let lastAudioAt, Date().timeIntervalSince(lastAudioAt) > 4 {
                 recordEvent(.inputStalled, "No microphone samples for more than four seconds."); pause(automatic: true); notice = "Microphone stopped delivering audio. Resume to reconnect; a capture gap occurred."
             }
-            if ambientEnabled, SessionSplit.shouldStart(silenceMinutes: newSessionAfterSilence,
+            if !pauseRequested, ambientEnabled, !dictationActive, !dictationPending,
+               SessionSplit.shouldStart(silenceMinutes: newSessionAfterSilence,
                 silenceSeconds: Date().timeIntervalSince(lastAmbientRowAt ?? sessionStarted),
                 isMeeting: meetingTitle != nil, workPending: !jobs.isEmpty || processing != nil) { rotateSession() }
         }
@@ -754,29 +861,65 @@ final class SpeechService: ObservableObject {
 
     private func drainAudio() {
         let packet = capture.drain()
-        guard !packet.samples.isEmpty || packet.dropped > 0 else { return }
-        level = packet.rms
-        lastAudioAt = packet.lastAudio
-        if packet.dropped > 0 {
-            if dictationActive { cancelDictation() }
-            let lostSeconds = AudioClock.seconds(samples: packet.dropped + ambient.count)
+        ingestAudio(samples: packet.samples, dropped: packet.dropped, lastAudio: packet.lastAudio, rms: packet.rms)
+    }
+
+    private func ingestAudio(samples: [Float], dropped: Int, lastAudio: Date, rms: Float) {
+        guard !samples.isEmpty || dropped > 0 else { return }
+        level = rms
+        self.lastAudioAt = lastAudio
+        if dropped > 0 {
+            let lostSeconds = AudioClock.seconds(samples: dropped + ambient.count)
             droppedSeconds += lostSeconds
             recordEvent(.audioGap, "Capture queue overflow discarded audio.", duration: lostSeconds)
             // End attribution continuity rather than silently stitching across lost audio.
-            ambientOffset += AudioClock.seconds(samples: ambient.count + packet.dropped); ambient = []
-            sessionAudio?.appendSilence(samples: packet.dropped)
+            ambientOffset += AudioClock.seconds(samples: ambient.count + dropped); ambient = []
+            sessionAudio?.appendSilence(samples: dropped)
             notice = "Audio backlog overflow: a gap was recorded."
-        }
-        if dictationActive {
-            if dictation.count + packet.samples.count <= Self.dictationLimit { dictation.append(contentsOf: packet.samples) }
-            else { cancelDictation(); notice = "Dictation exceeded 60 seconds; cancelled without inserting a partial prompt." }
+            if dictationActive || dictationPending {
+                attemptHadGap = true
+                recoveryNotice = "Some microphone audio was lost before recognition. Saved dictation remains available to retry."
+            }
         }
         if ambientEnabled {
-            ambient.append(contentsOf: packet.samples)
-            sessionAudio?.append(packet.samples)
-            silentSeconds = packet.rms < 0.002 ? silentSeconds + AudioClock.seconds(samples: packet.samples.count) : 0
-            // Blocks run up to 20 s and only break on a 2 s silence, so most sentences reach the recognizer whole.
-            if ambient.count >= Self.ambientBlockSamples || (ambient.count >= Self.ambientBreakSamples && silentSeconds >= max(2, tuning.bounded.paragraphPause)) { flushAmbient() }
+            ambient.append(contentsOf: samples)
+            sessionAudio?.append(samples)
+            consecutiveSilentSamples = rms < 0.002 ? consecutiveSilentSamples + samples.count : 0
+            // Enqueue every complete bounded block, retaining the tail. A silence can
+            // close the tail early so sentence delivery usually beats the hard limit.
+            while ambient.count >= chunkScheduler.maximumSamples {
+                flushAmbient(sampleCount: chunkScheduler.maximumSamples)
+            }
+            if chunkScheduler.shouldFlush(bufferedSamples: ambient.count,
+                consecutiveSilentSamples: consecutiveSilentSamples) { flushAmbient(final: true) }
+        }
+    }
+
+    /// Integration/performance seam: the same ingestion and scheduling path used by
+    /// microphone drains, with inference and delivery supplied through dependencies.
+    func ingestRecoveryVerification(samples: [Float], rms: Float = 0.01, at date: Date = Date()) {
+        ingestAudio(samples: samples, dropped: 0, lastAudio: date, rms: rms)
+        kickWorker()
+    }
+
+    func beginRecoveryVerification(store: TranscriptStore, startedAt: Date = Date()) {
+        if let token = lifecycle.beginStart() { _ = lifecycle.finishStart(token, succeeded: true) }
+        self.store = store
+        modelState = .ready; ambientRequested = true; ambientEnabled = true
+        sessionID = UUID().uuidString; sessionStarted = startedAt; activeSessionID = sessionID
+        ambientOffset = 0; ambient = []; consecutiveSilentSamples = 0; lastAmbientRowAt = nil
+        updateMode()
+    }
+
+    func flushRecoveryVerification() {
+        flushAmbient(final: true)
+        kickWorker()
+    }
+
+    func waitForRecoveryVerification() async {
+        while processing != nil || !jobs.isEmpty || dictationPending || recoveryTask != nil || !cleanupTasks.isEmpty {
+            kickWorker()
+            try? await Task.sleep(for: .milliseconds(10))
         }
     }
 
@@ -784,11 +927,11 @@ final class SpeechService: ObservableObject {
     /// Capture keeps running; only the session it feeds changes, so the speaker pass and Live both start fresh on the next speech.
     private func rotateSession() {
         let spoken = lastAmbientRowAt != nil
-        flushAmbient()
+        flushAmbient(final: true)
         if spoken { recordEvent(.sessionSplit, "New session started after \(newSessionAfterSilence) minutes of quiet.") }
         endSessionAudio(runPass: spoken)
         sessionID = UUID().uuidString; sessionStarted = Date(); ambientOffset = 0; activeSessionID = sessionID
-        ambient = []; silentSeconds = 0; lastAmbientRowAt = nil
+        ambient = []; consecutiveSilentSamples = 0; lastAmbientRowAt = nil
         if keepAudioForSpeakerPass { sessionAudio = SessionAudioFile(sessionID: sessionID) }
         refreshSessions()
     }
@@ -845,37 +988,41 @@ final class SpeechService: ObservableObject {
         return recognized
     }
 
-    private func flushAmbient() {
-        guard !ambient.isEmpty else { return }
-        let samples = ambient; ambient = []; silentSeconds = 0
+    private func flushAmbient(sampleCount: Int? = nil, final: Bool = false) {
+        guard !ambient.isEmpty || final else { return }
+        let count = min(sampleCount ?? ambient.count, ambient.count)
+        let samples = Array(ambient.prefix(count))
+        ambient.removeFirst(count)
+        if ambient.isEmpty { consecutiveSilentSamples = 0 }
         let start = ambientOffset; ambientOffset += AudioClock.seconds(samples: samples.count)
-        guard samples.count >= Self.minimumJobSamples else { return }
-        if jobs.filter({ $0.mode == .ambient }).count >= 3 {
+        guard final || samples.count >= Self.minimumJobSamples else { return }
+        let pendingAmbient = jobs.lazy.filter { $0.mode == .ambient }.count
+        if pendingAmbient >= 40 && !final {
             droppedSeconds += AudioClock.seconds(samples: samples.count)
             recordEvent(.audioGap, "Inference queue full; segment discarded.", duration: AudioClock.seconds(samples: samples.count))
             notice = "Inference fell behind; bounded audio queue dropped a segment."
+            if dictationActive || dictationPending {
+                attemptHadGap = true
+                recoveryNotice = "Dictation is partially saved, but an inference backlog caused an audio gap. Retry only after reviewing it."
+            }
             return
         }
-        jobs.append(AudioJob(sessionID: sessionID, startedAt: sessionStarted, offset: start, samples: samples, mode: .ambient, ticket: UUID()))
+        jobs.append(AudioJob(sessionID: sessionID, startedAt: sessionStarted, offset: start, samples: samples, mode: .ambient, ticket: UUID(), isFinal: final))
     }
 
     private func kickWorker() {
         guard lifecycle.phase == .ready, processing == nil, !jobs.isEmpty else { return }
-        // Dictation is inserted at the front on release. Never start another ambient job ahead of it.
-        if dictationPending && jobs.first?.mode != .dictation { return }
         let job = jobs.removeFirst()
+        processingJob = job
         let generation = lifecycle.generation
-        let vocabularySnapshot = dictationVocabulary
         let began = ProcessInfo.processInfo.systemUptime
         let waitSeconds = max(0, began - job.submittedUptime)
         inFlightAudioSeconds = AudioClock.seconds(samples: job.samples.count)
         processing = Task {
             var outcome = PerformanceJob.Outcome.completed
             var inferenceSeconds: Double?
-            var cleanupSeconds = 0.0
-            var deliverySeconds: Double?
             do {
-                let output = try await pipeline.infer(job, tuning: tuning)
+                let output = try await dependencies.infer(pipeline, job, tuning)
                 try Task.checkCancellation()
                 guard lifecycle.acceptsWork(generation) else { throw CancellationError() }
                 inferenceSeconds = output.processingSeconds
@@ -901,55 +1048,268 @@ final class SpeechService: ObservableObject {
                         refreshRecent(); refreshSessions()
                     }
                 }
-                let originalTexts = sources.map(\.text)
-                var readable = originalTexts
-                let wantsCleanup = job.mode == .dictation ? cleanUpDictation : (cleanUpTranscriptions && !dictationActive && !dictationPending)
-                if wantsCleanup {
-                    let cleanupBegan = ProcessInfo.processInfo.systemUptime
-                    readable = await transcriptCleanup.clean(originalTexts)
-                    cleanupSeconds = ProcessInfo.processInfo.systemUptime - cleanupBegan
-                    try Task.checkCancellation()
-                    guard lifecycle.acceptsWork(generation) else { throw CancellationError() }
-                    if !(job.mode == .dictation ? cleanUpDictation : cleanUpTranscriptions) { readable = originalTexts }
-                }
-                if (job.mode == .ambient || job.submittedUptime > historyClearedAt) && !deletedSessions.contains(job.sessionID) {
-                    for (source, text) in zip(sources, readable) where source.text != text {
-                        try store?.setReadableText(text, for: source)
-                    }
-                    if readable != originalTexts { refreshRecent(); refreshSessions() }
-                }
-                if job.mode == .dictation, job.ticket == dictationTicket {
-                    let text = DictationCleanup.applying(to: vocabularySnapshot.applyingToDictation(readable.isEmpty ? output.text : readable.joined(separator: " ")))
-                    if text.isEmpty { notice = "No text to insert." }
-                    else {
-                        let deliveryBegan = ProcessInfo.processInfo.systemUptime
-                        defer { deliverySeconds = ProcessInfo.processInfo.systemUptime - deliveryBegan }
-                        let delivery = try await input.insert(text)
-                        if job.ticket == dictationTicket {
-                            outcome = delivery.verified ? .completed : .deliveryUnverified
-                            notice = delivery.verified ? "" : "Speech transcribed; text delivery could not be verified. Check the target field."
-                        }
-                    }
-                }
+                scheduleCleanup(sources: sources, generation: generation, sessionID: job.sessionID)
+                updateAttemptTextIfNeeded(for: job)
             } catch {
                 outcome = error is CancellationError ? .cancelled : .failed
+                recognitionFailures += 1
+                if let attempt = currentAttempt, attempt.sessionID == job.sessionID,
+                   attempt.state == .capturing || attempt.state == .recognizing,
+                   job.startedAt.addingTimeInterval(job.offset + AudioClock.seconds(samples: job.samples.count)) > attempt.startedAt,
+                   job.startedAt.addingTimeInterval(job.offset - (job.isFinal ? 2 : 0)) < (attempt.endedAt ?? .distantFuture) {
+                    attemptHadGap = true
+                    recoveryNotice = "Some dictation could not be recognized. The recognized parts were kept for review."
+                }
                 if !(error is CancellationError) { recordEvent(.processingError, error.localizedDescription, session: job.sessionID) }
                 if lifecycle.acceptsWork(generation), job.mode != .dictation || job.ticket == dictationTicket {
                     notice = "\(job.mode.rawValue.capitalized): \(error.localizedDescription). Transcript insertion was not completed."
                 }
             }
-            if job.mode == .dictation, job.ticket != dictationTicket { outcome = .cancelled }
             diagnostics.record(.init(elapsedSeconds: ProcessInfo.processInfo.systemUptime - diagnosticsBegan,
                 mode: job.mode == .dictation ? .dictation : .ambient, outcome: outcome,
                 audioSeconds: AudioClock.seconds(samples: job.samples.count), queueWaitSeconds: waitSeconds,
                 inferenceSeconds: inferenceSeconds, completionSeconds: max(0, ProcessInfo.processInfo.systemUptime - job.submittedUptime),
-                cleanupSeconds: cleanupSeconds, deliverySeconds: deliverySeconds))
+                cleanupSeconds: nil, deliverySeconds: nil))
+            completedOffsets[job.sessionID] = max(completedOffsets[job.sessionID] ?? 0,
+                job.offset + AudioClock.seconds(samples: job.samples.count))
             inFlightAudioSeconds = 0
-            if job.mode == .dictation, job.ticket == dictationTicket { input.discardTarget(); dictationPending = false }
+            processingJob = nil
             processing = nil
             samplePerformance()
             kickWorker()
         }
+    }
+
+    private func waitUntilProcessed(sessionID: String, through offset: Double) async {
+        let barrierTickets = Set(jobs.filter { $0.sessionID == sessionID && $0.offset <= offset }.map(\.ticket)
+            + (processingJob.map { $0.sessionID == sessionID ? [$0.ticket] : [] } ?? []))
+        while !Task.isCancelled,
+              jobs.contains(where: { barrierTickets.contains($0.ticket) }) ||
+              processingJob.map({ barrierTickets.contains($0.ticket) }) == true {
+            kickWorker()
+            // A sub-minimum tail has no inference job. Everything schedulable is done.
+            if processing == nil && jobs.allSatisfy({ $0.sessionID != sessionID }) { break }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+    }
+
+    private func finishDictationAttempt(id: String, throughOffset: Double) async {
+        guard let started = currentAttempt, started.id == id else { recoveryTask = nil; return }
+        await waitUntilProcessed(sessionID: started.sessionID, through: throughOffset)
+        guard !Task.isCancelled, !discardedAttemptIDs.contains(id), !deletedSessions.contains(started.sessionID),
+              var attempt = currentAttempt, attempt.id == id else { recoveryTask = nil; return }
+        do {
+            let raw = try store?.recoveryText(from: attempt.startedAt, through: attempt.endedAt ?? dependencies.now()) ?? ""
+            var text = DictationCleanup.applying(to: dictationVocabulary.applyingToDictation(raw))
+            if cleanUpDictation, !text.isEmpty {
+                cleanupRequestedCount += 1
+                let cleanup = await dependencies.cleanup(transcriptCleanup, [text])
+                cleanupCompletedCount += 1
+                cleanupOutcomeCounts[cleanup.outcome.rawValue, default: 0] += 1
+                if let first = cleanup.texts.first, first != text { text = first; cleanupAppliedCount += 1 }
+                else { cleanupBypassedCount += 1 }
+            }
+            guard !Task.isCancelled, !discardedAttemptIDs.contains(id) else { recoveryTask = nil; return }
+            attempt.text = text
+            attempt.hasGap = attemptHadGap
+            attempt.updatedAt = dependencies.now()
+            if text.isEmpty || attemptHadGap {
+                attempt.state = .deliveryFailed
+                try store?.saveDictationAttempt(attempt)
+                currentAttempt = attempt
+                if attemptHadGap {
+                    recoveryNotice = "Partial dictation was saved after an audio gap. It was not inserted automatically."
+                    notice = "Dictation has an audio gap; review the saved text before retrying."
+                } else {
+                    recoveryNotice = "No speech was recognized for that hold. Recent listening history is still available."
+                    notice = "No text to insert."
+                }
+            } else {
+                attempt.state = .ready
+                try store?.saveDictationAttempt(attempt)
+                // History gets one durable dictation row, while the underlying listening
+                // timeline remains the recognition source of truth.
+                if !discardedAttemptIDs.contains(attempt.id) {
+                    let duration = max(0, (attempt.endedAt ?? attempt.updatedAt).timeIntervalSince(attempt.startedAt))
+                    try? store?.append(Transcript(id: attempt.id, sessionID: attempt.sessionID,
+                        startedAt: attempt.startedAt, startSeconds: 0, endSeconds: duration,
+                        text: text, mode: "dictation"))
+                }
+                currentAttempt = attempt
+                await deliverAttempt(attempt)
+            }
+        } catch {
+            attempt.state = .deliveryFailed; attempt.updatedAt = dependencies.now()
+            try? store?.saveDictationAttempt(attempt)
+            currentAttempt = attempt
+            recoveryNotice = "Dictation was saved but could not be finished. Use the recovery gesture to retry."
+            notice = "Dictation: \(error.localizedDescription)"
+        }
+        input.discardTarget()
+        dictationPending = false; attemptEndOffset = nil; recoveryTask = nil
+        refreshRecent()
+    }
+
+    private func deliverAttempt(_ original: DictationAttempt) async {
+        var attempt = original
+        guard !discardedAttemptIDs.contains(attempt.id), !deletedSessions.contains(attempt.sessionID) else { return }
+        do {
+            let delivery = try await dependencies.deliver(input, attempt.text)
+            guard !discardedAttemptIDs.contains(attempt.id), !deletedSessions.contains(attempt.sessionID) else { return }
+            attempt.state = delivery.verified ? .delivered : .deliveryUnverified
+            attempt.updatedAt = dependencies.now()
+            currentAttempt = attempt
+            do { try store?.saveDictationAttempt(attempt) }
+            catch {
+                deliveryStateSaveFailed = true
+                recoveryNotice = "Text was sent, but its delivery record could not be saved. Check the field; automatic recovery is blocked to avoid duplicates."
+                notice = "Could not save delivery status: \(error.localizedDescription)"
+                return
+            }
+            if delivery.verified {
+                recoveryNotice = attempt.hasGap ? "Saved partial dictation inserted. Some audio was not recognized; review the text." : "Dictation inserted."
+                notice = ""
+            } else {
+                recoveryNotice = attempt.hasGap
+                    ? "Partial dictation was sent, but insertion could not be verified. Check the field before retrying."
+                    : "Dictation was saved, but insertion could not be verified. Use the recovery gesture to retry."
+                notice = "Speech was saved; check the target field before retrying."
+            }
+        } catch {
+            guard !discardedAttemptIDs.contains(attempt.id), !deletedSessions.contains(attempt.sessionID) else { return }
+            attempt.state = .deliveryFailed; attempt.updatedAt = dependencies.now()
+            try? store?.saveDictationAttempt(attempt)
+            currentAttempt = attempt
+            recoveryNotice = attempt.hasGap
+                ? "Partial dictation was saved. Review it in Sessions; focus a field and use recovery to insert the recognized portion."
+                : "Dictation was saved. Focus a text field and use the recovery gesture to retry."
+            notice = "Text was not inserted: \(error.localizedDescription)"
+        }
+    }
+
+    private func updateAttemptTextIfNeeded(for job: AudioJob) {
+        guard var attempt = currentAttempt, attempt.sessionID == job.sessionID,
+              !discardedAttemptIDs.contains(attempt.id),
+              attempt.state == .capturing || attempt.state == .recognizing else { return }
+        do {
+            let text = try store?.recoveryText(from: attempt.startedAt, through: attempt.endedAt ?? dependencies.now()) ?? ""
+            guard !text.isEmpty else { return }
+            attempt.text = text; attempt.hasGap = attemptHadGap; attempt.updatedAt = dependencies.now()
+            try store?.saveDictationAttempt(attempt)
+            currentAttempt = attempt
+            recoveryNotice = dictationActive ? "Dictation is being saved as you speak." : recoveryNotice
+        } catch {
+            recoveryNotice = "Speech is still being recognized, but the recovery record could not be updated."
+        }
+    }
+
+    private func scheduleCleanup(sources: [Transcript], generation: UInt64, sessionID: String) {
+        guard cleanUpTranscriptions, !sources.isEmpty else { cleanupBypassedCount += 1; return }
+        cleanupRequestedCount += 1
+        guard cleanupTasks.count < 2 else {
+            cleanupBypassedCount += 1; cleanupCompletedCount += 1
+            cleanupOutcomeCounts[CleanupResult.Outcome.busy.rawValue, default: 0] += 1
+            return
+        }
+        let id = UUID()
+        cleanupTasks[id] = Task { [weak self] in
+            guard let self else { return }
+            let original = sources.map(\.text)
+            let cleanup = await dependencies.cleanup(transcriptCleanup, original)
+            let readable = cleanup.texts
+            cleanupOutcomeCounts[cleanup.outcome.rawValue, default: 0] += 1
+            guard !Task.isCancelled, lifecycle.acceptsWork(generation), !deletedSessions.contains(sessionID) else {
+                cleanupBypassedCount += 1; cleanupCompletedCount += 1; cleanupTasks[id] = nil; return
+            }
+            do {
+                for (source, text) in zip(sources, readable) where source.text != text {
+                    try store?.setReadableText(text, for: source)
+                }
+                if readable != original { cleanupAppliedCount += 1; refreshRecent(); refreshSessions() }
+                else { cleanupBypassedCount += 1 }
+            } catch { cleanupBypassedCount += 1 }
+            cleanupCompletedCount += 1
+            cleanupTasks[id] = nil
+        }
+    }
+
+    /// Uses the target already acquired by DictationInput's recovery callback.
+    public func recoverRecentDictation() {
+        guard !deliveryStateSaveFailed else {
+            recoveryNotice = "A previous insertion could not save its delivery status. Check the target field and copy saved text from Sessions to avoid duplicate insertion."
+            return
+        }
+        guard lifecycle.phase == .ready, ambientEnabled, !pauseRequested,
+              !dictationActive, !dictationPending else {
+            recoveryNotice = "Resume listening before recovering speech."
+            return
+        }
+        guard recoveryDeliveryTask == nil else {
+            recoveryNotice = "Recovery is already finishing captured speech."
+            return
+        }
+        let failuresBeforeRecovery = recognitionFailures
+        drainAudio(); flushAmbient(final: true)
+        let triggerTime = sessionStarted.addingTimeInterval(ambientOffset)
+        let triggerSession = sessionID
+        let triggerOffset = ambientOffset
+        dictationPending = true
+        recoveryNotice = "Finishing speech captured before the recovery gesture…"
+        kickWorker()
+        recoveryDeliveryTask = Task { [weak self] in
+            guard let self else { return }
+            await waitUntilProcessed(sessionID: triggerSession, through: triggerOffset)
+            guard !Task.isCancelled else { recoveryDeliveryTask = nil; dictationPending = false; return }
+            do {
+                let failed = try store?.latestRecoverableDictationAttempt()
+                let recent = try store?.recoveryText(
+                    from: triggerTime.addingTimeInterval(-Double(recoveryLookbackSeconds)),
+                    through: triggerTime) ?? ""
+                guard let selection = DictationRecovery.select(attempt: failed, recentSpeech: recent) else {
+                    recoveryNotice = "No saved or recent speech was found to insert."
+                    input.discardTarget(); dictationPending = false; recoveryDeliveryTask = nil; return
+                }
+                var attempt: DictationAttempt
+                switch selection.source {
+                case .failedAttempt:
+                    attempt = failed!
+                case .recentSpeech:
+                    let start = triggerTime.addingTimeInterval(-Double(recoveryLookbackSeconds))
+                    attempt = DictationAttempt(sessionID: triggerSession, startedAt: start,
+                        endedAt: triggerTime, text: DictationCleanup.applying(to: vocabulary.applyingToDictation(selection.text)),
+                        state: recognitionFailures == failuresBeforeRecovery ? .ready : .deliveryFailed,
+                        hasGap: recognitionFailures != failuresBeforeRecovery, updatedAt: dependencies.now())
+                    try store?.saveDictationAttempt(attempt)
+                }
+                currentAttempt = attempt
+                if selection.source == .recentSpeech && attempt.hasGap {
+                    recoveryNotice = "Recent speech is partially saved, but finishing its audio failed. Review Sessions; use recovery again to insert the recognized portion."
+                } else {
+                    await deliverAttempt(attempt)
+                }
+            } catch {
+                recoveryNotice = "Recovery could not finish. Saved speech was kept for another retry."
+                notice = error.localizedDescription
+            }
+            input.discardTarget(); dictationPending = false; recoveryDeliveryTask = nil
+        }
+    }
+
+    /// Counts and state only; transcript and field contents never enter diagnostics.
+    var recoveryDiagnostics: [String: Any] {
+        [
+            "lookbackSeconds": recoveryLookbackSeconds,
+            "attemptState": currentAttempt?.state.rawValue ?? "none",
+            "attemptPending": dictationActive || dictationPending,
+            "pendingAudioJobs": jobs.count + (processing == nil ? 0 : 1),
+            "recoveryRunning": recoveryTask != nil || recoveryDeliveryTask != nil,
+            "cleanupPending": cleanupTasks.count,
+            "cleanupRequested": cleanupRequestedCount,
+            "cleanupCompleted": cleanupCompletedCount,
+            "cleanupApplied": cleanupAppliedCount,
+            "cleanupBypassed": cleanupBypassedCount,
+            "cleanupOutcomes": cleanupOutcomeCounts
+        ]
     }
 
     private func recordEvent(_ kind: CaptureEventKind, _ detail: String, duration: Double? = nil, session: String? = nil) {
@@ -1043,7 +1403,7 @@ final class SpeechService: ObservableObject {
     func shutdown() {
         if ambientEnabled { recordEvent(.stopped, "Application quit; capture ended.") }
         modelCheck?.cancel(); preparation?.cancel(); processing?.cancel(); diagnostic?.cancel(); pausing?.cancel()
-        timer?.invalidate(); cancelDictation(); input.disable(); capture.stop(); updateKeepAwakeAssertion(); server?.stop()
+        timer?.invalidate(); speakerMute.end(); highlight.hide(); input.disable(); capture.stop(); updateKeepAwakeAssertion(); server?.stop()
         inputWatcher?.stop(); inputWatcher = nil
         for observer in observers { NSWorkspace.shared.notificationCenter.removeObserver(observer); NotificationCenter.default.removeObserver(observer) }
     }

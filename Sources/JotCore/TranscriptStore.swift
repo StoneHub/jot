@@ -112,7 +112,11 @@ public final class TranscriptStore: @unchecked Sendable {
         do {
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: databaseURL.path)
             sqlite3_busy_timeout(db, 5_000)
-            try execute("PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS transcripts (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, started_at REAL NOT NULL, start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, text TEXT NOT NULL, speaker_id TEXT, mode TEXT NOT NULL CHECK(mode IN ('ambient','dictation'))); CREATE INDEX IF NOT EXISTS transcript_absolute_time ON transcripts((started_at + start_seconds) DESC, id DESC); CREATE INDEX IF NOT EXISTS transcript_session ON transcripts(session_id); CREATE TABLE IF NOT EXISTS speaker_labels (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY(session_id,speaker_id)); CREATE TABLE IF NOT EXISTS capture_events (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, timestamp REAL NOT NULL, kind TEXT NOT NULL, detail TEXT NOT NULL, duration_seconds REAL CHECK(duration_seconds >= 0)); CREATE INDEX IF NOT EXISTS capture_event_time ON capture_events(timestamp DESC,id DESC); CREATE INDEX IF NOT EXISTS capture_event_session_time ON capture_events(session_id,timestamp DESC,id DESC); CREATE TABLE IF NOT EXISTS session_titles (session_id TEXT PRIMARY KEY, title TEXT NOT NULL); CREATE TABLE IF NOT EXISTS transcript_readable (transcript_id TEXT PRIMARY KEY REFERENCES transcripts(id) ON DELETE CASCADE, text TEXT NOT NULL); CREATE TABLE IF NOT EXISTS session_speakers (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, embedding BLOB NOT NULL, duration_seconds REAL NOT NULL CHECK(duration_seconds >= 0), PRIMARY KEY(session_id, speaker_id)); CREATE TABLE IF NOT EXISTS session_segments (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, start_seconds REAL NOT NULL CHECK(start_seconds >= 0), end_seconds REAL NOT NULL CHECK(end_seconds >= start_seconds)); CREATE INDEX IF NOT EXISTS session_segment_time ON session_segments(session_id, start_seconds); CREATE TABLE IF NOT EXISTS transcript_words (transcript_id TEXT NOT NULL REFERENCES transcripts(id) ON DELETE CASCADE, position INTEGER NOT NULL, word TEXT NOT NULL, start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, p1 REAL, p2 REAL, p3 REAL, p4 REAL, PRIMARY KEY(transcript_id, position)); PRAGMA user_version=5;")
+            try execute("PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS transcripts (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, started_at REAL NOT NULL, start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, text TEXT NOT NULL, speaker_id TEXT, mode TEXT NOT NULL CHECK(mode IN ('ambient','dictation'))); CREATE INDEX IF NOT EXISTS transcript_absolute_time ON transcripts((started_at + start_seconds) DESC, id DESC); CREATE INDEX IF NOT EXISTS transcript_session ON transcripts(session_id); CREATE TABLE IF NOT EXISTS speaker_labels (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY(session_id,speaker_id)); CREATE TABLE IF NOT EXISTS capture_events (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, timestamp REAL NOT NULL, kind TEXT NOT NULL, detail TEXT NOT NULL, duration_seconds REAL CHECK(duration_seconds >= 0)); CREATE INDEX IF NOT EXISTS capture_event_time ON capture_events(timestamp DESC,id DESC); CREATE INDEX IF NOT EXISTS capture_event_session_time ON capture_events(session_id,timestamp DESC,id DESC); CREATE TABLE IF NOT EXISTS session_titles (session_id TEXT PRIMARY KEY, title TEXT NOT NULL); CREATE TABLE IF NOT EXISTS transcript_readable (transcript_id TEXT PRIMARY KEY REFERENCES transcripts(id) ON DELETE CASCADE, text TEXT NOT NULL); CREATE TABLE IF NOT EXISTS session_speakers (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, embedding BLOB NOT NULL, duration_seconds REAL NOT NULL CHECK(duration_seconds >= 0), PRIMARY KEY(session_id, speaker_id)); CREATE TABLE IF NOT EXISTS session_segments (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, start_seconds REAL NOT NULL CHECK(start_seconds >= 0), end_seconds REAL NOT NULL CHECK(end_seconds >= start_seconds)); CREATE INDEX IF NOT EXISTS session_segment_time ON session_segments(session_id, start_seconds); CREATE TABLE IF NOT EXISTS transcript_words (transcript_id TEXT NOT NULL REFERENCES transcripts(id) ON DELETE CASCADE, position INTEGER NOT NULL, word TEXT NOT NULL, start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, p1 REAL, p2 REAL, p3 REAL, p4 REAL, PRIMARY KEY(transcript_id, position)); CREATE TABLE IF NOT EXISTS dictation_attempts (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, started_at REAL NOT NULL, ended_at REAL, text TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('capturing','recognizing','ready','deliveryFailed','deliveryUnverified','delivered','discarded')), has_gap INTEGER NOT NULL DEFAULT 0, updated_at REAL NOT NULL); CREATE INDEX IF NOT EXISTS dictation_attempt_state_time ON dictation_attempts(state, updated_at DESC);")
+            if try !hasColumn("has_gap", in: "dictation_attempts") {
+                try execute("ALTER TABLE dictation_attempts ADD COLUMN has_gap INTEGER NOT NULL DEFAULT 0")
+            }
+            try execute("PRAGMA user_version=7")
         } catch {
             sqlite3_close(db); db = nil; throw error
         }
@@ -128,6 +132,115 @@ public final class TranscriptStore: @unchecked Sendable {
               ["ambient", "dictation"].contains(transcript.mode),
               transcript.text.utf8.count <= 1_000_000 else { throw StoreError.invalid("Invalid transcript fields") }
         try locked { try insert(transcript) }
+    }
+
+    /// Saves delivery state and recognized text for force-quit recovery. Raw audio is
+    /// intentionally never written by this API.
+    public func saveDictationAttempt(_ attempt: DictationAttempt) throws {
+        guard !attempt.id.isEmpty, !attempt.sessionID.isEmpty,
+              attempt.startedAt.timeIntervalSince1970.isFinite,
+              attempt.endedAt?.timeIntervalSince1970.isFinite ?? true,
+              attempt.endedAt.map({ $0 >= attempt.startedAt }) ?? true,
+              attempt.updatedAt.timeIntervalSince1970.isFinite,
+              attempt.text.utf8.count <= 1_000_000 else {
+            throw StoreError.invalid("Invalid dictation attempt")
+        }
+        try locked {
+            let stmt = try prepare("INSERT INTO dictation_attempts(id,session_id,started_at,ended_at,text,state,has_gap,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET session_id=excluded.session_id,started_at=excluded.started_at,ended_at=excluded.ended_at,text=excluded.text,state=excluded.state,has_gap=excluded.has_gap,updated_at=excluded.updated_at")
+            defer { sqlite3_finalize(stmt) }
+            bind(attempt.id, to: 1, in: stmt); bind(attempt.sessionID, to: 2, in: stmt)
+            sqlite3_bind_double(stmt, 3, attempt.startedAt.timeIntervalSince1970)
+            if let endedAt = attempt.endedAt { sqlite3_bind_double(stmt, 4, endedAt.timeIntervalSince1970) }
+            else { sqlite3_bind_null(stmt, 4) }
+            bind(attempt.text, to: 5, in: stmt); bind(attempt.state.rawValue, to: 6, in: stmt)
+            sqlite3_bind_int(stmt, 7, attempt.hasGap ? 1 : 0)
+            sqlite3_bind_double(stmt, 8, attempt.updatedAt.timeIntervalSince1970)
+            try finish(stmt)
+        }
+    }
+
+    public func latestRecoverableDictationAttempt() throws -> DictationAttempt? {
+        try locked {
+            let stmt = try prepare("SELECT id,session_id,started_at,ended_at,text,state,has_gap,updated_at FROM dictation_attempts WHERE state IN ('capturing','recognizing','ready','deliveryFailed','deliveryUnverified') AND length(trim(text)) > 0 ORDER BY updated_at DESC,id DESC LIMIT 1")
+            defer { sqlite3_finalize(stmt) }
+            let status = sqlite3_step(stmt)
+            if status == SQLITE_DONE { return nil }
+            guard status == SQLITE_ROW, let state = column(stmt, 5).flatMap(DictationAttempt.State.init(rawValue:)) else { throw error() }
+            return DictationAttempt(id: column(stmt, 0)!, sessionID: column(stmt, 1)!,
+                startedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 2)),
+                endedAt: sqlite3_column_type(stmt, 3) == SQLITE_NULL ? nil : Date(timeIntervalSince1970: sqlite3_column_double(stmt, 3)),
+                text: column(stmt, 4)!, state: state,
+                hasGap: sqlite3_column_int(stmt, 6) != 0,
+                updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 7)))
+        }
+    }
+
+    /// A process exit cannot recover unsaved raw audio, but already recognized text
+    /// remains a retryable delivery instead of looking like an active capture forever.
+    public func finalizeInterruptedDictationAttempts() throws {
+        try locked {
+            let stmt = try prepare("UPDATE dictation_attempts SET state='deliveryFailed',has_gap=1,ended_at=COALESCE(ended_at,updated_at) WHERE state IN ('capturing','recognizing')")
+            defer { sqlite3_finalize(stmt) }
+            try finish(stmt)
+        }
+    }
+
+    public func deleteDictationAttempt(id: String) throws {
+        try locked {
+            try deletion {
+                let stmt = try prepare("DELETE FROM dictation_attempts WHERE id = ?")
+                defer { sqlite3_finalize(stmt) }
+                bind(id, to: 1, in: stmt); try finish(stmt)
+            }
+        }
+    }
+
+    /// Recognized speech overlapping an absolute time window, in spoken order. When
+    /// word timing exists it clips at the word boundary; older rows are included whole
+    /// rather than risking a missing edge.
+    public func recoveryText(from lowerBound: Date, through upperBound: Date) throws -> String {
+        guard lowerBound.timeIntervalSince1970.isFinite, upperBound.timeIntervalSince1970.isFinite,
+              upperBound >= lowerBound else { throw StoreError.invalid("Invalid recovery window") }
+        return try locked {
+            let stmt = try prepare("SELECT t.id,t.started_at,COALESCE(r.text,t.text) FROM transcripts t LEFT JOIN transcript_readable r ON r.transcript_id=t.id WHERE t.mode='ambient' AND (t.started_at+t.end_seconds) > ? AND (t.started_at+t.start_seconds) < ? ORDER BY (t.started_at+t.start_seconds),t.id")
+            defer { sqlite3_finalize(stmt) }
+            sqlite3_bind_double(stmt, 1, lowerBound.timeIntervalSince1970)
+            sqlite3_bind_double(stmt, 2, upperBound.timeIntervalSince1970)
+            var pieces: [String] = []
+            while true {
+                let status = sqlite3_step(stmt)
+                if status == SQLITE_DONE { break }
+                guard status == SQLITE_ROW else { throw error() }
+                let transcriptID = column(stmt, 0)!
+                let sessionStart = sqlite3_column_double(stmt, 1)
+                let fallback = column(stmt, 2)!
+                let evidenceStmt = try prepare("SELECT 1 FROM transcript_words WHERE transcript_id=? LIMIT 1")
+                bind(transcriptID, to: 1, in: evidenceStmt)
+                let evidenceStatus = sqlite3_step(evidenceStmt)
+                guard evidenceStatus == SQLITE_ROW || evidenceStatus == SQLITE_DONE else {
+                    sqlite3_finalize(evidenceStmt); throw error()
+                }
+                let hasWordEvidence = evidenceStatus == SQLITE_ROW
+                sqlite3_finalize(evidenceStmt)
+                let wordStmt = try prepare("SELECT w.word FROM transcript_words w WHERE w.transcript_id=? AND (?+w.end_seconds) > ? AND (?+w.start_seconds) < ? ORDER BY w.position")
+                bind(transcriptID, to: 1, in: wordStmt)
+                sqlite3_bind_double(wordStmt, 2, sessionStart)
+                sqlite3_bind_double(wordStmt, 3, lowerBound.timeIntervalSince1970)
+                sqlite3_bind_double(wordStmt, 4, sessionStart)
+                sqlite3_bind_double(wordStmt, 5, upperBound.timeIntervalSince1970)
+                var words: [String] = []
+                while true {
+                    let wordStatus = sqlite3_step(wordStmt)
+                    if wordStatus == SQLITE_DONE { break }
+                    guard wordStatus == SQLITE_ROW else { sqlite3_finalize(wordStmt); throw error() }
+                    words.append(column(wordStmt, 0)!)
+                }
+                sqlite3_finalize(wordStmt)
+                if !words.isEmpty { pieces.append(words.joined(separator: " ")) }
+                else if !hasWordEvidence { pieces.append(fallback) }
+            }
+            return pieces.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        }
     }
 
     private func insert(_ transcript: Transcript) throws {
@@ -401,6 +514,7 @@ public final class TranscriptStore: @unchecked Sendable {
     public func clearHistory() throws {
         try locked {
             try deletion {
+                try execute("DELETE FROM dictation_attempts")
                 for table in ["session_titles", "speaker_labels", "capture_events", "session_speakers", "session_segments"] {
                     try execute("DELETE FROM \(table) WHERE session_id IN (SELECT session_id FROM transcripts WHERE mode = 'dictation') AND session_id NOT IN (SELECT session_id FROM transcripts WHERE mode = 'ambient')")
                 }
@@ -412,6 +526,8 @@ public final class TranscriptStore: @unchecked Sendable {
     public func deleteSession(id: String) throws {
         try locked {
             try deletion {
+                let attempts = try prepare("DELETE FROM dictation_attempts WHERE session_id = ?")
+                bind(id, to: 1, in: attempts); try finish(attempts); sqlite3_finalize(attempts)
                 for table in ["transcripts", "session_titles", "speaker_labels", "capture_events", "session_speakers", "session_segments"] {
                     let stmt = try prepare("DELETE FROM \(table) WHERE session_id = ?")
                     defer { sqlite3_finalize(stmt) }
@@ -427,6 +543,8 @@ public final class TranscriptStore: @unchecked Sendable {
             try deletion {
                 var sessions = Set<String>()
                 for id in Set(ids) {
+                    let attempt = try prepare("DELETE FROM dictation_attempts WHERE id = ?")
+                    bind(id, to: 1, in: attempt); try finish(attempt); sqlite3_finalize(attempt)
                     let find = try prepare("SELECT session_id FROM transcripts WHERE id = ?")
                     defer { sqlite3_finalize(find) }
                     bind(id, to: 1, in: find)
@@ -496,6 +614,17 @@ public final class TranscriptStore: @unchecked Sendable {
         return stmt
     }
     private func execute(_ sql: String) throws { guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else { throw error() } }
+    private func hasColumn(_ name: String, in table: String) throws -> Bool {
+        guard table == "dictation_attempts" else { throw StoreError.invalid("Unsupported schema lookup") }
+        let stmt = try prepare("PRAGMA table_info(dictation_attempts)")
+        defer { sqlite3_finalize(stmt) }
+        while true {
+            let status = sqlite3_step(stmt)
+            if status == SQLITE_DONE { return false }
+            guard status == SQLITE_ROW else { throw error() }
+            if column(stmt, 1) == name { return true }
+        }
+    }
     private func finish(_ stmt: OpaquePointer) throws { guard sqlite3_step(stmt) == SQLITE_DONE else { throw error() } }
     private func bind(_ value: String?, to index: Int32, in stmt: OpaquePointer) {
         if let value { sqlite3_bind_text(stmt, index, value, -1, transient) } else { sqlite3_bind_null(stmt, index) }

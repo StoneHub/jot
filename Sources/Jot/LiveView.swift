@@ -72,7 +72,7 @@ struct LiveView: View {
                 chip("\(title) · Paused")
             } else if running {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
-                    chip("\(service.meetingTitle ?? "Ambient") · \(Self.elapsed(since: service.sessionStarted, at: context.date))", color: .red, dot: true)
+                    chip("\(service.meetingTitle ?? "Listening") · \(Self.elapsed(since: service.sessionStarted, at: context.date))", color: .red, dot: true)
                 }
                 if speakerCount > 0 { chip("\(speakerCount) speaker\(speakerCount == 1 ? "" : "s")") }
                 if !recognized.isEmpty { chip("recognized \(recognized.joined(separator: ", "))", color: .green, dot: true) }
@@ -107,7 +107,7 @@ struct LiveView: View {
                 Task { await service.endMeeting(); working = false }
             }.modifier(PrimaryGlassButton()).tint(.red).disabled(working).accessibilityIdentifier("live-end-meeting")
         } else if running {
-            Button("Stop") { Task { await service.setAmbient(false) } }.modifier(GlassButton()).accessibilityIdentifier("live-stop")
+            Button("Pause") { service.pause() }.modifier(GlassButton()).accessibilityIdentifier("live-stop")
         } else if naming {
             TextField("Meeting name", text: $titleDraft).textFieldStyle(.roundedBorder).frame(width: 220).onSubmit(startMeeting)
             Button("Start", action: startMeeting).modifier(PrimaryGlassButton())
@@ -115,9 +115,7 @@ struct LiveView: View {
             Button("Cancel") { naming = false; titleDraft = "" }.modifier(GlassButton())
         } else {
             Button("Start meeting") { titleDraft = ""; naming = true }.modifier(PrimaryGlassButton()).accessibilityIdentifier("live-start-meeting")
-            Toggle("Ambient", isOn: Binding(get: { service.ambientEnabled }, set: { enabled in
-                Task { await service.setAmbient(enabled) }
-            })).toggleStyle(.switch).disabled(service.lifecycle.phase != .ready)
+            Button("Resume") { service.prepare() }.modifier(PrimaryGlassButton()).disabled(service.isTransitioning)
         }
     }
 

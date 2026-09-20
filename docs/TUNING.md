@@ -11,7 +11,7 @@ Open **Tuning** in the native app. Start with Balanced, or use Steadier speakers
 | Speaker confidence | Requires a stronger speaker score | Higher values can leave more speech unknown |
 | Minimum speaker turn | Requires sustained evidence before changing the current speaker | Short real replies can stay with the preceding speaker |
 | (built in) | A reply of 0.3 s or more whose voice the diarizer is sure about (0.85 or higher, nobody else above the confidence setting) switches speaker regardless of the minimum turn | A quiet or mumbled short reply still merges |
-| Pause between paragraphs | Groups nearby words and same-speaker rows | Longer values create fewer, longer rows and can delay ambient results |
+| Pause between paragraphs | Groups nearby words and same-speaker rows | Longer values create fewer, longer rows; live recognition still submits short chunks |
 | Hide filler-only rows | Hides isolated um/uh/hmm rows in Dictations | Original text remains in SQLite and CLI/MCP; fillers within sentences remain visible |
 
 Speaker settings apply to new audio and to any session you regroup. Dictations presentation changes immediately for paragraph grouping and filler visibility. This does not rerun old audio: recordings are not retained. Source words are not rewritten or deleted. Settings persist and are reported by `jot status` / MCP status.
@@ -23,7 +23,7 @@ Jot keeps each ambient row's words with their timings and speaker probabilities.
 ## A short comparison
 
 1. Choose 30–60 seconds with a clear speaker change and a hesitation. Keep microphone position, playback volume, and source fixed.
-2. Enable the player's English captions and note its playback time. Resume ambient transcription for that passage, then switch ambient off to finish its final segment.
+2. Enable the player's English captions and note its playback time. Resume Jot for that passage, then Pause to stop listening and finish saving it.
 3. Separately judge missed/wrong words, unnecessary speaker changes, and annoying paragraph breaks. Do not count every caption omission of a filler as an ASR mistake.
 4. Change one control and replay the same passage. If genuine short replies merge into the preceding speaker, lower Minimum speaker turn. If rows are merely too short, increase Pause between paragraphs.
 5. Pause the service when done to unload models. No automatic tuning or reference-text injection is performed.

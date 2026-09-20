@@ -21,13 +21,17 @@ final class ServiceLifecycleTests: XCTestCase {
         }
     }
 
-    func testSleepResumeRequiresRunningAmbientAndOptIn() {
-        for (ambient, optedIn) in [(false, false), (false, true), (true, false)] {
+    func testSleepResumeRequiresInterruptedListeningButNotKeepAwake() {
+        for optedIn in [false, true] {
             var policy = SleepResumePolicy()
-            policy.willSleep(ambientRunning: ambient, keepAwake: optedIn)
+            policy.willSleep(ambientRunning: true, keepAwake: optedIn)
             policy.didWake()
-            XCTAssertFalse(policy.takeResume(phase: .paused))
+            XCTAssertTrue(policy.takeResume(phase: .paused))
         }
+        var idle = SleepResumePolicy()
+        idle.willSleep(ambientRunning: false, keepAwake: true)
+        idle.didWake()
+        XCTAssertFalse(idle.takeResume(phase: .paused))
     }
 
     func testExplicitCancellationPreventsResumeEvenWhileUnloading() {
@@ -35,7 +39,7 @@ final class ServiceLifecycleTests: XCTestCase {
             var policy = SleepResumePolicy()
             policy.willSleep(ambientRunning: true, keepAwake: true)
             if wakeFirst { policy.didWake() }
-            policy.cancel() // Pause, Stop, ambient off, or keep-awake off.
+            policy.cancel() // Explicit Pause/Stop.
             policy.didWake()
             XCTAssertFalse(policy.takeResume(phase: .paused))
             policy.willSleep(ambientRunning: true, keepAwake: true)
