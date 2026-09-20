@@ -128,7 +128,7 @@ The server exposes capture controls, status, model preparation, transcript searc
 
 ## Build and install
 
-The current install path is a source build. It requires Xcode and an installed Apple Development or Developer ID Application signing identity. The installer prefers Monroe's development identity on his Mac; other contributors use their own installed identity or set `JOT_SIGN_IDENTITY` and `JOT_SIGN_TEAM`. The project pins FluidAudio to an exact revision. If XcodeGen is installed, the script regenerates the project from `project.yml`.
+The current install path is a source build. It requires Xcode and an installed Apple Development or Developer ID Application signing identity. The installer prefers Monroe's development identity on his Mac; other contributors use their own installed identity or set `JOT_SIGN_IDENTITY` and `JOT_SIGN_TEAM`. The project pins FluidAudio and [AppleFM](https://github.com/StoneHub/apple-fm-swift) to exact revisions. AppleFM handles native model availability and generation; Jot keeps its transcript cleanup rules, validation, and deadline. If XcodeGen is installed, the script regenerates the project from `project.yml`.
 
 ```sh
 swift test
