@@ -54,33 +54,70 @@ public final class ShortcutPreferences {
 /// and the trigger's key-up remains consumed even when its modifiers were released first.
 public struct ShortcutTracker {
     public enum Event { case keyDown, keyUp, flagsChanged }
-    public enum Action: Equatable { case none, start, stop, cancel }
+    public enum Action: Equatable { case none, start, stop, discardTap, recover, cancel }
     public struct Result: Equatable {
         public var action: Action = .none
         public var consume = false
     }
+    public static let shortTapMaximumDuration: TimeInterval = 0.2
+    public static let doubleTapMaximumInterval: TimeInterval = 0.35
+
     private var held = false
     private var suppressKeyUp = false
+    private var suppressFnUntilRelease = false
+    private var pressedAt: TimeInterval?
+    private var recoveryCandidate = false
+    private var lastShortReleaseAt: TimeInterval?
     public init() {}
-    public mutating func reset() { held = false; suppressKeyUp = false }
+    public mutating func reset() {
+        held = false
+        suppressKeyUp = false
+        suppressFnUntilRelease = false
+        pressedAt = nil
+        recoveryCandidate = false
+        lastShortReleaseAt = nil
+    }
 
     public mutating func handle(_ event: Event, keyCode: UInt16, modifiers: ShortcutModifiers,
-                                repeating: Bool = false, shortcut: DictationShortcut) -> Result {
+                                repeating: Bool = false, shortcut: DictationShortcut,
+                                at timestamp: TimeInterval = ProcessInfo.processInfo.systemUptime) -> Result {
+        expireTapSequence(at: timestamp)
         if shortcut.keyCode == nil {
-            if event == .keyDown { return Result(action: held ? .cancel : .none) }
+            if suppressFnUntilRelease {
+                if event == .flagsChanged && !modifiers.contains(.fn) { suppressFnUntilRelease = false }
+                return Result()
+            }
+            if event == .keyDown {
+                // Some keyboards emit a key event as well as the Fn flags event. It is
+                // not a second press and must not cancel or restart the held gesture.
+                if keyCode == 63 { return Result() }
+                if held {
+                    cancelGesture()
+                    suppressFnUntilRelease = true
+                    return Result(action: .cancel)
+                }
+                clearTapSequence()
+                return Result()
+            }
             guard event == .flagsChanged else { return Result() }
             if !held && keyCode != 63 { return Result() }
             let down = modifiers.contains(.fn)
             let wasHeld = held
-            held = down
-            if down && modifiers != [.fn] { return Result(action: .cancel) }
-            if down && !wasHeld { return Result(action: .start) }
-            if !down && wasHeld { return Result(action: .stop) }
+            if down && modifiers != [.fn] {
+                cancelGesture()
+                suppressFnUntilRelease = true
+                return Result(action: .cancel)
+            }
+            if down && !wasHeld {
+                begin(at: timestamp)
+                return Result(action: .start)
+            }
+            if !down && wasHeld { return Result(action: finish(at: timestamp)) }
             return Result()
         }
         if event == .keyUp && keyCode == shortcut.keyCode && suppressKeyUp {
-            let result = Result(action: held ? .stop : .none, consume: true)
-            held = false; suppressKeyUp = false
+            let result = Result(action: held ? finish(at: timestamp) : .none, consume: true)
+            suppressKeyUp = false
             return result
         }
         if event == .keyDown && keyCode == shortcut.keyCode && suppressKeyUp {
@@ -88,16 +125,67 @@ public struct ShortcutTracker {
         }
         if held {
             if event == .flagsChanged && modifiers != shortcut.modifiers {
-                held = false
                 // Releasing any required modifier finishes; adding an unrelated one cancels.
-                return Result(action: modifiers.subtracting(shortcut.modifiers).isEmpty ? .stop : .cancel)
+                if modifiers.subtracting(shortcut.modifiers).isEmpty {
+                    return Result(action: finish(at: timestamp))
+                }
+                cancelGesture()
+                return Result(action: .cancel)
             }
-            if event == .keyDown { held = false; return Result(action: .cancel) }
+            if event == .keyDown { cancelGesture(); return Result(action: .cancel) }
         }
         if event == .keyDown && !repeating && !suppressKeyUp && keyCode == shortcut.keyCode && modifiers == shortcut.modifiers {
-            held = true; suppressKeyUp = true
+            begin(at: timestamp)
+            suppressKeyUp = true
             return Result(action: .start, consume: true)
         }
+        if event == .keyDown && !repeating { clearTapSequence() }
         return Result()
+    }
+
+    private mutating func begin(at timestamp: TimeInterval) {
+        held = true
+        pressedAt = timestamp
+        if let lastShortReleaseAt {
+            recoveryCandidate = timestamp >= lastShortReleaseAt
+                && timestamp - lastShortReleaseAt <= Self.doubleTapMaximumInterval
+        } else {
+            recoveryCandidate = false
+        }
+    }
+
+    private mutating func finish(at timestamp: TimeInterval) -> Action {
+        let duration = max(0, timestamp - (pressedAt ?? timestamp))
+        held = false
+        pressedAt = nil
+        if duration <= Self.shortTapMaximumDuration {
+            if recoveryCandidate {
+                clearTapSequence()
+                return .recover
+            }
+            recoveryCandidate = false
+            lastShortReleaseAt = timestamp
+            return .discardTap
+        }
+        clearTapSequence()
+        return .stop
+    }
+
+    private mutating func cancelGesture() {
+        held = false
+        pressedAt = nil
+        clearTapSequence()
+    }
+
+    private mutating func clearTapSequence() {
+        recoveryCandidate = false
+        lastShortReleaseAt = nil
+    }
+
+    private mutating func expireTapSequence(at timestamp: TimeInterval) {
+        guard !held else { return }
+        guard let lastShortReleaseAt,
+              timestamp < lastShortReleaseAt || timestamp - lastShortReleaseAt > Self.doubleTapMaximumInterval else { return }
+        clearTapSequence()
     }
 }

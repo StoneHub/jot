@@ -36,7 +36,7 @@ private struct ShortcutEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Dictation shortcut").font(.headline)
-            Text("Press a key with Control, Option, or Command. Hold the shortcut to talk; release to insert.")
+            Text("Press a key with Control, Option, or Command. Hold to dictate; release to insert. Double-tap to recover saved or recent speech.")
                 .font(.callout).fixedSize(horizontal: false, vertical: true)
             Text("Press shortcut…").font(.title3.monospaced())
                 .frame(maxWidth: .infinity).padding(12)

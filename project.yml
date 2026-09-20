@@ -44,6 +44,28 @@ targets:
         LD_RUNPATH_SEARCH_PATHS: '@executable_path/../Frameworks'
     dependencies:
       - target: JotCore
+  JotRecoveryChecks:
+    type: tool
+    platform: macOS
+    sources:
+      - scripts/check-recovery-flow.swift
+      - Sources/Jot/AudioPipeline.swift
+      - Sources/Jot/DictationHighlight.swift
+      - Sources/Jot/DictationInput.swift
+      - Sources/Jot/KeepAwakeAssertion.swift
+      - Sources/Jot/ResourceStats.swift
+      - Sources/Jot/SessionAudioFile.swift
+      - Sources/Jot/ShortcutSettings.swift
+      - Sources/Jot/SpeakerPass.swift
+      - Sources/Jot/SpeechService.swift
+      - Sources/Jot/SpeechServiceIPC.swift
+    settings:
+      base:
+        PRODUCT_NAME: JotRecoveryChecks
+        LD_RUNPATH_SEARCH_PATHS: '@executable_path'
+    dependencies:
+      - target: JotCore
+      - package: FluidAudio
   Jot:
     type: application
     platform: macOS
@@ -90,3 +112,7 @@ schemes:
     build:
       targets:
         Jot: all
+  JotRecoveryChecks:
+    build:
+      targets:
+        JotRecoveryChecks: all

@@ -23,10 +23,10 @@ struct JotCLI {
     Jot — local transcription service
 
     jot status                         Listening state and system impact
-    jot start                          Start ambient transcription
+    jot start                          Resume continuous listening
     jot pause                          Pause all speech work, unload models, and end any meeting
-    jot resume                         Reload models and resume selected features
-    jot ambient-off                    Turn off ambient capture; keep Fn available
+    jot resume                         Reload models and start listening
+    jot ambient-off                    Compatibility alias for Pause
     jot meeting start <title>          Ambient capture with a name; exports when it ends
     jot meeting end                    Stop, wait for the last audio, save Markdown to ~/Documents/Jot Sessions
     jot title <session-id> <title>     Name or rename a session
@@ -152,10 +152,10 @@ private struct MCPServer {
     private static let tools: [(String, String, String, [String: Any], [String])] = [
         ("speech_status", "speech.status", "Get capture state, model state, and current system impact statistics.", [:], []),
         ("speech_diagnostics", "speech.diagnostics", "Read bounded local memory, lifecycle, and latency diagnostics without audio, transcripts, vocabulary, or app identities.", [:], []),
-        ("speech_start", "speech.start", "Start ambient microphone transcription when the user explicitly requests listening.", [:], []),
-        ("speech_pause", "speech.pause", "Pause all speech work, discard unfinished audio, unload models, and end any meeting without exporting. Poll status until servicePhase is paused.", [:], []),
-        ("speech_resume", "speech.resume", "Reload models and resume the selected Fn/ambient features.", [:], []),
-        ("speech_ambient_off", "speech.ambient_off", "Switch off ambient capture while keeping Fn dictation available.", [:], []),
+        ("speech_start", "speech.start", "Resume continuous microphone transcription when the user explicitly requests listening.", [:], []),
+        ("speech_pause", "speech.pause", "Stop listening, finish saving captured speech, unload models, and end any meeting without exporting. Poll status until servicePhase is paused.", [:], []),
+        ("speech_resume", "speech.resume", "Reload models and start listening continuously; enable the dictation shortcut if selected.", [:], []),
+        ("speech_ambient_off", "speech.ambient_off", "Compatibility alias for Pause. Listening and the loaded speech service now share one control.", [:], []),
         ("speech_meeting_start", "speech.meeting_start", "Start ambient capture as a named meeting when the user explicitly asks to record one.", ["title": ["type": "string", "maxLength": 200]], ["title"]),
         ("speech_meeting_end", "speech.meeting_end", "End the meeting, wait for queued audio, and save the session as Markdown in ~/Documents/Jot Sessions.", [:], []),
         ("sessions_title", "sessions.title", "Name or rename one session.", ["sessionID": ["type": "string"], "title": ["type": "string", "maxLength": 200]], ["sessionID", "title"]),

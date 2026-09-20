@@ -8,11 +8,12 @@
 
 ![Jot running on macOS, showing a single test dictation in searchable Dictations](docs/images/jot-history.jpg)
 
-Jot turns your voice into text in the focused field. Hold **Fn** (or your custom shortcut) to dictate, or switch on **ambient transcription** to keep a searchable transcript with up to four speaker labels you can name per session. Speech recognition runs on your Mac through [FluidAudio](https://github.com/FluidInference/FluidAudio).
+Jot listens while resumed and saves a searchable transcript locally. Hold **Fn** (or your custom shortcut) to dictate into a field, or double-tap to insert recent speech or retry an undelivered dictation. Speech recognition runs on your Mac through [FluidAudio](https://github.com/FluidInference/FluidAudio).
 
 - **Speak into your apps.** Release Fn to insert your words without sending the message.
 - **Keep the words.** Search local dictations, select text across statements, or copy a single card.
-- **Stay in control.** Separate dictation and ambient switches. Pause stops processing and unloads models.
+- **Recover a missed insertion.** Focus a text field and double-tap the shortcut. Undelivered dictation takes priority over the recent speech window.
+- **Stay in control.** Resume listens; Pause stops listening and unloads models. No separate Ambient switch.
 - **Give agents context.** Search and read transcripts through the bundled CLI and MCP server.
 - **Feel at home on the Mac.** System accent colors, native Liquid Glass on macOS 26, and material fallbacks on earlier versions.
 
@@ -26,29 +27,31 @@ Build and install Jot using the [instructions below](#build-and-install), then o
 
 Grant microphone and Accessibility access. If Fn triggers a macOS shortcut, set the Fn/Globe action to **Do Nothing** in Keyboard settings.
 
-- **Resume** loads models and enables your selected speech features. **Pause** stops speech processing, unloads models, and ends a running meeting without exporting; its transcript stays in **Sessions**. Sleep, an input change, or stalled input pauses Jot automatically and keeps your selected features and a running meeting for **Resume**.
-- **Dictation** and **Ambient transcription** have separate switches. Ambient starts off when you launch Jot.
+- **Resume** loads models and starts listening immediately. **Pause** stops new capture and unloads models after saving captured speech; a running meeting ends without exporting, with its transcript in **Sessions**. An explicit Pause stays paused across launch. Jot resumes after sleep if it was listening beforehand.
+- **Dictation** enables the insertion shortcut. Turning it off does not stop listening; use **Pause** for that.
 - Closing the window keeps Jot in the menu bar. **Open** brings the window back; **Quit** stops the app.
 
 **Change the shortcut:** click the key label beside **Hold to talk**. Press a key with Control, Option, or Command, or choose **Use Fn / Globe** to restore the default. Your choice is saved on this Mac. Custom shortcuts take precedence over the same combination in other apps; choose an unused combination. Release the key or a required modifier to finish.
 
-Dictation supports up to 60 seconds per hold. It cancels if focus changes, skips password fields, and never presses Return. Text insertion depends on the target app's Accessibility support.
+Long holds are transcribed and saved in chunks while you speak. If focus changes or insertion cannot be verified, the dictation remains available for retry. Focus the desired field and double-tap the shortcut. Password fields are excluded, and Jot never presses Return. Text insertion depends on the target app's Accessibility support.
+
+**Insert what you just said:** when there is no undelivered dictation, double-tap inserts speech from the recent window, including all voices. Set **Tuning → Recent speech window** from 30 seconds to 10 minutes; the default is two minutes. A pending dictation takes priority even if it is longer. Recovery inserts at the current cursor or replaces selected text; it does not search for and overwrite a previous insertion.
 
 **Choose a microphone:** select **System Default** or a specific input from the Microphone menu. Jot changes only its own capture device; it never changes macOS's default input. Pause capture before switching devices. If the chosen microphone is unplugged, Jot keeps the choice, captures from System Default, and uses the microphone again once it is plugged back in.
 
 **Quiet speakers while you talk:** dictation temporarily mutes the built-in speakers and restores their previous mute state on release or cancellation. Headphones and other outputs are left alone. Media continues playing silently. This is enabled by default; turn it off in **Tuning → Mute built-in speakers during dictation**.
 
-**Keep Mac awake during ambient capture:** turn this on beneath **Ambient transcription** to prevent idle sleep while ambient capture or a meeting is recording. It releases automatically when ambient capture stops, and does not block manual sleep, lid close, shutdown, or battery-critical sleep.
+**Keep Mac awake:** prevents idle sleep while listening. It releases when capture stops and does not block manual sleep, lid close, shutdown, or battery-critical sleep. Resuming after sleep follows the previous listening state independently of this setting.
 
-**Start meeting** records ambient capture under a name. **End meeting** waits for the last audio, saves the whole transcript as Markdown in `~/Documents/Jot Sessions`, and shows the file in Finder. If the Mac sleeps or the microphone changes during a meeting, **Resume** continues it as a second session with the same name; **End meeting** saves the latest part, and the earlier part can be exported from **Sessions**. With ambient transcription left on, a quiet stretch ends the session and the next speech starts a new one, so a day of listening reads as separate conversations; set the length in **Tuning → New session after quiet**, or choose Never. **Sessions** lists every capture session; open one to read it whole, rename it, name speakers, copy it, or export it. **Live** shows the session being recorded as it grows, with the meeting name, elapsed time, and speaker chips you can click to name.
+**Start meeting** gives the listening session a name. **End meeting** saves its transcript as Markdown in `~/Documents/Jot Sessions`, shows the file in Finder, and continues listening in a fresh unnamed session. If the Mac sleeps or the microphone changes during a meeting, **Resume** continues it as a second session with the same name; **End meeting** saves the latest part, and the earlier part can be exported from **Sessions**. Outside a named meeting, a quiet stretch starts a new session; set the length in **Tuning → New session after quiet**, or choose Never. **Sessions** lets you read, rename, label speakers, copy, or export a session. **Live** shows the current session as it grows.
 
 **Dictations** lists your dictations. Search them, select text across statements, and press ⌘C to copy. **Load more** adds older results. Cards view supports individual copying. **Clear** in Dictations permanently deletes every saved dictation, including rows outside the current search or loaded page. Ambient and meeting transcripts live in **Sessions**, which has its own delete and a search across every saved session. Dictation cards and sessions each have a trash button for individual deletion. Existing exported files are separate. New dictation starts a fresh list.
 
-**Clean up captured speech:** ambient speech and meetings automatically use Apple's on-device language model when it is available. Control this in **Tuning → Clean up ambient speech and meetings**. Dictation skips this pass by default for faster insertion; opt in separately with **Clean up dictation**. Jot checks macOS 26+ and Apple Intelligence readiness; older systems and unavailable models keep normal transcription. Apple manages model setup and updates in macOS. Jot uses no cloud model, API key, or `fm` server.
+**Clean up captured speech:** live speech and meetings automatically use Apple's on-device language model when it is available. Control this in **Tuning → Clean up live speech and meetings**. Dictation skips this pass by default for faster insertion; opt in separately with **Clean up dictation**. Jot checks macOS 26+ and Apple Intelligence readiness; older systems and unavailable models keep normal transcription. Apple manages model setup and updates in macOS. Jot uses no cloud model, API key, or `fm` server.
 
 Cleanup removes fillers and repetition and improves punctuation within speaker turns. It has a two-second deadline and bypasses oversized input or a busy model. If cleanup fails or changes protected numerical/qualification wording, Jot keeps recognized text. These checks do not guarantee that every rewrite preserves meaning. Cleaned text appears in Dictations, Sessions, copy/export, and CLI/MCP reads; turning cleanup off affects new speech only. Source text remains in local storage and is deleted together with its readable version. Existing rows are not rewritten.
 
-Dictation interrupts a waiting ambient cleanup pass and takes priority over queued ambient work. An already-running speech-recognition call finishes before the next job. Ambient cleanup is skipped during dictation. Local `jot diagnostics` job records separate queue wait, recognition, cleanup, and insertion time, including failed deliveries.
+Live recognition is saved and displayed before optional cleanup. Cleanup runs separately and replaces the readable text only when a valid change is available; it does not hold up the next recognition chunk. `jot status` reports cleanup requests, applied changes, and fallback reasons under `dictationRecovery`; `jot diagnostics` reports recognition queue and processing times.
 
 Text insertion tries the field's Accessibility API, then direct Unicode keyboard events. Clipboard paste is a fallback only when direct events cannot be created, before any text is dispatched. Jot verifies the field afterward and never retries an unverified insertion with a second method, avoiding duplicate text.
 
@@ -81,7 +84,7 @@ See the [tuning guide](docs/TUNING.md) for what each setting changes. Speaker se
 Naming a speaker is per session. To have Jot name that voice in later sessions too, leave **Remember this voice** on when you save the name; the toggle appears once the session's speaker pass has run. Jot stores a voice signature per person: 256 numbers, about 1 KB, in the local transcript database, never audio. Each recognized session refines it. When a new session's speaker pass finds a matching voice, that speaker gets the person's name without a click, and the notice reads "recognized <name>". **People** in the sidebar lists everyone Jot remembers; **Delete** forgets the voice, and names already written into sessions stay. `jot people` and `jot forget <person-id>` do the same from the terminal.
 
 ## Your data stays local
-Dictation audio stays in temporary memory buffers and is discarded after processing; dictation never writes audio to disk. During an ambient session or meeting, Jot writes the session's audio to a private file in `~/Library/Application Support/Jot/audio` so it can run a speaker pass over the whole session when it ends, then deletes the file right after the pass. The file is never uploaded. Turn off "Keep session audio until the speaker pass finishes" in Tuning to never write audio to disk. Jot saves text, timestamps, speaker labels, session titles, capture events, the pass's speaker segments and voice embeddings, and the voice signatures of people you asked it to remember in `~/Library/Application Support/Jot`. Jot enrolls a voice only when you save a speaker's name with **Remember this voice** on, and forgets it when you delete the person. It does not save recordings for replay. Exported sessions are plain Markdown files in `~/Documents/Jot Sessions`, written only when you end a meeting or press Export.
+Dictation marks a range in continuous listening; it creates no additional audio file. While listening, Jot optionally writes session audio to a private file in `~/Library/Application Support/Jot/audio` for a speaker pass, then deletes it after the pass. This includes speech captured while dictating. The file is never uploaded. Turn off "Keep session audio until the speaker pass finishes" in Tuning to never write audio to disk. Recovery adds only saved text and delivery state, not an audio crash buffer. After force-quit, already recognized and committed text remains available; the unrecognized tail still in memory can be lost. Jot also saves timestamps, speaker labels, session titles, capture events, speaker segments, and explicitly remembered voice signatures in `~/Library/Application Support/Jot`. It enrolls a voice only when you save a speaker's name with **Remember this voice** on, and forgets it when you delete the person. It does not save recordings for replay. Exported sessions are plain Markdown files in `~/Documents/Jot Sessions`, written only when you end a meeting or press Export.
 
 Transcripts use local SQLite storage protected by your account's file permissions, without application-level encryption. Model files are cached separately. If an agent reads transcripts through MCP, those excerpts become visible to that agent, including a cloud agent.
 
@@ -93,8 +96,8 @@ The installer adds `~/.local/bin/jot`. Jot must be running to use it.
 jot status
 jot pause
 jot resume
-jot start                 # Start ambient transcription
-jot ambient-off
+jot start                 # Resume continuous listening
+jot ambient-off           # Compatibility alias for pause
 jot search 'blue notebook'
 jot recent --limit 20
 jot meeting start Webex review   # Ambient capture with a name

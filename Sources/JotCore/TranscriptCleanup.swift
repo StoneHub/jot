@@ -40,6 +40,15 @@ public enum CleanupValidation {
 
 /// One local request at a time, with no cleanup backlog and a caller deadline.
 /// A slow model may finish cancelling after the deadline; later calls then bypass it.
+public struct CleanupResult: Sendable {
+    public enum Outcome: String, Sendable {
+        case changed, unchanged, busy, cancelled, empty, oversized, unavailable
+        case invalidCount, rejectedEdits, modelError, timedOut
+    }
+    public let texts: [String]
+    public let outcome: Outcome
+}
+
 @MainActor
 public final class TranscriptCleanup {
     public typealias Generator = @Sendable ([String]) async throws -> [String]
@@ -61,9 +70,16 @@ public final class TranscriptCleanup {
     }
 
     public func clean(_ texts: [String], timeout: Duration = .seconds(2), generator: Generator? = nil) async -> [String] {
-        guard !busy, !Task.isCancelled, !texts.isEmpty,
-              texts.reduce(0, { $0 + $1.utf8.count }) <= 2400,
-              generator != nil || Self.availability == .available else { return texts }
+        await cleanWithOutcome(texts, timeout: timeout, generator: generator).texts
+    }
+
+    /// Metadata explains a fallback without exposing the input or model error text.
+    public func cleanWithOutcome(_ texts: [String], timeout: Duration = .seconds(2), generator: Generator? = nil) async -> CleanupResult {
+        if Task.isCancelled { return .init(texts: texts, outcome: .cancelled) }
+        if busy { return .init(texts: texts, outcome: .busy) }
+        if texts.isEmpty { return .init(texts: texts, outcome: .empty) }
+        if texts.reduce(0, { $0 + $1.utf8.count }) > 2400 { return .init(texts: texts, outcome: .oversized) }
+        if generator == nil && Self.availability != .available { return .init(texts: texts, outcome: .unavailable) }
         busy = true
         return await withCheckedContinuation { continuation in
             let completion = CleanupCompletion(continuation)
@@ -73,19 +89,31 @@ public final class TranscriptCleanup {
                     let result: [String]
                     if let generator { result = try await generator(texts) }
                     else { result = try await Self.generate(texts) }
-                    let accepted = result.count == texts.count ? zip(result, texts).map {
-                        CleanupValidation.accepts($0.0, source: $0.1) ? $0.0.trimmingCharacters(in: .whitespacesAndNewlines) : $0.1
-                    } : texts
-                    completion.finish(Task.isCancelled ? texts : accepted)
-                } catch { completion.finish(texts) }
+                    if Task.isCancelled {
+                        completion.finish(.init(texts: texts, outcome: .cancelled))
+                    } else if result.count != texts.count {
+                        completion.finish(.init(texts: texts, outcome: .invalidCount))
+                    } else {
+                        var rejected = false
+                        let accepted = zip(result, texts).map { candidate, source in
+                            if CleanupValidation.accepts(candidate, source: source) {
+                                return candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+                            }
+                            rejected = true
+                            return source
+                        }
+                        completion.finish(.init(texts: accepted,
+                            outcome: rejected ? .rejectedEdits : (accepted == texts ? .unchanged : .changed)))
+                    }
+                } catch { completion.finish(.init(texts: texts, outcome: Task.isCancelled ? .cancelled : .modelError)) }
             }
             interrupt = {
-                completion.finish(texts)
+                completion.finish(.init(texts: texts, outcome: .cancelled))
                 request.cancel()
             }
             Task {
                 try? await Task.sleep(for: timeout)
-                if completion.finish(texts) { request.cancel() }
+                if completion.finish(.init(texts: texts, outcome: .timedOut)) { request.cancel() }
             }
         }
     }
@@ -108,9 +136,9 @@ public final class TranscriptCleanup {
 
 @MainActor
 private final class CleanupCompletion {
-    private var continuation: CheckedContinuation<[String], Never>?
-    init(_ continuation: CheckedContinuation<[String], Never>) { self.continuation = continuation }
-    @discardableResult func finish(_ value: [String]) -> Bool {
+    private var continuation: CheckedContinuation<CleanupResult, Never>?
+    init(_ continuation: CheckedContinuation<CleanupResult, Never>) { self.continuation = continuation }
+    @discardableResult func finish(_ value: CleanupResult) -> Bool {
         guard let continuation else { return false }
         self.continuation = nil
         continuation.resume(returning: value)

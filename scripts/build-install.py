@@ -77,7 +77,11 @@ for app, cli, executable in [(destination, helper, s['EXECUTABLE_NAME']),
             raise SystemExit(f'Cannot establish idle state for {app}; product not replaced.')
         continue
     current = json.loads(status.stdout)['result']
-    if current['microphoneRunning'] or current['queuedAudioSeconds'] > 0 or current.get('inferenceRunning') or current['models'] == 'preparing':
+    recovery = current.get('dictationRecovery', {})
+    if (current['microphoneRunning'] or current['queuedAudioSeconds'] > 0
+            or current.get('inferenceRunning') or current['models'] in ('preparing', 'unloading')
+            or current.get('servicePhase') == 'pausing'
+            or recovery.get('attemptPending') or recovery.get('recoveryRunning')):
         raise SystemExit('Build succeeded. Pause capture and wait for inference/model setup before installing.')
     pid = current['resources']['processID']
     command = subprocess.check_output(['ps', '-p', str(pid), '-o', 'comm='], text=True).strip()

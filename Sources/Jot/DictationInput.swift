@@ -15,16 +15,18 @@ final class DictationInput {
             switch self {
             case .accessibilityRequired: return "Allow Accessibility access to use dictation."
             case .eventTapUnavailable: return "The shortcut listener could not start. Check Input Monitoring permission."
-            case .noTextField(let app, let role): return "Focus an editable text field before holding the dictation shortcut. Jot saw \(role) in \(app)."
-            case .secureField: return "Dictation is unavailable in password fields."
-            case .targetChanged: return "Dictation cancelled because the focused application or text field changed."
-            case .shortcutCancelled: return "Dictation cancelled because the dictation shortcut was used with another key."
+            case .noTextField(let app, let role): return "Jot retained the speech, but did not find an editable field. Focus one and double-tap the dictation shortcut to retry. Jot saw \(role) in \(app)."
+            case .secureField: return "Jot will not insert into password fields. Speech was retained; focus a non-secure editable field and double-tap the dictation shortcut to retry."
+            case .targetChanged: return "Focus changed while Jot was listening. Speech was retained; focus an editable field and double-tap the dictation shortcut to retry."
+            case .shortcutCancelled: return "The shortcut was released with another key. Speech was retained; focus an editable field and double-tap the dictation shortcut to retry."
             case .pasteUnavailable: return "The paste shortcut could not be created."
             }
         }
     }
 
     var onError: ((Error) -> Void)?
+    var onRecover: (() -> Void)?
+    var onDiscardTap: (() -> Void)?
     struct DeliveryResult: Codable {
         let verified: Bool
         let path: String
@@ -60,6 +62,9 @@ final class DictationInput {
     private var fnPresses = 0
     private var acceptedPresses = 0
     private var busyPresses = 0
+    private var discardedTaps = 0
+    private var recoveryGestures = 0
+    private var targetCaptureFailures = 0
     private var lastShortcutError: String?
     /// Kept after a later press succeeds, so a rejection in one app survives a success in another.
     private var lastRejection: String?
@@ -69,7 +74,8 @@ final class DictationInput {
             "shortcut": shortcut.displayName, "shortcutPresses": shortcutPresses, "enabled": isEnabled,
             "eventTapEnabled": eventTap.map { CGEvent.tapIsEnabled(tap: $0) } ?? false,
             "fnPresses": fnPresses, "acceptedPresses": acceptedPresses,
-            "busyPresses": busyPresses]
+            "busyPresses": busyPresses, "discardedTaps": discardedTaps,
+            "recoveryGestures": recoveryGestures, "targetCaptureFailures": targetCaptureFailures]
         if let lastShortcutError { result["lastError"] = lastShortcutError }
         if let lastRejection { result["lastRejection"] = lastRejection }
         return result
@@ -82,6 +88,8 @@ final class DictationInput {
     }
 
     private var recording = false
+    /// Stays true through focus-error completion until the physical gesture ends.
+    private var gestureAccepted = false
     private var clipboardRestore: (() -> Void)?
     private var pasteGeneration = 0
     private var targetGeneration = 0
@@ -173,6 +181,7 @@ final class DictationInput {
         if let activationObserver { NSWorkspace.shared.notificationCenter.removeObserver(activationObserver) }
         activationObserver = nil
         tracker.reset()
+        gestureAccepted = false
         clearTarget()
         if recording { recording = false; onStop() }
         clipboardRestore?()
@@ -371,6 +380,7 @@ final class DictationInput {
         guard isEnabled else { return false }
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             cancel(InputError.shortcutCancelled)
+            gestureAccepted = false
             tracker.reset()
             if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: true) }
             return false
@@ -384,28 +394,79 @@ final class DictationInput {
         case .flagsChanged: kind = .flagsChanged
         default: return false
         }
+        let eventTimestamp = event.timestamp == 0
+            ? ProcessInfo.processInfo.systemUptime
+            : Double(event.timestamp) / 1_000_000_000
         let result = tracker.handle(kind, keyCode: UInt16(event.getIntegerValueField(.keyboardEventKeycode)),
             modifiers: shortcut.keyCode == nil ? ShortcutModifiers(event.flags) : ShortcutModifiers(event.flags).subtracting(.fn), repeating: event.getIntegerValueField(.keyboardEventAutorepeat) != 0,
-            shortcut: shortcut)
+            shortcut: shortcut, at: eventTimestamp)
         switch result.action {
         case .start:
             shortcutPresses += 1
             if shortcut.keyCode == nil { fnPresses += 1 }
-            guard canStart() else { busyPresses += 1; return result.consume }
+            guard canStart() else {
+                gestureAccepted = false
+                busyPresses += 1
+                return result.consume
+            }
+            gestureAccepted = true
+            recording = true
+            acceptedPresses += 1
+            lastShortcutError = nil
+            var targetError: Error?
             do {
                 try captureTarget()
-                recording = true
-                acceptedPresses += 1
-                lastShortcutError = nil
-                onStart()
-            } catch { report(error) }
+            } catch {
+                targetCaptureFailures += 1
+                targetError = error
+            }
+            // Capturing speech is useful even when there is not yet a safe insertion
+            // target. The service retains that utterance for an explicit retry.
+            onStart()
+            if let targetError { report(targetError) }
         case .stop:
             if recording {
                 recording = false
                 checkFocus()
                 onStop()
             }
-        case .cancel: cancel(InputError.shortcutCancelled)
+            gestureAccepted = false
+        case .discardTap:
+            let acceptedTap = gestureAccepted
+            gestureAccepted = false
+            if acceptedTap {
+                recording = false
+                discardedTaps += 1
+                clearTarget()
+                onDiscardTap?()
+            }
+        case .recover:
+            // A wholly rejected busy double-tap cannot replace the target owned by
+            // in-flight delivery. An accepted second press remains eligible even if
+            // focus loss already ended its audio before physical release.
+            let acceptedTap = gestureAccepted
+            let mayRecover = acceptedTap || canStart()
+            gestureAccepted = false
+            guard mayRecover else { break }
+            if acceptedTap {
+                recording = false
+                discardedTaps += 1
+                clearTarget()
+                onDiscardTap?()
+            }
+            recoveryGestures += 1
+            do { try captureTarget() }
+            catch {
+                targetCaptureFailures += 1
+                report(error)
+            }
+            // Selection of the retained attempt is independent of target acquisition.
+            // A later retry can reacquire a field without losing the chosen speech.
+            onRecover?()
+        case .cancel:
+            // A rejected busy press must not clear the target owned by pending work.
+            if recording { cancel(InputError.shortcutCancelled) }
+            gestureAccepted = false
         case .none: break
         }
         return result.consume

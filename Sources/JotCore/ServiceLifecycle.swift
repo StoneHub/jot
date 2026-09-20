@@ -1,7 +1,7 @@
 import Foundation
 
-/// A sleep interruption may resume only after wake and model unloading, and only
-/// when the user had opted in while ambient capture was running.
+/// A sleep interruption resumes only the listening session that sleep interrupted.
+/// `keepAwake` remains in the call seam for compatibility but controls power only.
 public struct SleepResumePolicy: Sendable {
     private var sleeping = false
     private var pending = false
@@ -9,7 +9,7 @@ public struct SleepResumePolicy: Sendable {
     public mutating func willSleep(ambientRunning: Bool, keepAwake: Bool) {
         guard !sleeping else { return }
         sleeping = true
-        pending = ambientRunning && keepAwake
+        pending = ambientRunning
     }
     public mutating func didWake() { sleeping = false }
     public mutating func cancel() { pending = false }
@@ -48,7 +48,8 @@ public struct ServiceLifecycle: Sendable {
     public func acceptsWork(_ token: UInt64) -> Bool { phase == .ready && token == generation }
 }
 
-/// What a pause leaves for Resume. Sleep, an input change, and stalled input pause automatically and keep the selection; the Pause button clears it and ends a meeting.
+/// What a pause leaves for Resume. Sleep, an input change, and stalled input pause
+/// automatically and keep listening intent; the Pause button clears it and ends a meeting.
 public struct PauseOutcome: Equatable, Sendable {
     public let ambientRequested: Bool
     public let meetingTitle: String?

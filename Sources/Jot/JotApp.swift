@@ -258,10 +258,10 @@ private struct ControlRow<Control: View>: View {
 private struct ServiceControls: View {
     @ObservedObject var service: SpeechService
     var compact = false
-    private var statusTitle: String { service.isPaused ? "Paused" : (service.isTransitioning ? "Starting" : "Ready") }
+    private var statusTitle: String { service.isPaused ? "Paused" : (service.isTransitioning ? "Starting" : (service.ambientEnabled ? "Listening" : "Ready")) }
     private var statusCaption: String {
-        if service.isPaused { return service.lifecycle.phase == .pausing ? "Releasing models…" : "Models unloaded" }
-        return service.ambientEnabled ? "Ambient transcription on" : "Ambient transcription off"
+        if service.isPaused { return service.isTransitioning ? "Finishing and unloading…" : "Models unloaded" }
+        return service.ambientEnabled ? "Saving speech locally" : "Starting microphone…"
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -272,8 +272,8 @@ private struct ServiceControls: View {
                     Label(service.isPaused ? "Resume" : "Pause", systemImage: service.isPaused ? "play.fill" : "pause.fill")
                 }
                 .modifier(PrimaryGlassButton())
-                .disabled(service.lifecycle.phase == .pausing)
-                .help("Pause stops all speech work and unloads models.")
+                .disabled(service.isPaused && service.isTransitioning)
+                .help("Pause stops listening, finishes saving captured speech, and unloads models.")
                 .accessibilityIdentifier("service-pause-resume")
             }
             Divider()
@@ -292,18 +292,17 @@ private struct ServiceControls: View {
                 Toggle("Dictation", isOn: Binding(get: { service.fnRequested }, set: { enabled in
                     if enabled { Task { await service.enableFn() } } else { service.disableFn() }
                 })).labelsHidden().toggleStyle(.switch)
-            }.help("Hold \(service.shortcut.displayName) to dictate into the focused text field.")
+            }.help("Hold \(service.shortcut.displayName) to dictate. Double-tap to retry a saved dictation or insert recent speech.")
             ControlRow(title: "Hold to talk", secondary: true) { ShortcutSettings(service: service) }
-            ControlRow(symbol: "mic", title: "Ambient", caption: "Transcribe everything heard") {
-                Toggle("Ambient transcription", isOn: Binding(get: { service.ambientEnabled }, set: { enabled in
-                    Task { await service.setAmbient(enabled) }
-                })).labelsHidden().toggleStyle(.switch).disabled(service.lifecycle.phase != .ready)
-            }.help("Continuously transcribe the microphone while the service is running.")
-            ControlRow(title: "Keep Mac awake", caption: "While ambient is on", secondary: true) {
-                Toggle("Keep Mac awake while ambient is on", isOn: $service.keepMacAwakeWhileListening).labelsHidden().toggleStyle(.switch)
-            }.help("Prevents idle sleep during ambient transcription or a meeting, and resumes capture after the Mac wakes. Closing the lid can still put the Mac to sleep.")
-            if service.isPaused && (service.fnRequested || service.ambientRequested) {
-                Text("Selected features start when you resume.").font(.caption).foregroundStyle(.secondary).padding(.leading, 30)
+            ControlRow(title: "Keep Mac awake", caption: "While listening", secondary: true) {
+                Toggle("Keep Mac awake while listening", isOn: $service.keepMacAwakeWhileListening).labelsHidden().toggleStyle(.switch)
+            }.help("Prevents idle sleep while listening. Closing the lid can still put the Mac to sleep; Jot resumes listening after wake if it was listening before sleep.")
+            if !service.recoveryNotice.isEmpty {
+                Text(service.recoveryNotice).font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true).padding(.leading, 30)
+                    .accessibilityIdentifier("dictation-recovery-notice")
+            } else if service.isPaused {
+                Text("Resume to listen and save speech.").font(.caption).foregroundStyle(.secondary).padding(.leading, 30)
             }
             if let pending = service.downloadPrompt {
                 Divider()
@@ -342,7 +341,7 @@ private struct MeetingControls: View {
                 }.padding(.leading, 30)
             }
         } else {
-            ControlRow(symbol: "record.circle", title: "Meeting", caption: "Ambient capture with a name") {
+            ControlRow(symbol: "record.circle", title: "Meeting", caption: "Give a conversation a name") {
                 Button("Start") { naming = true }.modifier(GlassButton()).accessibilityIdentifier("start-meeting")
                     .help("Ending it saves Markdown to Documents/Jot Sessions.")
             }
@@ -517,7 +516,7 @@ private struct SessionsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if service.sessions.isEmpty {
-                Text("No sessions yet. Start a meeting or switch on ambient transcription.").foregroundStyle(.secondary)
+                Text("No sessions yet. Resume Jot to start listening.").foregroundStyle(.secondary)
             } else {
                 header
                 TextField("Search sessions", text: $search).textFieldStyle(.roundedBorder).frame(maxWidth: 360)
@@ -961,6 +960,25 @@ struct TranscriptView: View {
     private var tuning: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Recover dictation").font(.headline)
+                    Text("Focus a text field and double-tap \(service.shortcut.displayName) to retry an undelivered dictation. Otherwise, insert speech from the recent window below.")
+                        .font(.callout).foregroundStyle(.secondary)
+                    HStack {
+                        Text("Recent speech window")
+                        Spacer()
+                        Picker("Recent speech window", selection: $service.recoveryLookbackSeconds) {
+                            Text("30 seconds").tag(30)
+                            Text("1 minute").tag(60)
+                            Text("2 minutes").tag(120)
+                            Text("5 minutes").tag(300)
+                            Text("10 minutes").tag(600)
+                        }.labelsHidden().pickerStyle(.menu).frame(width: 140)
+                            .accessibilityIdentifier("recovery-lookback")
+                    }
+                    Text("Includes every voice Jot hears. A saved undelivered dictation takes priority, even when it is longer than this window. Inserts at the cursor or replaces selected text.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Outline the text field while dictating", isOn: $service.highlightTargetField)
                         .toggleStyle(.switch)
@@ -981,11 +999,11 @@ struct TranscriptView: View {
                             ForEach(SessionSplit.choices, id: \.self) { Text(SessionSplit.label($0)).tag($0) }
                         }.labelsHidden().pickerStyle(.menu).frame(width: 140)
                     }
-                    Text("Ambient capture starts a new session when nothing is said for this long. A named meeting runs until you end it.")
+                    Text("Listening starts a new session when nothing is said for this long. A named meeting runs until you end it.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Clean up ambient speech and meetings", isOn: $service.cleanUpTranscriptions)
+                    Toggle("Clean up live speech and meetings", isOn: $service.cleanUpTranscriptions)
                         .toggleStyle(.switch)
                         .disabled(service.cleanupAvailability != .available)
                     Text(service.cleanupAvailability.explanation)
