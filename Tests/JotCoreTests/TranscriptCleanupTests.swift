@@ -2,6 +2,33 @@ import XCTest
 @testable import JotCore
 
 final class TranscriptCleanupTests: XCTestCase {
+    func testLiveParagraphReplacesRawTextWithoutAddingRowsOrChangingIdentity() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = try TranscriptStore(directory: directory)
+        let start = Date()
+        let first = Transcript(id: "first", sessionID: "live", startedAt: start, startSeconds: 0, endSeconds: 1,
+                               text: "um hello", speakerID: "speaker-1", mode: "ambient")
+        let second = Transcript(id: "second", sessionID: "live", startedAt: start, startSeconds: 1.1, endSeconds: 2,
+                                text: "there", speakerID: "speaker-1", mode: "ambient")
+        try store.append(first)
+        try store.append(second)
+        func paragraphs() throws -> [Transcript] {
+            TranscriptExport.paragraphs(TranscriptGrouping.foldContinuations(try store.session(id: "live")))
+        }
+        let raw = try paragraphs()
+        XCTAssertEqual(raw.map(\.text), ["um hello there"])
+        let count = try store.sessions().first?.transcriptCount
+
+        try store.setReadableText("Hello", for: first)
+        let cleaned = try paragraphs()
+        XCTAssertEqual(cleaned.map(\.text), ["Hello there"])
+        XCTAssertEqual(cleaned.map(\.id), raw.map(\.id))
+        XCTAssertEqual(cleaned.first?.startSeconds, raw.first?.startSeconds)
+        XCTAssertEqual(cleaned.first?.endSeconds, raw.first?.endSeconds)
+        XCTAssertEqual(try store.sessions().first?.transcriptCount, count)
+    }
+
     @MainActor func testDictationCanInterruptAmbientCleanupImmediately() async {
         let cleanup = TranscriptCleanup()
         let started = expectation(description: "Model started")

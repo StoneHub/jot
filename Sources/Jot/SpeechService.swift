@@ -82,6 +82,8 @@ final class SpeechService: ObservableObject {
     @Published var modelState = ModelState.notLoaded
     @Published var notice = ""
     @Published var recent: [Transcript] = []
+    /// Content changes include cleanup replacements that leave row counts unchanged.
+    @Published private(set) var transcriptRevision = 0
     @Published var history: [Transcript] = []
     @Published var events: [CaptureEvent] = []
     @Published var hasMoreHistory = false
@@ -892,6 +894,12 @@ final class SpeechService: ObservableObject {
                         }
                     }
                     try store?.appendWords(words)
+                    if !sources.isEmpty {
+                        lastTranscriptAt = Date()
+                        if job.mode == .ambient, job.sessionID == sessionID { lastAmbientRowAt = Date() }
+                        // Live must see recognition before the model's cleanup suspension.
+                        refreshRecent(); refreshSessions()
+                    }
                 }
                 let originalTexts = sources.map(\.text)
                 var readable = originalTexts
@@ -908,10 +916,7 @@ final class SpeechService: ObservableObject {
                     for (source, text) in zip(sources, readable) where source.text != text {
                         try store?.setReadableText(text, for: source)
                     }
-                }
-                if !output.transcripts.isEmpty {
-                    lastTranscriptAt = Date(); refreshRecent(); refreshSessions()
-                    if job.mode == .ambient, job.sessionID == sessionID { lastAmbientRowAt = Date() }
+                    if readable != originalTexts { refreshRecent(); refreshSessions() }
                 }
                 if job.mode == .dictation, job.ticket == dictationTicket {
                     let text = DictationCleanup.applying(to: vocabularySnapshot.applyingToDictation(readable.isEmpty ? output.text : readable.joined(separator: " ")))
@@ -964,7 +969,12 @@ final class SpeechService: ObservableObject {
     }
 
     func refreshRecent() {
-        do { recent = try store?.recent(limit: 20) ?? []; events = try store?.events(limit: 50) ?? []; refreshHistory() }
+        do {
+            recent = try store?.recent(limit: 20) ?? []
+            events = try store?.events(limit: 50) ?? []
+            refreshHistory()
+            transcriptRevision += 1
+        }
         catch { notice = error.localizedDescription }
     }
     func searchHistory(_ query: String) { historyQuery = query; historyLimit = 50; refreshHistory() }
