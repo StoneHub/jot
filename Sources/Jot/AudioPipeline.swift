@@ -365,7 +365,19 @@ final class AudioInputDeviceWatcher {
 }
 
 /// Audio callback owns resampling; only a bounded 8-second RAM queue crosses to the controller.
-final class MicrophoneCapture: @unchecked Sendable {
+/// What the service needs from a microphone, so checks can feed synthetic audio and failures without Core Audio.
+protocol MicrophoneSource: AnyObject {
+    var running: Bool { get }
+    var bufferedSampleCount: Int { get }
+    func setInput(uid: String?) throws
+    func setInputForNextStart(uid: String?)
+    func shouldIgnoreConfigurationChange() -> Bool
+    func start() throws
+    func stop()
+    func drain() -> (samples: [Float], dropped: Int, lastAudio: Date, rms: Float)
+}
+
+final class MicrophoneCapture: MicrophoneSource, @unchecked Sendable {
     private let lock = NSLock()
     private var engine = AVAudioEngine()
     private let callbacks = DispatchGroup()
