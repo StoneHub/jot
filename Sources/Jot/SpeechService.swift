@@ -1217,7 +1217,7 @@ final class SpeechService: ObservableObject {
                 recoveryNotice = attempt.hasGap
                     ? "Partial dictation was sent, but insertion could not be verified. Check the field before retrying."
                     : "Dictation was saved, but insertion could not be verified. Use the recovery gesture to retry."
-                notice = "Speech was saved; check the target field before retrying."
+                notice = ""
             }
         } catch {
             guard !discardedAttemptIDs.contains(attempt.id), !deletedSessions.contains(attempt.sessionID) else { return }
