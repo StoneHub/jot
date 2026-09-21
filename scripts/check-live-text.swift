@@ -8,7 +8,8 @@ import AppKit
         coordinator.textView = view; view.delegate = coordinator
         coordinator.receive("I think uh", revision: 0, reduceMotion: false)
         coordinator.receive("I think uh we could get faster output.", revision: 0, reduceMotion: false)
-        precondition(coordinator.transitionCount == 0, "Raw appends must not animate")
+        precondition(coordinator.transitionCount == 0 && coordinator.highlightCount == 0,
+            "Raw appends must not animate or highlight")
         view.setSelectedRange(NSRange(location: 2, length: 8))
         let selection = view.selectedRange()
         coordinator.receive("I think we could get faster output.", revision: 1, reduceMotion: false)
@@ -17,8 +18,11 @@ import AppKit
         coordinator.textViewDidChangeSelection(Notification(name: NSTextView.didChangeSelectionNotification))
         precondition(view.string == "I think we could get faster output." && coordinator.transitionCount == 1,
             "Selection release did not apply and animate cleanup")
+        precondition(coordinator.highlightCount == 1, "Cleanup did not wash the line in the accent color")
+        precondition(view.layer?.animation(forKey: "phrase-cleanup-wash") != nil, "Accent wash was not attached to the layer")
         coordinator.receive("We could get faster output.", revision: 2, reduceMotion: true)
-        precondition(coordinator.transitionCount == 1 && view.string == "We could get faster output.", "Reduce Motion was ignored")
-        print("PASS: raw append is immediate; selection survives; cleanup crossfades after release; Reduce Motion skips animation.")
+        precondition(coordinator.transitionCount == 1 && coordinator.highlightCount == 1
+            && view.string == "We could get faster output.", "Reduce Motion was ignored")
+        print("PASS: raw append is immediate; selection survives; cleanup crossfades and washes after release; Reduce Motion skips both.")
     }
 }
