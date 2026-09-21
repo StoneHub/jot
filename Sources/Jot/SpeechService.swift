@@ -707,8 +707,13 @@ final class SpeechService: ObservableObject {
         kickWorker()
     }
 
+    /// The harness waits for Resume, or a microphone restart, to settle.
+    func waitForPreparation() async {
+        if let preparation { await preparation.value }
+    }
+
     func waitForRecoveryVerification() async {
-        while processing != nil || !jobs.isEmpty || dictationPending || recoveryTask != nil || !cleanupTasks.isEmpty {
+        while processing != nil || !jobs.isEmpty || dictation.isBusy || !cleanupTasks.isEmpty {
             kickWorker()
             try? await Task.sleep(for: .milliseconds(10))
         }

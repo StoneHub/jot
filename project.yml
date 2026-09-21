@@ -49,6 +49,7 @@ targets:
     platform: macOS
     sources:
       - scripts/check-recovery-flow.swift
+      - scripts/check-capture-flow.swift
       - Sources/Jot/AudioPipeline.swift
       - Sources/Jot/CaptureController.swift
       - Sources/Jot/DictationCoordinator.swift
