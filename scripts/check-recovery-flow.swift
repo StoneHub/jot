@@ -278,8 +278,8 @@ struct RecoveryFlowChecks {
         let cleanedStore = try TranscriptStore(directory: directory.appendingPathComponent("cleanup"))
         let cleaned = SpeechService(dependencies: .init(
             infer: { _, job, _ in probe.infer(job) }, deliver: { _, text in try probe.deliver(text) },
-            now: { probe.now }, cleanup: { cleaner, texts in
-                await cleaner.cleanWithOutcome(texts, generator: {
+            now: { probe.now }, cleanup: { cleaner, texts, timeout in
+                await cleaner.cleanWithOutcome(texts, timeout: timeout, generator: {
                     try await Task.sleep(for: .milliseconds(400))
                     return $0.map { $0.capitalized }
                 })

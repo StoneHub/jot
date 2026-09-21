@@ -2,8 +2,10 @@ import AppKit
 import QuartzCore
 import SwiftUI
 
-/// Native selectable text with a short snapshot crossfade for cleanup only.
-/// Appends remain immediate; selection keeps its original text until released.
+/// Native selectable text that marks a cleanup replacement with an accent wash
+/// behind the line plus a snapshot crossfade, so a small wording change is still
+/// visible from the corner of the eye. Appends remain immediate and unmarked;
+/// selection keeps its original text until released.
 struct LiveTranscriptText: NSViewRepresentable {
     let text: String
     let cleanupRevision: Int
@@ -22,6 +24,7 @@ struct LiveTranscriptText: NSViewRepresentable {
         view.font = .systemFont(ofSize: 13); view.textColor = .labelColor
         view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         view.wantsLayer = true
+        view.layer?.cornerRadius = 4
         view.setAccessibilityLabel("Live transcript")
         view.delegate = context.coordinator
         context.coordinator.textView = view
@@ -56,6 +59,7 @@ struct LiveTranscriptText: NSViewRepresentable {
         private var pending: (String, Int, Bool)?
         private var applying = false
         private(set) var transitionCount = 0
+        private(set) var highlightCount = 0
 
         func receive(_ text: String, revision: Int, reduceMotion: Bool) {
             pending = (text, revision, reduceMotion)
@@ -77,10 +81,21 @@ struct LiveTranscriptText: NSViewRepresentable {
             guard view.string != text else { return }
             if animate {
                 let transition = CATransition()
-                transition.type = .fade; transition.duration = 0.22
+                transition.type = .fade; transition.duration = 0.28
                 transition.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 view.layer?.add(transition, forKey: "phrase-cleanup")
                 transitionCount += 1
+                // The wording often barely changes, so the crossfade alone reads as a
+                // flicker. An accent wash that lingers past it catches peripheral vision.
+                if let layer = view.layer {
+                    let wash = CABasicAnimation(keyPath: "backgroundColor")
+                    wash.fromValue = NSColor.controlAccentColor.withAlphaComponent(0.32).cgColor
+                    wash.toValue = NSColor.clear.cgColor
+                    wash.duration = 1.1
+                    wash.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                    layer.add(wash, forKey: "phrase-cleanup-wash")
+                    highlightCount += 1
+                }
             }
             applying = true
             let caret = min(view.selectedRange().location, (text as NSString).length)
