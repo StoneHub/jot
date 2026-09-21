@@ -261,15 +261,16 @@ private struct ServiceControls: View {
     private var statusTitle: String { service.isPaused ? "Paused" : (service.isTransitioning ? "Starting" : (service.ambientEnabled ? "Listening" : "Ready")) }
     private var statusCaption: String {
         if service.isPaused { return service.isTransitioning ? "Finishing and unloading…" : "Models unloaded" }
-        return service.ambientEnabled ? "Saving speech locally" : "Starting microphone…"
+        return service.ambientEnabled ? "Saving speech locally" : (service.microphoneOff ? "Microphone off" : "Starting microphone…")
     }
+    private var resumes: Bool { service.isPaused || service.microphoneOff }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ControlRow(dot: service.isPaused ? Color.secondary : .green, title: statusTitle, caption: statusCaption) {
                 Button {
-                    if service.isPaused { service.prepare() } else { service.pause() }
+                    if resumes { service.prepare() } else { service.pause() }
                 } label: {
-                    Label(service.isPaused ? "Resume" : "Pause", systemImage: service.isPaused ? "play.fill" : "pause.fill")
+                    Label(resumes ? "Resume" : "Pause", systemImage: resumes ? "play.fill" : "pause.fill")
                 }
                 .modifier(PrimaryGlassButton())
                 .disabled(service.isPaused && service.isTransitioning)

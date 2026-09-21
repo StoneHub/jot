@@ -245,6 +245,7 @@ final class SpeechService: ObservableObject {
     private var preparation: Task<Void, Never>?
     private var pausing: Task<Void, Never>?
     private var sleepResume = SleepResumePolicy()
+    private let microphoneRetry = MicrophoneStartRetry()
     var diagnostic: Task<SpeechOutput, Error>?
     private var tickCount = 0
     var sessionID = UUID().uuidString
@@ -402,7 +403,10 @@ final class SpeechService: ObservableObject {
             return
         }
         downloadPrompt = nil
-        guard let token = lifecycle.beginStart() else { return }
+        guard let token = lifecycle.beginStart() else {
+            if microphoneOff && preparation == nil { restartMicrophone() }
+            return
+        }
         UserDefaults.standard.set(false, forKey: JotDefaultsKey.servicePaused)
         preparing = true; modelState = .preparing; updateMode()
         markPerformance(.resume); markPerformance(.modelLoadStarted)
@@ -426,6 +430,17 @@ final class SpeechService: ObservableObject {
                 } else if lifecycle.acceptsWork(token) { notice = error.localizedDescription }
             }
             preparing = false; preparation = nil; updateMode(); scheduleTimer()
+        }
+    }
+
+    /// Models are loaded but the microphone never started, so Resume has nothing to reload and only the capture needs another try.
+    var microphoneOff: Bool { lifecycle.phase == .ready && !ambientEnabled && !pauseRequested && !dictationActive }
+
+    private func restartMicrophone() {
+        preparation = Task {
+            do { try await activateAmbient(); try continueMeeting() }
+            catch { notice = error.localizedDescription }
+            preparation = nil; updateMode(); scheduleTimer()
         }
     }
 
@@ -721,11 +736,29 @@ final class SpeechService: ObservableObject {
         guard lifecycle.acceptsWork(token), ambientRequested, !pauseRequested else { return }
         guard !ambientEnabled else { return }
         if !capture.running { lastAudioAt = Date() }
-        try capture.start()
+        guard try await startCaptureRetrying(token) else { return }
         sessionID = UUID().uuidString; sessionStarted = Date(); ambientOffset = 0; activeSessionID = sessionID
         ambient = []; consecutiveSilentSamples = 0; lastAmbientRowAt = nil; ambientEnabled = true; updateKeepAwakeAssertion(); updateMode()
         if keepAudioForSpeakerPass { sessionAudio = SessionAudioFile(sessionID: sessionID) }
         recordEvent(.started, "Ambient microphone capture started."); notice = ""
+    }
+
+    /// Core Audio can refuse the input device for a few seconds after wake or a device change, so a failed start is retried before it is reported. False means a pause or cancel ended the wait.
+    private func startCaptureRetrying(_ token: UInt64) async throws -> Bool {
+        var attempt = 1
+        while true {
+            do { try capture.start(); return true }
+            catch {
+                guard let delay = microphoneRetry.delay(afterFailedAttempt: attempt) else {
+                    throw JotError.message("The microphone did not start after \(attempt) tries (\(error.localizedDescription)). Choose Resume to try again, or relaunch Jot.")
+                }
+                notice = "The microphone did not start (\(error.localizedDescription)). Retrying…"
+                do { try await Task.sleep(for: .seconds(delay)) } catch { return false }
+                guard lifecycle.acceptsWork(token), ambientRequested, !pauseRequested else { return false }
+                refreshInputDevices()
+                attempt += 1
+            }
+        }
     }
 
     func startAmbient() async throws {
