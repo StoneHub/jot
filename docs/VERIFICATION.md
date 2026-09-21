@@ -153,3 +153,18 @@ The fragment-level model contract could leave short Live rows unchanged or fail 
 - `./scripts/build-install.py --configuration Release --build-only`: signed Release build passes strict signing, DEBUG exclusion, and feedback exclusion. Xcode resolves the product under `build/DerivedData.noindex/Build/Products/Release/Jot.app`.
 
 Local logs live in ignored `build/phrase-all-tests.log`, `build/phrase-real-model-check.log`, and `build/phrase-release.log`. Installed/runtime proof is recorded separately by the installer. No before/after screenshot of personal Live content is published; visual animation acceptance remains a live-use check.
+
+## Cleanup deadline per call site and a visible replacement mark — 2026-09-21
+
+One two-second deadline covered both cleanup call sites. Measured on-device latency rises with phrase length, so live phrases exceeded it and were dropped. The deadline is now set per call site, and a replaced line is marked in the accent color rather than by a crossfade alone.
+
+- Latency measured against the on-device Foundation Model, three trials per size, with a sixty-second ceiling so no trial was cut short. Median times were 1.9 seconds at 118 bytes, 2.9 at 299 bytes, 3.0 at 595 bytes, 4.4 at 1000 bytes, 9.1 at 1499 bytes, and 8.3 at 1992 bytes. Jot was listening in ambient mode throughout, so the figures include normal contention for the model. The synthetic inputs repeated one sentence, which the model collapsed. Their cleanup outcomes therefore say nothing about real speech. Only the timings are used here.
+- A live phrase carries up to 2000 bytes, so it needs about nine seconds. `SpeechServiceDependencies.cleanup` now takes a duration. Live phrases get twelve seconds. Dictation rows keep two, which fits a single row.
+- `swift test`: 154 tests pass.
+- `JotRecoveryChecks --cleanup-model`: nine checks pass, including the real Foundation Model cleaning three published fragments as one phrase and persisting the replacement.
+- `swiftc -parse-as-library Sources/Jot/LiveTranscriptText.swift scripts/check-live-text.swift -o build/check-live-text && build/check-live-text`: the existing checks pass, and two added assertions confirm the replaced line receives the accent wash and that Reduce Motion suppresses both the wash and the crossfade.
+- `./scripts/build-install.py --configuration Release`: signed Release build passes strict signing, DEBUG exclusion, and feedback exclusion, and installs. The installer refuses to replace the app while capture is running, so Pause first.
+
+A cleaned line now washes in the system accent color at 32 percent opacity, fading to clear over 1.1 seconds, alongside a 0.28-second crossfade. Wording often changes very little, and a crossfade between two nearly identical strings reads as a flicker. The wash outlasts the crossfade so the change is visible without staring at the line. Reduce Motion and an active selection still suppress it.
+
+The measurement above covers model latency, not conversation. Whether the longer deadline lowers the timeout rate in ordinary speech remains a live-use check. A longer deadline also means a long phrase can be replaced several seconds after it was spoken, by which time the line may have scrolled out of view. The phrase size cap is unchanged. As before, the checks verify that the animation is scheduled, not that a person noticed it.
