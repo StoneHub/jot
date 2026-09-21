@@ -10,6 +10,7 @@ final class DictationInput {
         case accessibilityRequired, eventTapUnavailable, secureField
         case noTextField(app: String, role: String)
         case targetChanged, shortcutCancelled, pasteUnavailable
+        case pressIgnored(shortcut: String, reason: String)
 
         var errorDescription: String? {
             switch self {
@@ -20,6 +21,7 @@ final class DictationInput {
             case .targetChanged: return "Focus changed while Jot was listening. Speech was retained; focus an editable field and double-tap the dictation shortcut to retry."
             case .shortcutCancelled: return "The shortcut was released with another key. Speech was retained; focus an editable field and double-tap the dictation shortcut to retry."
             case .pasteUnavailable: return "The paste shortcut could not be created."
+            case .pressIgnored(let shortcut, let reason): return "\(shortcut) press ignored. \(reason)"
             }
         }
     }
@@ -44,8 +46,8 @@ final class DictationInput {
         }
     }
     private(set) var lastDelivery: DeliveryResult?
-    /// The owner can reject another shortcut press while an earlier utterance is transcribing.
-    var canStart: () -> Bool = { true }
+    /// The owner rejects a shortcut press with the reason the notice should show, or nil to let it start.
+    var startBlocker: () -> String? = { nil }
     private(set) var isEnabled = false
     private let onStart: () -> Void
     private let onStop: () -> Void
@@ -404,9 +406,10 @@ final class DictationInput {
         case .start:
             shortcutPresses += 1
             if shortcut.keyCode == nil { fnPresses += 1 }
-            guard canStart() else {
+            if let reason = startBlocker() {
                 gestureAccepted = false
                 busyPresses += 1
+                report(InputError.pressIgnored(shortcut: shortcut.displayName, reason: reason))
                 return result.consume
             }
             gestureAccepted = true
@@ -445,7 +448,7 @@ final class DictationInput {
             // in-flight delivery. An accepted second press remains eligible even if
             // focus loss already ended its audio before physical release.
             let acceptedTap = gestureAccepted
-            let mayRecover = acceptedTap || canStart()
+            let mayRecover = acceptedTap || startBlocker() == nil
             gestureAccepted = false
             guard mayRecover else { break }
             if acceptedTap {

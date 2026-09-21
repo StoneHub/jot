@@ -282,9 +282,11 @@ final class SpeechService: ObservableObject {
     lazy var input: DictationInput = {
         let result = DictationInput(onStart: { [weak self] in self?.beginDictation() }, onStop: { [weak self] in self?.endDictation() })
         result.shortcut = shortcut
-        result.canStart = { [weak self] in
-            guard let self else { return false }
-            return self.lifecycle.phase == .ready && self.modelState == .ready && self.ambientEnabled && !self.pauseRequested && !self.dictationPending && !self.dictationActive && !self.diagnosticActive
+        result.startBlocker = { [weak self] in
+            guard let self else { return "Jot is shutting down." }
+            return DictationReadiness.blocker(phase: self.lifecycle.phase, modelsReady: self.modelState == .ready,
+                ambientEnabled: self.ambientEnabled, pauseRequested: self.pauseRequested, dictationPending: self.dictationPending,
+                dictationActive: self.dictationActive, diagnosticActive: self.diagnosticActive)
         }
         result.onError = { [weak self] error in
             self?.notice = error.localizedDescription
