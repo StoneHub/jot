@@ -23,8 +23,8 @@ struct SpeechServiceDependencies {
     var infer: @MainActor (SpeechPipeline, AudioJob, TranscriptionTuning) async throws -> SpeechOutput
     var deliver: @MainActor (DictationInput, String) async throws -> DictationInput.DeliveryResult
     var now: @MainActor () -> Date
-    var cleanup: @MainActor (TranscriptCleanup, [String]) async -> CleanupResult = { cleaner, texts in
-        await cleaner.cleanWithOutcome(texts)
+    var cleanup: @MainActor (TranscriptCleanup, [String], Duration) async -> CleanupResult = { cleaner, texts, timeout in
+        await cleaner.cleanWithOutcome(texts, timeout: timeout)
     }
 
     static let live = SpeechServiceDependencies(
@@ -193,6 +193,10 @@ final class SpeechService: ObservableObject {
     private var phraseCleanup = PhraseCleanup()
     private var cleanupQueue: [PhraseCleanup.Phrase] = []
     private let liveTranscriptCleanup = TranscriptCleanup()
+    // A live phrase carries up to 2000 bytes; measured on-device cleanup of that
+    // length returns in about 9 seconds. One dictation row is far shorter.
+    static let livePhraseCleanupTimeout = Duration.seconds(12)
+    static let dictationCleanupTimeout = Duration.seconds(2)
     private var cleanupRequestedCount = 0
     private var cleanupCompletedCount = 0
     private var cleanupAppliedCount = 0
@@ -1108,7 +1112,7 @@ final class SpeechService: ObservableObject {
             var text = DictationCleanup.applying(to: dictationVocabulary.applyingToDictation(raw))
             if cleanUpDictation, !text.isEmpty {
                 cleanupRequestedCount += 1
-                let cleanup = await dependencies.cleanup(transcriptCleanup, [text])
+                let cleanup = await dependencies.cleanup(transcriptCleanup, [text], Self.dictationCleanupTimeout)
                 cleanupCompletedCount += 1
                 cleanupOutcomeCounts[cleanup.outcome.rawValue, default: 0] += 1
                 if let first = cleanup.texts.first, first != text { text = first; cleanupAppliedCount += 1 }
@@ -1229,12 +1233,12 @@ final class SpeechService: ObservableObject {
                       !deletedSessions.contains(session) else {
                     cleanupBypassedCount += 1; cleanupCompletedCount += 1; continue
                 }
-                var cleanup = await dependencies.cleanup(liveTranscriptCleanup, [phrase.text])
+                var cleanup = await dependencies.cleanup(liveTranscriptCleanup, [phrase.text], Self.livePhraseCleanupTimeout)
                 // A timed-out generator may still be relinquishing the local model.
                 // Retain the phrase briefly instead of dropping the next request.
                 for _ in 0..<5 where cleanup.outcome == .busy && !Task.isCancelled {
                     try? await Task.sleep(for: .milliseconds(200))
-                    cleanup = await dependencies.cleanup(liveTranscriptCleanup, [phrase.text])
+                    cleanup = await dependencies.cleanup(liveTranscriptCleanup, [phrase.text], Self.livePhraseCleanupTimeout)
                 }
                 cleanupOutcomeCounts[cleanup.outcome.rawValue, default: 0] += 1
                 defer { cleanupCompletedCount += 1 }
