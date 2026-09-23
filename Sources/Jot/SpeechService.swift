@@ -654,6 +654,9 @@ final class SpeechService: ObservableObject {
         kickWorker()
     }
 
+    /// Runs one timer tick on the injected clock, so the harness reaches the quiet split and the stalled-microphone pause without starting the timer.
+    func tickRecoveryVerification() { tick() }
+
     /// The harness waits for Resume, or a microphone restart, to settle.
     func waitForPreparation() async {
         if let preparation { await preparation.value }

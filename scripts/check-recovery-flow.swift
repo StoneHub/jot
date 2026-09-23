@@ -124,6 +124,7 @@ struct RecoveryFlowChecks {
         }
         print("PASS: Pause during model preparation or failed preparation does not enqueue unprocessable final audio.")
 
+        try await checkQuietAndStall(directory: directory)
         try await CaptureFlowChecks.run()
         if CommandLine.arguments.contains("--cleanup-model") { try await checkPhraseCleanupModel() }
 
@@ -329,6 +330,56 @@ struct RecoveryFlowChecks {
         precondition(probe.delivered.last == "Segment5", "Dictation inserted raw text instead of waiting for a three-second cleanup")
         slow.shutdown()
         print("PASS: dictation waits for a three-second cleanup and inserts the cleaned text.")
+    }
+
+    /// Quiet and a stalled microphone are measured on the injected clock, so a tick at a later fake time reaches them without waiting.
+    @MainActor static func checkQuietAndStall(directory: URL) async throws {
+        let probe = Probe()
+        let store = try TranscriptStore(directory: directory.appendingPathComponent("quiet"))
+        var dependencies = SpeechServiceDependencies(infer: { _, job, _ in
+            job.samples.contains(where: { $0 != 0 }) ? probe.infer(job) : SpeechOutput(transcripts: [], text: "", processingSeconds: 0)
+        }, deliver: { _, text in try probe.deliver(text) }, now: { probe.now })
+        // Starting a meeting asks for the microphone before it finds listening already on.
+        dependencies.microphoneAuthorization = { .authorized }
+        let service = SpeechService(dependencies: dependencies)
+        service.keepAudioForSpeakerPass = false; service.cleanUpTranscriptions = false
+        service.newSessionAfterSilence = 1
+        service.beginRecoveryVerification(store: store, startedAt: probe.now)
+        defer { service.shutdown() }
+        func speak() async {
+            probe.now += 3
+            service.ingestRecoveryVerification(samples: Array(repeating: 1, count: 48_000), at: probe.now)
+            await service.waitForRecoveryVerification()
+        }
+        // Silent audio keeps arriving through the quiet, so the stall check leaves the tick to the quiet limit.
+        func quiet(for seconds: Double) async {
+            probe.now += seconds
+            service.ingestRecoveryVerification(samples: Array(repeating: 0, count: 1_600), rms: 0, at: probe.now)
+            await service.waitForRecoveryVerification()
+            service.tickRecoveryVerification()
+        }
+
+        await speak()
+        let first = service.activeSessionID
+        await quiet(for: 30)
+        precondition(service.activeSessionID == first, "A new session started before a minute of quiet")
+        await quiet(for: 31)
+        precondition(service.activeSessionID != first, "A minute of quiet did not start a new session")
+        print("PASS: a minute of quiet after speech starts a new session on the next tick; half a minute does not.")
+
+        await service.startMeeting("Standup")
+        precondition(service.meetingTitle == "Standup", "The meeting did not start: \(service.notice)")
+        await speak()
+        let meeting = service.activeSessionID
+        await quiet(for: 61)
+        precondition(service.activeSessionID == meeting, "A named meeting started a new session after a minute of quiet")
+        print("PASS: a named meeting keeps its session through the same quiet.")
+
+        probe.now += 5
+        service.tickRecoveryVerification()
+        precondition(service.pauseRequested && service.notice.hasPrefix("Microphone stopped delivering audio"), "Five seconds without microphone audio did not pause")
+        while service.lifecycle.phase != .paused { try await Task.sleep(for: .milliseconds(10)) }
+        print("PASS: five seconds without microphone audio pauses automatically.")
     }
 
     @MainActor static func checkRealRecognition(_ file: URL) async throws {
