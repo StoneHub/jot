@@ -306,6 +306,29 @@ struct RecoveryFlowChecks {
         precondition(cleaned.recoveryDiagnostics["cleanupApplied"] as? Int == 2, "Cleanup outcome was not reported")
         cleaned.shutdown()
         print("PASS: raw text publishes before delayed cleanup; the next recognition completes while cleanup runs, then the first row is replaced.")
+
+        let slowStore = try TranscriptStore(directory: directory.appendingPathComponent("dictation-cleanup"))
+        let slow = SpeechService(dependencies: .init(
+            infer: { _, job, _ in probe.infer(job) }, deliver: { _, text in try probe.deliver(text) },
+            now: { probe.now }, cleanup: { cleaner, texts, timeout in
+                await cleaner.cleanWithOutcome(texts, timeout: timeout, generator: {
+                    try await Task.sleep(for: .seconds(3))
+                    return $0.map { $0.capitalized }
+                })
+            }))
+        slow.highlightTargetField = false; slow.muteSpeakersDuringDictation = false
+        slow.keepAudioForSpeakerPass = false; slow.cleanUpTranscriptions = false
+        slow.cleanUpDictation = true
+        slow.beginRecoveryVerification(store: slowStore, startedAt: probe.now)
+        slow.beginDictation()
+        probe.now += 3
+        slow.ingestRecoveryVerification(samples: Array(repeating: Float(5), count: 48_000), at: probe.now)
+        await slow.waitForRecoveryVerification()
+        slow.endDictation()
+        await slow.waitForRecoveryVerification()
+        precondition(probe.delivered.last == "Segment5", "Dictation inserted raw text instead of waiting for a three-second cleanup")
+        slow.shutdown()
+        print("PASS: dictation waits for a three-second cleanup and inserts the cleaned text.")
     }
 
     @MainActor static func checkRealRecognition(_ file: URL) async throws {

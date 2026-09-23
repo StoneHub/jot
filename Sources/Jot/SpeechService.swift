@@ -180,9 +180,10 @@ final class SpeechService: ObservableObject {
     private var cleanupQueue: [PhraseCleanup.Phrase] = []
     private let liveTranscriptCleanup = TranscriptCleanup()
     // A live phrase carries up to 2000 bytes; measured on-device cleanup of that
-    // length returns in about 9 seconds. One dictation row is far shorter.
+    // length returns in about 9 seconds.
     static let livePhraseCleanupTimeout = Duration.seconds(12)
-    static let dictationCleanupTimeout = Duration.seconds(2)
+    // Dictation waits for cleanup like Live does; the deadline only keeps a stalled model from blocking every later press.
+    static let dictationCleanupTimeout = livePhraseCleanupTimeout
     var cleanupRequestedCount = 0
     var cleanupCompletedCount = 0
     var cleanupAppliedCount = 0

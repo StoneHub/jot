@@ -84,8 +84,8 @@ final class DictationCoordinator {
     /// Returns true when a hold ended, so the caller can drop the level meter.
     @discardableResult
     func end() -> Bool {
-        speakerMute.end(); highlight.hide()
-        guard isActive, var attempt = currentAttempt else { return false }
+        speakerMute.end()
+        guard isActive, var attempt = currentAttempt else { highlight.hide(); return false }
         host.closeChunk()
         isActive = false
         isPending = true
@@ -164,6 +164,8 @@ final class DictationCoordinator {
     func hideHighlight() { highlight.hide() }
 
     private func finishAttempt(id: String, throughOffset: Double) async {
+        // The outline stays through recognition, cleanup, and insertion; a newer hold keeps its own.
+        defer { if !isActive { highlight.hide() } }
         guard let started = currentAttempt, started.id == id else { recoveryTask = nil; return }
         await host.waitUntilProcessed(sessionID: started.sessionID, through: throughOffset)
         guard !Task.isCancelled, !discardedAttemptIDs.contains(id), !host.sessionIsDeleted(started.sessionID),

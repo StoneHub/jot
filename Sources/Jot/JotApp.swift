@@ -983,7 +983,7 @@ struct TranscriptView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Outline the text field while dictating", isOn: $service.highlightTargetField)
                         .toggleStyle(.switch)
-                    Text("A pulsing accent border marks the field your words will go into, only while you hold the shortcut.")
+                    Text("A pulsing accent border marks the field your words will go into, from when you hold the shortcut until the text is inserted.")
                         .font(.caption).foregroundStyle(.secondary)
                     Toggle("Mute built-in speakers during dictation", isOn: $service.muteSpeakersDuringDictation)
                         .toggleStyle(.switch)
