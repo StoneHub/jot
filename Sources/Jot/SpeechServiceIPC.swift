@@ -62,7 +62,7 @@ extension SpeechService {
                 result = ["sessionID": id, "file": file?.path ?? ""]
             case "sessions.title":
                 guard let id = params["sessionID"] as? String, let title = params["title"] as? String else { throw JotError.message("sessionID and title are required") }
-                try store?.setTitle(sessionID: id, title: title); refreshSessions()
+                try setSessionTitle(id, title: title)
                 result = ["sessionID": id, "title": title]
             case "transcripts.clear": try clearHistory(); result = ["cleared": true]
             case "transcripts.delete_session":

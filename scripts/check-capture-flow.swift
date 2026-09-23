@@ -63,8 +63,20 @@ enum CaptureFlowChecks {
         await service.waitForPreparation()
         precondition(service.ambientEnabled && service.lifecycle.phase == .ready, "Resume did not restart the microphone")
         precondition(service.input.startBlocker() == nil, "Press still blocked after Resume")
+
+        // A meeting renamed over the socket keeps the new name, including through an automatic pause.
+        await service.startMeeting("Standup")
+        let rename: [String: Any] = ["method": "sessions.title", "params": ["sessionID": service.activeSessionID ?? "", "title": "Weekly sync"]]
+        _ = await service.handle(try JSONSerialization.data(withJSONObject: rename))
+        precondition(service.meetingTitle == "Weekly sync", "The running meeting kept the name \(service.meetingTitle ?? "nil") after a socket rename")
+        service.pause(automatic: true)
+        while service.lifecycle.phase != .paused { try await Task.sleep(for: .milliseconds(10)) }
+        service.prepare(confirmingDownload: true)
+        await service.waitForPreparation()
+        precondition(service.ambientEnabled && service.meetingTitle == "Weekly sync", "The meeting continued as \(service.meetingTitle ?? "nil") after an automatic pause")
         service.pause()
         while service.lifecycle.phase != .paused { try await Task.sleep(for: .milliseconds(10)) }
         print("PASS: a failed microphone start retries, reports after the last try, explains a blocked shortcut press, and Resume restarts capture.")
+        print("PASS: a meeting renamed over the socket keeps the new name through an automatic pause.")
     }
 }
