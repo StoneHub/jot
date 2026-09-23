@@ -516,6 +516,13 @@ final class SpeechService: ObservableObject {
         meetingTitle = trimmed; renameSession(id, title: trimmed)
     }
 
+    /// Names any session from the socket. Naming the running meeting's session renames the meeting too, so the Live chip and a continuation after an automatic pause use the new name.
+    func setSessionTitle(_ id: String, title: String) throws {
+        try store?.setTitle(sessionID: id, title: title); refreshSessions()
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if meetingTitle != nil, id == activeSessionID, !trimmed.isEmpty { meetingTitle = trimmed }
+    }
+
     /// A meeting kept through an automatic pause records on into a new session under the same name. The earlier part stays in Sessions, and TranscriptExport.write adds " (2)" to a duplicate file name.
     private func continueMeeting() throws {
         guard let meetingTitle, ambientEnabled else { return }
