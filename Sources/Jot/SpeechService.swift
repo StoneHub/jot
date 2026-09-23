@@ -189,15 +189,17 @@ final class SpeechService: ObservableObject {
         diagnostics.mark(kind, at: ProcessInfo.processInfo.systemUptime - diagnosticsBegan)
     }
 
-    @Published var level: Float = 0
     @Published var fnEnabled = false
     @Published var droppedSeconds = 0.0
-    @Published var lagSeconds = 0.0
-    @Published var lastInferenceSeconds = 0.0
-    @Published var processedAudioSeconds = 0.0
-    @Published var lastAudioAt: Date?
-    @Published var lastTranscriptAt: Date?
     @Published var queuedSeconds = 0.0
+    /// No screen shows these, so they are not published: each published assignment tells the window to redraw, and these change on every audio drain or recognition.
+    var level: Float = 0
+    var processedAudioSeconds = 0.0
+    var lastAudioAt: Date?
+    var lastTranscriptAt: Date?
+    /// The Activity screen shows these and redraws with the CPU readout once a second, so they are not published either: they change after every recognition, including the silent chunk recognized every 0.8 seconds of quiet.
+    var lagSeconds = 0.0
+    var lastInferenceSeconds = 0.0
     private(set) var preparing = false
     let pipeline = SpeechPipeline()
     private let sampler = ResourceSampler()
@@ -406,9 +408,12 @@ final class SpeechService: ObservableObject {
         return pending
     }
 
+    /// Assigns only a change, since the tick calls this every second.
     func refreshPermissions() {
-        micPermission = dependencies.microphoneAuthorization()
-        accessibilityGranted = DictationInput.accessibilityGranted
+        let microphone = dependencies.microphoneAuthorization()
+        if micPermission != microphone { micPermission = microphone }
+        let accessibility = DictationInput.accessibilityGranted
+        if accessibilityGranted != accessibility { accessibilityGranted = accessibility }
     }
 
     var permissionsMissing: Bool { micPermission != .authorized || !accessibilityGranted }
@@ -621,8 +626,11 @@ final class SpeechService: ObservableObject {
         if dependencies.now().timeIntervalSince(lastStatsTime) >= 1 {
             samplePerformance(); lastStatsTime = dependencies.now(); refreshPermissions()
             resources = readoutSampler.sample()
-            cleanupAvailability = TranscriptCleanup.availability
-            queuedSeconds = jobs.reduce(0) { $0 + AudioClock.seconds(samples: $1.samples.count) }
+            // A published assignment tells the window to redraw even when the value is the same, so only changes are assigned.
+            let availability = TranscriptCleanup.availability
+            if cleanupAvailability != availability { cleanupAvailability = availability }
+            let queued = jobs.reduce(0) { $0 + AudioClock.seconds(samples: $1.samples.count) }
+            if queuedSeconds != queued { queuedSeconds = queued }
             if !pauseRequested, ambientEnabled || dictation.isActive, let lastAudioAt, dependencies.now().timeIntervalSince(lastAudioAt) > 4 {
                 recordEvent(.inputStalled, "No microphone samples for more than four seconds."); pause(automatic: true); notice = "Microphone stopped delivering audio. Resume to reconnect; a capture gap occurred."
             }

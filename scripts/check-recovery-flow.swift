@@ -127,6 +127,7 @@ struct RecoveryFlowChecks {
 
         try await checkQuietAndStall(directory: directory)
         try await checkCPUReadoutWhileListening(directory: directory)
+        try await checkIdleRedraws(directory: directory)
         try await CaptureFlowChecks.run()
         if CommandLine.arguments.contains("--cleanup-model") { try await checkPhraseCleanupModel() }
 
@@ -439,6 +440,34 @@ struct RecoveryFlowChecks {
         precondition(service.pauseRequested && service.notice.hasPrefix("Microphone stopped delivering audio"), "Five seconds without microphone audio did not pause")
         while service.lifecycle.phase != .paused { try await Task.sleep(for: .milliseconds(10)) }
         print("PASS: five seconds without microphone audio pauses automatically.")
+    }
+
+    /// Every screen observes the whole service, so each published assignment tells the window to redraw. Listening should do that once a second for the CPU and memory readout, not on every audio drain or after a recognition that finds no speech.
+    @MainActor static func checkIdleRedraws(directory: URL) async throws {
+        let probe = Probe()
+        let store = try TranscriptStore(directory: directory.appendingPathComponent("idle"))
+        var recognitions = 0
+        let service = SpeechService(dependencies: .init(infer: { _, _, _ in
+            recognitions += 1
+            return SpeechOutput(transcripts: [], text: "", processingSeconds: 0.05)
+        }, deliver: { _, text in try probe.deliver(text) }, now: { probe.now }))
+        service.keepAudioForSpeakerPass = false
+        service.cleanUpTranscriptions = false
+        service.beginRecoveryVerification(store: store, startedAt: probe.now)
+        defer { service.shutdown() }
+        var changes = 0
+        let counter = service.objectWillChange.sink { changes += 1 }
+        defer { counter.cancel() }
+        // Two seconds of digital silence, drained and ticked every 0.2 seconds like the timer. Every 0.8 seconds the silence closes a chunk, and recognition finds no speech in it.
+        for _ in 1...10 {
+            probe.now += 0.2
+            service.ingestRecoveryVerification(samples: Array(repeating: 0, count: 3_200), rms: 0, at: probe.now)
+            service.tickRecoveryVerification()
+            await service.waitForRecoveryVerification()
+        }
+        precondition(recognitions == 2, "Two seconds of silence ran \(recognitions) recognitions, not two")
+        precondition(changes == 2, "Two seconds of listening told the window to redraw \(changes) times, not twice")
+        print("PASS: two seconds of listening to silence, with two recognitions that find no speech, tell the window to redraw exactly twice: once a second for the CPU and memory readout.")
     }
 
     @MainActor static func checkRealRecognition(_ file: URL) async throws {
