@@ -46,6 +46,7 @@ final class SpeechService: ObservableObject {
     lazy var library = SessionLibrary(host: self)
     lazy var speakers = SpeakerRecognizer(pass: pipeline.speakerPass, host: self)
     lazy var dictation = DictationCoordinator(host: self)
+    lazy var timeline = ListeningTimeline(host: self)
     private var relays: [AnyCancellable] = []
 
     init(dependencies: SpeechServiceDependencies = .live) {
@@ -53,7 +54,7 @@ final class SpeechService: ObservableObject {
         capture = CaptureController(microphone: dependencies.makeMicrophone(), retry: dependencies.microphoneRetry)
         capture.onNotice = { [weak self] in self?.notice = $0 }
         // The screens observe the service; a change inside an owned object must reach them the same way.
-        for child in [capture.objectWillChange.eraseToAnyPublisher(), library.objectWillChange.eraseToAnyPublisher(), speakers.objectWillChange.eraseToAnyPublisher()] {
+        for child in [capture.objectWillChange.eraseToAnyPublisher(), library.objectWillChange.eraseToAnyPublisher(), speakers.objectWillChange.eraseToAnyPublisher(), timeline.objectWillChange.eraseToAnyPublisher()] {
             relays.append(child.sink { [weak self] _ in self?.objectWillChange.send() })
         }
     }
@@ -90,7 +91,7 @@ final class SpeechService: ObservableObject {
     @Published var keepAudioForSpeakerPass = UserDefaults.standard.object(forKey: JotDefaultsKey.keepAudioForSpeakerPass) as? Bool ?? true {
         didSet {
             UserDefaults.standard.set(keepAudioForSpeakerPass, forKey: JotDefaultsKey.keepAudioForSpeakerPass)
-            if !keepAudioForSpeakerPass { sessionAudio?.discard(); sessionAudio = nil }
+            if !keepAudioForSpeakerPass { timeline.discardSessionAudio() }
         }
     }
 
@@ -135,7 +136,6 @@ final class SpeechService: ObservableObject {
     @Published var downloadPrompt: Int64?
     /// Title of the meeting being recorded; nil when ambient is off or was started without a name.
     @Published private(set) var meetingTitle: String?
-    @Published private(set) var activeSessionID: String?
     @Published var tuning = TranscriptionTuning() {
         didSet {
             if let data = try? JSONEncoder().encode(tuning.bounded) { UserDefaults.standard.set(data, forKey: JotDefaultsKey.transcriptionTuning) }
@@ -170,10 +170,6 @@ final class SpeechService: ObservableObject {
     var diagnostics = PerformanceDiagnostics(build: .release)
     #endif
     private let diagnosticsBegan = ProcessInfo.processInfo.systemUptime
-    /// Shorter audio is dropped: recognition on it is noise.
-    private static let minimumJobSamples = AudioClock.samples(seconds: 0.2)
-    private let chunkScheduler = CaptureChunkScheduler(sampleRate: AudioClock.sampleRate,
-        maximumSeconds: 3, minimumSeconds: 0.2, silenceSeconds: 0.7)
     private var inFlightAudioSeconds = 0.0
     private var cleanupTasks: [UUID: Task<Void, Never>] = [:]
     private var phraseCleanup = PhraseCleanup()
@@ -196,7 +192,7 @@ final class SpeechService: ObservableObject {
         let elapsed = ProcessInfo.processInfo.systemUptime - diagnosticsBegan
         diagnostics.observe(.init(elapsedSeconds: elapsed, footprintMiB: resources.physicalFootprintMiB,
             residentMiB: resources.residentMiB, cpuPercent: resources.processCPUPercent,
-            droppedAudioSeconds: droppedSeconds, bufferedAudioSeconds: AudioClock.seconds(samples: capture.bufferedSampleCount + ambient.count) + inFlightAudioSeconds,
+            droppedAudioSeconds: droppedSeconds, bufferedAudioSeconds: AudioClock.seconds(samples: capture.bufferedSampleCount + timeline.bufferedSampleCount) + inFlightAudioSeconds,
             queuedAudioSeconds: jobs.reduce(0) { $0 + AudioClock.seconds(samples: $1.samples.count) }, loadedHistoryRows: history.count,
             modelsReady: modelState == .ready, ambientEnabled: ambientEnabled, dictationActive: dictation.isActive,
             inferenceRunning: processing != nil))
@@ -228,16 +224,6 @@ final class SpeechService: ObservableObject {
     private var sleepResume = SleepResumePolicy()
     var diagnostic: Task<SpeechOutput, Error>?
     private var tickCount = 0
-    var sessionID = UUID().uuidString
-    /// Wall-clock start of the current ambient session; Live counts elapsed time from it.
-    private(set) var sessionStarted = Date()
-    /// When this session last produced a row, so a quiet stretch can be measured.
-    private var lastAmbientRowAt: Date?
-    private(set) var ambientOffset = 0.0
-    private var ambient: [Float] = []
-    /// The session's audio on disk for the speaker pass; nil while no ambient session runs.
-    private var sessionAudio: SessionAudioFile?
-    private var consecutiveSilentSamples = 0
     private var completedOffsets: [String: Double] = [:]
     private(set) var recognitionFailures = 0
     private(set) var pauseRequested = false
@@ -544,12 +530,12 @@ final class SpeechService: ObservableObject {
         library.clearLastExport()
         let id = sessionID
         let generation = lifecycle.generation
-        if ambientEnabled { drainAudio(); flushAmbient(final: true) }
+        if ambientEnabled { drainAudio(); timeline.flushAmbient(final: true) }
         let throughOffset = ambientOffset
-        endSessionAudio(runPass: true)
+        timeline.endSessionAudio(runPass: true)
         meetingTitle = nil
         if ambientEnabled {
-            beginSession(at: dependencies.now())
+            timeline.beginSession(at: dependencies.now())
             recordEvent(.started, "Listening continued in a fresh session after meeting export.")
             kickWorker()
         }
@@ -578,7 +564,7 @@ final class SpeechService: ObservableObject {
         guard !ambientEnabled else { return }
         if !capture.running { lastAudioAt = Date() }
         guard try await capture.startRetrying(shouldContinue: { lifecycle.acceptsWork(token) && ambientRequested && !pauseRequested }) else { return }
-        beginSession(at: dependencies.now())
+        timeline.beginSession(at: dependencies.now())
         ambientEnabled = true; updateKeepAwakeAssertion(); updateMode()
         recordEvent(.started, "Ambient microphone capture started."); notice = ""
     }
@@ -601,10 +587,10 @@ final class SpeechService: ObservableObject {
         UserDefaults.standard.set(true, forKey: JotDefaultsKey.servicePaused)
         capture.stop()
         drainAudio()
-        if ambientEnabled { flushAmbient(final: true) }
+        if ambientEnabled { timeline.flushAmbient(final: true) }
         updateKeepAwakeAssertion()
         if ambientEnabled { recordEvent(.paused, "Service paused.") }
-        endSessionAudio(runPass: automatic)
+        timeline.endSessionAudio(runPass: automatic)
         let outcome = PauseOutcome(automatic: automatic, ambientRequested: ambientRequested, meetingTitle: meetingTitle)
         ambientRequested = outcome.ambientRequested; meetingTitle = outcome.meetingTitle
         input.disable(); fnEnabled = false
@@ -652,49 +638,21 @@ final class SpeechService: ObservableObject {
             }
             if !pauseRequested, ambientEnabled, !dictation.isActive, !dictation.isPending,
                SessionSplit.shouldStart(silenceMinutes: newSessionAfterSilence,
-                silenceSeconds: Date().timeIntervalSince(lastAmbientRowAt ?? sessionStarted),
-                isMeeting: meetingTitle != nil, workPending: !jobs.isEmpty || processing != nil) { rotateSession() }
+                silenceSeconds: Date().timeIntervalSince(timeline.lastAmbientRowAt ?? sessionStarted),
+                isMeeting: meetingTitle != nil, workPending: !jobs.isEmpty || processing != nil) { timeline.rotateSession() }
         }
         kickWorker()
     }
 
     func drainAudio() {
         let packet = capture.drain()
-        ingestAudio(samples: packet.samples, dropped: packet.dropped, lastAudio: packet.lastAudio, rms: packet.rms)
-    }
-
-    private func ingestAudio(samples: [Float], dropped: Int, lastAudio: Date, rms: Float) {
-        guard !samples.isEmpty || dropped > 0 else { return }
-        level = rms
-        self.lastAudioAt = lastAudio
-        if dropped > 0 {
-            let lostSeconds = AudioClock.seconds(samples: dropped + ambient.count)
-            droppedSeconds += lostSeconds
-            recordEvent(.audioGap, "Capture queue overflow discarded audio.", duration: lostSeconds)
-            // End attribution continuity rather than silently stitching across lost audio.
-            ambientOffset += AudioClock.seconds(samples: ambient.count + dropped); ambient = []
-            sessionAudio?.appendSilence(samples: dropped)
-            notice = "Audio backlog overflow: a gap was recorded."
-            dictation.markGap("Some microphone audio was lost before recognition. Saved dictation remains available to retry.")
-        }
-        if ambientEnabled {
-            ambient.append(contentsOf: samples)
-            sessionAudio?.append(samples)
-            consecutiveSilentSamples = rms < 0.002 ? consecutiveSilentSamples + samples.count : 0
-            // Enqueue every complete bounded block, retaining the tail. A silence can
-            // close the tail early so sentence delivery usually beats the hard limit.
-            while ambient.count >= chunkScheduler.maximumSamples {
-                flushAmbient(sampleCount: chunkScheduler.maximumSamples)
-            }
-            if chunkScheduler.shouldFlush(bufferedSamples: ambient.count,
-                consecutiveSilentSamples: consecutiveSilentSamples) { flushAmbient(final: true) }
-        }
+        timeline.ingestAudio(samples: packet.samples, dropped: packet.dropped, lastAudio: packet.lastAudio, rms: packet.rms)
     }
 
     /// Integration/performance seam: the same ingestion and scheduling path used by
     /// microphone drains, with inference and delivery supplied through dependencies.
     func ingestRecoveryVerification(samples: [Float], rms: Float = 0.01, at date: Date = Date()) {
-        ingestAudio(samples: samples, dropped: 0, lastAudio: date, rms: rms)
+        timeline.ingestAudio(samples: samples, dropped: 0, lastAudio: date, rms: rms)
         kickWorker()
     }
 
@@ -702,12 +660,12 @@ final class SpeechService: ObservableObject {
         if let token = lifecycle.beginStart() { _ = lifecycle.finishStart(token, succeeded: true) }
         self.store = store
         modelState = .ready; ambientRequested = true; ambientEnabled = true
-        beginSession(at: startedAt, withAudio: false)
+        timeline.beginSession(at: startedAt, withAudio: false)
         updateMode()
     }
 
     func flushRecoveryVerification() {
-        flushAmbient(final: true)
+        timeline.flushAmbient(final: true)
         kickWorker()
     }
 
@@ -721,50 +679,6 @@ final class SpeechService: ObservableObject {
             kickWorker()
             try? await Task.sleep(for: .milliseconds(10))
         }
-    }
-
-    /// The normal end and an automatic pause run the pass, since Resume starts a new session and this one is complete. The Pause button discards the file along with the rest of its unfinished audio.
-    /// Capture keeps running; only the session it feeds changes, so the speaker pass and Live both start fresh on the next speech.
-    private func rotateSession() {
-        let spoken = lastAmbientRowAt != nil
-        flushAmbient(final: true)
-        if spoken { recordEvent(.sessionSplit, "New session started after \(newSessionAfterSilence) minutes of quiet.") }
-        endSessionAudio(runPass: spoken)
-        beginSession(at: dependencies.now())
-        refreshSessions()
-    }
-
-    /// Starts a new session on the listening timeline: a fresh id and clock, an empty buffer, and an audio file for the speaker pass when it keeps audio.
-    private func beginSession(at start: Date, withAudio: Bool = true) {
-        sessionID = UUID().uuidString; sessionStarted = start; ambientOffset = 0; activeSessionID = sessionID
-        ambient = []; consecutiveSilentSamples = 0; lastAmbientRowAt = nil
-        if withAudio, keepAudioForSpeakerPass { sessionAudio = SessionAudioFile(sessionID: sessionID) }
-    }
-
-    private func endSessionAudio(runPass: Bool) {
-        guard let file = sessionAudio else { return }
-        sessionAudio = nil
-        guard runPass else { file.discard(); return }
-        speakers.enqueuePass(file)
-    }
-
-    func flushAmbient(sampleCount: Int? = nil, final: Bool = false) {
-        guard !ambient.isEmpty || final else { return }
-        let count = min(sampleCount ?? ambient.count, ambient.count)
-        let samples = Array(ambient.prefix(count))
-        ambient.removeFirst(count)
-        if ambient.isEmpty { consecutiveSilentSamples = 0 }
-        let start = ambientOffset; ambientOffset += AudioClock.seconds(samples: samples.count)
-        guard final || samples.count >= Self.minimumJobSamples else { return }
-        let pendingAmbient = jobs.lazy.filter { $0.mode == .ambient }.count
-        if pendingAmbient >= 40 && !final {
-            droppedSeconds += AudioClock.seconds(samples: samples.count)
-            recordEvent(.audioGap, "Inference queue full; segment discarded.", duration: AudioClock.seconds(samples: samples.count))
-            notice = "Inference fell behind; bounded audio queue dropped a segment."
-            dictation.markGap("Dictation is partially saved, but an inference backlog caused an audio gap. Retry only after reviewing it.")
-            return
-        }
-        jobs.append(AudioJob(sessionID: sessionID, startedAt: sessionStarted, offset: start, samples: samples, mode: .ambient, ticket: UUID(), isFinal: final))
     }
 
     func kickWorker() {
@@ -800,7 +714,7 @@ final class SpeechService: ObservableObject {
                     try store?.appendWords(words)
                     if !sources.isEmpty {
                         lastTranscriptAt = Date()
-                        if job.mode == .ambient, job.sessionID == sessionID { lastAmbientRowAt = Date() }
+                        if job.mode == .ambient, job.sessionID == sessionID { timeline.lastAmbientRowAt = Date() }
                         // Live must see recognition before the model's cleanup suspension.
                         refreshRecent(); refreshSessions()
                     }
