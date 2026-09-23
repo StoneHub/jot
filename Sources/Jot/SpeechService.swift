@@ -47,6 +47,7 @@ final class SpeechService: ObservableObject {
     lazy var speakers = SpeakerRecognizer(pass: pipeline.speakerPass, host: self)
     lazy var dictation = DictationCoordinator(host: self)
     lazy var timeline = ListeningTimeline(host: self)
+    lazy var cleanup = LiveCleanup(host: self)
     private var relays: [AnyCancellable] = []
 
     init(dependencies: SpeechServiceDependencies = .live) {
@@ -54,7 +55,7 @@ final class SpeechService: ObservableObject {
         capture = CaptureController(microphone: dependencies.makeMicrophone(), retry: dependencies.microphoneRetry)
         capture.onNotice = { [weak self] in self?.notice = $0 }
         // The screens observe the service; a change inside an owned object must reach them the same way.
-        for child in [capture.objectWillChange.eraseToAnyPublisher(), library.objectWillChange.eraseToAnyPublisher(), speakers.objectWillChange.eraseToAnyPublisher(), timeline.objectWillChange.eraseToAnyPublisher()] {
+        for child in [capture.objectWillChange.eraseToAnyPublisher(), library.objectWillChange.eraseToAnyPublisher(), speakers.objectWillChange.eraseToAnyPublisher(), timeline.objectWillChange.eraseToAnyPublisher(), cleanup.objectWillChange.eraseToAnyPublisher()] {
             relays.append(child.sink { [weak self] _ in self?.objectWillChange.send() })
         }
     }
@@ -64,7 +65,7 @@ final class SpeechService: ObservableObject {
     var canChangeShortcut: Bool { !dictation.isActive && !dictation.isPending }
     var canChangeInput: Bool { !capture.running && !dictation.isPending && !diagnosticActive }
     /// Replacing the app must not interrupt capture, a pending dictation, inference, or model setup.
-    var canInstallUpdate: Bool { canChangeInput && processing == nil && !preparing && cleanupTasks.isEmpty }
+    var canInstallUpdate: Bool { canChangeInput && processing == nil && !preparing && !cleanup.isRunning }
     @Published var highlightTargetField = UserDefaults.standard.object(forKey: JotDefaultsKey.highlightTargetField) as? Bool ?? true {
         didSet {
             UserDefaults.standard.set(highlightTargetField, forKey: JotDefaultsKey.highlightTargetField)
@@ -110,7 +111,6 @@ final class SpeechService: ObservableObject {
     }
     @Published var recoveryNotice = ""
     @Published private(set) var cleanupAvailability = TranscriptCleanup.availability
-    let transcriptCleanup = TranscriptCleanup()
 
     func setShortcutRecording(_ active: Bool) { input.isRecordingShortcut = active }
 
@@ -126,7 +126,6 @@ final class SpeechService: ObservableObject {
     @Published var mode = "paused"
     @Published var modelState = ModelState.notLoaded
     @Published var notice = ""
-    @Published private(set) var cleanupRevision = 0
     @Published var modelUpdates = ModelUpdate.defaults
     @Published var checkingModels = false
     @Published var micPermission = AVCaptureDevice.authorizationStatus(for: .audio)
@@ -171,20 +170,6 @@ final class SpeechService: ObservableObject {
     #endif
     private let diagnosticsBegan = ProcessInfo.processInfo.systemUptime
     private var inFlightAudioSeconds = 0.0
-    private var cleanupTasks: [UUID: Task<Void, Never>] = [:]
-    private var phraseCleanup = PhraseCleanup()
-    private var cleanupQueue: [PhraseCleanup.Phrase] = []
-    private let liveTranscriptCleanup = TranscriptCleanup()
-    // A live phrase carries up to 2000 bytes; measured on-device cleanup of that
-    // length returns in about 9 seconds.
-    static let livePhraseCleanupTimeout = Duration.seconds(12)
-    // Dictation waits for cleanup like Live does; the deadline only keeps a stalled model from blocking every later press.
-    static let dictationCleanupTimeout = livePhraseCleanupTimeout
-    var cleanupRequestedCount = 0
-    var cleanupCompletedCount = 0
-    var cleanupAppliedCount = 0
-    var cleanupBypassedCount = 0
-    var cleanupOutcomeCounts: [String: Int] = [:]
 
     func samplePerformance() {
         resources = sampler.sample()
@@ -675,7 +660,7 @@ final class SpeechService: ObservableObject {
     }
 
     func waitForRecoveryVerification() async {
-        while processing != nil || !jobs.isEmpty || dictation.isBusy || !cleanupTasks.isEmpty {
+        while processing != nil || !jobs.isEmpty || dictation.isBusy || cleanup.isRunning {
             kickWorker()
             try? await Task.sleep(for: .milliseconds(10))
         }
@@ -719,7 +704,7 @@ final class SpeechService: ObservableObject {
                         refreshRecent(); refreshSessions()
                     }
                 }
-                scheduleCleanup(sources: sources, final: job.isFinal)
+                cleanup.scheduleCleanup(sources: sources, final: job.isFinal)
                 dictation.updateAttemptText(for: job)
             } catch {
                 outcome = error is CancellationError ? .cancelled : .failed
@@ -758,51 +743,6 @@ final class SpeechService: ObservableObject {
         }
     }
 
-    private func scheduleCleanup(sources: [Transcript], final: Bool) {
-        guard cleanUpTranscriptions else { phraseCleanup = PhraseCleanup(); return }
-        for phrase in phraseCleanup.append(sources, final: final) {
-            cleanupRequestedCount += 1
-            if cleanupQueue.count < 8 { cleanupQueue.append(phrase) }
-            else {
-                cleanupBypassedCount += 1; cleanupCompletedCount += 1
-                cleanupOutcomeCounts[CleanupResult.Outcome.busy.rawValue, default: 0] += 1
-            }
-        }
-        guard cleanupTasks.isEmpty, !cleanupQueue.isEmpty else { return }
-        let id = UUID()
-        cleanupTasks[id] = Task { [weak self] in
-            guard let self else { return }
-            defer { cleanupTasks[id] = nil }
-            while !Task.isCancelled, !cleanupQueue.isEmpty {
-                let phrase = cleanupQueue.removeFirst()
-                guard cleanUpTranscriptions, let session = phrase.sources.first?.sessionID,
-                      !sessionIsDeleted(session) else {
-                    cleanupBypassedCount += 1; cleanupCompletedCount += 1; continue
-                }
-                var cleanup = await dependencies.cleanup(liveTranscriptCleanup, [phrase.text], Self.livePhraseCleanupTimeout)
-                // A timed-out generator may still be relinquishing the local model.
-                // Retain the phrase briefly instead of dropping the next request.
-                for _ in 0..<5 where cleanup.outcome == .busy && !Task.isCancelled {
-                    try? await Task.sleep(for: .milliseconds(200))
-                    cleanup = await dependencies.cleanup(liveTranscriptCleanup, [phrase.text], Self.livePhraseCleanupTimeout)
-                }
-                cleanupOutcomeCounts[cleanup.outcome.rawValue, default: 0] += 1
-                defer { cleanupCompletedCount += 1 }
-                guard !Task.isCancelled, cleanUpTranscriptions, !sessionIsDeleted(session),
-                      let text = cleanup.texts.first, text != phrase.text else {
-                    cleanupBypassedCount += 1; continue
-                }
-                do {
-                    let readable = PhraseCleanup.distribute(text, over: phrase.sources)
-                    if try store?.setReadablePhrase(readable, for: phrase.sources) == true {
-                        cleanupAppliedCount += 1; cleanupRevision += 1
-                        refreshRecent(); refreshSessions()
-                    } else { cleanupBypassedCount += 1 }
-                } catch { cleanupBypassedCount += 1 }
-            }
-        }
-    }
-
     /// Counts and state only; transcript and field contents never enter diagnostics.
     var recoveryDiagnostics: [String: Any] {
         [
@@ -811,13 +751,13 @@ final class SpeechService: ObservableObject {
             "attemptPending": dictation.isActive || dictation.isPending,
             "pendingAudioJobs": jobs.count + (processing == nil ? 0 : 1),
             "recoveryRunning": dictation.recoveryRunning,
-            "cleanupPending": cleanupTasks.count + cleanupQueue.count,
-            "cleanupBufferedRows": phraseCleanup.pendingCount,
-            "cleanupRequested": cleanupRequestedCount,
-            "cleanupCompleted": cleanupCompletedCount,
-            "cleanupApplied": cleanupAppliedCount,
-            "cleanupBypassed": cleanupBypassedCount,
-            "cleanupOutcomes": cleanupOutcomeCounts
+            "cleanupPending": cleanup.pendingCount,
+            "cleanupBufferedRows": cleanup.bufferedRowCount,
+            "cleanupRequested": cleanup.cleanupRequestedCount,
+            "cleanupCompleted": cleanup.cleanupCompletedCount,
+            "cleanupApplied": cleanup.cleanupAppliedCount,
+            "cleanupBypassed": cleanup.cleanupBypassedCount,
+            "cleanupOutcomes": cleanup.cleanupOutcomeCounts
         ]
     }
 
@@ -856,8 +796,7 @@ final class SpeechService: ObservableObject {
     }
 
     func shutdown() {
-        for task in cleanupTasks.values { task.cancel() }
-        cleanupQueue.removeAll(); phraseCleanup = PhraseCleanup()
+        cleanup.shutdown()
         if ambientEnabled { recordEvent(.stopped, "Application quit; capture ended.") }
         modelCheck?.cancel(); preparation?.cancel(); processing?.cancel(); diagnostic?.cancel(); pausing?.cancel()
         timer?.invalidate(); dictation.releaseFieldEffects(); input.disable(); capture.stop(); updateKeepAwakeAssertion(); server?.stop()
