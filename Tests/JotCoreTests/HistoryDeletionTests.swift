@@ -85,6 +85,32 @@ final class HistoryDeletionTests: XCTestCase {
         XCTAssertEqual(try store.sessions().first?.title, "Keep with transcript")
     }
 
+    func testFailedAttemptDeletionRollsBackAndStoreStillCloses() throws {
+        let path = directory.appendingPathComponent("transcripts.sqlite3").path
+        do {
+            let store = try TranscriptStore(directory: directory)
+            try store.append(row("dictated", mode: "dictation"))
+            try store.saveDictationAttempt(DictationAttempt(id: "dictated", sessionID: "a", startedAt: Date(timeIntervalSince1970: 100), text: "hello", state: .deliveryFailed))
+            var db: OpaquePointer?
+            XCTAssertEqual(sqlite3_open(path, &db), SQLITE_OK)
+            XCTAssertEqual(sqlite3_exec(db, "CREATE TRIGGER reject_attempt_delete BEFORE DELETE ON dictation_attempts BEGIN SELECT RAISE(ABORT, 'test failure'); END", nil, nil, nil), SQLITE_OK)
+            XCTAssertThrowsError(try store.deleteSession(id: "a"))
+            XCTAssertThrowsError(try store.deleteTranscripts(ids: ["dictated"]))
+            XCTAssertNotNil(try store.read(id: "dictated"))
+            XCTAssertEqual(try store.latestRecoverableDictationAttempt()?.id, "dictated")
+            XCTAssertEqual(sqlite3_exec(db, "DROP TRIGGER reject_attempt_delete", nil, nil, nil), SQLITE_OK)
+            sqlite3_close(db)
+            try store.deleteTranscripts(ids: ["dictated"])
+            XCTAssertNil(try store.read(id: "dictated"))
+        }
+        // Leaving WAL mode needs the only open connection. A statement left unfinalized
+        // makes the store's close fail, which keeps its connection open and this busy.
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(path, &db), SQLITE_OK)
+        defer { sqlite3_close(db) }
+        XCTAssertEqual(sqlite3_exec(db, "PRAGMA journal_mode=DELETE", nil, nil, nil), SQLITE_OK)
+    }
+
     func testLastRowDeletionCleansMetadataButPartialDeletionKeepsIt() throws {
         let store = try TranscriptStore(directory: directory)
         try store.append(row("one")); try store.append(row("two", start: 10))
