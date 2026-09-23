@@ -59,12 +59,11 @@ extension SpeechService {
     }
 
     func deleteHistoryCard(_ item: Transcript) throws {
-        dictation.discard(ids: try library.deleteHistoryCard(item))
+        try library.deleteHistoryCard(item, discard: dictation.discard(ids:))
     }
 
     func clearHistory() throws {
-        dictation.discardForHistoryReset()
-        try library.clearHistory()
+        try library.clearHistory(discardAttempt: dictation.discardForHistoryReset)
     }
 
     // MARK: Speakers and people
@@ -81,7 +80,7 @@ extension SpeechService {
     var speakerPassRunning: Bool { speakers.passRunning }
 
     func labelSpeaker(session: String, speaker: String, name: String, voice: [Float]? = nil) {
-        do { try speakers.labelSpeaker(session: session, speaker: speaker, name: name, voice: voice); refreshRecent() }
+        do { try speakers.labelSpeaker(session: session, speaker: speaker, name: name, voice: voice) }
         catch { notice = error.localizedDescription }
     }
     func passEmbedding(session: String, speaker: String) -> [Float]? { speakers.passEmbedding(session: session, speaker: speaker) }

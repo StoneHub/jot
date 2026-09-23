@@ -145,19 +145,20 @@ final class SessionLibrary: ObservableObject {
         didDeleteHistory()
     }
 
-    /// Deletes one Dictations card and returns the row ids it was built from, so a pending attempt over them can be discarded.
-    func deleteHistoryCard(_ item: Transcript) throws -> [String] {
+    /// Deletes one Dictations card. `discard` gets the row ids it was built from before the delete, so a pending attempt over them cannot insert.
+    func deleteHistoryCard(_ item: Transcript, discard: ([String]) -> Void) throws {
         guard let store else { throw JotError.message("Transcript storage is unavailable.") }
         let ids = historySources[item.id] ?? [item.id]
+        discard(ids)
         try store.deleteTranscripts(ids: ids)
         didDeleteHistory()
         host.notice = "Transcript deleted."
-        return ids
     }
 
-    /// Deletes every saved dictation; sessions are kept. The caller discards the live attempt first.
-    func clearHistory() throws {
+    /// Deletes every saved dictation; sessions are kept. `discardAttempt` drops the live attempt once storage is known to be there.
+    func clearHistory(discardAttempt: () -> Void) throws {
         guard let store else { throw JotError.message("Transcript storage is unavailable.") }
+        discardAttempt()
         try store.clearHistory()
         historyClearedAt = ProcessInfo.processInfo.systemUptime
         lastExport = nil

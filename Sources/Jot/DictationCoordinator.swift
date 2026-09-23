@@ -287,7 +287,6 @@ final class DictationCoordinator {
         let triggerTime = host.sessionStarted.addingTimeInterval(host.ambientOffset)
         let triggerSession = host.sessionID
         let triggerOffset = host.ambientOffset
-        let lookback = Double(host.recoveryLookbackSeconds)
         isPending = true
         host.recoveryNotice = "Finishing speech captured before the recovery gesture…"
         host.kickWorker()
@@ -297,7 +296,7 @@ final class DictationCoordinator {
             guard !Task.isCancelled else { recoveryDeliveryTask = nil; isPending = false; return }
             do {
                 let failed = try host.store?.latestRecoverableDictationAttempt()
-                let recent = try host.store?.recoveryText(from: triggerTime.addingTimeInterval(-lookback), through: triggerTime) ?? ""
+                let recent = try host.store?.recoveryText(from: triggerTime.addingTimeInterval(-Double(host.recoveryLookbackSeconds)), through: triggerTime) ?? ""
                 guard let selection = DictationRecovery.select(attempt: failed, recentSpeech: recent) else {
                     host.recoveryNotice = "No saved or recent speech was found to insert."
                     host.input.discardTarget(); isPending = false; recoveryDeliveryTask = nil; return
@@ -307,7 +306,7 @@ final class DictationCoordinator {
                 case .failedAttempt:
                     attempt = failed!
                 case .recentSpeech:
-                    let start = triggerTime.addingTimeInterval(-lookback)
+                    let start = triggerTime.addingTimeInterval(-Double(host.recoveryLookbackSeconds))
                     attempt = DictationAttempt(sessionID: triggerSession, startedAt: start,
                         endedAt: triggerTime, text: DictationCleanup.applying(to: host.vocabulary.applyingToDictation(selection.text)),
                         state: host.recognitionFailures == failuresBeforeRecovery ? .ready : .deliveryFailed,

@@ -11,6 +11,7 @@ protocol SpeakerRecognizerHost: AnyObject {
     func recognitionIsComplete(for session: String) -> Bool
     func recordEvent(_ kind: CaptureEventKind, _ detail: String, duration: Double?, session: String?)
     func didRelabelSession()
+    func refreshRecent()
 }
 
 /// Runs the speaker pass over a finished session, names the voices Jot remembers, and keeps the People list.
@@ -87,7 +88,7 @@ final class SpeakerRecognizer: ObservableObject {
 
     /// Names one speaker in one session. With a voice, the name is also remembered: the embedding joins the person of that name, or starts a new one.
     func labelSpeaker(session: String, speaker: String, name: String, voice: [Float]?) throws {
-        try host.store?.label(sessionID: session, speakerID: speaker, name: name)
+        try host.store?.label(sessionID: session, speakerID: speaker, name: name); host.refreshRecent()
         guard let voice, let peopleStore else { return }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if let person = try peopleStore.list().first(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) { try peopleStore.updateEmbedding(id: person.id, with: voice) }
