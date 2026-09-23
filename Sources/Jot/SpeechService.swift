@@ -547,7 +547,7 @@ final class SpeechService: ObservableObject {
         guard await requestMic() else { throw JotError.message("Microphone permission is required.") }
         guard lifecycle.acceptsWork(token), ambientRequested, !pauseRequested else { return }
         guard !ambientEnabled else { return }
-        if !capture.running { lastAudioAt = Date() }
+        if !capture.running { lastAudioAt = dependencies.now() }
         guard try await capture.startRetrying(shouldContinue: { lifecycle.acceptsWork(token) && ambientRequested && !pauseRequested }) else { return }
         timeline.beginSession(at: dependencies.now())
         ambientEnabled = true; updateKeepAwakeAssertion(); updateMode()
@@ -614,16 +614,16 @@ final class SpeechService: ObservableObject {
     private func tick() {
         if lifecycle.phase == .ready { drainAudio() }
         tickCount += 1
-        if Date().timeIntervalSince(lastStatsTime) >= 1 {
-            samplePerformance(); lastStatsTime = Date(); refreshPermissions()
+        if dependencies.now().timeIntervalSince(lastStatsTime) >= 1 {
+            samplePerformance(); lastStatsTime = dependencies.now(); refreshPermissions()
             cleanupAvailability = TranscriptCleanup.availability
             queuedSeconds = jobs.reduce(0) { $0 + AudioClock.seconds(samples: $1.samples.count) }
-            if !pauseRequested, ambientEnabled || dictation.isActive, let lastAudioAt, Date().timeIntervalSince(lastAudioAt) > 4 {
+            if !pauseRequested, ambientEnabled || dictation.isActive, let lastAudioAt, dependencies.now().timeIntervalSince(lastAudioAt) > 4 {
                 recordEvent(.inputStalled, "No microphone samples for more than four seconds."); pause(automatic: true); notice = "Microphone stopped delivering audio. Resume to reconnect; a capture gap occurred."
             }
             if !pauseRequested, ambientEnabled, !dictation.isActive, !dictation.isPending,
                SessionSplit.shouldStart(silenceMinutes: newSessionAfterSilence,
-                silenceSeconds: Date().timeIntervalSince(timeline.lastAmbientRowAt ?? sessionStarted),
+                silenceSeconds: dependencies.now().timeIntervalSince(timeline.lastAmbientRowAt ?? sessionStarted),
                 isMeeting: meetingTitle != nil, workPending: !jobs.isEmpty || processing != nil) { timeline.rotateSession() }
         }
         kickWorker()
@@ -685,7 +685,7 @@ final class SpeechService: ObservableObject {
                 outcome = output.text.isEmpty ? .noSpeech : .completed
                 lastInferenceSeconds = output.processingSeconds
                 processedAudioSeconds += AudioClock.seconds(samples: job.samples.count)
-                lagSeconds = max(0, Date().timeIntervalSince(job.startedAt) - job.offset - AudioClock.seconds(samples: job.samples.count))
+                lagSeconds = max(0, dependencies.now().timeIntervalSince(job.startedAt) - job.offset - AudioClock.seconds(samples: job.samples.count))
                 // Persist recognition before awaiting optional cleanup. Capture keeps draining while we await.
                 let sources = output.transcripts
                 if (job.mode == .ambient || job.submittedUptime > library.historyClearedAt) && !sessionIsDeleted(job.sessionID) {
@@ -698,8 +698,8 @@ final class SpeechService: ObservableObject {
                     }
                     try store?.appendWords(words)
                     if !sources.isEmpty {
-                        lastTranscriptAt = Date()
-                        if job.mode == .ambient, job.sessionID == sessionID { timeline.lastAmbientRowAt = Date() }
+                        lastTranscriptAt = dependencies.now()
+                        if job.mode == .ambient, job.sessionID == sessionID { timeline.lastAmbientRowAt = dependencies.now() }
                         // Live must see recognition before the model's cleanup suspension.
                         refreshRecent(); refreshSessions()
                     }
