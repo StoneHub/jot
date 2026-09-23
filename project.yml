@@ -58,6 +58,7 @@ targets:
       - Sources/Jot/DictationInput.swift
       - Sources/Jot/KeepAwakeAssertion.swift
       - Sources/Jot/ListeningTimeline.swift
+      - Sources/Jot/LiveCleanup.swift
       - Sources/Jot/MicrophoneCapture.swift
       - Sources/Jot/RecognitionCommitWindow.swift
       - Sources/Jot/ResourceStats.swift
