@@ -232,6 +232,7 @@ final class DictationCoordinator {
                 return
             }
             if delivery.verified {
+                highlight.finish()
                 host.recoveryNotice = attempt.hasGap ? "Saved partial dictation inserted. Some audio was not recognized; review the text." : "Dictation inserted."
             } else {
                 host.recoveryNotice = attempt.hasGap
