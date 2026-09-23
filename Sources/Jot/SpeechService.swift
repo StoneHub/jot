@@ -314,10 +314,13 @@ final class SpeechService: ObservableObject {
     private func scheduleTimer() {
         timer?.invalidate()
         let interval = lifecycle.phase == .ready ? 0.2 : 5.0
-        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
-        timer?.tolerance = interval / 5
+        timer.tolerance = interval / 5
+        // An open menu or a live window resize takes the run loop out of its default mode; common modes keep the audio draining then.
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
     }
 
     func updateMode() {
