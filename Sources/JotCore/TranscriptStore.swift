@@ -556,7 +556,8 @@ public final class TranscriptStore: @unchecked Sendable {
         try locked {
             try deletion {
                 let attempts = try prepare("DELETE FROM dictation_attempts WHERE session_id = ?")
-                bind(id, to: 1, in: attempts); try finish(attempts); sqlite3_finalize(attempts)
+                defer { sqlite3_finalize(attempts) }
+                bind(id, to: 1, in: attempts); try finish(attempts)
                 for table in ["transcripts", "session_titles", "speaker_labels", "capture_events", "session_speakers", "session_segments"] {
                     let stmt = try prepare("DELETE FROM \(table) WHERE session_id = ?")
                     defer { sqlite3_finalize(stmt) }
@@ -573,7 +574,8 @@ public final class TranscriptStore: @unchecked Sendable {
                 var sessions = Set<String>()
                 for id in Set(ids) {
                     let attempt = try prepare("DELETE FROM dictation_attempts WHERE id = ?")
-                    bind(id, to: 1, in: attempt); try finish(attempt); sqlite3_finalize(attempt)
+                    defer { sqlite3_finalize(attempt) }
+                    bind(id, to: 1, in: attempt); try finish(attempt)
                     let find = try prepare("SELECT session_id FROM transcripts WHERE id = ?")
                     defer { sqlite3_finalize(find) }
                     bind(id, to: 1, in: find)
