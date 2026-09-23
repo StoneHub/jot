@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import JotCore
 import FluidAudio
+import SQLite3
 
 /// Builds as the separate JotRecoveryChecks tool. Exercises the real speech
 /// controller with an isolated SQLite store, synthetic audio and delivery.
@@ -60,6 +61,7 @@ struct RecoveryFlowChecks {
         service.cleanUpDictation = false
         service.beginRecoveryVerification(store: store, startedAt: probe.now)
         defer { service.shutdown() }
+        service.showLive(service.activeSessionID)
 
         service.beginDictation()
         for index in 1...25 {
@@ -68,6 +70,7 @@ struct RecoveryFlowChecks {
             await service.waitForRecoveryVerification()
             let count = try store.session(id: service.activeSessionID!).count
             precondition(count == index, "Speech was not persisted while the hold was still active")
+            precondition(service.live.paragraphs.last?.text.hasSuffix("segment\(index)") == true, "Live did not add the row when it was saved")
         }
         precondition(probe.chunks.allSatisfy { $0 <= 3 }, "Recognition still waits for a large audio block")
         service.endDictation()
@@ -80,6 +83,10 @@ struct RecoveryFlowChecks {
         let reopenedAttempt = try reopened.latestRecoverableDictationAttempt()
         precondition(reopenedAttempt?.text == expected, "Saved dictation did not survive reopening storage")
         print("PASS: 75-second hold persisted all 25 chunks before release; failed delivery retained across store reopen.")
+        let fullRead = service.sessionParagraphs(service.activeSessionID!).map(\.text)
+        precondition(service.live.paragraphs.map(\.text) == fullRead, "Live differs from a full read of the session")
+        precondition(service.live.paragraphs.contains { $0.mode == "dictation" }, "Live did not show the saved dictation")
+        print("PASS: Live adds each saved row and the held dictation as they are saved, matching a full read.")
 
         // A double-tap creates two short intents before requesting recovery. Neither
         // may replace the earlier failed attempt or erase the listening timeline.
@@ -114,6 +121,7 @@ struct RecoveryFlowChecks {
         print("PASS: Pause persisted the final half-second before unloading.")
 
         try await checkFailureAndCleanup(directory: directory)
+        try await checkLiveFollowsEdits(directory: directory)
         for failed in [false, true] {
             let inactive = SpeechService()
             let token = inactive.lifecycle.beginStart()!
@@ -289,6 +297,7 @@ struct RecoveryFlowChecks {
         cleaned.highlightTargetField = false; cleaned.muteSpeakersDuringDictation = false
         cleaned.keepAudioForSpeakerPass = false; cleaned.cleanUpTranscriptions = true
         cleaned.beginRecoveryVerification(store: cleanedStore, startedAt: probe.now)
+        cleaned.showLive(cleaned.activeSessionID)
         for index in 1...2 {
             probe.now += 3
             cleaned.ingestRecoveryVerification(samples: Array(repeating: Float(index), count: 48_000), at: probe.now)
@@ -301,12 +310,17 @@ struct RecoveryFlowChecks {
         }
         let raw = try cleanedStore.session(id: cleaned.activeSessionID!)
         precondition(raw.map(\.text) == ["segment1", "segment2"], "Raw text did not publish before delayed cleanup")
+        precondition(cleaned.live.paragraphs.map(\.text) == ["segment1 segment2"] && cleaned.live.cleanupRevision == 0,
+            "Live did not show raw rows as they were saved")
         await cleaned.waitForRecoveryVerification()
         let readable = try cleanedStore.session(id: cleaned.activeSessionID!)
         precondition(readable.map(\.text) == ["Segment1", "Segment2"], "Phrase cleanup dropped work while the model was busy")
         precondition(cleaned.recoveryDiagnostics["cleanupApplied"] as? Int == 2, "Cleanup outcome was not reported")
+        precondition(cleaned.live.paragraphs.map(\.text) == ["Segment1 Segment2"] && cleaned.live.cleanupRevision == 2,
+            "Live did not put cleaned text in place of the raw text")
         cleaned.shutdown()
         print("PASS: raw text publishes before delayed cleanup; the next recognition completes while cleanup runs, then the first row is replaced.")
+        print("PASS: Live shows raw rows as they are saved and puts each cleaned phrase in place, without re-reading the session.")
 
         let slowStore = try TranscriptStore(directory: directory.appendingPathComponent("dictation-cleanup"))
         let slow = SpeechService(dependencies: .init(
@@ -330,6 +344,115 @@ struct RecoveryFlowChecks {
         precondition(probe.delivered.last == "Segment5", "Dictation inserted raw text instead of waiting for a three-second cleanup")
         slow.shutdown()
         print("PASS: dictation waits for a three-second cleanup and inserts the cleaned text.")
+    }
+
+    /// Live reads its session once and then only adds rows and cleaned text, so every other edit must make it read the session again: a speaker name from the sheet or the socket, a new paragraph pause, and a delete.
+    @MainActor static func checkLiveFollowsEdits(directory: URL) async throws {
+        let probe = Probe()
+        probe.deliveryFails = false
+        let folder = directory.appendingPathComponent("live-edits")
+        let store = try TranscriptStore(directory: folder)
+        // Rows 1 and 2 are one speaker's, rows 3 to 5 another's. Each row ends two seconds before the next starts, so the paragraph pause decides whether a speaker's rows join.
+        // Block 4 also hands back a row the store refuses, after its first row is saved.
+        let service = SpeechService(dependencies: .init(
+            infer: { _, job, _ in
+                guard let first = job.samples.first, first > 0 else { return SpeechOutput(transcripts: [], text: "", processingSeconds: 0) }
+                let index = Int(first)
+                let text = "segment\(index)"
+                let row = Transcript(sessionID: job.sessionID, startedAt: job.startedAt, startSeconds: job.offset, endSeconds: job.offset + 1,
+                    text: text, speakerID: index <= 2 ? "speaker-1" : "speaker-2", mode: "ambient")
+                let refused = Transcript(sessionID: job.sessionID, startedAt: job.startedAt, startSeconds: job.offset + 2, endSeconds: job.offset + 1,
+                    text: "refused", mode: "ambient")
+                return SpeechOutput(transcripts: index == 4 ? [row, refused] : [row], text: text, processingSeconds: 0)
+            }, deliver: { _, text in try probe.deliver(text) }, now: { probe.now }))
+        service.highlightTargetField = false
+        service.muteSpeakersDuringDictation = false
+        service.keepAudioForSpeakerPass = false
+        service.cleanUpTranscriptions = false
+        service.cleanUpDictation = false
+        service.peopleStore = try PeopleStore(directory: folder)
+        service.beginRecoveryVerification(store: store, startedAt: probe.now)
+        defer { service.shutdown() }
+        let id = service.activeSessionID!
+        service.showLive(id)
+        func speak(_ index: Int) async {
+            probe.now += 3
+            service.ingestRecoveryVerification(samples: Array(repeating: Float(index), count: 48_000), at: probe.now)
+            await service.waitForRecoveryVerification()
+        }
+        func shown() -> [String] {
+            service.live.paragraphs.map { "\(TranscriptExport.speakerName($0)): \($0.text)" }
+        }
+        func fullRead() -> [String] {
+            service.sessionParagraphs(id).map { "\(TranscriptExport.speakerName($0)): \($0.text)" }
+        }
+
+        for index in 1...4 {
+            await speak(index)
+        }
+        precondition(shown().last == "Speaker 2: segment4" && shown() == fullRead(), "Live lost a saved row when the next row of its block could not be saved")
+        let revision = service.live.revision
+        service.showLive(id)
+        precondition(service.live.revision == revision, "Live read its session again when it was shown a second time")
+        service.beginDictation()
+        await speak(5)
+        service.endDictation()
+        await service.waitForRecoveryVerification()
+        precondition(service.live.paragraphs.contains { $0.mode == "dictation" } && shown() == fullRead(), "Live did not show the session as saved")
+
+        service.labelSpeaker(session: id, speaker: "speaker-1", name: "Ada")
+        precondition(shown().contains("Ada: segment1") && shown() == fullRead(), "Live kept the old name after a speaker was named")
+        service.notice = ""
+        // A voice of zeros cannot be remembered. The name is saved before that fails.
+        service.labelSpeaker(session: id, speaker: "speaker-2", name: "Grace", voice: [0, 0])
+        precondition(!service.notice.isEmpty, "Remembering a voice of zeros did not fail")
+        precondition(shown().contains("Grace: segment3") && shown() == fullRead(), "Live kept the old name when remembering the voice failed")
+        let request = try JSONSerialization.data(withJSONObject: ["method": "speakers.label", "params": ["sessionID": id, "speakerID": "speaker-1", "name": "Ada King"]])
+        let reply = try JSONSerialization.jsonObject(with: await service.handle(request)) as? [String: Any]
+        precondition(reply?["ok"] as? Bool == true, "speakers.label failed over the socket")
+        precondition(shown().contains("Ada King: segment1") && shown() == fullRead(), "Live kept the old name after speakers.label")
+
+        service.tuning.paragraphPause = 2.5
+        precondition(shown().contains("Ada King: segment1 segment2") && shown() == fullRead(), "Live kept the old paragraphs after a new paragraph pause")
+        let paused = service.live.revision
+        service.tuning.speakerConfidence = 0.8
+        precondition(service.live.revision == paused, "Live read its session again after a setting it does not group by")
+        try service.deleteHistoryCard(service.history.first!)
+        precondition(!service.live.paragraphs.contains { $0.mode == "dictation" } && shown() == fullRead(), "Live still showed a deleted row")
+
+        // Hiding the names table makes the session read fail. Live still moves to the session, so a row saved next shows, and the next reload reads the whole session.
+        service.showLive(nil)
+        renameTable("speaker_labels", to: "hidden_labels", in: folder)
+        service.notice = ""
+        service.showLive(id)
+        precondition(!service.notice.isEmpty && service.live.paragraphs.isEmpty, "Reading the session without its names table did not fail")
+        renameTable("hidden_labels", to: "speaker_labels", in: folder)
+        await speak(6)
+        precondition(service.live.paragraphs.map(\.text) == ["segment6"], "Live dropped a row saved after a failed read")
+        service.labelSpeaker(session: id, speaker: "speaker-2", name: "Grace Hopper")
+        precondition(shown().contains("Ada King: segment1 segment2") && shown() == fullRead(), "Live did not read the session again after a failed read")
+
+        // A reload of the shown session that fails keeps what Live shows, and the next show reads the session again.
+        let kept = shown()
+        renameTable("speaker_labels", to: "hidden_labels", in: folder)
+        service.notice = ""
+        service.tuning.paragraphPause = 1.5
+        precondition(!service.notice.isEmpty && shown() == kept, "Live dropped its rows when a reload of the shown session failed")
+        renameTable("hidden_labels", to: "speaker_labels", in: folder)
+        service.showLive(id)
+        precondition(shown().contains("Ada King: segment1") && shown() == fullRead(), "Live did not read the session again after a failed reload")
+        print("PASS: Live keeps a row saved before a failed one, and reads its session again after a speaker name, a failed voice, speakers.label, a new paragraph pause, and a delete, but not after another setting or a second show.")
+        print("PASS: after a failed switch Live shows the rows saved next; after a failed reload it keeps its rows; either way the next read retries.")
+    }
+
+    /// Renames a table of a store's database over a second connection, so the store's next query of it fails, or works again.
+    static func renameTable(_ name: String, to newName: String, in folder: URL) {
+        var db: OpaquePointer?
+        let path = folder.appendingPathComponent("transcripts.sqlite3").path
+        precondition(sqlite3_open(path, &db) == SQLITE_OK, "Could not open the store's database")
+        defer { sqlite3_close(db) }
+        sqlite3_busy_timeout(db, 5_000)
+        precondition(sqlite3_exec(db, "ALTER TABLE \(name) RENAME TO \(newName)", nil, nil, nil) == SQLITE_OK, "Could not rename \(name)")
     }
 
     /// Quiet and a stalled microphone are measured on the injected clock, so a tick at a later fake time reaches them without waiting.

@@ -114,7 +114,10 @@ extension SpeechService {
                 try peopleStore?.delete(id: id); refreshPeople(); result = ["deleted": true]
             case "speakers.label":
                 guard let session = params["sessionID"] as? String, let speaker = params["speakerID"] as? String, let name = params["name"] as? String else { throw JotError.message("sessionID, speakerID and name are required") }
-                try store?.label(sessionID: session, speakerID: speaker, name: name); refreshRecent(); result = ["updated": true]
+                try store?.label(sessionID: session, speakerID: speaker, name: name)
+                refreshRecent()
+                library.reloadLive()
+                result = ["updated": true]
             default: throw JotError.message("Unknown method: \(method)")
             }
             return try JSONSerialization.data(withJSONObject: ["ok": true, "result": result], options: [.sortedKeys])

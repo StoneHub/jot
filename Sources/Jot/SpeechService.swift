@@ -55,7 +55,7 @@ final class SpeechService: ObservableObject {
         capture = CaptureController(microphone: dependencies.makeMicrophone(), retry: dependencies.microphoneRetry)
         capture.onNotice = { [weak self] in self?.notice = $0 }
         // The screens observe the service; a change inside an owned object must reach them the same way.
-        for child in [capture.objectWillChange.eraseToAnyPublisher(), library.objectWillChange.eraseToAnyPublisher(), speakers.objectWillChange.eraseToAnyPublisher(), timeline.objectWillChange.eraseToAnyPublisher(), cleanup.objectWillChange.eraseToAnyPublisher()] {
+        for child in [capture.objectWillChange.eraseToAnyPublisher(), library.objectWillChange.eraseToAnyPublisher(), speakers.objectWillChange.eraseToAnyPublisher(), timeline.objectWillChange.eraseToAnyPublisher()] {
             relays.append(child.sink { [weak self] _ in self?.objectWillChange.send() })
         }
     }
@@ -139,6 +139,10 @@ final class SpeechService: ObservableObject {
         didSet {
             if let data = try? JSONEncoder().encode(tuning.bounded) { UserDefaults.standard.set(data, forKey: JotDefaultsKey.transcriptionTuning) }
             library.refreshHistory()
+            // Live groups by the paragraph pause alone, so a slider drag of any other setting leaves it as it is.
+            if tuning.bounded.paragraphPause != oldValue.bounded.paragraphPause {
+                library.reloadLive()
+            }
         }
     }
     @Published private(set) var vocabulary = PersonalVocabulary()
@@ -692,7 +696,11 @@ final class SpeechService: ObservableObject {
                 // Persist recognition before awaiting optional cleanup. Capture keeps draining while we await.
                 let sources = output.transcripts
                 if (job.mode == .ambient || job.submittedUptime > library.historyClearedAt) && !sessionIsDeleted(job.sessionID) {
-                    for transcript in sources { try store?.append(transcript) }
+                    // Live must see recognition before the model's cleanup suspension. It adds each row once it is saved, without re-reading the session, so a row saved before a later one fails still shows.
+                    for transcript in sources {
+                        try store?.append(transcript)
+                        library.appendLive([transcript])
+                    }
                     // Word evidence is kept in the session's clock so a saved session can be regrouped later. Dictation rows keep none.
                     let words = sources.flatMap { transcript in
                         (output.wordsByTranscript[transcript.id] ?? []).enumerated().map { position, word in
@@ -703,7 +711,6 @@ final class SpeechService: ObservableObject {
                     if !sources.isEmpty {
                         lastTranscriptAt = dependencies.now()
                         if job.mode == .ambient, job.sessionID == sessionID { timeline.lastAmbientRowAt = dependencies.now() }
-                        // Live must see recognition before the model's cleanup suspension.
                         refreshRecent(); refreshSessions()
                     }
                 }

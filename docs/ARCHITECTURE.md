@@ -35,6 +35,8 @@ The model edits one joined phrase. Deterministic word alignment distributes its 
 
 Live uses native selectable text with a 220-millisecond crossfade only for cleanup revisions. Raw appends do not animate. A selected row freezes the displayed feed and revision until selection clears; Reduce Motion disables the fade. Live's minimum paragraph merge gap matches phrase assembly so fragments remain one readable paragraph.
 
+Live reads a session once, when it switches to it. `SessionLibrary` keeps that session in a `LiveFeed`: recognition hands it each row as it is saved, cleanup hands it each cleaned phrase by row id, and it regroups only from the paragraph a change touches, with the rules Sessions and export use. A speaker name, a delete, a regroup, the speaker pass, or a new paragraph pause reads the session again. When a read fails, a switch still moves Live to the new session with no rows, a reload keeps what Live shows, and the next show or reload reads again.
+
 ## Delivery and access
 
 A global event tap observes Fn/Globe or a persisted modifier-plus-key shortcut. Fn events pass through unchanged. Custom trigger key-down, repeat, and key-up events are consumed; unrelated keys and modifier events pass through. `ShortcutTracker` owns the physical-key state independently of capture, so modifier-first release finishes only once and autorepeat cannot restart a recording. The shortcut recorder temporarily suspends the global handler while editing. A focus observer and application identity guard the captured field. AX insertion is preferred; the fallback restores the prior clipboard only if it has not been changed since staging. The app never submits the resulting text.

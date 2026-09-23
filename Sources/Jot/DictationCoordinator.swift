@@ -30,6 +30,7 @@ protocol DictationHost: AnyObject {
     func markPerformance(_ kind: PerformanceEventKind)
     func updateMode()
     func refreshRecent()
+    func appendLive(_ rows: [Transcript])
     func cancelDictationCleanup()
     func cleanDictation(_ text: String) async -> String
 }
@@ -196,9 +197,16 @@ final class DictationCoordinator {
                 // timeline remains the recognition source of truth.
                 if !discardedAttemptIDs.contains(attempt.id) {
                     let duration = max(0, (attempt.endedAt ?? attempt.updatedAt).timeIntervalSince(attempt.startedAt))
-                    try? host.store?.append(Transcript(id: attempt.id, sessionID: attempt.sessionID,
+                    let row = Transcript(id: attempt.id, sessionID: attempt.sessionID,
                         startedAt: attempt.startedAt, startSeconds: 0, endSeconds: duration,
-                        text: text, mode: "dictation"))
+                        text: text, mode: "dictation")
+                    // The row belongs to the listening session too, so Live shows it once it is saved.
+                    do {
+                        try host.store?.append(row)
+                        host.appendLive([row])
+                    } catch {
+                        // A row that cannot be saved is left out of History and Live; the attempt is saved and still delivers.
+                    }
                 }
                 currentAttempt = attempt
                 await deliverAttempt(attempt)
