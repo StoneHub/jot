@@ -549,9 +549,7 @@ final class SpeechService: ObservableObject {
         endSessionAudio(runPass: true)
         meetingTitle = nil
         if ambientEnabled {
-            sessionID = UUID().uuidString; sessionStarted = dependencies.now(); ambientOffset = 0; activeSessionID = sessionID
-            ambient = []; consecutiveSilentSamples = 0; lastAmbientRowAt = nil
-            if keepAudioForSpeakerPass { sessionAudio = SessionAudioFile(sessionID: sessionID) }
+            beginSession(at: dependencies.now())
             recordEvent(.started, "Listening continued in a fresh session after meeting export.")
             kickWorker()
         }
@@ -580,9 +578,8 @@ final class SpeechService: ObservableObject {
         guard !ambientEnabled else { return }
         if !capture.running { lastAudioAt = Date() }
         guard try await capture.startRetrying(shouldContinue: { lifecycle.acceptsWork(token) && ambientRequested && !pauseRequested }) else { return }
-        sessionID = UUID().uuidString; sessionStarted = Date(); ambientOffset = 0; activeSessionID = sessionID
-        ambient = []; consecutiveSilentSamples = 0; lastAmbientRowAt = nil; ambientEnabled = true; updateKeepAwakeAssertion(); updateMode()
-        if keepAudioForSpeakerPass { sessionAudio = SessionAudioFile(sessionID: sessionID) }
+        beginSession(at: dependencies.now())
+        ambientEnabled = true; updateKeepAwakeAssertion(); updateMode()
         recordEvent(.started, "Ambient microphone capture started."); notice = ""
     }
 
@@ -705,8 +702,7 @@ final class SpeechService: ObservableObject {
         if let token = lifecycle.beginStart() { _ = lifecycle.finishStart(token, succeeded: true) }
         self.store = store
         modelState = .ready; ambientRequested = true; ambientEnabled = true
-        sessionID = UUID().uuidString; sessionStarted = startedAt; activeSessionID = sessionID
-        ambientOffset = 0; ambient = []; consecutiveSilentSamples = 0; lastAmbientRowAt = nil
+        beginSession(at: startedAt, withAudio: false)
         updateMode()
     }
 
@@ -734,10 +730,15 @@ final class SpeechService: ObservableObject {
         flushAmbient(final: true)
         if spoken { recordEvent(.sessionSplit, "New session started after \(newSessionAfterSilence) minutes of quiet.") }
         endSessionAudio(runPass: spoken)
-        sessionID = UUID().uuidString; sessionStarted = Date(); ambientOffset = 0; activeSessionID = sessionID
-        ambient = []; consecutiveSilentSamples = 0; lastAmbientRowAt = nil
-        if keepAudioForSpeakerPass { sessionAudio = SessionAudioFile(sessionID: sessionID) }
+        beginSession(at: dependencies.now())
         refreshSessions()
+    }
+
+    /// Starts a new session on the listening timeline: a fresh id and clock, an empty buffer, and an audio file for the speaker pass when it keeps audio.
+    private func beginSession(at start: Date, withAudio: Bool = true) {
+        sessionID = UUID().uuidString; sessionStarted = start; ambientOffset = 0; activeSessionID = sessionID
+        ambient = []; consecutiveSilentSamples = 0; lastAmbientRowAt = nil
+        if withAudio, keepAudioForSpeakerPass { sessionAudio = SessionAudioFile(sessionID: sessionID) }
     }
 
     private func endSessionAudio(runPass: Bool) {
