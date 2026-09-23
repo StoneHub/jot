@@ -843,8 +843,8 @@ final class SpeechService: ObservableObject {
     }
 
     func endDictation() {
-        speakerMute.end(); highlight.hide()
-        guard dictationActive, var attempt = currentAttempt else { return }
+        speakerMute.end()
+        guard dictationActive, var attempt = currentAttempt else { highlight.hide(); return }
         drainAudio()
         flushAmbient(final: true)
         dictationActive = false
@@ -1138,6 +1138,8 @@ final class SpeechService: ObservableObject {
     }
 
     private func finishDictationAttempt(id: String, throughOffset: Double) async {
+        // The outline stays through recognition, cleanup, and insertion; a newer hold keeps its own.
+        defer { if !dictationActive { highlight.hide() } }
         guard let started = currentAttempt, started.id == id else { recoveryTask = nil; return }
         await waitUntilProcessed(sessionID: started.sessionID, through: throughOffset)
         guard !Task.isCancelled, !discardedAttemptIDs.contains(id), !deletedSessions.contains(started.sessionID),
