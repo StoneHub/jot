@@ -124,6 +124,7 @@ struct RecoveryFlowChecks {
         }
         print("PASS: Pause during model preparation or failed preparation does not enqueue unprocessable final audio.")
 
+        try await CaptureFlowChecks.run()
         if CommandLine.arguments.contains("--cleanup-model") { try await checkPhraseCleanupModel() }
 
         if let flag = CommandLine.arguments.firstIndex(of: "--audio"), CommandLine.arguments.count > flag + 1 {
