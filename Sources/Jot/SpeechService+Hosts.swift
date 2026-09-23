@@ -88,6 +88,13 @@ extension SpeechService {
     func renamePerson(_ id: String, name: String) { speakers.renamePerson(id, name: name) }
     func deletePerson(_ id: String) { speakers.deletePerson(id) }
 
+    // MARK: Listening timeline
+
+    var sessionID: String { timeline.sessionID }
+    var sessionStarted: Date { timeline.sessionStarted }
+    var ambientOffset: Double { timeline.ambientOffset }
+    var activeSessionID: String? { timeline.activeSessionID }
+
     // MARK: Dictation
 
     func beginDictation() { dictation.begin() }
@@ -98,6 +105,11 @@ extension SpeechService {
 
 extension SpeechService: SessionLibraryHost {}
 
+extension SpeechService: ListeningTimelineHost {
+    func markDictationGap(_ recoveryNotice: String) { dictation.markGap(recoveryNotice) }
+    func enqueueSpeakerPass(_ file: SessionAudioFile) { speakers.enqueuePass(file) }
+}
+
 extension SpeechService: SpeakerRecognizerHost {
     func sessionIsDeleted(_ id: String) -> Bool { library.deletedSessions.contains(id) }
     func recognitionIsComplete(for session: String) -> Bool { jobs.allSatisfy { $0.sessionID != session } && processing == nil }
@@ -107,7 +119,7 @@ extension SpeechService: SpeakerRecognizerHost {
 extension SpeechService: DictationHost {
     var shortcutName: String { shortcut.displayName }
     var canHoldDictation: Bool { lifecycle.phase == .ready && modelState == .ready && ambientEnabled && !pauseRequested }
-    func closeChunk() { drainAudio(); flushAmbient(final: true) }
+    func closeChunk() { drainAudio(); timeline.flushAmbient(final: true) }
     func cancelDictationCleanup() { transcriptCleanup.cancel() }
 
     /// One dictation row through the on-device cleanup, counted with the live phrases in the recovery diagnostics.
