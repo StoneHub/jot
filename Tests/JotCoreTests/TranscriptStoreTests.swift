@@ -52,6 +52,27 @@ final class TranscriptStoreTests: XCTestCase {
         XCTAssertGreaterThan(try store.metrics().databaseBytes, 0)
     }
 
+    func testSessionReadsRowsInSpokenOrderWithADictationHeldDuringIt() throws {
+        let store = try TranscriptStore(directory: directory)
+        try store.append(transcript("before", seconds: 5))
+        try store.append(transcript("after", seconds: 20))
+        // A dictation row keeps its own start time and an offset of zero.
+        let dictation = Transcript(id: "dictation", sessionID: "session-a", startedAt: Date(timeIntervalSince1970: 110),
+            startSeconds: 0, endSeconds: 3, text: "note", mode: "dictation")
+        try store.append(dictation)
+        XCTAssertEqual(try store.session(id: "session-a").map(\.id), ["before", "dictation", "after"])
+    }
+
+    func testSessionReadsEveryRowPastTheListLimit() throws {
+        let store = try TranscriptStore(directory: directory)
+        let ids = (0..<250).map { String(format: "row-%03d", $0) }
+        // Saved last row first, so the order comes from the read.
+        for (index, id) in ids.enumerated().reversed() {
+            try store.append(transcript(id, seconds: Double(index)))
+        }
+        XCTAssertEqual(try store.session(id: "session-a").map(\.id), ids)
+    }
+
     func testSessionSummaryFindsOneAmbientSessionWithoutTheListLimit() throws {
         let store = try TranscriptStore(directory: directory)
         try store.append(transcript("a1", session: "session-a"))
