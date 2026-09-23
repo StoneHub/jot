@@ -77,7 +77,7 @@ Choose a preset or adjust speaker confidence, minimum turn length, and pauses be
 
 <img src="docs/images/jot-tuning.jpg" width="640" alt="Jot Tuning panel with speaker presets, confidence and pause sliders, and filler visibility">
 
-See the [tuning guide](docs/TUNING.md) for what each setting changes. Speaker separation still needs broader testing with real conversations; see [verification and known limits](docs/VERIFICATION.md).
+See the [tuning guide](docs/TUNING.md) for what each setting changes. Speaker separation still needs broader testing with real conversations.
 
 ## People
 
@@ -140,7 +140,7 @@ swift test
 
 The installer builds, verifies signatures, installs to Applications, and checks the running executable. It refuses to replace the app during capture, inference, or model preparation. Set `JOT_SIGN_IDENTITY` and `JOT_SIGN_TEAM` to override signing defaults. Build logs and installation proof are in `build/`.
 
-See [architecture and limits](docs/ARCHITECTURE.md), [verification](docs/VERIFICATION.md), and [planned work](docs/BACKLOG.md). To build a Release app without changing your installed copy, use `./scripts/build-install.py --configuration Release --build-only`. Debug and Release builds contain no UI feedback tool. A signed local build is not a notarized download or proof of installation on another Mac.
+See [architecture and limits](docs/ARCHITECTURE.md) and [the plan](docs/PLAN.md). To build a Release app without changing your installed copy, use `./scripts/build-install.py --configuration Release --build-only`. Debug and Release builds contain no UI feedback tool. A signed local build is not a notarized download or proof of installation on another Mac.
 
 ## License and credits
 
