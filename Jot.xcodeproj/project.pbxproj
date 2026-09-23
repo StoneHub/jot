@@ -15,6 +15,7 @@
 		0AE13DCDEF17598D4CDFE981 /* SessionLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A601577DB723625149B12CA /* SessionLibrary.swift */; };
 		0C6637B88C039C4EEEB58198 /* ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = 2AF537A90CCFD9AEEF273426 /* ThirdPartyNotices.txt */; };
 		0F17B8853D38D40260052561 /* CaptureRecovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F2995B6746A085B7F078A93 /* CaptureRecovery.swift */; };
+		106BA473BF7AB2A72F82BFC5 /* LiveCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0481ADADD05BFA1A6D0E293C /* LiveCleanup.swift */; };
 		132C26A14258A6D3C8F0920D /* JotDefaultsKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = B02C95F663096FB499C5FD80 /* JotDefaultsKey.swift */; };
 		13899AFFBA889828C7A0DC82 /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */; };
 		161FC2D42209402E92194E17 /* SpeechService+Hosts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38FB0162CA0B3A69BB25757A /* SpeechService+Hosts.swift */; };
@@ -45,6 +46,7 @@
 		6CA28F1C6538D728C88972BA /* SpeakerRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8680759A7B6F51ABC6336028 /* SpeakerRecognizer.swift */; };
 		6E92D801CF7E0C6D4471E466 /* AudioPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1724E7761CB8156A220EF24 /* AudioPipeline.swift */; };
 		6F6AFCF5F313C08DE94D202C /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = CF8E8E7D8E656AB679CA76DA /* LICENSE */; };
+		70B759A83A6271994115137A /* LiveCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0481ADADD05BFA1A6D0E293C /* LiveCleanup.swift */; };
 		71AC618677A95E2FCEBEFCEC /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23353B724C7968C1C5209FA0 /* AppUpdater.swift */; };
 		72C6B1350B8785BD23ACFAE1 /* ListeningTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40F41CDC337859B88E28A38E /* ListeningTimeline.swift */; };
 		76F97CF4DF9E0347AD45D880 /* LiveTranscriptText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64DFC6286492A052B21DE7FA /* LiveTranscriptText.swift */; };
@@ -142,6 +144,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0481ADADD05BFA1A6D0E293C /* LiveCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCleanup.swift; sourceTree = "<group>"; };
 		1C33A3E252A64EE9389B3646 /* SessionSplit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSplit.swift; sourceTree = "<group>"; };
 		22DFD1104FF0F55F21DFA91C /* JotRecoveryChecks */ = {isa = PBXFileReference; includeInIndex = 0; path = JotRecoveryChecks; sourceTree = BUILT_PRODUCTS_DIR; };
 		23353B724C7968C1C5209FA0 /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
@@ -263,6 +266,7 @@
 				EBA0F84BDC3CF425D094A331 /* JotApp.swift */,
 				3EEFF7CD54878C9E034B716A /* KeepAwakeAssertion.swift */,
 				40F41CDC337859B88E28A38E /* ListeningTimeline.swift */,
+				0481ADADD05BFA1A6D0E293C /* LiveCleanup.swift */,
 				64DFC6286492A052B21DE7FA /* LiveTranscriptText.swift */,
 				5A608DB6E5CA06D36C6CE0E6 /* LiveView.swift */,
 				75A2B17AAF1631913D5A8DCC /* ResourceStats.swift */,
@@ -577,6 +581,7 @@
 				48A035BE8890396E0ED43AAE /* JotApp.swift in Sources */,
 				E3CF5ED8A4671E6F1AF3972D /* KeepAwakeAssertion.swift in Sources */,
 				72C6B1350B8785BD23ACFAE1 /* ListeningTimeline.swift in Sources */,
+				106BA473BF7AB2A72F82BFC5 /* LiveCleanup.swift in Sources */,
 				76F97CF4DF9E0347AD45D880 /* LiveTranscriptText.swift in Sources */,
 				0643D545CF0AC17B78F5D0BA /* LiveView.swift in Sources */,
 				B3AB2422EE65311C8F9EEEEA /* ResourceStats.swift in Sources */,
@@ -645,6 +650,7 @@
 				46763F17227E20457A2F24FC /* DictationInput.swift in Sources */,
 				D592BB9126902B61352E81E5 /* KeepAwakeAssertion.swift in Sources */,
 				233C3FA2FE2D442D04E59D97 /* ListeningTimeline.swift in Sources */,
+				70B759A83A6271994115137A /* LiveCleanup.swift in Sources */,
 				B2F7BA8FE06A847F539FEC30 /* ResourceStats.swift in Sources */,
 				EC4003D9C37B4EE4BF9F0F1D /* SessionAudioFile.swift in Sources */,
 				A42EE66E16E8986D5A58EF34 /* SessionLibrary.swift in Sources */,
