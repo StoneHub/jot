@@ -50,6 +50,7 @@ targets:
     sources:
       - scripts/check-recovery-flow.swift
       - scripts/check-capture-flow.swift
+      - Sources/Jot/AudioInputDevice.swift
       - Sources/Jot/AudioPipeline.swift
       - Sources/Jot/CaptureController.swift
       - Sources/Jot/DictationCoordinator.swift
@@ -57,12 +58,15 @@ targets:
       - Sources/Jot/DictationInput.swift
       - Sources/Jot/KeepAwakeAssertion.swift
       - Sources/Jot/ListeningTimeline.swift
+      - Sources/Jot/MicrophoneCapture.swift
+      - Sources/Jot/RecognitionCommitWindow.swift
       - Sources/Jot/ResourceStats.swift
       - Sources/Jot/SessionAudioFile.swift
       - Sources/Jot/SessionLibrary.swift
       - Sources/Jot/ShortcutSettings.swift
       - Sources/Jot/SpeakerPass.swift
       - Sources/Jot/SpeakerRecognizer.swift
+      - Sources/Jot/SpeechPipeline.swift
       - Sources/Jot/SpeechService.swift
       - Sources/Jot/SpeechService+Hosts.swift
       - Sources/Jot/SpeechServiceIPC.swift
