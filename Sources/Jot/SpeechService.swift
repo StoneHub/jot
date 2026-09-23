@@ -171,12 +171,13 @@ final class SpeechService: ObservableObject {
     private let diagnosticsBegan = ProcessInfo.processInfo.systemUptime
     private var inFlightAudioSeconds = 0.0
 
+    /// Records CPU and memory for `jot diagnostics`. The window's readout comes from the tick, with a sampler of its own.
     func samplePerformance() {
-        resources = sampler.sample()
-        guard resources.valid else { return }
+        let sample = sampler.sample()
+        guard sample.valid else { return }
         let elapsed = ProcessInfo.processInfo.systemUptime - diagnosticsBegan
-        diagnostics.observe(.init(elapsedSeconds: elapsed, footprintMiB: resources.physicalFootprintMiB,
-            residentMiB: resources.residentMiB, cpuPercent: resources.processCPUPercent,
+        diagnostics.observe(.init(elapsedSeconds: elapsed, footprintMiB: sample.physicalFootprintMiB,
+            residentMiB: sample.residentMiB, cpuPercent: sample.processCPUPercent,
             droppedAudioSeconds: droppedSeconds, bufferedAudioSeconds: AudioClock.seconds(samples: capture.bufferedSampleCount + timeline.bufferedSampleCount) + inFlightAudioSeconds,
             queuedAudioSeconds: jobs.reduce(0) { $0 + AudioClock.seconds(samples: $1.samples.count) }, loadedHistoryRows: history.count,
             modelsReady: modelState == .ready, ambientEnabled: ambientEnabled, dictationActive: dictation.isActive,
@@ -200,6 +201,8 @@ final class SpeechService: ObservableObject {
     private(set) var preparing = false
     let pipeline = SpeechPipeline()
     private let sampler = ResourceSampler()
+    /// A sampler measures CPU since its previous sample, and `sampler` also samples when a recognition finishes. Sharing it would leave each recognition's CPU out of the next readout, so the readout has its own, sampled only at launch and by the tick.
+    private let readoutSampler = ResourceSampler()
     private let keepAwake = KeepAwakeAssertion()
     private var server: LocalServiceServer?
     private var timer: Timer?
@@ -239,6 +242,7 @@ final class SpeechService: ObservableObject {
 
     func launch() {
         markPerformance(.launch)
+        resources = readoutSampler.sample()
         capture.watchDevices()
         do { vocabulary = try vocabularyPreferences.load() }
         catch { vocabularyLoadError = "Could not load vocabulary. Saved entries were preserved. " + error.localizedDescription }
@@ -616,6 +620,7 @@ final class SpeechService: ObservableObject {
         tickCount += 1
         if dependencies.now().timeIntervalSince(lastStatsTime) >= 1 {
             samplePerformance(); lastStatsTime = dependencies.now(); refreshPermissions()
+            resources = readoutSampler.sample()
             cleanupAvailability = TranscriptCleanup.availability
             queuedSeconds = jobs.reduce(0) { $0 + AudioClock.seconds(samples: $1.samples.count) }
             if !pauseRequested, ambientEnabled || dictation.isActive, let lastAudioAt, dependencies.now().timeIntervalSince(lastAudioAt) > 4 {
