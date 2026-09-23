@@ -194,9 +194,10 @@ final class SpeechService: ObservableObject {
     private var cleanupQueue: [PhraseCleanup.Phrase] = []
     private let liveTranscriptCleanup = TranscriptCleanup()
     // A live phrase carries up to 2000 bytes; measured on-device cleanup of that
-    // length returns in about 9 seconds. One dictation row is far shorter.
+    // length returns in about 9 seconds.
     static let livePhraseCleanupTimeout = Duration.seconds(12)
-    static let dictationCleanupTimeout = Duration.seconds(2)
+    // Dictation waits for cleanup like Live does; the deadline only keeps a stalled model from blocking every later press.
+    static let dictationCleanupTimeout = livePhraseCleanupTimeout
     private var cleanupRequestedCount = 0
     private var cleanupCompletedCount = 0
     private var cleanupAppliedCount = 0
@@ -843,8 +844,8 @@ final class SpeechService: ObservableObject {
     }
 
     func endDictation() {
-        speakerMute.end(); highlight.hide()
-        guard dictationActive, var attempt = currentAttempt else { return }
+        speakerMute.end()
+        guard dictationActive, var attempt = currentAttempt else { highlight.hide(); return }
         drainAudio()
         flushAmbient(final: true)
         dictationActive = false
@@ -1138,6 +1139,8 @@ final class SpeechService: ObservableObject {
     }
 
     private func finishDictationAttempt(id: String, throughOffset: Double) async {
+        // The outline stays through recognition, cleanup, and insertion; a newer hold keeps its own.
+        defer { if !dictationActive { highlight.hide() } }
         guard let started = currentAttempt, started.id == id else { recoveryTask = nil; return }
         await waitUntilProcessed(sessionID: started.sessionID, through: throughOffset)
         guard !Task.isCancelled, !discardedAttemptIDs.contains(id), !deletedSessions.contains(started.sessionID),

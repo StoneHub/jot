@@ -1,6 +1,6 @@
 import AppKit
 
-/// A click-through outline over the field being dictated into, shown only while the shortcut is held.
+/// A click-through outline over the field being dictated into, shown from the shortcut press until the text is inserted.
 /// The panel never activates, so the target keeps keyboard focus, and it follows the field if it moves.
 @MainActor
 final class DictationHighlight {
