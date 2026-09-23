@@ -95,6 +95,10 @@ extension SpeechService {
     var ambientOffset: Double { timeline.ambientOffset }
     var activeSessionID: String? { timeline.activeSessionID }
 
+    // MARK: Live cleanup
+
+    var cleanupRevision: Int { cleanup.cleanupRevision }
+
     // MARK: Dictation
 
     func beginDictation() { dictation.begin() }
@@ -110,6 +114,8 @@ extension SpeechService: ListeningTimelineHost {
     func enqueueSpeakerPass(_ file: SessionAudioFile) { speakers.enqueuePass(file) }
 }
 
+extension SpeechService: LiveCleanupHost {}
+
 extension SpeechService: SpeakerRecognizerHost {
     func sessionIsDeleted(_ id: String) -> Bool { library.deletedSessions.contains(id) }
     func recognitionIsComplete(for session: String) -> Bool { jobs.allSatisfy { $0.sessionID != session } && processing == nil }
@@ -120,16 +126,6 @@ extension SpeechService: DictationHost {
     var shortcutName: String { shortcut.displayName }
     var canHoldDictation: Bool { lifecycle.phase == .ready && modelState == .ready && ambientEnabled && !pauseRequested }
     func closeChunk() { drainAudio(); timeline.flushAmbient(final: true) }
-    func cancelDictationCleanup() { transcriptCleanup.cancel() }
-
-    /// One dictation row through the on-device cleanup, counted with the live phrases in the recovery diagnostics.
-    func cleanDictation(_ text: String) async -> String {
-        cleanupRequestedCount += 1
-        let cleanup = await dependencies.cleanup(transcriptCleanup, [text], Self.dictationCleanupTimeout)
-        cleanupCompletedCount += 1
-        cleanupOutcomeCounts[cleanup.outcome.rawValue, default: 0] += 1
-        if let first = cleanup.texts.first, first != text { cleanupAppliedCount += 1; return first }
-        cleanupBypassedCount += 1
-        return text
-    }
+    func cancelDictationCleanup() { cleanup.cancelDictationCleanup() }
+    func cleanDictation(_ text: String) async -> String { await cleanup.cleanDictation(text) }
 }
