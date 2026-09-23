@@ -168,3 +168,11 @@ One two-second deadline covered both cleanup call sites. Measured on-device late
 A cleaned line now washes in the system accent color at 32 percent opacity, fading to clear over 1.1 seconds, alongside a 0.28-second crossfade. Wording often changes very little, and a crossfade between two nearly identical strings reads as a flicker. The wash outlasts the crossfade so the change is visible without staring at the line. Reduce Motion and an active selection still suppress it.
 
 The measurement above covers model latency, not conversation. Whether the longer deadline lowers the timeout rate in ordinary speech remains a live-use check. A longer deadline also means a long phrase can be replaced several seconds after it was spoken, by which time the line may have scrolled out of view. The phrase size cap is unchanged. As before, the checks verify that the animation is scheduled, not that a person noticed it.
+
+## Dictation outline sweep — 2026-09-23
+
+When insertion is verified, an accent band crosses the field and the outline fades out over 0.6 seconds. The outline already stays from the shortcut press until insertion, so the sweep marks the moment the text lands. An unverified or failed insertion removes the outline at once, so the sweep only follows verified text.
+
+- `swiftc -parse-as-library Sources/Jot/DictationHighlight.swift scripts/check-field-outline.swift -o build/check-field-outline && build/check-field-outline`: three checks pass. A hide during the sweep waits for it, a hold that starts during the sweep keeps its outline, and Reduce Motion removes the outline without a sweep. Each check fails against a copy of the outline with its matching guard removed.
+
+As with the Live wash, the check confirms the sweep is scheduled, not how it looks over a real field.
