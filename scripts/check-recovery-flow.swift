@@ -38,6 +38,31 @@ struct RecoveryFlowChecks {
         }
     }
 
+    /// Owes silence on the wall clock like a real microphone: whatever the service has not drained within `holdingSeconds` is dropped, as MicrophoneCapture's queue limit drops what it cannot hold.
+    final class ClockedMicrophone: MicrophoneSource, @unchecked Sendable {
+        private let holding: Int
+        private var began: ContinuousClock.Instant?
+        private var delivered = 0
+        init(holdingSeconds: Double) { holding = AudioClock.samples(seconds: holdingSeconds) }
+        var running: Bool { began != nil }
+        var bufferedSampleCount: Int { 0 }
+        func setInput(uid: String?) throws {}
+        func setInputForNextStart(uid: String?) {}
+        func shouldIgnoreConfigurationChange() -> Bool { false }
+        func start() throws {
+            began = .now
+            delivered = 0
+        }
+        func stop() { began = nil }
+        func drain() -> (samples: [Float], dropped: Int, lastAudio: Date, rms: Float) {
+            guard let began else { return ([], 0, Date(), 0) }
+            let owed = AudioClock.samples(seconds: began.duration(to: .now) / .seconds(1)) - delivered
+            delivered += owed
+            let kept = min(owed, holding)
+            return (Array(repeating: 0, count: kept), owed - kept, Date(), 0)
+        }
+    }
+
     @MainActor static func main() async throws {
         let watchdog = Task.detached {
             try await Task.sleep(for: .seconds(90))
@@ -137,6 +162,9 @@ struct RecoveryFlowChecks {
         try await checkQuietAndStall(directory: directory)
         try await checkCPUReadoutWhileListening(directory: directory)
         try await checkIdleRedraws(directory: directory)
+        try await checkSpeakerPassKeepsCleanup(directory: directory)
+        try await checkRelabelsTakeTurns(directory: directory)
+        try await checkSpeakerPassKeepsMainFree(directory: directory)
         try await CaptureFlowChecks.run()
         if CommandLine.arguments.contains("--cleanup-model") { try await checkPhraseCleanupModel() }
 
@@ -655,6 +683,369 @@ struct RecoveryFlowChecks {
         precondition(recognitions == 2, "Two seconds of silence ran \(recognitions) recognitions, not two")
         precondition(changes == 2, "Two seconds of listening told the window to redraw \(changes) times, not twice")
         print("PASS: two seconds of listening to silence, with two recognitions that find no speech, tell the window to redraw exactly twice: once a second for the CPU and memory readout.")
+    }
+
+    /// A finished session keeps its cleaned text through the speaker pass and takes the pass's speakers; Regroup from the stored pass then changes nothing. Regroup pressed while a session's last phrase is still being cleaned keeps the cleaned text too.
+    @MainActor static func checkSpeakerPassKeepsCleanup(directory: URL) async throws {
+        let folder = directory.appendingPathComponent("speaker-pass")
+        let store = try TranscriptStore(directory: folder)
+        let probe = Probe()
+        // One row per three-second block, with word times relative to the block as the recognizer reports them.
+        let blocks: [[(word: String, start: Double, end: Double)]] = [
+            [("so", 0, 0.4), ("we", 0.5, 0.9), ("should", 1.0, 1.4), ("ship", 2.0, 2.4), ("it", 2.5, 2.9)],
+            [("on", 0.1, 0.4), ("friday", 0.5, 1.0), ("then", 1.1, 1.4), ("ok", 1.6, 2.0)]]
+        let service = SpeechService(dependencies: .init(
+            infer: { _, job, _ in
+                guard let index = job.samples.first.map(Int.init), index > 0 else {
+                    return SpeechOutput(transcripts: [], text: "", processingSeconds: 0)
+                }
+                let words = blocks[index - 1].map { AttributedWord(text: $0.word, start: $0.start, end: $0.end, probabilities: []) }
+                let text = words.map(\.text).joined(separator: " ")
+                let row = Transcript(sessionID: job.sessionID, startedAt: job.startedAt,
+                    startSeconds: job.offset + words[0].start, endSeconds: job.offset + words[words.count - 1].end, text: text, mode: "ambient")
+                return SpeechOutput(transcripts: [row], text: text, processingSeconds: 0, wordsByTranscript: [row.id: words])
+            },
+            deliver: { _, text in try probe.deliver(text) },
+            now: { probe.now },
+            cleanup: { cleaner, texts, timeout in
+                await cleaner.cleanWithOutcome(texts, timeout: timeout, generator: { texts in
+                    try await Task.sleep(for: .seconds(1))
+                    return texts.map { $0.prefix(1).uppercased() + $0.dropFirst() + "." }
+                })
+            }))
+        service.keepAudioForSpeakerPass = false
+        service.cleanUpTranscriptions = true
+        service.speakerStore = try SpeakerPassStore(directory: folder)
+        service.peopleStore = try PeopleStore(directory: folder)
+        // A remembered voice that matches the pass's first speaker.
+        _ = try service.peopleStore?.add(name: "Ada", embedding: [1])
+        service.beginRecoveryVerification(store: store, startedAt: probe.now)
+        defer { service.shutdown() }
+        /// Speaks both blocks into the running session, then ends it the way quiet does: its last block goes out as a final job, which hands the whole phrase to cleanup.
+        func speakAndEndSession() -> String {
+            let id = service.activeSessionID!
+            for index in 1...2 {
+                probe.now += 3
+                service.ingestRecoveryVerification(samples: Array(repeating: Float(index), count: 48_000), at: probe.now)
+            }
+            service.timeline.rotateSession()
+            service.kickWorker()
+            return id
+        }
+        let id = speakAndEndSession()
+        service.showLive(id)
+        // The first voice gives way to the second inside the first row, between "should" and "ship". Cleanup is still running when the pass arrives.
+        let pass = SpeakerPassResult(segments: [("S1", 0, 1.7), ("S2", 1.7, 6)], speakers: ["S1": [1], "S2": [2]], durationSeconds: 6, processingSeconds: 0.1)
+        await service.speakers.apply(pass, session: id, truncated: false)
+        // Live reloads after the pass names the voice, not only after the relabel.
+        let named = service.live.paragraphs.filter { $0.speakerID == "speaker-1" }.map(\.speakerLabel)
+        precondition(!named.isEmpty && named.allSatisfy { $0 == "Ada" }, "Live did not show the name the pass recognized: \(named), \(service.notice)")
+        await service.waitForRecoveryVerification()
+        let expected = ["So we should", "ship it on friday then ok."]
+        let speakers = ["speaker-1", "speaker-2"]
+        let paragraphs = service.sessionParagraphs(id)
+        precondition(paragraphs.map(\.text) == expected, "The speaker pass lost cleaned text: \(paragraphs.map(\.text))")
+        precondition(paragraphs.map(\.speakerID) == speakers, "The speaker pass labels were not applied: \(paragraphs.map(\.speakerID))")
+        let events = try store.events(sessionID: id)
+        precondition(events.contains { $0.kind == "speaker_pass" }, "The speaker pass recorded no event: \(service.notice)")
+        let rows = try store.session(id: id).map(\.id)
+        try await service.regroupSession(id)
+        let regrouped = service.sessionParagraphs(id)
+        precondition(regrouped.map(\.text) == expected && regrouped.map(\.speakerID) == speakers, "Regroup from the stored pass changed the session: \(regrouped.map(\.text))")
+        let regroupedRows = try store.session(id: id).map(\.id)
+        precondition(regroupedRows == rows, "Regroup from the stored pass replaced rows it only needed to keep")
+        print("PASS: the speaker pass keeps a finished session's cleaned text, splits a row where the speaker changes, shows the voice it recognized in Live, and Regroup from the pass changes nothing.")
+
+        // A second session ends the same way and has the same pass stored. Regroup is pressed while its phrase is still being cleaned.
+        let second = speakAndEndSession()
+        try service.speakerStore?.replace(sessionID: second, result: SpeakerPassRelabel.renumbered(pass))
+        while !service.cleanup.isCleaning(session: second) {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        try await service.regroupSession(second)
+        await service.waitForRecoveryVerification()
+        let duringCleanup = service.sessionParagraphs(second)
+        precondition(duringCleanup.map(\.text) == expected, "Regroup during cleanup lost cleaned text: \(duringCleanup.map(\.text))")
+        precondition(duringCleanup.map(\.speakerID) == speakers, "Regroup during cleanup did not apply the pass: \(duringCleanup.map(\.speakerID))")
+        print("PASS: Regroup pressed while a session's last phrase is being cleaned waits for it and keeps the cleaned text.")
+    }
+
+    /// What relabel speaker closures did, recorded from whichever thread runs them.
+    final class RelabelLog: @unchecked Sendable {
+        private let lock = NSLock()
+        private var recorded: [String] = []
+        var entries: [String] { lock.withLock { recorded } }
+        func append(_ entry: String) { lock.withLock { recorded.append(entry) } }
+    }
+
+    /// Relabels of one session take turns and hold off Install Update. A Regroup whose session is deleted while it waits returns quietly, a pass whose session is deleted while it waits leaves nothing behind, a pass whose relabel fails partway and a Regroup both reload Live, Regroup of a session without words says so, and the name sheet offers a pass voice only once the pass has relabeled the rows.
+    @MainActor static func checkRelabelsTakeTurns(directory: URL) async throws {
+        let folder = directory.appendingPathComponent("relabel-turns")
+        let store = try TranscriptStore(directory: folder)
+        let service = SpeechService(dependencies: .init(
+            infer: { _, _, _ in SpeechOutput(transcripts: [], text: "", processingSeconds: 0) },
+            deliver: { _, _ in throw DictationInput.InputError.targetChanged },
+            now: Date.init))
+        service.keepAudioForSpeakerPass = false
+        service.cleanUpTranscriptions = false
+        let passStore = try SpeakerPassStore(directory: folder)
+        service.speakerStore = passStore
+        service.beginRecoveryVerification(store: store)
+        defer { service.shutdown() }
+        let started = Date(timeIntervalSince1970: 1_800_000_000)
+        /// A finished one-row session of two words, stored directly.
+        func seed(_ session: String) throws {
+            let row = Transcript(sessionID: session, startedAt: started, startSeconds: 0, endSeconds: 1, text: "one two", mode: "ambient")
+            try store.append(row)
+            try store.appendWords([
+                StoredWord(transcriptID: row.id, position: 0, word: "one", startSeconds: 0, endSeconds: 0.4, probabilities: []),
+                StoredWord(transcriptID: row.id, position: 1, word: "two", startSeconds: 0.5, endSeconds: 0.9, probabilities: [])])
+        }
+        /// Starts a relabel of the session whose speakers wait for the gate, and returns once it holds the session's turn.
+        func hold(_ session: String, gate: DispatchSemaphore, log: RelabelLog) async throws -> Task<Bool, Error> {
+            let relabel = Task {
+                try await service.library.relabel(session) { words in
+                    log.append("held began")
+                    gate.wait()
+                    log.append("held ended")
+                    return words.map { _ in "speaker-1" }
+                }
+            }
+            while !log.entries.contains("held began") {
+                try await Task.sleep(for: .milliseconds(5))
+            }
+            return relabel
+        }
+
+        try seed("turns")
+        precondition(service.canInstallUpdate, "Install Update was held off before any relabel")
+        let gate = DispatchSemaphore(value: 0)
+        let log = RelabelLog()
+        let held = try await hold("turns", gate: gate, log: log)
+        let next = Task {
+            try await service.library.relabel("turns") { words in
+                log.append("next")
+                return words.map { _ in "speaker-2" }
+            }
+        }
+        // Long enough for the next relabel to reach its speakers if nothing made it wait.
+        try await Task.sleep(for: .milliseconds(300))
+        precondition(!log.entries.contains("next"), "A second relabel of the session ran while the first held its turn: \(log.entries)")
+        precondition(!service.canInstallUpdate, "Install Update was offered while a relabel was writing")
+        gate.signal()
+        _ = try await held.value
+        _ = try await next.value
+        precondition(log.entries == ["held began", "held ended", "next"], "The second relabel did not wait for the first: \(log.entries)")
+        let labels = try store.session(id: "turns").map(\.speakerID)
+        precondition(labels == ["speaker-2"], "The later relabel's speakers did not stay: \(labels)")
+        precondition(service.canInstallUpdate, "Install Update stayed held off after the relabels finished")
+        print("PASS: a second relabel of a session waits until the first has finished, the later one's speakers stay, and Install Update waits for both.")
+
+        // Regroup waits behind the held relabel; the session is deleted before its turn comes.
+        try seed("regroup-deleted")
+        let regroupGate = DispatchSemaphore(value: 0)
+        let regroupLog = RelabelLog()
+        let regroupBlocker = try await hold("regroup-deleted", gate: regroupGate, log: regroupLog)
+        let regroup = Task { try await service.regroupSession("regroup-deleted") }
+        try await Task.sleep(for: .milliseconds(50))
+        try service.deleteSession("regroup-deleted")
+        regroupGate.signal()
+        _ = try await regroupBlocker.value
+        do {
+            try await regroup.value
+        } catch {
+            preconditionFailure("Regroup of a session deleted while it waited reported: \(error.localizedDescription)")
+        }
+        precondition(service.notice == "Session deleted.", "Regroup of a deleted session changed the notice to: \(service.notice)")
+        print("PASS: Regroup of a session deleted while it waited returns quietly.")
+
+        // The pass stores its segments off the main thread, so they can land after the session is deleted. Here they land again while the pass waits for its turn, and the pass must remove them.
+        try seed("pass-deleted")
+        let passGate = DispatchSemaphore(value: 0)
+        let passLog = RelabelLog()
+        let passBlocker = try await hold("pass-deleted", gate: passGate, log: passLog)
+        let result = SpeakerPassResult(segments: [("S1", 0, 0.45), ("S2", 0.45, 1)], speakers: ["S1": [1], "S2": [2]], durationSeconds: 1, processingSeconds: 0.1)
+        let pass = Task { await service.speakers.apply(result, session: "pass-deleted", truncated: false) }
+        while try passStore.segments(sessionID: "pass-deleted").isEmpty {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        try service.deleteSession("pass-deleted")
+        try passStore.replace(sessionID: "pass-deleted", result: SpeakerPassRelabel.renumbered(result))
+        passGate.signal()
+        _ = try await passBlocker.value
+        await pass.value
+        let leftSegments = try passStore.segments(sessionID: "pass-deleted")
+        precondition(leftSegments.isEmpty, "A pass for a deleted session left \(leftSegments.count) segments behind")
+        let leftEvents = try store.events(sessionID: "pass-deleted")
+        precondition(leftEvents.isEmpty, "A pass for a deleted session recorded events: \(leftEvents.map(\.kind))")
+        print("PASS: a speaker pass whose session is deleted while it waits removes the segments it stored and records nothing.")
+
+        // A pass whose relabel fails partway still reloads Live: the row it already relabeled stays relabeled. The second row's words were stored out of order across two batches, so its first piece fails the store's word check.
+        let greeting = Transcript(sessionID: "fails", startedAt: started, startSeconds: 0, endSeconds: 0.3, text: "hi", speakerID: "speaker-4", mode: "ambient")
+        let reply = Transcript(sessionID: "fails", startedAt: started, startSeconds: 0.4, endSeconds: 2.2, text: "one two three", speakerID: "speaker-4", mode: "ambient")
+        try store.append(greeting)
+        try store.append(reply)
+        try store.appendWords([
+            StoredWord(transcriptID: greeting.id, position: 0, word: "hi", startSeconds: 0, endSeconds: 0.2, probabilities: []),
+            StoredWord(transcriptID: reply.id, position: 0, word: "one", startSeconds: 1.0, endSeconds: 1.2, probabilities: [])])
+        try store.appendWords([
+            StoredWord(transcriptID: reply.id, position: 1, word: "two", startSeconds: 0.5, endSeconds: 0.7, probabilities: []),
+            StoredWord(transcriptID: reply.id, position: 2, word: "three", startSeconds: 2.0, endSeconds: 2.2, probabilities: [])])
+        service.showLive("fails")
+        let failing = SpeakerPassResult(segments: [("S1", 0, 1.5), ("S2", 1.5, 3)], speakers: ["S1": [1], "S2": [2]], durationSeconds: 3, processingSeconds: 0.1)
+        await service.speakers.apply(failing, session: "fails", truncated: false)
+        precondition(service.notice.hasPrefix("Speaker pass failed"), "The relabel did not fail partway: \(service.notice)")
+        let shown = service.live.paragraphs.map(\.speakerID)
+        precondition(shown == ["speaker-1", "speaker-4"], "Live kept showing rows the failed relabel had already changed: \(shown)")
+        print("PASS: a speaker pass whose relabel fails partway still reloads Live with the rows it changed.")
+
+        // Regroup reloads Live too. Live's probabilities point every word at the first speaker, so Regroup relabels the row the capture labeled speaker-4.
+        let regrouped = Transcript(sessionID: "regroup-reloads", startedAt: started, startSeconds: 0, endSeconds: 1, text: "one two", speakerID: "speaker-4", mode: "ambient")
+        try store.append(regrouped)
+        try store.appendWords([
+            StoredWord(transcriptID: regrouped.id, position: 0, word: "one", startSeconds: 0, endSeconds: 0.4, probabilities: [0.9, 0, 0, 0]),
+            StoredWord(transcriptID: regrouped.id, position: 1, word: "two", startSeconds: 0.5, endSeconds: 0.9, probabilities: [0.9, 0, 0, 0])])
+        service.showLive("regroup-reloads")
+        try await service.regroupSession("regroup-reloads")
+        let regroupedLive = service.live.paragraphs.map(\.speakerID)
+        precondition(regroupedLive == ["speaker-1"], "Live kept showing the speakers from before Regroup: \(regroupedLive)")
+        print("PASS: Regroup reloads Live with the speakers it wrote.")
+
+        // A session saved before words were kept cannot be regrouped, and Regroup says so.
+        try store.append(Transcript(sessionID: "no-words", startedAt: started, startSeconds: 0, endSeconds: 1, text: "recorded before words were kept", mode: "ambient"))
+        do {
+            try await service.regroupSession("no-words")
+            preconditionFailure("Regroup of a session without words reported nothing: \(service.notice)")
+        } catch {
+            let message = error.localizedDescription
+            precondition(message == "This session was recorded before Jot kept word timings; it cannot be regrouped.", "Regroup of a session without words reported: \(message)")
+        }
+        print("PASS: Regroup of a session saved before words were kept says it cannot be regrouped.")
+
+        // The pass stores its voices before it relabels the rows. While it waits its turn, a row still carries its live speaker id, which can name another voice in the pass, so the name sheet offers no voice to remember.
+        try seed("voices")
+        let voicesGate = DispatchSemaphore(value: 0)
+        let voicesLog = RelabelLog()
+        let voicesBlocker = try await hold("voices", gate: voicesGate, log: voicesLog)
+        let voices = SpeakerPassResult(segments: [("S1", 0, 1)], speakers: ["S1": [1, 0]], durationSeconds: 1, processingSeconds: 0.1)
+        let voicesPass = Task { await service.speakers.apply(voices, session: "voices", truncated: false) }
+        while try passStore.speakers(sessionID: "voices").isEmpty {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        let waiting = service.passEmbedding(session: "voices", speaker: "speaker-1")
+        precondition(waiting == nil, "The name sheet offered a pass voice before the pass relabeled the rows: \(String(describing: waiting))")
+        voicesGate.signal()
+        _ = try await voicesBlocker.value
+        await voicesPass.value
+        let relabeled = service.passEmbedding(session: "voices", speaker: "speaker-1")
+        precondition(relabeled != nil, "The name sheet offered no pass voice once the pass relabeled the rows: \(service.notice)")
+        print("PASS: the name sheet offers a pass voice only once the pass has relabeled the session's rows.")
+    }
+
+    /// A speaker pass and a Regroup over a long session run while listening continues. The longest main-actor gap stays within 50 ms of the same run's gap with no relabel, and a microphone that holds one second never overflows into an audio gap.
+    @MainActor static func checkSpeakerPassKeepsMainFree(directory: URL) async throws {
+        let folder = directory.appendingPathComponent("long-session")
+        let store = try TranscriptStore(directory: folder)
+        // The real queue holds eight seconds; one second here makes a stall of a second or more lose audio.
+        let microphone = ClockedMicrophone(holdingSeconds: 1)
+        var dependencies = SpeechServiceDependencies(
+            infer: { _, _, _ in SpeechOutput(transcripts: [], text: "", processingSeconds: 0) },
+            deliver: { _, _ in throw DictationInput.InputError.targetChanged },
+            now: Date.init)
+        dependencies.makeMicrophone = { microphone }
+        let service = SpeechService(dependencies: dependencies)
+        service.keepAudioForSpeakerPass = false
+        service.cleanUpTranscriptions = false
+        service.speakerStore = try SpeakerPassStore(directory: folder)
+        service.beginRecoveryVerification(store: store)
+        defer { service.shutdown() }
+
+        // 3,000 cleaned rows of ten words, each row three seconds like a live block.
+        let session = "seeded"
+        let started = Date(timeIntervalSince1970: 1_800_000_000)
+        let vocabulary = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliet"]
+        let text = vocabulary.joined(separator: " ")
+        var rows: [Transcript] = []
+        var words: [StoredWord] = []
+        for index in 0..<3_000 {
+            let start = Double(index) * 3
+            let row = Transcript(sessionID: session, startedAt: started, startSeconds: start, endSeconds: start + 2.95, text: text, mode: "ambient")
+            rows.append(row)
+            for (position, word) in vocabulary.enumerated() {
+                let wordStart = start + Double(position) * 0.3
+                words.append(StoredWord(transcriptID: row.id, position: position, word: word, startSeconds: wordStart, endSeconds: wordStart + 0.25, probabilities: []))
+            }
+        }
+        for row in rows {
+            try store.append(row)
+        }
+        for start in stride(from: 0, to: words.count, by: 15_000) {
+            try store.appendWords(Array(words[start..<min(start + 15_000, words.count)]))
+        }
+        let readable = Array(repeating: "Alpha bravo charlie delta echo foxtrot golf hotel india juliet.", count: rows.count)
+        let seeded = try store.setReadablePhrase(readable, for: rows)
+        precondition(seeded, "The long session was not seeded")
+        // 1,500 six-second turns rotating three voices. Each turn starts halfway through a row, so the pass splits every other row. Regroup from the same segments then relabels all 4,500 rows in place.
+        let segments = (0..<1_500).map { turn in (speaker: "S\(turn % 3 + 1)", start: Double(turn) * 6 + 1.5, end: Double(turn) * 6 + 7.5) }
+        let pass = SpeakerPassResult(segments: segments, speakers: ["S1": [1], "S2": [2], "S3": [3]], durationSeconds: 9_000, processingSeconds: 1)
+
+        // Listening goes on. Every 5 ms the ticker drains the microphone and does what a recognized block does: it saves a row and its word, adds the row to Live, and refreshes the recent rows and the Sessions list. It returns the longest gap between wakes beyond the 5 ms it sleeps.
+        let listening = service.activeSessionID!
+        func listen() -> Task<Duration, Never> {
+            // The clock starts before the ticker's first run, so a stall that keeps it from starting is counted too.
+            let tickerStarted = ContinuousClock.now
+            return Task { @MainActor () -> Duration in
+                var longest = Duration.zero
+                var last = tickerStarted
+                var ticks = 0
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(5))
+                    let now = ContinuousClock.now
+                    longest = max(longest, last.duration(to: now) - .milliseconds(5))
+                    last = now
+                    service.drainAudio()
+                    service.kickWorker()
+                    ticks += 1
+                    let start = Double(ticks) * 0.01
+                    let row = Transcript(sessionID: listening, startedAt: started, startSeconds: start, endSeconds: start + 0.005, text: "tick", mode: "ambient")
+                    try? store.append(row)
+                    service.appendLive([row])
+                    try? store.appendWords([StoredWord(transcriptID: row.id, position: 0, word: "tick", startSeconds: start, endSeconds: start + 0.005, probabilities: [])])
+                    service.refreshRecent()
+                    service.refreshSessions()
+                }
+                return longest
+            }
+        }
+        try microphone.start()
+        let quiet = listen()
+        try await Task.sleep(for: .seconds(1))
+        quiet.cancel()
+        let baseline = await quiet.value
+        let ticker = listen()
+        try await Task.sleep(for: .milliseconds(20))
+        let began = ContinuousClock.now
+        await service.speakers.apply(pass, session: session, truncated: false)
+        let passTime = began.duration(to: .now)
+        try await service.regroupSession(session)
+        let total = began.duration(to: .now)
+        ticker.cancel()
+        let gap = await ticker.value
+        let events = try store.events(limit: 200)
+        let rowCount = try store.session(id: session).count
+        let cleanedCount = try store.readableTexts(sessionID: session).count
+        precondition(events.contains { $0.kind == "speaker_pass" }, "The speaker pass did not finish: \(service.notice)")
+        precondition(rowCount == 4_500, "Every other row should have split in two, not \(rowCount) rows")
+        precondition(cleanedCount == 4_500, "A relabeled row lost its cleaned text: \(cleanedCount) cleaned rows")
+        let allowed = max(.milliseconds(50), baseline + .milliseconds(50))
+        func milliseconds(_ duration: Duration) -> String { String(format: "%.1f ms", Double(duration / .microseconds(1)) / 1_000) }
+        func seconds(_ duration: Duration) -> String { String(format: "%.2f s", Double(duration / .milliseconds(1)) / 1_000) }
+        let timing = "longest main-actor gap \(milliseconds(gap)) against \(milliseconds(baseline)) with no relabel, pass \(seconds(passTime)), pass and Regroup \(seconds(total)), \(service.droppedSeconds) s of audio dropped"
+        print("Speaker pass over 3,000 rows: \(timing).")
+        precondition(gap < allowed, "The main actor stalled during the pass: \(timing)")
+        precondition(service.droppedSeconds == 0, "Listening dropped \(service.droppedSeconds) s of audio during the pass")
+        precondition(!events.contains { $0.kind == "audio_gap" }, "An audio gap was recorded during the pass")
+        print("PASS: a speaker pass and Regroup over 3,000 rows keep the main actor's longest gap within 50 ms of listening alone, and a microphone holding one second drops no audio.")
     }
 
     @MainActor static func checkRealRecognition(_ file: URL) async throws {
