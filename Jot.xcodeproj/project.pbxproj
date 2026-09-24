@@ -35,6 +35,7 @@
 		3DD394A4CDE801E64E1CFA12 /* SpeakerAssignment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91BE6EEF6AD6F736A1D00FE4 /* SpeakerAssignment.swift */; };
 		3DEE5E37A8CB60A338F2A646 /* MicrophoneCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF1B77AE53082548A951DF56 /* MicrophoneCapture.swift */; };
 		3EE470210860C149E986B472 /* CaptureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C898180408412523C4E31E37 /* CaptureController.swift */; };
+		43ECAEC64D13D60A06F67C68 /* LiveFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83E9B4C4D2C753F1BDECE6F0 /* LiveFeed.swift */; };
 		44270DB6A337277CD915775F /* MeetingExportWait.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4D583EF07B940C30081D6E /* MeetingExportWait.swift */; };
 		46763F17227E20457A2F24FC /* DictationInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82A3D8CCC3D071ABC0F5EE69 /* DictationInput.swift */; };
 		48A035BE8890396E0ED43AAE /* JotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBA0F84BDC3CF425D094A331 /* JotApp.swift */; };
@@ -193,6 +194,7 @@
 		82A3D8CCC3D071ABC0F5EE69 /* DictationInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationInput.swift; sourceTree = "<group>"; };
 		82F2EA91CC53C86941193E3C /* PhraseCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhraseCleanup.swift; sourceTree = "<group>"; };
 		83ACD6F41350D0FEEF8F9394 /* DictationCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationCleanup.swift; sourceTree = "<group>"; };
+		83E9B4C4D2C753F1BDECE6F0 /* LiveFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveFeed.swift; sourceTree = "<group>"; };
 		843F15BB91A9B223CEA18CB9 /* check-capture-flow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "check-capture-flow.swift"; sourceTree = "<group>"; };
 		8680759A7B6F51ABC6336028 /* SpeakerRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerRecognizer.swift; sourceTree = "<group>"; };
 		87AE9B1836DA9D504389E51A /* ServiceLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceLifecycle.swift; sourceTree = "<group>"; };
@@ -377,6 +379,7 @@
 				6646658769779D619884AA27 /* DictationSpeakerMute.swift */,
 				B02C95F663096FB499C5FD80 /* JotDefaultsKey.swift */,
 				D8260B75D679FF88E8921F1B /* JotVersion.swift */,
+				83E9B4C4D2C753F1BDECE6F0 /* LiveFeed.swift */,
 				D1812288F51560118033D92A /* LocalService.swift */,
 				00B4F5D92D25351C93A3E99B /* MachTimebase.swift */,
 				BA19A72F6D28FCFD5CA7D316 /* MCPTools.swift */,
@@ -662,6 +665,7 @@
 				7F7F23DCD4A5FFD39B920C97 /* DictationSpeakerMute.swift in Sources */,
 				132C26A14258A6D3C8F0920D /* JotDefaultsKey.swift in Sources */,
 				E7E4D5D9AA889DAD7DFCB9C8 /* JotVersion.swift in Sources */,
+				43ECAEC64D13D60A06F67C68 /* LiveFeed.swift in Sources */,
 				2D62FA2C153FEDA91143654A /* LocalService.swift in Sources */,
 				55B642EC08906D1FD23C693A /* MCPTools.swift in Sources */,
 				A6DB3AD1B2BD456A7B73ECC5 /* MachTimebase.swift in Sources */,

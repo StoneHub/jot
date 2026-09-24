@@ -8,14 +8,14 @@ protocol LiveCleanupHost: AnyObject {
     var store: TranscriptStore? { get }
     var cleanUpTranscriptions: Bool { get }
     func sessionIsDeleted(_ id: String) -> Bool
+    func replaceLive(texts: [String: String])
     func refreshRecent()
     func refreshSessions()
 }
 
 /// Rewrites saved recognition into readable text: live rows as whole phrases, one phrase at a time, and a held dictation's text before insertion.
 @MainActor
-final class LiveCleanup: ObservableObject {
-    @Published private(set) var cleanupRevision = 0
+final class LiveCleanup {
     private var cleanupTasks: [UUID: Task<Void, Never>] = [:]
     private var phraseCleanup = PhraseCleanup()
     private var cleanupQueue: [PhraseCleanup.Phrase] = []
@@ -79,7 +79,8 @@ final class LiveCleanup: ObservableObject {
                 do {
                     let readable = PhraseCleanup.distribute(text, over: phrase.sources)
                     if try host.store?.setReadablePhrase(readable, for: phrase.sources) == true {
-                        cleanupAppliedCount += 1; cleanupRevision += 1
+                        cleanupAppliedCount += 1
+                        host.replaceLive(texts: Dictionary(uniqueKeysWithValues: zip(phrase.sources.map(\.id), readable)))
                         host.refreshRecent(); host.refreshSessions()
                     } else { cleanupBypassedCount += 1 }
                 } catch { cleanupBypassedCount += 1 }

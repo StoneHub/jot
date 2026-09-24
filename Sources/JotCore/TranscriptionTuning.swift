@@ -116,17 +116,23 @@ public enum TranscriptGrouping {
     public static func foldContinuations(_ source: [Transcript], gap: Double = 1.5) -> [Transcript] {
         var result = source.sorted { $0.startedAt.addingTimeInterval($0.startSeconds) < $1.startedAt.addingTimeInterval($1.startSeconds) }
         for index in result.indices.dropFirst() {
-            let previous = result[index - 1]
-            guard result[index].speakerID == nil, result[index].mode == "ambient", previous.mode == "ambient",
-                  previous.sessionID == result[index].sessionID,
-                  let speaker = previous.speakerID, speaker != "overlap",
-                  result[index].startSeconds - previous.endSeconds >= -0.1,
-                  result[index].startSeconds - previous.endSeconds < gap,
-                  !endsSentence(previous.text) else { continue }
-            result[index].speakerID = speaker
-            result[index].speakerLabel = previous.speakerLabel
+            result[index] = foldContinuation(result[index], after: result[index - 1], gap: gap)
         }
         return result
+    }
+
+    /// One row of foldContinuations: the row with the previous row's speaker when it picks up that speaker's unfinished sentence, otherwise the row as it is. `previous` is already folded.
+    public static func foldContinuation(_ row: Transcript, after previous: Transcript, gap: Double) -> Transcript {
+        guard row.speakerID == nil, row.mode == "ambient", previous.mode == "ambient",
+              previous.sessionID == row.sessionID,
+              let speaker = previous.speakerID, speaker != "overlap",
+              row.startSeconds - previous.endSeconds >= -0.1,
+              row.startSeconds - previous.endSeconds < gap,
+              !endsSentence(previous.text) else { return row }
+        var folded = row
+        folded.speakerID = speaker
+        folded.speakerLabel = previous.speakerLabel
+        return folded
     }
 
     static func endsSentence(_ text: String) -> Bool {

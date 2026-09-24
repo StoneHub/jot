@@ -112,7 +112,7 @@ public final class TranscriptStore: @unchecked Sendable {
         do {
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: databaseURL.path)
             sqlite3_busy_timeout(db, 5_000)
-            try execute("PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS transcripts (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, started_at REAL NOT NULL, start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, text TEXT NOT NULL, speaker_id TEXT, mode TEXT NOT NULL CHECK(mode IN ('ambient','dictation'))); CREATE INDEX IF NOT EXISTS transcript_absolute_time ON transcripts((started_at + start_seconds) DESC, id DESC); CREATE INDEX IF NOT EXISTS transcript_session ON transcripts(session_id); CREATE TABLE IF NOT EXISTS speaker_labels (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY(session_id,speaker_id)); CREATE TABLE IF NOT EXISTS capture_events (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, timestamp REAL NOT NULL, kind TEXT NOT NULL, detail TEXT NOT NULL, duration_seconds REAL CHECK(duration_seconds >= 0)); CREATE INDEX IF NOT EXISTS capture_event_time ON capture_events(timestamp DESC,id DESC); CREATE INDEX IF NOT EXISTS capture_event_session_time ON capture_events(session_id,timestamp DESC,id DESC); CREATE TABLE IF NOT EXISTS session_titles (session_id TEXT PRIMARY KEY, title TEXT NOT NULL); CREATE TABLE IF NOT EXISTS transcript_readable (transcript_id TEXT PRIMARY KEY REFERENCES transcripts(id) ON DELETE CASCADE, text TEXT NOT NULL); CREATE TABLE IF NOT EXISTS session_speakers (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, embedding BLOB NOT NULL, duration_seconds REAL NOT NULL CHECK(duration_seconds >= 0), PRIMARY KEY(session_id, speaker_id)); CREATE TABLE IF NOT EXISTS session_segments (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, start_seconds REAL NOT NULL CHECK(start_seconds >= 0), end_seconds REAL NOT NULL CHECK(end_seconds >= start_seconds)); CREATE INDEX IF NOT EXISTS session_segment_time ON session_segments(session_id, start_seconds); CREATE TABLE IF NOT EXISTS transcript_words (transcript_id TEXT NOT NULL REFERENCES transcripts(id) ON DELETE CASCADE, position INTEGER NOT NULL, word TEXT NOT NULL, start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, p1 REAL, p2 REAL, p3 REAL, p4 REAL, PRIMARY KEY(transcript_id, position)); CREATE TABLE IF NOT EXISTS dictation_attempts (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, started_at REAL NOT NULL, ended_at REAL, text TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('capturing','recognizing','ready','deliveryFailed','deliveryUnverified','delivered','discarded')), has_gap INTEGER NOT NULL DEFAULT 0, updated_at REAL NOT NULL); CREATE INDEX IF NOT EXISTS dictation_attempt_state_time ON dictation_attempts(state, updated_at DESC);")
+            try execute("PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS transcripts (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, started_at REAL NOT NULL, start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, text TEXT NOT NULL, speaker_id TEXT, mode TEXT NOT NULL CHECK(mode IN ('ambient','dictation'))); CREATE INDEX IF NOT EXISTS transcript_absolute_time ON transcripts((started_at + start_seconds) DESC, id DESC); CREATE INDEX IF NOT EXISTS transcript_session_time ON transcripts(session_id, (started_at + start_seconds), id); CREATE TABLE IF NOT EXISTS speaker_labels (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY(session_id,speaker_id)); CREATE TABLE IF NOT EXISTS capture_events (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, timestamp REAL NOT NULL, kind TEXT NOT NULL, detail TEXT NOT NULL, duration_seconds REAL CHECK(duration_seconds >= 0)); CREATE INDEX IF NOT EXISTS capture_event_time ON capture_events(timestamp DESC,id DESC); CREATE INDEX IF NOT EXISTS capture_event_session_time ON capture_events(session_id,timestamp DESC,id DESC); CREATE TABLE IF NOT EXISTS session_titles (session_id TEXT PRIMARY KEY, title TEXT NOT NULL); CREATE TABLE IF NOT EXISTS transcript_readable (transcript_id TEXT PRIMARY KEY REFERENCES transcripts(id) ON DELETE CASCADE, text TEXT NOT NULL); CREATE TABLE IF NOT EXISTS session_speakers (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, embedding BLOB NOT NULL, duration_seconds REAL NOT NULL CHECK(duration_seconds >= 0), PRIMARY KEY(session_id, speaker_id)); CREATE TABLE IF NOT EXISTS session_segments (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, start_seconds REAL NOT NULL CHECK(start_seconds >= 0), end_seconds REAL NOT NULL CHECK(end_seconds >= start_seconds)); CREATE INDEX IF NOT EXISTS session_segment_time ON session_segments(session_id, start_seconds); CREATE TABLE IF NOT EXISTS transcript_words (transcript_id TEXT NOT NULL REFERENCES transcripts(id) ON DELETE CASCADE, position INTEGER NOT NULL, word TEXT NOT NULL, start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, p1 REAL, p2 REAL, p3 REAL, p4 REAL, PRIMARY KEY(transcript_id, position)); CREATE TABLE IF NOT EXISTS dictation_attempts (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, started_at REAL NOT NULL, ended_at REAL, text TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('capturing','recognizing','ready','deliveryFailed','deliveryUnverified','delivered','discarded')), has_gap INTEGER NOT NULL DEFAULT 0, updated_at REAL NOT NULL); CREATE INDEX IF NOT EXISTS dictation_attempt_state_time ON dictation_attempts(state, updated_at DESC);")
             if try !hasColumn("has_gap", in: "dictation_attempts") {
                 try execute("ALTER TABLE dictation_attempts ADD COLUMN has_gap INTEGER NOT NULL DEFAULT 0")
             }
@@ -401,7 +401,7 @@ public final class TranscriptStore: @unchecked Sendable {
     public func search(_ query: String, mode: String? = nil, limit: Int = 50, offset: Int = 0) throws -> [Transcript] {
         try locked {
             let escaped = query.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "%", with: "\\%").replacingOccurrences(of: "_", with: "\\_")
-            return try rows(where: "WHERE COALESCE(r.text,t.text) LIKE ? ESCAPE '\\'" + modeClause(mode), value: "%" + escaped + "%", limit: limit, offset: offset)
+            return try rows(where: "WHERE COALESCE(r.text,t.text) LIKE ? ESCAPE '\\'" + modeClause(mode), value: "%" + escaped + "%", limit: clamp(limit), offset: offset)
         }
     }
 
@@ -445,7 +445,7 @@ public final class TranscriptStore: @unchecked Sendable {
     }
 
     public func recent(mode: String? = nil, limit: Int = 50, offset: Int = 0) throws -> [Transcript] {
-        try locked { try rows(where: mode == nil ? "" : "WHERE 1=1" + modeClause(mode), value: nil, limit: limit, offset: offset) }
+        try locked { try rows(where: mode == nil ? "" : "WHERE 1=1" + modeClause(mode), value: nil, limit: clamp(limit), offset: offset) }
     }
 
     /// How many rows of one kind exist, for the sidebar counts; nil counts both kinds.
@@ -462,16 +462,11 @@ public final class TranscriptStore: @unchecked Sendable {
         switch mode { case "dictation"?: return " AND t.mode = 'dictation'"; case "ambient"?: return " AND t.mode = 'ambient'"; default: return "" }
     }
 
-    /// Every row of one session in chronological order, for export. Bounded at 10,000 rows so a response stays inside the socket frame limit.
+    /// Every row of one session in spoken order (absolute start time, then id), for Live, Sessions, and export. One query on the session's time index. Bounded at the newest 10,000 rows so a response stays inside the socket frame limit.
     public func session(id: String) throws -> [Transcript] {
         try locked {
-            var result: [Transcript] = []
-            while result.count < 10_000 {
-                let page = try rows(where: "WHERE t.session_id = ?", value: id, limit: 200, offset: result.count)
-                result.append(contentsOf: page)
-                if page.count < 200 { break }
-            }
-            return result.sorted { ($0.startSeconds, $0.id) < ($1.startSeconds, $1.id) }
+            let newestFirst = try rows(where: "WHERE t.session_id = ?", value: id, limit: 10_000, offset: 0)
+            return newestFirst.reversed()
         }
     }
 
@@ -639,7 +634,7 @@ public final class TranscriptStore: @unchecked Sendable {
         defer { sqlite3_finalize(stmt) }
         var index: Int32 = 1
         if let value { bind(value, to: index, in: stmt); index += 1 }
-        sqlite3_bind_int(stmt, index, Int32(clamp(limit)))
+        sqlite3_bind_int(stmt, index, Int32(limit))
         sqlite3_bind_int64(stmt, index + 1, Int64(max(0, offset)))
         var result: [Transcript] = []
         while true {

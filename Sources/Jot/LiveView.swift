@@ -14,6 +14,8 @@ struct LiveView: View {
     @State private var working = false
     @State private var selectedRows = Set<String>()
     @State private var displayedCleanupRevision = 0
+    /// The feed revision on screen; it changes whenever the feed's text does.
+    @State private var displayedRevision = 0
     /// True while the feed is scrolled to its end; new rows then keep the end in view, a reader who scrolled up is left alone.
     @State private var pinned = true
     /// Set by Clear: lines up to this moment stay in the session but are hidden here.
@@ -28,8 +30,8 @@ struct LiveView: View {
         for name in rows.compactMap(\.speakerLabel) where !name.isEmpty && !names.contains(name) { names.append(name) }
         return names
     }
-    /// Follow text replacements too, including equal-length edits and changes above the last row.
-    private var feedKey: [String] { shown.flatMap { [$0.id, $0.text] } }
+    /// Follow text replacements too, including equal-length edits and changes above the last row: the revision covers new and cleaned text, the count covers Clear and Show all.
+    private var feedKey: [Int] { [displayedRevision, shown.count] }
     private var shown: [Transcript] {
         guard let clearedThrough else { return rows }
         return rows.filter { $0.startedAt.addingTimeInterval($0.startSeconds) > clearedThrough }
@@ -54,11 +56,10 @@ struct LiveView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .onAppear(perform: refresh)
-        .onChange(of: service.activeSessionID) { _, _ in clearedThrough = nil; refresh() }
-        .onChange(of: service.ambientEnabled) { _, _ in refresh() }
-        .onChange(of: service.sessions.map(\.transcriptCount)) { _, _ in refresh() }
-        .onChange(of: service.transcriptRevision) { _, _ in refresh() }
+        .onAppear(perform: showFeed)
+        .onChange(of: shownID) { _, _ in showFeed() }
+        .onChange(of: service.activeSessionID) { _, _ in clearedThrough = nil }
+        .onChange(of: service.live.revision) { _, _ in refresh() }
         .onChange(of: service.historyRevision) { _, _ in selectedRows.removeAll(); labelTarget = nil; refresh() }
         .sheet(item: $labelTarget) { target in
             SpeakerNameSheet(transcript: target, service: service, draft: $labelDraft,
@@ -184,10 +185,18 @@ struct LiveView: View {
         .background((color ?? Color.primary).opacity(color == nil ? 0.08 : 0.16), in: Capsule())
     }
 
+    /// Reads a session only when Live switches to it; after that the feed keeps itself current.
+    private func showFeed() {
+        service.showLive(shownID)
+        refresh()
+    }
+
+    /// Copies the feed unless text is selected, so a selection holds still until it is released.
     private func refresh() {
         guard selectedRows.isEmpty else { return }
-        displayedCleanupRevision = service.cleanupRevision
-        rows = shownID.map { service.sessionParagraphs($0, minimumMergeGap: 1.21) } ?? []
+        displayedCleanupRevision = service.live.cleanupRevision
+        displayedRevision = service.live.revision
+        rows = service.live.paragraphs
     }
     private func commitRename() {
         service.renameMeeting(titleDraft); renaming = false

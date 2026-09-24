@@ -31,7 +31,7 @@ extension SpeechService {
     var hasMoreHistory: Bool { library.hasMoreHistory }
     var dictationCount: Int { library.dictationCount }
     var historyRevision: Int { library.historyRevision }
-    var transcriptRevision: Int { library.transcriptRevision }
+    var live: LiveFeed { library.live }
     var sessions: [TranscriptSession] { library.sessions }
     var lastExport: URL? { library.lastExport }
     static var exportDirectory: URL { SessionLibrary.exportDirectory }
@@ -40,7 +40,10 @@ extension SpeechService {
     func refreshSessions() { library.refreshSessions() }
     func searchHistory(_ query: String) { library.searchHistory(query) }
     func loadMoreHistory() { library.loadMoreHistory() }
-    func sessionParagraphs(_ id: String, minimumMergeGap: Double = 0) -> [Transcript] { library.sessionParagraphs(id, minimumMergeGap: minimumMergeGap) }
+    func sessionParagraphs(_ id: String) -> [Transcript] { library.sessionParagraphs(id) }
+    func showLive(_ id: String?) { library.showLive(id) }
+    func appendLive(_ rows: [Transcript]) { library.appendLive(rows) }
+    func replaceLive(texts: [String: String]) { library.replaceLive(texts: texts) }
     func searchSessions(_ query: String) -> [Transcript] { library.searchSessions(query) }
     func renameSession(_ id: String, title: String) { library.renameSession(id, title: title) }
     func exportable(_ id: String) throws -> (session: TranscriptSession, rows: [Transcript]) { try library.exportable(id) }
@@ -80,6 +83,8 @@ extension SpeechService {
     var speakerPassRunning: Bool { speakers.passRunning }
 
     func labelSpeaker(session: String, speaker: String, name: String, voice: [Float]? = nil) {
+        // The name is saved before the voice is remembered, so Live shows it even when remembering the voice fails.
+        defer { library.reloadLive() }
         do { try speakers.labelSpeaker(session: session, speaker: speaker, name: name, voice: voice) }
         catch { notice = error.localizedDescription }
     }
@@ -94,10 +99,6 @@ extension SpeechService {
     var sessionStarted: Date { timeline.sessionStarted }
     var ambientOffset: Double { timeline.ambientOffset }
     var activeSessionID: String? { timeline.activeSessionID }
-
-    // MARK: Live cleanup
-
-    var cleanupRevision: Int { cleanup.cleanupRevision }
 
     // MARK: Dictation
 

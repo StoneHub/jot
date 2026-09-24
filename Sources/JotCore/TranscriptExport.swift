@@ -6,16 +6,29 @@ public enum TranscriptExport {
     public static func paragraphs(_ rows: [Transcript], mergeWithin: Double = 1.5) -> [Transcript] {
         var result: [Transcript] = []
         for row in rows {
-            if let previous = result.last, previous.speakerID == row.speakerID, previous.speakerLabel == row.speakerLabel,
-               previous.sessionID == row.sessionID, previous.mode == row.mode,
-               row.startSeconds - previous.endSeconds >= -0.1,
-               row.startSeconds - previous.endSeconds < mergeWithin {
-                result[result.count - 1].text = [previous.text, row.text.trimmingCharacters(in: .whitespaces)]
-                    .filter { !$0.isEmpty }.joined(separator: " ")
-                result[result.count - 1].endSeconds = max(previous.endSeconds, row.endSeconds)
+            if let last = result.indices.last, canMerge(row, into: result[last], within: mergeWithin) {
+                merge(row, into: &result[last])
             } else { result.append(row) }
         }
         return result
+    }
+
+    /// One row of paragraphs: whether the row joins the paragraph before it rather than starting a new one.
+    public static func canMerge(_ row: Transcript, into paragraph: Transcript, within mergeWithin: Double) -> Bool {
+        paragraph.speakerID == row.speakerID && paragraph.speakerLabel == row.speakerLabel
+            && paragraph.sessionID == row.sessionID && paragraph.mode == row.mode
+            && row.startSeconds - paragraph.endSeconds >= -0.1
+            && row.startSeconds - paragraph.endSeconds < mergeWithin
+    }
+
+    /// Joins the row's text and end onto the paragraph. The text is added in place, so a long paragraph is built in time proportional to its length rather than its square.
+    public static func merge(_ row: Transcript, into paragraph: inout Transcript) {
+        let text = row.text.trimmingCharacters(in: .whitespaces)
+        if !text.isEmpty && !paragraph.text.isEmpty {
+            paragraph.text += " "
+        }
+        paragraph.text += text
+        paragraph.endSeconds = max(paragraph.endSeconds, row.endSeconds)
     }
 
     public static func markdown(session: TranscriptSession, rows: [Transcript]) -> String {

@@ -8,13 +8,16 @@ protocol SessionLibraryHost: AnyObject {
     var notice: String { get set }
 }
 
-/// Reads and edits saved sessions and dictations for the screens and the socket API: recent rows, the paged Dictations list, Sessions, export, rename, delete, and regroup. Live capture never goes through here.
+/// Reads and edits saved sessions and dictations for the screens and the socket API: recent rows, the paged Dictations list, Sessions, export, rename, delete, and regroup. Capture writes rows itself and hands the saved rows and cleaned text to the Live feed here.
 @MainActor
 final class SessionLibrary: ObservableObject {
     var store: TranscriptStore?
     @Published var recent: [Transcript] = []
-    /// Content changes include cleanup replacements that leave row counts unchanged.
-    @Published private(set) var transcriptRevision = 0
+    /// The session Live shows. It is read once when shown; after that new rows and cleaned text arrive as they are saved.
+    /// Not @Published: its setter would copy every row of the feed on each change. The feed changes in place after objectWillChange.
+    private(set) var live = LiveFeed()
+    /// True when Live's last read failed, so the next show reads again even for the session already shown.
+    private var liveReadFailed = false
     @Published var history: [Transcript] = []
     @Published var events: [CaptureEvent] = []
     @Published var hasMoreHistory = false
@@ -42,7 +45,6 @@ final class SessionLibrary: ObservableObject {
             recent = try store?.recent(limit: 20) ?? []
             events = try store?.events(limit: 50) ?? []
             refreshHistory()
-            transcriptRevision += 1
         }
         catch { host.notice = error.localizedDescription }
     }
@@ -79,15 +81,67 @@ final class SessionLibrary: ObservableObject {
 
     func didDeleteHistory() {
         refreshRecent(); refreshSessions()
+        reloadLive()
         historyRevision += 1
     }
 
     /// Folded and merged rows for reading one session. Stored rows are untouched.
-    func sessionParagraphs(_ id: String, minimumMergeGap: Double = 0) -> [Transcript] {
+    func sessionParagraphs(_ id: String) -> [Transcript] {
         guard let store else { return [] }
-        let gap = max(minimumMergeGap, host.tuning.bounded.paragraphPause)
+        let gap = host.tuning.bounded.paragraphPause
         do { return TranscriptExport.paragraphs(TranscriptGrouping.foldContinuations(try store.session(id: id), gap: gap), mergeWithin: gap) }
         catch { host.notice = error.localizedDescription; return [] }
+    }
+
+    /// Live joins rows up to phrase cleanup's 1.2-second gap even under a shorter paragraph pause, so a cleaned phrase stays one paragraph.
+    private static let liveMergeGap = 1.21
+
+    /// Shows one session in Live, reading it once. Showing the session already shown keeps it as it is, unless its last read failed.
+    func showLive(_ id: String?) {
+        guard id != live.sessionID || liveReadFailed else { return }
+        loadLive(id)
+    }
+
+    /// Reads Live's session again after an edit that is not a new row or cleanup: a speaker name, a delete, a regroup, or a new paragraph pause.
+    func reloadLive() {
+        loadLive(live.sessionID)
+    }
+
+    /// Rows just saved; Live adds those of the session it shows.
+    func appendLive(_ rows: [Transcript]) {
+        objectWillChange.send()
+        live.append(rows)
+    }
+
+    /// Cleaned text just saved, by row id; Live puts it in place of the raw text.
+    func replaceLive(texts: [String: String]) {
+        objectWillChange.send()
+        live.replace(texts: texts)
+    }
+
+    private func loadLive(_ id: String?) {
+        let gap = max(Self.liveMergeGap, host.tuning.bounded.paragraphPause)
+        guard let id, let store else {
+            liveReadFailed = false
+            objectWillChange.send()
+            live.show(sessionID: nil, rows: [], labels: [:], gap: gap)
+            return
+        }
+        do {
+            let rows = try store.session(id: id)
+            let labels = try store.labels(sessionID: id)
+            liveReadFailed = false
+            objectWillChange.send()
+            live.show(sessionID: id, rows: rows, labels: labels, gap: gap)
+        } catch {
+            host.notice = error.localizedDescription
+            liveReadFailed = true
+            // A failed reload keeps what Live shows. A failed switch still moves Live to the new session, with no rows, so rows saved from now on show.
+            if id != live.sessionID {
+                objectWillChange.send()
+                live.show(sessionID: id, rows: [], labels: [:], gap: gap)
+            }
+        }
     }
 
     /// Rows from any ambient session whose text contains the query, newest first, for the Sessions search.
