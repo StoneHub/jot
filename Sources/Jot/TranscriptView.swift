@@ -79,6 +79,8 @@ struct TranscriptView: View {
                         }
                     }.padding(.bottom, 8)
                 }
+                // Glass inside a scroll view still draws above the title bar unless the scroll view clips it.
+                .clipped()
                 HStack(spacing: 14) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("CPU").font(.caption).foregroundStyle(.secondary)
@@ -108,7 +110,6 @@ struct TranscriptView: View {
                 .overlay(alignment: .bottomTrailing) { NoticeToast(notice: service.notice).padding(20) }
         }
         .padding(16)
-        .modifier(GlassStage())
         .background(JotBackdrop())
         .tint(Color(nsColor: .controlAccentColor))
         .background(WindowAttachment(attach: delegate.attach))
