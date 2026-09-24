@@ -109,7 +109,7 @@ extension SpeechService {
 }
 
 extension SpeechService: SessionLibraryHost {
-    func sessionIsSettled(_ id: String) -> Bool { jobs.allSatisfy { $0.sessionID != id } && processing == nil }
+    func sessionIsSettled(_ id: String) -> Bool { jobs.allSatisfy { $0.sessionID != id } && processing == nil && !cleanup.isCleaning(session: id) }
 }
 
 extension SpeechService: ListeningTimelineHost {

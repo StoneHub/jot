@@ -6,7 +6,7 @@ import JotCore
 protocol SessionLibraryHost: AnyObject {
     var tuning: TranscriptionTuning { get }
     var notice: String { get set }
-    /// The session's last audio block is recognized, so its rows will not change under a relabel.
+    /// The session's last audio block is recognized and its cleanup has landed, so its rows will not change under a relabel.
     func sessionIsSettled(_ id: String) -> Bool
 }
 
@@ -214,7 +214,7 @@ final class SessionLibrary: ObservableObject {
     /// A relabel is waiting or writing; Install Update waits for it.
     var isRelabeling: Bool { relabelsInFlight > 0 }
 
-    /// Relabels one finished session's rows from one speaker per stored word. It waits until the session is settled. Then the work and the store writes run on the relabel queue, after any relabel already there; the caller reloads the screens. False when the session has no stored words.
+    /// Relabels one finished session's rows from one speaker per stored word. It waits until the session is settled: a row split while its phrase is still being cleaned would never get the cleaned text. Then the work and the store writes run on the relabel queue, after any relabel already there; the caller reloads the screens. False when the session has no stored words.
     func relabel(_ id: String, speakers: @escaping @Sendable ([StoredWord]) -> [String?]) async throws -> Bool {
         guard let store else { throw JotError.message("Transcript storage is unavailable.") }
         relabelsInFlight += 1

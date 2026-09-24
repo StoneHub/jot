@@ -53,7 +53,7 @@ final class SpeakerRecognizer: ObservableObject {
         }
     }
 
-    /// Stores a pass and relabels the session's rows from it; the relabel waits until the session's last audio block is recognized. The store work runs off the main thread. An export that already happened used the live labels. Internal so the check harness can hand it a result.
+    /// Stores a pass and relabels the session's rows from it; the relabel waits until the session's last audio block is recognized and its cleanup has landed. The store work runs off the main thread. An export that already happened used the live labels. Internal so the check harness can hand it a result.
     func apply(_ raw: SpeakerPassResult, session id: String, truncated: Bool) async {
         passesBeingApplied.insert(id)
         defer { passesBeingApplied.remove(id) }
