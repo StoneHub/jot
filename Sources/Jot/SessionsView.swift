@@ -69,7 +69,11 @@ struct SessionsView: View {
             select(readable.contains { $0.sessionID == selectedID } ? selectedID : readable.first?.sessionID)
             if !search.isEmpty { hits = service.searchSessions(search) }
         }
-        .onChange(of: service.sessions.map(\.transcriptCount)) { _, _ in if let selectedID { rows = service.sessionParagraphs(selectedID) } }
+        .onChange(of: revisionAndCounts) { old, new in
+            // A pass or Regroup moves the revision and the counts together, and the revision's handler above reads the session. This one reads only for rows saved without a revision.
+            guard old.first == new.first, let selectedID else { return }
+            rows = service.sessionParagraphs(selectedID)
+        }
         .sheet(item: $labelTarget) { target in
             SpeakerNameSheet(transcript: target, service: service, draft: $labelDraft,
                 onSave: { rows = service.sessionParagraphs(target.sessionID); labelTarget = nil },
@@ -78,6 +82,8 @@ struct SessionsView: View {
     }
 
     private var selected: TranscriptSession? { service.sessions.first { $0.sessionID == selectedID } }
+    /// The history revision, then each session's row count.
+    private var revisionAndCounts: [Int] { [service.historyRevision] + service.sessions.map(\.transcriptCount) }
     private func isRecording(_ session: TranscriptSession) -> Bool { session.sessionID == service.activeSessionID && service.ambientEnabled }
     /// Saved sessions this reader can show; the recording one belongs to Live.
     private var readable: [TranscriptSession] { service.sessions.filter { !isRecording($0) } }
