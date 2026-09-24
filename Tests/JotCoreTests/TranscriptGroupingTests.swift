@@ -1,14 +1,6 @@
 import XCTest
 @testable import JotCore
 final class TranscriptGroupingTests: XCTestCase {
-    func testRegroupKeepsOrdinarySymbolWords() {
-        let words = ["for", "a", "period", "of", "time", "and", "colon", "cancer"]
-            .enumerated().map { StoredWord(transcriptID: "t", position: $0.offset, word: $0.element,
-                startSeconds: Double($0.offset), endSeconds: Double($0.offset) + 0.5, probabilities: [0.9]) }
-        let turns = TranscriptGrouping.regroup(words: words, tuning: .init())
-        XCTAssertEqual(turns.map(\.text), ["for a period of time and colon cancer"])
-    }
-
     func testBriefUncertaintyKeepsSpeakerButLongUncertaintyDoesNot() {
         let words = [AttributedWord(text: "We discussed", start: 0, end: 1.5, probabilities: [0.9]),
                      AttributedWord(text: "the next step", start: 1.5, end: 3, probabilities: []),

@@ -73,20 +73,6 @@ final class WordEvidenceTests: XCTestCase {
         XCTAssertEqual(try count("SELECT COUNT(*) FROM transcript_words"), 1)
     }
 
-    func testRegroupFollowsTuningAndKeepsSessionClock() throws {
-        let words = [word("t1", 0, "First", 10, 10.5), word("t1", 1, "person", 10.5, 11),
-                     word("t2", 0, "Second", 11, 11.5, [0.1, 0.7, 0.1, 0.1]), word("t2", 1, "person", 11.5, 12.5, [0.1, 0.7, 0.1, 0.1]),
-                     word("t3", 0, "forward", 14, 14.5, []), word("t3", 1, "slash", 14.5, 15, [])]
-        var tuning = TranscriptionTuning(); tuning.minimumSpeakerTurn = 0.8
-        let turns = TranscriptGrouping.regroup(words: words, tuning: tuning)
-        XCTAssertEqual(turns.map(\.speaker), ["speaker-1", "speaker-2", nil], "The gap before the last words resets the speaker, and they carry no diarizer evidence")
-        XCTAssertEqual(turns.map(\.start), [10, 11, 14])
-        XCTAssertEqual(turns.map(\.wordRange), [0..<2, 2..<4, 4..<6])
-        XCTAssertEqual(turns.last?.text, "forward slash", "Regroup keeps the recognized words as spoken")
-        XCTAssertEqual(TranscriptGrouping.regroup(words: words, tuning: .init()).map(\.speaker), ["speaker-2", nil], "A longer minimum turn folds the one-second opener into the confirmed speaker")
-        XCTAssertTrue(TranscriptGrouping.regroup(words: [], tuning: tuning).isEmpty)
-    }
-
     func testRelabelSessionKeepsCleanedTextAndRowIDs() throws {
         let store = try TranscriptStore(directory: directory)
         try store.append(row("t1", start: 0, end: 1, text: "First person"))

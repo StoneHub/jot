@@ -1,6 +1,6 @@
 import Foundation
 
-/// Maps a session's stored words onto the offline speaker pass. Pure: words and segments in, speakers or turns out.
+/// Maps a session's stored words onto the offline speaker pass. Pure: words and segments in, one speaker per word out.
 public enum SpeakerPassRelabel {
     public typealias Segment = (speaker: String, start: Double, end: Double)
 
@@ -31,21 +31,6 @@ public enum SpeakerPassRelabel {
         var result = assigned.map { $0.flatMap { ids[$0] } }
         for index in result.indices.dropFirst() where result[index] == nil && words[index].startSeconds - words[index - 1].endSeconds < tuning.paragraphPause {
             result[index] = result[index - 1]
-        }
-        return result
-    }
-
-    /// Rows from `speakers`, breaking on a speaker change or a paragraph pause, as live turns do.
-    public static func turns(words: [StoredWord], segments: [Segment], tuning raw: TranscriptionTuning) -> [SpeechTurn] {
-        let tuning = raw.bounded
-        let speakers = Self.speakers(words: words, segments: segments, tuning: raw)
-        var result: [SpeechTurn] = []
-        for (index, word) in words.enumerated() {
-            if let last = result.last, last.speaker == speakers[index], word.startSeconds - last.end < tuning.paragraphPause {
-                result[result.count - 1].text += " " + word.word
-                result[result.count - 1].end = word.endSeconds
-                result[result.count - 1].wordRange = last.wordRange.lowerBound..<index + 1
-            } else { result.append(SpeechTurn(text: word.word, start: word.startSeconds, end: word.endSeconds, speaker: speakers[index], wordRange: index..<index + 1)) }
         }
         return result
     }
