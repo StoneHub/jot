@@ -382,31 +382,6 @@ public final class TranscriptStore: @unchecked Sendable {
         }
     }
 
-    /// Rebuilds one session's ambient rows from turns over its stored words in one transaction. Speaker names, title, and events stay; cleanup text (transcript_readable) goes with the old rows and is not re-run.
-    public func replaceSession(sessionID: String, words: [StoredWord], turns: [SpeechTurn]) throws {
-        guard !words.isEmpty else { throw StoreError.invalid("This session was recorded before Jot kept word timings; it cannot be regrouped.") }
-        guard !turns.isEmpty, turns.allSatisfy({ !$0.wordRange.isEmpty && $0.wordRange.lowerBound >= 0 && $0.wordRange.upperBound <= words.count }) else { throw StoreError.invalid("Turns must cover stored words") }
-        try locked {
-            try deletion {
-                let find = try prepare("SELECT MIN(started_at) FROM transcripts WHERE session_id = ? AND mode = 'ambient'")
-                defer { sqlite3_finalize(find) }
-                bind(sessionID, to: 1, in: find)
-                guard sqlite3_step(find) == SQLITE_ROW, sqlite3_column_type(find, 0) != SQLITE_NULL else { throw StoreError.invalid("No saved session to regroup") }
-                let startedAt = Date(timeIntervalSince1970: sqlite3_column_double(find, 0))
-                let clear = try prepare("DELETE FROM transcripts WHERE session_id = ? AND mode = 'ambient'")
-                defer { sqlite3_finalize(clear) }
-                bind(sessionID, to: 1, in: clear); try finish(clear)
-                for turn in turns {
-                    let transcript = Transcript(sessionID: sessionID, startedAt: startedAt, startSeconds: turn.start, endSeconds: turn.end, text: turn.text, speakerID: turn.speaker, mode: "ambient")
-                    guard transcript.startSeconds >= 0, transcript.endSeconds >= transcript.startSeconds else { throw StoreError.invalid("Invalid transcript fields") }
-                    let rebuilt = words[turn.wordRange].enumerated().map { StoredWord(transcriptID: transcript.id, position: $0.offset, word: $0.element.word, startSeconds: $0.element.startSeconds, endSeconds: $0.element.endSeconds, probabilities: $0.element.probabilities) }
-                    try validate(rebuilt)
-                    try insert(transcript); try insert(rebuilt)
-                }
-            }
-        }
-    }
-
     /// Derived display text only; source rows stay intact and deletion cascades to this text.
     public func setReadableText(_ text: String, for source: Transcript) throws {
         guard !text.isEmpty, text.utf8.count <= 1_000_000 else { throw StoreError.invalid("Invalid readable transcript") }

@@ -112,9 +112,11 @@ struct SessionsView: View {
             if let session = selected {
                 Button(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc") { copyAll(session) }.modifier(GlassButton())
                 Button("Regroup", systemImage: "arrow.triangle.2.circlepath") {
-                    do { try service.regroupSession(session.sessionID) }
-                    catch { service.notice = error.localizedDescription }
-                }.modifier(GlassButton()).help("Rebuilds this session's rows from its speaker pass, or from the Tuning sliders when it has none")
+                    Task {
+                        do { try await service.regroupSession(session.sessionID) }
+                        catch { service.notice = error.localizedDescription }
+                    }
+                }.modifier(GlassButton()).help("Relabels this session's speakers from its speaker pass, or from the Tuning sliders when it has none")
                 Button("Export", systemImage: "square.and.arrow.up") {
                     do { NSWorkspace.shared.activateFileViewerSelecting([try service.exportSession(session.sessionID)]) }
                     catch { service.notice = error.localizedDescription }

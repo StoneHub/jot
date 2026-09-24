@@ -87,47 +87,6 @@ final class WordEvidenceTests: XCTestCase {
         XCTAssertTrue(TranscriptGrouping.regroup(words: [], tuning: tuning).isEmpty)
     }
 
-    func testReplaceSessionRebuildsRowsAndWordsAndKeepsMetadata() throws {
-        let store = try TranscriptStore(directory: directory)
-        try store.append(row("t1", start: 0, end: 1, text: "First person")); try store.append(row("t2", start: 1, end: 2.5, text: "Second person", speaker: "speaker-2"))
-        try store.append(row("other", session: "b"))
-        try store.setReadableText("First person.", for: try XCTUnwrap(store.read(id: "t1")))
-        try store.setTitle(sessionID: "a", title: "Standup"); try store.label(sessionID: "a", speakerID: "speaker-1", name: "Gina")
-        try store.appendEvent(CaptureEvent(sessionID: "a", kind: "started", detail: "Started"))
-        // Row t2 was labeled speaker-2 when it was captured; its words say speaker-1, so regrouping merges the two rows.
-        let words = [word("t1", 0, "First", 0, 0.5), word("t1", 1, "person", 0.5, 1), word("t2", 0, "Second", 1, 1.5), word("t2", 1, "person", 1.5, 2.5), word("other", 0, "other", 0, 1)]
-        try store.appendWords(words)
-        let stored = try store.words(sessionID: "a")
-        try store.replaceSession(sessionID: "a", words: stored, turns: TranscriptGrouping.regroup(words: stored, tuning: .init()))
-        let rows = try store.session(id: "a")
-        XCTAssertEqual(rows.map(\.text), ["First person Second person"], "Readable cleanup text is gone with the old rows")
-        XCTAssertEqual(rows.map(\.speakerID), ["speaker-1"]); XCTAssertEqual(rows.map(\.speakerLabel), ["Gina"])
-        XCTAssertEqual(rows[0].startedAt, Date(timeIntervalSince1970: 100)); XCTAssertEqual(rows[0].startSeconds, 0); XCTAssertEqual(rows[0].endSeconds, 2.5)
-        XCTAssertFalse(["t1", "t2"].contains(rows[0].id))
-        XCTAssertEqual(try store.words(transcriptID: rows[0].id).map(\.position), [0, 1, 2, 3])
-        XCTAssertEqual(try store.words(sessionID: "a").map(\.word), ["First", "person", "Second", "person"])
-        XCTAssertEqual(try store.sessionSummary(id: "a")?.title, "Standup")
-        XCTAssertEqual(try store.events(sessionID: "a").count, 1)
-        XCTAssertEqual(try store.read(id: "other")?.text, "hello there")
-        XCTAssertEqual(try count("SELECT COUNT(*) FROM transcript_words WHERE transcript_id NOT IN (SELECT id FROM transcripts)"), 0)
-        XCTAssertEqual(try count("SELECT COUNT(*) FROM transcript_readable"), 0)
-    }
-
-    func testReplaceSessionRefusesSessionsWithoutWordsAndLeavesThemIntact() throws {
-        let store = try TranscriptStore(directory: directory)
-        try store.append(row("old", start: 0, end: 1, text: "recorded before words were kept"))
-        let words = try store.words(sessionID: "a")
-        XCTAssertThrowsError(try store.replaceSession(sessionID: "a", words: words, turns: TranscriptGrouping.regroup(words: words, tuning: .init()))) { error in
-            XCTAssertEqual(error.localizedDescription, "This session was recorded before Jot kept word timings; it cannot be regrouped.")
-        }
-        XCTAssertEqual(try store.session(id: "a").map(\.id), ["old"])
-        let stray = [word("old", 0, "recorded", 0, 1)]
-        XCTAssertThrowsError(try store.replaceSession(sessionID: "missing", words: stray, turns: TranscriptGrouping.regroup(words: stray, tuning: .init())), "No ambient rows to replace")
-        var tooFar = TranscriptGrouping.regroup(words: stray, tuning: .init()); tooFar[0].wordRange = 0..<2
-        XCTAssertThrowsError(try store.replaceSession(sessionID: "a", words: stray, turns: tooFar), "A turn past the word list is refused before anything is deleted")
-        XCTAssertEqual(try store.session(id: "a").map(\.id), ["old"])
-    }
-
     func testRelabelSessionKeepsCleanedTextAndRowIDs() throws {
         let store = try TranscriptStore(directory: directory)
         try store.append(row("t1", start: 0, end: 1, text: "First person"))

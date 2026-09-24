@@ -18,7 +18,7 @@ Speaker settings apply to new audio and to any session you regroup. Dictations p
 
 ## Regroup a saved session
 
-Jot keeps each ambient row's words with their timings and speaker probabilities. **Regroup** in Sessions runs the current Tuning over those words and replaces the session's rows; speaker names, the title, and capture events stay. Cleanup text is not re-run, so regrouped rows show the recognized words. A session recorded before words were kept cannot be regrouped, and a session that is still recording must be stopped first.
+Jot keeps each ambient row's words with their timings and speaker probabilities. **Regroup** in Sessions runs the current Tuning over those words and relabels the session's rows; a row whose speaker changes inside it splits there. Rows keep their cleaned text, and speaker names, the title, and capture events stay. A session recorded before words were kept cannot be regrouped, and a session that is still recording must be stopped first.
 
 ## A short comparison
 
