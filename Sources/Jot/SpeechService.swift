@@ -64,8 +64,8 @@ final class SpeechService: ObservableObject {
     @Published private(set) var shortcut = ShortcutPreferences().load()
     var canChangeShortcut: Bool { !dictation.isActive && !dictation.isPending }
     var canChangeInput: Bool { !capture.running && !dictation.isPending && !diagnosticActive }
-    /// Replacing the app must not interrupt capture, a pending dictation, inference, or model setup.
-    var canInstallUpdate: Bool { canChangeInput && processing == nil && !preparing && !cleanup.isRunning }
+    /// Replacing the app must not interrupt capture, a pending dictation, inference, model setup, cleanup, or a session's relabel.
+    var canInstallUpdate: Bool { canChangeInput && processing == nil && !preparing && !cleanup.isRunning && !library.isRelabeling }
     @Published var highlightTargetField = UserDefaults.standard.object(forKey: JotDefaultsKey.highlightTargetField) as? Bool ?? true {
         didSet {
             UserDefaults.standard.set(highlightTargetField, forKey: JotDefaultsKey.highlightTargetField)

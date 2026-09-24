@@ -56,9 +56,9 @@ extension SpeechService {
         try library.deleteSession(id)
     }
 
-    func regroupSession(_ id: String) throws {
+    func regroupSession(_ id: String) async throws {
         guard canDeleteSession(id) else { throw JotError.message("Stop recording this session before regrouping it.") }
-        try library.regroupSession(id, segments: try speakers.segments(sessionID: id))
+        try await library.regroupSession(id, segments: try speakers.segments(sessionID: id))
     }
 
     func deleteHistoryCard(_ item: Transcript) throws {
@@ -108,7 +108,9 @@ extension SpeechService {
     func recoverRecentDictation() { dictation.recoverRecent() }
 }
 
-extension SpeechService: SessionLibraryHost {}
+extension SpeechService: SessionLibraryHost {
+    func sessionIsSettled(_ id: String) -> Bool { jobs.allSatisfy { $0.sessionID != id } && processing == nil && !cleanup.isCleaning(session: id) }
+}
 
 extension SpeechService: ListeningTimelineHost {
     func markDictationGap(_ recoveryNotice: String) { dictation.markGap(recoveryNotice) }
@@ -119,8 +121,8 @@ extension SpeechService: LiveCleanupHost {}
 
 extension SpeechService: SpeakerRecognizerHost {
     func sessionIsDeleted(_ id: String) -> Bool { library.deletedSessions.contains(id) }
-    func recognitionIsComplete(for session: String) -> Bool { jobs.allSatisfy { $0.sessionID != session } && processing == nil }
     func didRelabelSession() { library.didDeleteHistory() }
+    func relabel(_ id: String, speakers: @escaping @Sendable ([StoredWord]) -> [String?]) async throws -> Bool { try await library.relabel(id, speakers: speakers) }
 }
 
 extension SpeechService: DictationHost {

@@ -1,14 +1,14 @@
 import Foundation
 import JotCore
 
-/// What the recognizer needs from the service: the transcript store, the current tuning, and a place to report.
+/// What the recognizer needs from the service: the transcript store, the current tuning, the relabel it runs after a pass, and a place to report.
 @MainActor
 protocol SpeakerRecognizerHost: AnyObject {
     var store: TranscriptStore? { get }
     var tuning: TranscriptionTuning { get }
     var notice: String { get set }
     func sessionIsDeleted(_ id: String) -> Bool
-    func recognitionIsComplete(for session: String) -> Bool
+    func relabel(_ id: String, speakers: @escaping @Sendable ([StoredWord]) -> [String?]) async throws -> Bool
     func recordEvent(_ kind: CaptureEventKind, _ detail: String, duration: Double?, session: String?)
     func didRelabelSession()
     func refreshRecent()
@@ -24,6 +24,8 @@ final class SpeakerRecognizer: ObservableObject {
     @Published private(set) var passRunning = false
     /// Passes run one at a time in session order; a pass survives a pause and finishes on its own.
     private var passQueue: Task<Void, Never>?
+    /// Sessions whose pass voices are stored while their rows may still carry live speaker ids, which can name another voice in the pass: from storing the pass until its relabel ends.
+    private var passesBeingApplied = Set<String>()
     private let pass: SpeakerPass
     private unowned let host: SpeakerRecognizerHost
 
@@ -37,32 +39,62 @@ final class SpeakerRecognizer: ObservableObject {
         passQueue = Task { await previous?.value; await run(file) }
     }
 
-    /// The pass runs off the main actor; only its outcome lands here. An export that already happened used the live labels; the saved rows are rebuilt from the pass once the session's last audio block is recognized.
+    /// The pass runs off the main actor; only its outcome lands here.
     private func run(_ file: SessionAudioFile) async {
         let id = file.sessionID
         passRunning = true
         defer { passRunning = false }
         do {
             guard let audio = try await file.finish() else { return }
-            let result = SpeakerPassRelabel.renumbered(try await pass.run(url: audio.url))
-            try await MeetingExportWait.wait(isValid: { true }, isComplete: { self.host.recognitionIsComplete(for: id) })
+            let raw = try await pass.run(url: audio.url)
+            await apply(raw, session: id, truncated: audio.truncated)
+        } catch {
+            reportFailure(error, session: id)
+        }
+    }
+
+    /// Stores a pass and relabels the session's rows from it; the relabel waits until the session's last audio block is recognized and its cleanup has landed. The store work runs off the main thread. An export that already happened used the live labels. Internal so the check harness can hand it a result.
+    func apply(_ raw: SpeakerPassResult, session id: String, truncated: Bool) async {
+        passesBeingApplied.insert(id)
+        defer { passesBeingApplied.remove(id) }
+        do {
+            let result = SpeakerPassRelabel.renumbered(raw)
             guard !host.sessionIsDeleted(id) else { return }
-            try speakerStore?.replace(sessionID: id, result: result)
-            // The pass is authoritative: a name given to "speaker-2" while the live labels were showing stays on that id, which the pass may have given to another voice. Naming normally happens after the pass anyway.
+            let passStore = speakerStore
+            try await Task.detached(priority: .userInitiated) { try passStore?.replace(sessionID: id, result: result) }.value
             var recognized: [String] = []
-            if let store = host.store, !result.segments.isEmpty, case let words = try store.words(sessionID: id), !words.isEmpty {
-                try store.replaceSession(sessionID: id, words: words, turns: SpeakerPassRelabel.turns(words: words, segments: result.segments, tuning: host.tuning))
-                recognized = try recognizeSpeakers(result.speakers, session: id)
-                host.didRelabelSession()
+            if !result.segments.isEmpty {
+                recognized = try await relabelAndName(result, session: id)
+            }
+            if host.sessionIsDeleted(id) {
+                // Deleted while the pass was being stored or waited to relabel: its segments may have landed after the delete.
+                let store = host.store
+                try? await Task.detached(priority: .userInitiated) { try store?.deleteSession(id: id) }.value
+                return
             }
             let count = result.speakers.count
-            let scope = audio.truncated ? " (first two hours)" : ""
+            let scope = truncated ? " (first two hours)" : ""
             host.recordEvent(.speakerPass, "Speaker pass found \(count) speaker\(count == 1 ? "" : "s") in \(TranscriptExport.clock(result.durationSeconds)) of audio\(scope), \(String(format: "%.1f", result.processingSeconds)) s of processing.", duration: result.durationSeconds, session: id)
             host.notice = "Speaker pass finished: \(count) speakers" + (recognized.isEmpty ? "." : ", recognized \(recognized.joined(separator: ", ")).")
         } catch {
-            host.recordEvent(.processingError, "Speaker pass: \(error.localizedDescription)", duration: nil, session: id)
-            host.notice = "Speaker pass failed: \(error.localizedDescription)"
+            reportFailure(error, session: id)
         }
+    }
+
+    /// Relabels the session's rows from the pass, then names the voices Jot remembers. Both write to the store, so Live and Sessions reload once they are done, even when one fails partway. Returns the names recognized.
+    private func relabelAndName(_ result: SpeakerPassResult, session id: String) async throws -> [String] {
+        defer { host.didRelabelSession() }
+        let tuning = host.tuning
+        let segments = result.segments
+        let relabeled = try await host.relabel(id) { SpeakerPassRelabel.speakers(words: $0, segments: segments, tuning: tuning) }
+        guard relabeled, !host.sessionIsDeleted(id) else { return [] }
+        // The pass is authoritative: a name given to "speaker-2" while the live labels were showing stays on that id, which the pass may have given to another voice. Naming normally happens after the pass anyway.
+        return try recognizeSpeakers(result.speakers, session: id)
+    }
+
+    private func reportFailure(_ error: Error, session id: String) {
+        host.recordEvent(.processingError, "Speaker pass: \(error.localizedDescription)", duration: nil, session: id)
+        host.notice = "Speaker pass failed: \(error.localizedDescription)"
     }
 
     /// Names each session speaker whose voice matches a remembered person, unless the speaker was named already, and folds the session's embedding into that person so the voice improves over time. Returns the names recognized.
@@ -96,9 +128,10 @@ final class SpeakerRecognizer: ObservableObject {
         refreshPeople()
     }
 
-    /// The speaker pass's voice embedding for one speaker of one session; nil before the pass or for a speaker it did not find.
+    /// The speaker pass's voice embedding for one speaker of one session; nil before the pass, while the pass is relabeling the session's rows, or for a speaker it did not find.
     func passEmbedding(session: String, speaker: String) -> [Float]? {
-        (try? speakerStore?.speakers(sessionID: session))?.first { $0.speakerID == speaker }?.embedding
+        guard !passesBeingApplied.contains(session) else { return nil }
+        return (try? speakerStore?.speakers(sessionID: session))?.first { $0.speakerID == speaker }?.embedding
     }
 
     func refreshPeople() {

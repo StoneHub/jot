@@ -259,37 +259,126 @@ public final class TranscriptStore: @unchecked Sendable {
     }
 
     private func insert(_ transcript: Transcript) throws {
-        let stmt = try prepare("INSERT INTO transcripts(id,session_id,started_at,start_seconds,end_seconds,text,speaker_id,mode) VALUES(?,?,?,?,?,?,?,?)")
-        defer { sqlite3_finalize(stmt) }
-        bind(transcript.id, to: 1, in: stmt); bind(transcript.sessionID, to: 2, in: stmt)
-        sqlite3_bind_double(stmt, 3, transcript.startedAt.timeIntervalSince1970)
-        sqlite3_bind_double(stmt, 4, transcript.startSeconds); sqlite3_bind_double(stmt, 5, transcript.endSeconds)
-        bind(transcript.text, to: 6, in: stmt); bind(transcript.speakerID, to: 7, in: stmt); bind(transcript.mode, to: 8, in: stmt)
-        try finish(stmt)
+        try insert([transcript])
     }
 
-    /// Rebuilds one session's ambient rows from turns over its stored words in one transaction. Speaker names, title, and events stay; cleanup text (transcript_readable) goes with the old rows and is not re-run.
-    public func replaceSession(sessionID: String, words: [StoredWord], turns: [SpeechTurn]) throws {
-        guard !words.isEmpty else { throw StoreError.invalid("This session was recorded before Jot kept word timings; it cannot be regrouped.") }
-        guard !turns.isEmpty, turns.allSatisfy({ !$0.wordRange.isEmpty && $0.wordRange.lowerBound >= 0 && $0.wordRange.upperBound <= words.count }) else { throw StoreError.invalid("Turns must cover stored words") }
-        try locked {
-            try deletion {
-                let find = try prepare("SELECT MIN(started_at) FROM transcripts WHERE session_id = ? AND mode = 'ambient'")
-                defer { sqlite3_finalize(find) }
-                bind(sessionID, to: 1, in: find)
-                guard sqlite3_step(find) == SQLITE_ROW, sqlite3_column_type(find, 0) != SQLITE_NULL else { throw StoreError.invalid("No saved session to regroup") }
-                let startedAt = Date(timeIntervalSince1970: sqlite3_column_double(find, 0))
-                let clear = try prepare("DELETE FROM transcripts WHERE session_id = ? AND mode = 'ambient'")
-                defer { sqlite3_finalize(clear) }
-                bind(sessionID, to: 1, in: clear); try finish(clear)
-                for turn in turns {
-                    let transcript = Transcript(sessionID: sessionID, startedAt: startedAt, startSeconds: turn.start, endSeconds: turn.end, text: turn.text, speakerID: turn.speaker, mode: "ambient")
-                    guard transcript.startSeconds >= 0, transcript.endSeconds >= transcript.startSeconds else { throw StoreError.invalid("Invalid transcript fields") }
-                    let rebuilt = words[turn.wordRange].enumerated().map { StoredWord(transcriptID: transcript.id, position: $0.offset, word: $0.element.word, startSeconds: $0.element.startSeconds, endSeconds: $0.element.endSeconds, probabilities: $0.element.probabilities) }
-                    try validate(rebuilt)
-                    try insert(transcript); try insert(rebuilt)
+    /// Caller holds the lock; one statement serves every row.
+    private func insert(_ transcripts: [Transcript]) throws {
+        let stmt = try prepare("INSERT INTO transcripts(id,session_id,started_at,start_seconds,end_seconds,text,speaker_id,mode) VALUES(?,?,?,?,?,?,?,?)")
+        defer { sqlite3_finalize(stmt) }
+        for transcript in transcripts {
+            sqlite3_reset(stmt)
+            bind(transcript.id, to: 1, in: stmt)
+            bind(transcript.sessionID, to: 2, in: stmt)
+            sqlite3_bind_double(stmt, 3, transcript.startedAt.timeIntervalSince1970)
+            sqlite3_bind_double(stmt, 4, transcript.startSeconds)
+            sqlite3_bind_double(stmt, 5, transcript.endSeconds)
+            bind(transcript.text, to: 6, in: stmt)
+            bind(transcript.speakerID, to: 7, in: stmt)
+            bind(transcript.mode, to: 8, in: stmt)
+            try finish(stmt)
+        }
+    }
+
+    /// Relabels one finished session's ambient rows from one speaker per stored word. A row whose words keep one speaker keeps its id and cleaned text and takes that speaker; a row whose speaker changes inside it is replaced by one row per speaker, each with its words and its share of the cleaned text. Speaker names, the title, and events stay. `speakers` runs without the lock. The plan is written in batches, releasing the lock between them so a reader never waits long: a reader can see a partly relabeled session, but every row is consistent. False when the session has no stored words: it was deleted, or recorded before words were kept.
+    @discardableResult
+    public func relabelSession(_ id: String, speakers: ([StoredWord]) -> [String?]) throws -> Bool {
+        let words = try words(sessionID: id)
+        if words.isEmpty { return false }
+        let readable = try readableTexts(sessionID: id)
+        let plan = try RowRelabel(words: words, speakers: speakers(words), readable: readable)
+        try inBatches(plan.kept) { try relabel($0, sessionID: id) }
+        try inBatches(plan.splits) { try split($0, sessionID: id) }
+        return true
+    }
+
+    /// How long a relabel batch may hold the lock before it commits.
+    private static let relabelBatchWork = Duration.milliseconds(5)
+
+    /// Writes a relabel plan a batch at a time. Each batch is one transaction that commits once about 5 ms of work is done. NSLock is not fair: a batch that takes the lock straight after the one before can keep a waiting reader, such as the main thread, out for several batches, so a millisecond's pause between batches lets it in.
+    private func inBatches<Row>(_ rows: [Row], write: (Row) throws -> Void) throws {
+        var next = 0
+        while next < rows.count {
+            try locked {
+                try transaction {
+                    let began = ContinuousClock.now
+                    repeat {
+                        try write(rows[next])
+                        next += 1
+                    } while next < rows.count && began.duration(to: .now) < Self.relabelBatchWork
                 }
             }
+            Thread.sleep(forTimeInterval: 0.001)
+        }
+    }
+
+    /// Cleaned text by row id, for one session's rows that have it.
+    public func readableTexts(sessionID: String) throws -> [String: String] {
+        try locked {
+            let stmt = try prepare("SELECT r.transcript_id,r.text FROM transcript_readable r JOIN transcripts t ON t.id = r.transcript_id WHERE t.session_id = ?")
+            defer { sqlite3_finalize(stmt) }
+            bind(sessionID, to: 1, in: stmt)
+            var result: [String: String] = [:]
+            while true {
+                let status = sqlite3_step(stmt)
+                if status == SQLITE_DONE { break }
+                guard status == SQLITE_ROW else { throw error() }
+                result[column(stmt, 0)!] = column(stmt, 1) ?? ""
+            }
+            return result
+        }
+    }
+
+    /// A kept row takes its new speaker. A row that is gone, deleted with its session, changes nothing. Caller holds the lock and the transaction.
+    private func relabel(_ row: (rowID: String, speaker: String?), sessionID: String) throws {
+        let update = try prepare("UPDATE transcripts SET speaker_id=? WHERE id=? AND session_id=? AND mode='ambient'")
+        defer { sqlite3_finalize(update) }
+        bind(row.speaker, to: 1, in: update)
+        bind(row.rowID, to: 2, in: update)
+        bind(sessionID, to: 3, in: update)
+        try finish(update)
+    }
+
+    /// A split row is deleted, which takes its words and cleaned text with it, and its pieces are inserted in its place. A row that is gone, deleted with its session, gets no pieces. Caller holds the lock and the transaction.
+    private func split(_ split: RowRelabel.Split, sessionID: String) throws {
+        let delete = try prepare("DELETE FROM transcripts WHERE id=? AND session_id=? AND mode='ambient' RETURNING started_at")
+        defer { sqlite3_finalize(delete) }
+        bind(split.rowID, to: 1, in: delete)
+        bind(sessionID, to: 2, in: delete)
+        let status = sqlite3_step(delete)
+        if status == SQLITE_DONE { return }
+        guard status == SQLITE_ROW else { throw error() }
+        let startedAt = Date(timeIntervalSince1970: sqlite3_column_double(delete, 0))
+        // A statement left mid-row would keep the transaction from committing.
+        sqlite3_reset(delete)
+        var rows: [Transcript] = []
+        var words: [StoredWord] = []
+        var readable: [(transcriptID: String, text: String)] = []
+        for piece in split.pieces {
+            let row = Transcript(sessionID: sessionID, startedAt: startedAt, startSeconds: piece.start, endSeconds: piece.end, text: piece.text, speakerID: piece.speaker, mode: "ambient")
+            var pieceWords = piece.words
+            for index in pieceWords.indices {
+                pieceWords[index].transcriptID = row.id
+            }
+            try validate(pieceWords)
+            rows.append(row)
+            words.append(contentsOf: pieceWords)
+            if let text = piece.readable { readable.append((transcriptID: row.id, text: text)) }
+        }
+        try insert(rows)
+        try insert(words)
+        try insertReadable(readable)
+    }
+
+    /// Caller holds the lock and the transaction.
+    private func insertReadable(_ texts: [(transcriptID: String, text: String)]) throws {
+        let stmt = try prepare("INSERT INTO transcript_readable(transcript_id,text) VALUES(?,?)")
+        defer { sqlite3_finalize(stmt) }
+        for readable in texts {
+            sqlite3_reset(stmt)
+            bind(readable.transcriptID, to: 1, in: stmt)
+            bind(readable.text, to: 2, in: stmt)
+            try finish(stmt)
         }
     }
 
@@ -608,11 +697,21 @@ public final class TranscriptStore: @unchecked Sendable {
     }
 
     private func deletion(_ body: () throws -> Void) throws {
-        try execute("BEGIN IMMEDIATE")
-        do { try body(); try execute("COMMIT") }
-        catch { try? execute("ROLLBACK"); throw error }
+        try transaction(body)
         // Reclaim the WAL when no other reader holds it; deletion is already committed.
         try? execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    }
+
+    /// One write transaction, rolled back when the body throws. Caller holds the lock.
+    private func transaction(_ body: () throws -> Void) throws {
+        try execute("BEGIN IMMEDIATE")
+        do {
+            try body()
+            try execute("COMMIT")
+        } catch {
+            try? execute("ROLLBACK")
+            throw error
+        }
     }
 
     public func metrics() throws -> StoreMetrics {

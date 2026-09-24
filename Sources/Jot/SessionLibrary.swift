@@ -1,11 +1,13 @@
 import Foundation
 import JotCore
 
-/// What the library needs from the service: the tuning that groups rows, and a place to report.
+/// What the library needs from the service: the tuning that groups rows, whether a finished session is settled, and a place to report.
 @MainActor
 protocol SessionLibraryHost: AnyObject {
     var tuning: TranscriptionTuning { get }
     var notice: String { get set }
+    /// The session's last audio block is recognized and its cleanup has landed, so its rows will not change under a relabel.
+    func sessionIsSettled(_ id: String) -> Bool
 }
 
 /// Reads and edits saved sessions and dictations for the screens and the socket API: recent rows, the paged Dictations list, Sessions, export, rename, delete, and regroup. Capture writes rows itself and hands the saved rows and cleaned text to the Live feed here.
@@ -30,6 +32,10 @@ final class SessionLibrary: ObservableObject {
     /// Uptime of the last Clear; recognition jobs submitted before it must not append to the cleared list.
     private(set) var historyClearedAt: TimeInterval = -1
     private(set) var deletedSessions = Set<String>()
+    /// Relabels waiting for their session to settle or writing.
+    @Published private var relabelsInFlight = 0
+    /// Relabels write here one at a time, so a pass and a Regroup of the same session cannot interleave their writes, and their blocking store work and the pauses between batches never hold a thread of Swift's cooperative pool.
+    private static let relabelQueue = DispatchQueue(label: "Jot.relabel", qos: .userInitiated)
     private var historyQuery = ""
     private var historyLimit = 50
     private unowned let host: SessionLibraryHost
@@ -185,18 +191,46 @@ final class SessionLibrary: ObservableObject {
         host.notice = "Session deleted."
     }
 
-    /// Rebuilds a saved session's rows from its stored words under the current Tuning: from the speaker pass's segments when the session has them, otherwise from the live probabilities. Cleanup text is not re-run.
-    func regroupSession(_ id: String, segments: [(speaker: String, start: Double, end: Double)]) throws {
-        guard let store else { throw JotError.message("Transcript storage is unavailable.") }
-        let words = try store.words(sessionID: id)
+    /// Relabels a saved session's rows from its stored words under the current Tuning: from the speaker pass's segments when the session has them, otherwise from the live probabilities. Rows keep their cleaned text; a row whose speaker changes inside it splits there.
+    func regroupSession(_ id: String, segments: [(speaker: String, start: Double, end: Double)]) async throws {
+        let tuning = host.tuning
+        let speakers: @Sendable ([StoredWord]) -> [String?]
         if segments.isEmpty {
-            try store.replaceSession(sessionID: id, words: words, turns: TranscriptGrouping.regroup(words: words, tuning: host.tuning))
-            host.notice = "Session regrouped with the current tuning."
+            speakers = { TranscriptGrouping.speakers(words: $0, tuning: tuning) }
         } else {
-            try store.replaceSession(sessionID: id, words: words, turns: SpeakerPassRelabel.turns(words: words, segments: segments, tuning: host.tuning))
-            host.notice = "Session regrouped from the speaker pass."
+            speakers = { SpeakerPassRelabel.speakers(words: $0, segments: segments, tuning: tuning) }
         }
-        didDeleteHistory()
+        // Batches written before a failure stay, so Live and Sessions reload either way.
+        defer { didDeleteHistory() }
+        let changed = try await relabel(id, speakers: speakers)
+        // Deleted while the Regroup waited its turn; the delete has said so already.
+        if deletedSessions.contains(id) { return }
+        guard changed else {
+            throw JotError.message("This session was recorded before Jot kept word timings; it cannot be regrouped.")
+        }
+        host.notice = segments.isEmpty ? "Session regrouped with the current tuning." : "Session regrouped from the speaker pass."
+    }
+
+    /// A relabel is waiting or writing; Install Update waits for it.
+    var isRelabeling: Bool { relabelsInFlight > 0 }
+
+    /// Relabels one finished session's rows from one speaker per stored word. It waits until the session is settled: a row split while its phrase is still being cleaned would never get the cleaned text. Then the work and the store writes run on the relabel queue, after any relabel already there; the caller reloads the screens. False when the session has no stored words.
+    func relabel(_ id: String, speakers: @escaping @Sendable ([StoredWord]) -> [String?]) async throws -> Bool {
+        guard let store else { throw JotError.message("Transcript storage is unavailable.") }
+        relabelsInFlight += 1
+        defer { relabelsInFlight -= 1 }
+        try await waitUntilSettled(id)
+        return try await withCheckedThrowingContinuation { continuation in
+            Self.relabelQueue.async {
+                continuation.resume(with: Result(catching: { try store.relabelSession(id, speakers: speakers) }))
+            }
+        }
+    }
+
+    private func waitUntilSettled(_ id: String) async throws {
+        while !host.sessionIsSettled(id) {
+            try await Task.sleep(for: .milliseconds(250))
+        }
     }
 
     /// Deletes one Dictations card. `discard` gets the row ids it was built from before the delete, so a pending attempt over them cannot insert.

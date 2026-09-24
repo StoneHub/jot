@@ -19,6 +19,8 @@ final class LiveCleanup {
     private var cleanupTasks: [UUID: Task<Void, Never>] = [:]
     private var phraseCleanup = PhraseCleanup()
     private var cleanupQueue: [PhraseCleanup.Phrase] = []
+    /// The session of the phrase the worker is cleaning now.
+    private var runningSession: String?
     private let liveTranscriptCleanup = TranscriptCleanup()
     private let transcriptCleanup = TranscriptCleanup()
     // A live phrase carries up to 2000 bytes; measured on-device cleanup of that
@@ -42,6 +44,11 @@ final class LiveCleanup {
     /// Rows held until their phrase is complete.
     var bufferedRowCount: Int { phraseCleanup.pendingCount }
 
+    /// True while a phrase of the session is being cleaned or waits in the queue. Rows still buffered for a phrase do not count: the session's final recognition job moves them into the queue.
+    func isCleaning(session: String) -> Bool {
+        runningSession == session || cleanupQueue.contains { $0.sources.first?.sessionID == session }
+    }
+
     func scheduleCleanup(sources: [Transcript], final: Bool) {
         guard host.cleanUpTranscriptions else { phraseCleanup = PhraseCleanup(); return }
         for phrase in phraseCleanup.append(sources, final: final) {
@@ -59,6 +66,8 @@ final class LiveCleanup {
             defer { cleanupTasks[id] = nil }
             while !Task.isCancelled, !cleanupQueue.isEmpty {
                 let phrase = cleanupQueue.removeFirst()
+                runningSession = phrase.sources.first?.sessionID
+                defer { runningSession = nil }
                 guard host.cleanUpTranscriptions, let session = phrase.sources.first?.sessionID,
                       !host.sessionIsDeleted(session) else {
                     cleanupBypassedCount += 1; cleanupCompletedCount += 1; continue
@@ -77,7 +86,7 @@ final class LiveCleanup {
                     cleanupBypassedCount += 1; continue
                 }
                 do {
-                    let readable = PhraseCleanup.distribute(text, over: phrase.sources)
+                    let readable = PhraseCleanup.distribute(text, over: phrase.sources.map(\.text))
                     if try host.store?.setReadablePhrase(readable, for: phrase.sources) == true {
                         cleanupAppliedCount += 1
                         host.replaceLive(texts: Dictionary(uniqueKeysWithValues: zip(phrase.sources.map(\.id), readable)))
