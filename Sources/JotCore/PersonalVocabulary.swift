@@ -79,7 +79,7 @@ public struct PersonalVocabulary: Codable, Equatable, Sendable {
         return result
     }
 
-    /// Applies the same built-in spoken-symbol behavior used by recognition, then personal vocabulary.
+    /// Converts spoken symbol names for insertion, then applies personal vocabulary.
     public func applyingToDictation(_ text: String) -> String {
         applying(to: SpokenSymbols.applying(to: text))
     }
@@ -110,16 +110,20 @@ public enum SpokenSymbols {
         ("caret", "^"), ("backtick", "`")
     ]
 
+    private static let patterns: [(regex: NSRegularExpression, symbol: String)] = replacements.compactMap { replacement in
+        let phrase = replacement.phrase.split(whereSeparator: \.isWhitespace)
+            .map { NSRegularExpression.escapedPattern(for: String($0)) }
+            .joined(separator: "\\s+")
+        let pattern = "[ \\t]*(?<!" + word + ")(?:(" + phrase + "))(?!" + word + ")(?:[.!?](?=[ \\t]*$))?[ \\t]*"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return nil }
+        return (regex, replacement.symbol)
+    }
+
     public static func applying(to text: String) -> String {
         var result = text
-        for replacement in replacements {
-            let phrase = replacement.phrase.split(whereSeparator: \.isWhitespace)
-                .map { NSRegularExpression.escapedPattern(for: String($0)) }
-                .joined(separator: "\\s+")
-            let pattern = "[ \\t]*(?<!" + word + ")(?:(" + phrase + "))(?!" + word + ")(?:[.!?](?=[ \\t]*$))?[ \\t]*"
-            guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { continue }
+        for (regex, symbol) in patterns {
             let range = NSRange(result.startIndex..., in: result)
-            result = regex.stringByReplacingMatches(in: result, range: range, withTemplate: NSRegularExpression.escapedTemplate(for: replacement.symbol))
+            result = regex.stringByReplacingMatches(in: result, range: range, withTemplate: NSRegularExpression.escapedTemplate(for: symbol))
         }
         return result
     }
