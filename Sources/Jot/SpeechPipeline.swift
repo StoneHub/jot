@@ -127,7 +127,7 @@ actor SpeechPipeline {
             words = allWords
         }
         let rawText = result.tokenTimings == nil ? result.text : words.map(\.word).joined(separator: " ")
-        let text = SpokenSymbols.applying(to: rawText.trimmingCharacters(in: .whitespacesAndNewlines))
+        let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         if let recognitionPlan { recognitionWindow.commit(recognitionPlan, words: words) }
         recognitionPlanResolved = true
         guard !text.isEmpty else { return SpeechOutput(transcripts: [], text: "", processingSeconds: Date().timeIntervalSince(begin)) }
@@ -145,7 +145,7 @@ actor SpeechPipeline {
             segments = turns.map { turn in
                 Transcript(sessionID: job.sessionID, startedAt: job.startedAt,
                     startSeconds: job.offset + turn.start, endSeconds: job.offset + turn.end,
-                    text: SpokenSymbols.applying(to: turn.text), speakerID: turn.speaker, mode: job.mode.rawValue)
+                    text: turn.text, speakerID: turn.speaker, mode: job.mode.rawValue)
             }
             wordsByTranscript = Dictionary(uniqueKeysWithValues: zip(segments, turns).map { ($0.id, Array(attributed[$1.wordRange])) })
         }

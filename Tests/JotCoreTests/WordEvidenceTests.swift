@@ -82,7 +82,7 @@ final class WordEvidenceTests: XCTestCase {
         XCTAssertEqual(turns.map(\.speaker), ["speaker-1", "speaker-2", nil], "The gap before the last words resets the speaker, and they carry no diarizer evidence")
         XCTAssertEqual(turns.map(\.start), [10, 11, 14])
         XCTAssertEqual(turns.map(\.wordRange), [0..<2, 2..<4, 4..<6])
-        XCTAssertEqual(turns.last?.text, "/", "Spoken symbols are converted like a live row")
+        XCTAssertEqual(turns.last?.text, "forward slash", "Regroup keeps the recognized words as spoken")
         XCTAssertEqual(TranscriptGrouping.regroup(words: words, tuning: .init()).map(\.speaker), ["speaker-2", nil], "A longer minimum turn folds the one-second opener into the confirmed speaker")
         XCTAssertTrue(TranscriptGrouping.regroup(words: [], tuning: tuning).isEmpty)
     }
