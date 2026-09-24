@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import JotCore
 
 struct ResourceSnapshot: Codable {
     var valid = false
@@ -28,7 +29,10 @@ final class ResourceSampler {
         if code == 0 {
             value.valid = true
             let cpu = info.ri_user_time + info.ri_system_time
-            if previousCPU > 0, now > previousTime { value.processCPUPercent = Double(cpu - previousCPU) / 1e9 / (now - previousTime) * 100 }
+            if previousCPU > 0, now > previousTime {
+                let cpuSeconds = MachTimebase.current.seconds(ticks: cpu - previousCPU)
+                value.processCPUPercent = cpuSeconds / (now - previousTime) * 100
+            }
             value.residentMiB = Double(info.ri_resident_size) / 1048576
             value.physicalFootprintMiB = Double(info.ri_phys_footprint) / 1048576
             previousCPU = cpu

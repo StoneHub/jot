@@ -173,7 +173,7 @@ final class CaptureRecoveryTests: XCTestCase {
         try store.saveDictationAttempt(DictationAttempt(id: "interrupted", sessionID: "session",
             startedAt: Date(timeIntervalSince1970: 100), text: "already recognized", state: .capturing,
             updatedAt: Date(timeIntervalSince1970: 105)))
-        try store.finalizeInterruptedDictationAttempts()
+        try store.finalizeInterruptedDictationAttempts(converting: { $0 })
         let attempt = try XCTUnwrap(store.latestRecoverableDictationAttempt())
         XCTAssertEqual(attempt.state, .deliveryFailed)
         XCTAssertEqual(attempt.endedAt, Date(timeIntervalSince1970: 105))

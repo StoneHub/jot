@@ -72,6 +72,7 @@
 		A3267595B1A8F60F403F04CB /* JotCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D0BF24005EE0C2BB76EEAC0 /* JotCLI.swift */; };
 		A42EE66E16E8986D5A58EF34 /* SessionLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A601577DB723625149B12CA /* SessionLibrary.swift */; };
 		A4B98AD49438BD1121F60475 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FF011AF3F4B42BB9B97A069F /* Assets.xcassets */; };
+		A6DB3AD1B2BD456A7B73ECC5 /* MachTimebase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00B4F5D92D25351C93A3E99B /* MachTimebase.swift */; };
 		A84D2F3520652FB64F16B110 /* TranscriptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBDB9C8F81FE456A8328BCE4 /* TranscriptStore.swift */; };
 		AE5F58B04CE443D34C9291BA /* SessionSplit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C33A3E252A64EE9389B3646 /* SessionSplit.swift */; };
 		B2F7BA8FE06A847F539FEC30 /* ResourceStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75A2B17AAF1631913D5A8DCC /* ResourceStats.swift */; };
@@ -160,6 +161,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		00B4F5D92D25351C93A3E99B /* MachTimebase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MachTimebase.swift; sourceTree = "<group>"; };
 		0481ADADD05BFA1A6D0E293C /* LiveCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCleanup.swift; sourceTree = "<group>"; };
 		0FD7554D79D87DF0EC3E65D6 /* SessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsView.swift; sourceTree = "<group>"; };
 		1C33A3E252A64EE9389B3646 /* SessionSplit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSplit.swift; sourceTree = "<group>"; };
@@ -379,6 +381,7 @@
 				D8260B75D679FF88E8921F1B /* JotVersion.swift */,
 				83E9B4C4D2C753F1BDECE6F0 /* LiveFeed.swift */,
 				D1812288F51560118033D92A /* LocalService.swift */,
+				00B4F5D92D25351C93A3E99B /* MachTimebase.swift */,
 				BA19A72F6D28FCFD5CA7D316 /* MCPTools.swift */,
 				9A4D583EF07B940C30081D6E /* MeetingExportWait.swift */,
 				C1C5114298E41FD0B34E6B8C /* MicrophoneSelection.swift */,
@@ -665,6 +668,7 @@
 				43ECAEC64D13D60A06F67C68 /* LiveFeed.swift in Sources */,
 				2D62FA2C153FEDA91143654A /* LocalService.swift in Sources */,
 				55B642EC08906D1FD23C693A /* MCPTools.swift in Sources */,
+				A6DB3AD1B2BD456A7B73ECC5 /* MachTimebase.swift in Sources */,
 				44270DB6A337277CD915775F /* MeetingExportWait.swift in Sources */,
 				D2C247EB99AD43C79AB4C8A3 /* MicrophoneSelection.swift in Sources */,
 				BB64AED560E2CD1F4B4FF675 /* MicrophoneStartRetry.swift in Sources */,
