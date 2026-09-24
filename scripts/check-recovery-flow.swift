@@ -114,6 +114,7 @@ struct RecoveryFlowChecks {
         print("PASS: Pause persisted the final half-second before unloading.")
 
         try await checkFailureAndCleanup(directory: directory)
+        try await checkInterruptedHold(directory: directory)
         for failed in [false, true] {
             let inactive = SpeechService()
             let token = inactive.lifecycle.beginStart()!
@@ -330,6 +331,69 @@ struct RecoveryFlowChecks {
         precondition(probe.delivered.last == "Segment5", "Dictation inserted raw text instead of waiting for a three-second cleanup")
         slow.shutdown()
         print("PASS: dictation waits for a three-second cleanup and inserts the cleaned text.")
+    }
+
+    /// Quitting mid-hold leaves the attempt with the words as recognized. The next launch converts them once, so recovery inserts dictation text; a finished hold whose delivery failed already holds dictation text and is inserted as saved.
+    @MainActor static func checkInterruptedHold(directory: URL) async throws {
+        let probe = Probe()
+        let spoken = ["email dott", "open parenthesis dott close parenthesis"]
+        let dependencies = SpeechServiceDependencies(infer: { _, job, _ in
+            guard let index = job.samples.first.map(Int.init), index > 0 else {
+                return SpeechOutput(transcripts: [], text: "", processingSeconds: 0)
+            }
+            let text = spoken[index - 1]
+            let row = Transcript(sessionID: job.sessionID, startedAt: job.startedAt,
+                startSeconds: job.offset, endSeconds: job.offset + 3, text: text, mode: "ambient")
+            return SpeechOutput(transcripts: [row], text: text, processingSeconds: 0)
+        }, deliver: { _, text in try probe.deliver(text) }, now: { probe.now })
+        let storeDirectory = directory.appendingPathComponent("interrupted")
+        let store = try TranscriptStore(directory: storeDirectory)
+        let first = SpeechService(dependencies: dependencies)
+        first.highlightTargetField = false
+        first.muteSpeakersDuringDictation = false
+        first.keepAudioForSpeakerPass = false
+        first.cleanUpTranscriptions = false
+        first.cleanUpDictation = false
+        // A name that is also a spoken symbol: converting "email Dot" again would insert "email.".
+        try first.saveVocabularyEntry(VocabularyEntry(preferred: "Dot", heard: "dott"))
+        first.beginRecoveryVerification(store: store, startedAt: probe.now)
+
+        first.beginDictation()
+        probe.now += 3
+        first.ingestRecoveryVerification(samples: Array(repeating: 1, count: 48_000), at: probe.now)
+        await first.waitForRecoveryVerification()
+        first.endDictation()
+        await first.waitForRecoveryVerification()
+        let finished = try store.latestRecoverableDictationAttempt()
+        precondition(finished?.text == "email Dot", "The finished hold did not save dictation text")
+
+        first.beginDictation()
+        probe.now += 3
+        first.ingestRecoveryVerification(samples: Array(repeating: 2, count: 48_000), at: probe.now)
+        await first.waitForRecoveryVerification()
+        let saved = try store.latestRecoverableDictationAttempt()
+        precondition(saved?.text == "open parenthesis dott close parenthesis", "A recognized block converted the held text before the hold ended")
+        first.shutdown()
+
+        let reopened = try TranscriptStore(directory: storeDirectory)
+        let second = SpeechService(dependencies: dependencies)
+        second.highlightTargetField = false
+        second.muteSpeakersDuringDictation = false
+        second.keepAudioForSpeakerPass = false
+        second.cleanUpTranscriptions = false
+        // In the order launch runs them: load the vocabulary, open the store, finalize interrupted holds.
+        try second.saveVocabularyEntry(VocabularyEntry(preferred: "Dot", heard: "dott"))
+        second.beginRecoveryVerification(store: reopened, startedAt: probe.now)
+        try second.dictation.finalizeInterruptedAttempts()
+        probe.deliveryFails = false
+        second.recoverRecentDictation()
+        await second.waitForRecoveryVerification()
+        second.recoverRecentDictation()
+        await second.waitForRecoveryVerification()
+        precondition(probe.delivered.first == "(Dot)", "Recovery inserted an interrupted hold's words without converting them with the saved vocabulary: \(probe.delivered)")
+        precondition(probe.delivered.last == "email Dot", "Recovery converted a finished hold's dictation text a second time: \(probe.delivered)")
+        second.shutdown()
+        print("PASS: a hold interrupted by quit is converted once at the next launch and recovered as dictation text; a finished hold's saved text is inserted unchanged.")
     }
 
     /// Quiet and a stalled microphone are measured on the injected clock, so a tick at a later fake time reaches them without waiting.

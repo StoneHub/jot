@@ -269,6 +269,13 @@ final class DictationCoordinator {
         }
     }
 
+    /// A hold cut short by quit saved only the words as recognized. Launch converts symbols, vocabulary, and hesitations once so recovery inserts dictation text; the optional model cleanup that release runs is skipped.
+    func finalizeInterruptedAttempts() throws {
+        try host.store?.finalizeInterruptedDictationAttempts(converting: { words in
+            DictationCleanup.applying(to: host.vocabulary.applyingToDictation(words))
+        })
+    }
+
     /// Uses the target already acquired by DictationInput's recovery callback.
     func recoverRecent() {
         guard !deliveryStateSaveFailed else {

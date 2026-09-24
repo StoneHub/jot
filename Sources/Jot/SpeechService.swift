@@ -244,7 +244,8 @@ final class SpeechService: ObservableObject {
         catch { vocabularyLoadError = "Could not load vocabulary. Saved entries were preserved. " + error.localizedDescription }
         do {
             store = try TranscriptStore()
-            try store?.finalizeInterruptedDictationAttempts()
+            // Converts interrupted holds with the vocabulary loaded above.
+            try dictation.finalizeInterruptedAttempts()
             speakerStore = try SpeakerPassStore()
             peopleStore = try PeopleStore(); refreshPeople()
             let service = LocalServiceServer { [weak self] data in
