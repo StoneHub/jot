@@ -1,6 +1,6 @@
 import Foundation
 
-/// Rebuilds a session's rows from the offline speaker pass. Pure: words and segments in, turns out.
+/// Maps a session's stored words onto the offline speaker pass. Pure: words and segments in, speakers or turns out.
 public enum SpeakerPassRelabel {
     public typealias Segment = (speaker: String, start: Double, end: Double)
 
@@ -22,14 +22,23 @@ public enum SpeakerPassRelabel {
         return renamed
     }
 
-    /// Each word takes the pass speaker around its midpoint; a word no segment covers keeps the previous speaker within the paragraph pause and is otherwise unattributed. Rows break on a speaker change or a paragraph pause, as live turns do, and the pass decides speakers outright: no minimum turn or confirmation applies.
-    public static func turns(words: [StoredWord], segments: [Segment], tuning raw: TranscriptionTuning) -> [SpeechTurn] {
+    /// One speaker per word. Each word takes the pass speaker around its midpoint; a word no segment covers keeps the previous speaker within the paragraph pause and is otherwise unattributed. The pass decides speakers outright: no minimum turn or confirmation applies.
+    public static func speakers(words: [StoredWord], segments: [Segment], tuning raw: TranscriptionTuning) -> [String?] {
         let tuning = raw.bounded
         let ids = speakerIDs(segments: segments)
-        var speakers = SpeakerAssignment.assign(words: words.map { ($0.startSeconds, $0.endSeconds) }, segments: segments).map { $0.flatMap { ids[$0] } }
-        for index in speakers.indices.dropFirst() where speakers[index] == nil && words[index].startSeconds - words[index - 1].endSeconds < tuning.paragraphPause {
-            speakers[index] = speakers[index - 1]
+        let spans = words.map { (start: $0.startSeconds, end: $0.endSeconds) }
+        let assigned = SpeakerAssignment.assign(words: spans, segments: segments)
+        var result = assigned.map { $0.flatMap { ids[$0] } }
+        for index in result.indices.dropFirst() where result[index] == nil && words[index].startSeconds - words[index - 1].endSeconds < tuning.paragraphPause {
+            result[index] = result[index - 1]
         }
+        return result
+    }
+
+    /// Rows from `speakers`, breaking on a speaker change or a paragraph pause, as live turns do.
+    public static func turns(words: [StoredWord], segments: [Segment], tuning raw: TranscriptionTuning) -> [SpeechTurn] {
+        let tuning = raw.bounded
+        let speakers = Self.speakers(words: words, segments: segments, tuning: raw)
         var result: [SpeechTurn] = []
         for (index, word) in words.enumerated() {
             if let last = result.last, last.speaker == speakers[index], word.startSeconds - last.end < tuning.paragraphPause {

@@ -77,7 +77,7 @@ final class LiveCleanup {
                     cleanupBypassedCount += 1; continue
                 }
                 do {
-                    let readable = PhraseCleanup.distribute(text, over: phrase.sources)
+                    let readable = PhraseCleanup.distribute(text, over: phrase.sources.map(\.text))
                     if try host.store?.setReadablePhrase(readable, for: phrase.sources) == true {
                         cleanupAppliedCount += 1
                         host.replaceLive(texts: Dictionary(uniqueKeysWithValues: zip(phrase.sources.map(\.id), readable)))

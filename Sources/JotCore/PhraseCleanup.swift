@@ -34,13 +34,14 @@ public struct PhraseCleanup {
         return ready
     }
 
-    /// Map a whole-phrase edit back to stable source IDs. Exact word anchors keep
-    /// removals/capitalization in the right rows; inserted wording follows its
-    /// preceding anchor. No model-enforced array count or row boundary is needed.
-    public static func distribute(_ cleaned: String, over sources: [Transcript]) -> [String] {
+    /// Map a whole-phrase edit back to the texts it was made from, one share per
+    /// source text. Exact word anchors keep removals/capitalization in the right
+    /// rows; inserted wording follows its preceding anchor. No model-enforced
+    /// array count or row boundary is needed.
+    public static func distribute(_ cleaned: String, over sources: [String]) -> [String] {
         guard !sources.isEmpty else { return [] }
-        let original = sources.enumerated().flatMap { index, row in
-            row.text.split(whereSeparator: \.isWhitespace).map { (String($0), index) }
+        let original = sources.enumerated().flatMap { index, text in
+            text.split(whereSeparator: \.isWhitespace).map { (String($0), index) }
         }
         let expression = try! NSRegularExpression(pattern: "\\S+\\s*")
         let value = cleaned as NSString

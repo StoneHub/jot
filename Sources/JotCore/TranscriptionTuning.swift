@@ -99,6 +99,18 @@ public enum TranscriptGrouping {
         turns(words.map { AttributedWord(text: $0.word, start: $0.startSeconds, end: $0.endSeconds, probabilities: $0.probabilities) }, tuning: tuning)
     }
 
+    /// One speaker per stored word, from the live probabilities under the tuning: each word takes the speaker of the turn it falls in.
+    public static func speakers(words: [StoredWord], tuning: TranscriptionTuning) -> [String?] {
+        let attributed = words.map { AttributedWord(text: $0.word, start: $0.startSeconds, end: $0.endSeconds, probabilities: $0.probabilities) }
+        var result = [String?](repeating: nil, count: words.count)
+        for turn in turns(attributed, tuning: tuning) {
+            for index in turn.wordRange {
+                result[index] = turn.speaker
+            }
+        }
+        return result
+    }
+
     /// Seconds of clearly attributed speech that confirm a speaker change ahead of the minimum turn.
     static let confidentReplyTurn = 0.3
     /// True when every word gives this speaker a probability well above the tuned threshold and the others none.

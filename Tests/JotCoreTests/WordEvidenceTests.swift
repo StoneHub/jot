@@ -128,6 +128,76 @@ final class WordEvidenceTests: XCTestCase {
         XCTAssertEqual(try store.session(id: "a").map(\.id), ["old"])
     }
 
+    func testRelabelSessionKeepsCleanedTextAndRowIDs() throws {
+        let store = try TranscriptStore(directory: directory)
+        try store.append(row("t1", start: 0, end: 1, text: "First person"))
+        try store.append(row("t2", start: 1, end: 3, text: "so we should ship it"))
+        try store.append(row("other", session: "b"))
+        try store.setReadableText("First person.", for: try XCTUnwrap(store.read(id: "t1")))
+        try store.setReadableText("So we should ship it.", for: try XCTUnwrap(store.read(id: "t2")))
+        try store.setTitle(sessionID: "a", title: "Standup")
+        try store.label(sessionID: "a", speakerID: "speaker-1", name: "Gina")
+        try store.appendEvent(CaptureEvent(sessionID: "a", kind: "started", detail: "Started"))
+        try store.appendWords([word("t1", 0, "First", 0, 0.5), word("t1", 1, "person", 0.5, 1),
+                               word("t2", 0, "so", 1, 1.25), word("t2", 1, "we", 1.25, 1.5), word("t2", 2, "should", 1.5, 2),
+                               word("t2", 3, "ship", 2, 2.5), word("t2", 4, "it", 2.5, 3), word("other", 0, "other", 0, 1)])
+        var seen: [String] = []
+        // The pass hears a second voice from "ship" on, inside row t2.
+        let changed = try store.relabelSession("a") { words in
+            seen = words.map(\.word)
+            return ["speaker-2", "speaker-2", "speaker-2", "speaker-2", "speaker-2", "speaker-1", "speaker-1"]
+        }
+        XCTAssertTrue(changed)
+        XCTAssertEqual(seen, ["First", "person", "so", "we", "should", "ship", "it"])
+        let rows = try store.session(id: "a")
+        XCTAssertEqual(rows.map(\.text), ["First person.", "So we should", "ship it."], "Every row keeps its cleaned text, and a split row shares it out")
+        XCTAssertEqual(rows.map(\.speakerID), ["speaker-2", "speaker-2", "speaker-1"])
+        XCTAssertEqual(rows.map(\.speakerLabel), [nil, nil, "Gina"])
+        XCTAssertEqual(rows[0].id, "t1")
+        XCTAssertFalse(rows[1...].contains { $0.id == "t2" })
+        XCTAssertEqual(rows.map(\.startSeconds), [0, 1, 2])
+        XCTAssertEqual(rows.map(\.endSeconds), [1, 2, 3])
+        XCTAssertEqual(rows.map(\.startedAt), Array(repeating: Date(timeIntervalSince1970: 100), count: 3))
+        XCTAssertEqual(try store.words(transcriptID: rows[1].id).map(\.word), ["so", "we", "should"])
+        XCTAssertEqual(try store.words(transcriptID: rows[2].id).map(\.position), [0, 1])
+        XCTAssertEqual(try store.words(sessionID: "a").map(\.word), seen)
+        XCTAssertEqual(try store.sessionSummary(id: "a")?.title, "Standup")
+        XCTAssertEqual(try store.labels(sessionID: "a"), ["speaker-1": "Gina"])
+        XCTAssertEqual(try store.events(sessionID: "a").count, 1)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM transcript_words WHERE transcript_id NOT IN (SELECT id FROM transcripts)"), 0)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM transcript_readable WHERE transcript_id NOT IN (SELECT id FROM transcripts)"), 0)
+        let other = try XCTUnwrap(store.read(id: "other"))
+        XCTAssertEqual(other.text, "hello there")
+        XCTAssertEqual(other.speakerID, "speaker-1")
+
+        // Relabeling again from the same speakers changes nothing.
+        try store.relabelSession("a") { _ in ["speaker-2", "speaker-2", "speaker-2", "speaker-2", "speaker-2", "speaker-1", "speaker-1"] }
+        XCTAssertEqual(try store.session(id: "a").map(\.id), rows.map(\.id))
+        XCTAssertEqual(try store.session(id: "a").map(\.text), rows.map(\.text))
+    }
+
+    func testRelabelSessionLeavesSessionsWithoutWordsAndDeletedSessionsAlone() throws {
+        let store = try TranscriptStore(directory: directory)
+        try store.append(row("old", session: "c", text: "recorded before words were kept"))
+        let noWords: ([StoredWord]) -> [String?] = { _ in
+            XCTFail("No words to relabel")
+            return []
+        }
+        XCTAssertFalse(try store.relabelSession("c", speakers: noWords))
+        XCTAssertEqual(try store.read(id: "old")?.speakerID, "speaker-1")
+
+        try store.append(row("t1", start: 0, end: 1, text: "one two"))
+        try store.appendWords([word("t1", 0, "one", 0, 0.5), word("t1", 1, "two", 0.5, 1)])
+        // Deleting the session while its speakers are worked out leaves nothing to write back to.
+        try store.relabelSession("a") { _ in
+            try? store.deleteSession(id: "a")
+            return ["speaker-2", "speaker-3"]
+        }
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM transcripts WHERE session_id = 'a'"), 0)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM transcript_words"), 0)
+        XCTAssertFalse(try store.relabelSession("a", speakers: noWords))
+    }
+
     func testOpeningAnOlderDatabaseAddsTheWordTableAndKeepsRows() throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         var db: OpaquePointer?

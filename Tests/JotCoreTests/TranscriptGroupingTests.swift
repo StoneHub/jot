@@ -63,6 +63,21 @@ final class TranscriptGroupingTests: XCTestCase {
         let turns = TranscriptGrouping.turns(words,tuning:tuning)
         XCTAssertEqual(turns.count,1); XCTAssertEqual(turns[0].speaker,"speaker-1")
     }
+    func testEachStoredWordTakesTheSpeakerOfItsTurn() {
+        func word(_ row: String, _ position: Int, _ text: String, _ start: Double, _ end: Double, _ probabilities: [Float]) -> StoredWord {
+            StoredWord(transcriptID: row, position: position, word: text, startSeconds: start, endSeconds: end, probabilities: probabilities)
+        }
+        let first: [Float] = [0.7, 0.1, 0.1, 0.1]
+        let second: [Float] = [0.1, 0.7, 0.1, 0.1]
+        let words = [word("t1", 0, "First", 10, 10.5, first), word("t1", 1, "person", 10.5, 11, first),
+                     word("t2", 0, "Second", 11, 11.5, second), word("t2", 1, "person", 11.5, 12.5, second),
+                     word("t3", 0, "forward", 14, 14.5, []), word("t3", 1, "slash", 14.5, 15, [])]
+        var tuning = TranscriptionTuning()
+        tuning.minimumSpeakerTurn = 0.8
+        XCTAssertEqual(TranscriptGrouping.speakers(words: words, tuning: tuning), ["speaker-1", "speaker-1", "speaker-2", "speaker-2", nil, nil], "The gap before the last words resets the speaker, and they carry no diarizer evidence")
+        XCTAssertEqual(TranscriptGrouping.speakers(words: words, tuning: .init()), ["speaker-2", "speaker-2", "speaker-2", "speaker-2", nil, nil], "A longer minimum turn folds the one-second opener into the confirmed speaker")
+        XCTAssertTrue(TranscriptGrouping.speakers(words: [], tuning: tuning).isEmpty)
+    }
     func testHistoryFilteringDoesNotRemoveSourceWords() {
         let rows = [Transcript(sessionID:"s",startedAt:Date(timeIntervalSince1970:0),startSeconds:0,endSeconds:1,text:"Hello",speakerID:"speaker-1",mode:"ambient"),
                     Transcript(sessionID:"s",startedAt:Date(timeIntervalSince1970:0),startSeconds:1.1,endSeconds:1.3,text:"Um…",speakerID:"speaker-2",mode:"ambient"),

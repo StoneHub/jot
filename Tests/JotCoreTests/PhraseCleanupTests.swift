@@ -15,7 +15,7 @@ final class PhraseCleanupTests: XCTestCase {
         XCTAssertEqual(ready.count, 1)
         XCTAssertEqual(ready[0].text, "I think uh we could get faster output to the live view.")
         XCTAssertEqual(ready[0].sources.map(\.id), rows.map(\.id))
-        XCTAssertEqual(PhraseCleanup.distribute("I think we could get faster output to the live view.", over: rows),
+        XCTAssertEqual(PhraseCleanup.distribute("I think we could get faster output to the live view.", over: rows.map(\.text)),
             ["I think", "we could get", "faster output to the live view."])
     }
     func testQuietSpeakerSessionAndSizeBoundaries() {
@@ -35,7 +35,7 @@ final class PhraseCleanupTests: XCTestCase {
         let rows = [row("uh", 0), row("we need 3 boxes", 1), row("not 4", 2)]
         let text = "We need 3 boxes, not 4."
         XCTAssertTrue(CleanupValidation.accepts(text, source: rows.map(\.text).joined(separator: " ")))
-        XCTAssertEqual(PhraseCleanup.distribute(text, over: rows), ["", "We need 3 boxes,", "not 4."])
+        XCTAssertEqual(PhraseCleanup.distribute(text, over: rows.map(\.text)), ["", "We need 3 boxes,", "not 4."])
     }
     func testPhraseStorageIsAtomicAndDoesNotResurrectDeletedRows() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

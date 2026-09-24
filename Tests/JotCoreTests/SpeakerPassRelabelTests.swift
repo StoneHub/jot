@@ -16,6 +16,27 @@ final class SpeakerPassRelabelTests: XCTestCase {
         XCTAssertEqual(SpeakerPassRelabel.speakerIDs(segments: result.segments), ["speaker-1": "speaker-1", "speaker-2": "speaker-2", "speaker-3": "speaker-3"])
     }
 
+    func testEachWordTakesThePassSpeakerAroundItsMidpoint() {
+        // "there" starts in S1's segment, but its midpoint falls in S2's.
+        let words = [word("Hello", 0, 0.4), word("there", 0.5, 1.1), word("Hi", 1.2, 1.5)]
+        let segments: [SpeakerPassRelabel.Segment] = [("S1", 0, 0.7), ("S2", 0.7, 2)]
+        XCTAssertEqual(SpeakerPassRelabel.speakers(words: words, segments: segments, tuning: .init()), ["speaker-1", "speaker-2", "speaker-2"])
+    }
+
+    func testAnUncoveredWordKeepsThePreviousSpeakerAcrossARowWithinThePauseOnly() {
+        let words = [StoredWord(transcriptID: "t1", position: 0, word: "One", startSeconds: 0, endSeconds: 0.5, probabilities: []),
+                     StoredWord(transcriptID: "t2", position: 0, word: "two", startSeconds: 0.6, endSeconds: 1.0, probabilities: []),
+                     StoredWord(transcriptID: "t3", position: 0, word: "three", startSeconds: 3.0, endSeconds: 3.4, probabilities: [])]
+        var tuning = TranscriptionTuning()
+        tuning.paragraphPause = 1.5
+        XCTAssertEqual(SpeakerPassRelabel.speakers(words: words, segments: [("S1", 0, 0.55)], tuning: tuning), ["speaker-1", "speaker-1", nil])
+    }
+
+    func testWithoutSegmentsNoWordHasASpeaker() {
+        let words = [word("One", 0, 0.5), word("two", 0.6, 1.0)]
+        XCTAssertEqual(SpeakerPassRelabel.speakers(words: words, segments: [], tuning: .init()), [nil, nil])
+    }
+
     func testWordsSplitIntoTurnsWhereThePassChangesSpeakerIgnoringLiveProbabilities() {
         let words = [word("Hello", 0, 0.4), word("there", 0.5, 0.9), word("Hi", 1.0, 1.3), word("back", 1.35, 1.7), word("So", 1.8, 2.0)]
         let segments: [SpeakerPassRelabel.Segment] = [("S1", 0, 0.95), ("S2", 0.95, 1.75), ("S1", 1.75, 2.1)]
