@@ -204,6 +204,10 @@ final class DictationCoordinator {
                 await deliverAttempt(attempt)
             }
         } catch {
+            // Still recognizing means reading the held range failed, so the text is the words the blocks saved.
+            if attempt.state == .recognizing {
+                attempt.text = DictationCleanup.applying(to: vocabulary.applyingToDictation(attempt.text))
+            }
             attempt.state = .deliveryFailed; attempt.updatedAt = host.dependencies.now()
             try? host.store?.saveDictationAttempt(attempt)
             currentAttempt = attempt
@@ -267,6 +271,13 @@ final class DictationCoordinator {
         } catch {
             host.recoveryNotice = "Speech is still being recognized, but the recovery record could not be updated."
         }
+    }
+
+    /// A hold cut short by quit saved only the words as recognized. Launch converts symbols, vocabulary, and hesitations once so recovery inserts dictation text; the optional model cleanup that release runs is skipped.
+    func finalizeInterruptedAttempts() throws {
+        try host.store?.finalizeInterruptedDictationAttempts(converting: { words in
+            DictationCleanup.applying(to: host.vocabulary.applyingToDictation(words))
+        })
     }
 
     /// Uses the target already acquired by DictationInput's recovery callback.

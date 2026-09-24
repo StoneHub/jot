@@ -43,6 +43,17 @@ final class PersonalVocabularyTests: XCTestCase {
         XCTAssertEqual(vocabulary.applyingToDictation("forward slash. Then continue."), "/. Then continue.")
     }
 
+    func testSpokenSymbolsReuseCompiledPatterns() {
+        let row = "we need to open parenthesis the config close parenthesis and check the forward slash path at sign home before lunch"
+        let calls = 300
+        let began = ContinuousClock.now
+        for _ in 0..<calls {
+            _ = SpokenSymbols.applying(to: row)
+        }
+        let average = (ContinuousClock.now - began) / calls
+        XCTAssertLessThan(average, .milliseconds(5), "Converting one 20-word row took \(average). Compiling the 46 symbol patterns on every call took about 16 ms a row; they must be compiled once.")
+    }
+
     func testDisableEditRemoveAndSnapshot() throws {
         var vocabulary = PersonalVocabulary()
         var entry = VocabularyEntry(preferred: "Jot", heard: "jaw")

@@ -177,11 +177,26 @@ public final class TranscriptStore: @unchecked Sendable {
 
     /// A process exit cannot recover unsaved raw audio, but already recognized text
     /// remains a retryable delivery instead of looking like an active capture forever.
-    public func finalizeInterruptedDictationAttempts() throws {
+    /// A hold saves the words as recognized, so `converting` turns them into the text
+    /// to insert in the same update that ends the hold; no attempt is converted twice.
+    public func finalizeInterruptedDictationAttempts(converting: (String) -> String) throws {
         try locked {
-            let stmt = try prepare("UPDATE dictation_attempts SET state='deliveryFailed',has_gap=1,ended_at=COALESCE(ended_at,updated_at) WHERE state IN ('capturing','recognizing')")
-            defer { sqlite3_finalize(stmt) }
-            try finish(stmt)
+            let select = try prepare("SELECT id,text FROM dictation_attempts WHERE state IN ('capturing','recognizing')")
+            defer { sqlite3_finalize(select) }
+            var interrupted: [(id: String, text: String)] = []
+            while true {
+                let status = sqlite3_step(select)
+                if status == SQLITE_DONE { break }
+                guard status == SQLITE_ROW else { throw error() }
+                interrupted.append((column(select, 0)!, column(select, 1)!))
+            }
+            for attempt in interrupted {
+                let update = try prepare("UPDATE dictation_attempts SET text=?,state='deliveryFailed',has_gap=1,ended_at=COALESCE(ended_at,updated_at) WHERE id=?")
+                defer { sqlite3_finalize(update) }
+                bind(converting(attempt.text), to: 1, in: update)
+                bind(attempt.id, to: 2, in: update)
+                try finish(update)
+            }
         }
     }
 

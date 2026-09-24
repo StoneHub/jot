@@ -67,7 +67,7 @@ Open **Vocabulary** to add a preferred spelling such as `SwiftUI`. If Jot mishea
 
 Entries can be edited, disabled, removed, and restored with **Undo remove**. Use the preview to check saved, enabled entries without recording. Matching ignores capitalization, respects whole-word boundaries, and prefers longer phrases at the same position. Replacements are applied once, without chaining into other entries.
 
-Jot converts explicit spoken symbol names such as `forward slash`, `at sign`, `underscore`, and `open parenthesis` into their characters by default. This is the same for Fn dictation, ambient capture, Dictations, Sessions, exports, and transcript access through the CLI or MCP.
+Jot converts explicit spoken symbol names such as `forward slash`, `at sign`, `underscore`, and `open parenthesis` into their characters only in text it inserts: Fn dictation and speech inserted by the recovery gesture. Listening rows keep the words as spoken, so "a period of time" and "at sign" stay words in Live, Sessions, exports, and transcript access through the CLI or MCP. A held dictation's own row shows the text that was inserted, wherever it appears.
 
 Personal vocabulary is then applied before Fn dictation is inserted into your target app, using the entries enabled when that dictation began. Personal entries stay in Jot's local preferences; this does not train or change the recognition model.
 
