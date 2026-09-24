@@ -204,6 +204,10 @@ final class DictationCoordinator {
                 await deliverAttempt(attempt)
             }
         } catch {
+            // Still recognizing means reading the held range failed, so the text is the words the blocks saved.
+            if attempt.state == .recognizing {
+                attempt.text = DictationCleanup.applying(to: vocabulary.applyingToDictation(attempt.text))
+            }
             attempt.state = .deliveryFailed; attempt.updatedAt = host.dependencies.now()
             try? host.store?.saveDictationAttempt(attempt)
             currentAttempt = attempt
