@@ -38,7 +38,6 @@ public enum SpeakerPassRelabel {
                 result[result.count - 1].wordRange = last.wordRange.lowerBound..<index + 1
             } else { result.append(SpeechTurn(text: word.word, start: word.startSeconds, end: word.endSeconds, speaker: speakers[index], wordRange: index..<index + 1)) }
         }
-        for index in result.indices { result[index].text = SpokenSymbols.applying(to: result[index].text) }
         return result
     }
 }
