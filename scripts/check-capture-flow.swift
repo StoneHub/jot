@@ -7,6 +7,7 @@ enum CaptureFlowChecks {
     final class FakeMicrophone: MicrophoneSource, @unchecked Sendable {
         var failuresBeforeStart = 0
         var startCalls = 0
+        var drains = 0
         var running = false
         var bufferedSampleCount: Int { 0 }
         func setInput(uid: String?) throws {}
@@ -18,7 +19,10 @@ enum CaptureFlowChecks {
             running = true
         }
         func stop() { running = false }
-        func drain() -> (samples: [Float], dropped: Int, lastAudio: Date, rms: Float) { ([], 0, Date(), 0) }
+        func drain() -> (samples: [Float], dropped: Int, lastAudio: Date, rms: Float) {
+            drains += 1
+            return ([], 0, Date(), 0)
+        }
     }
 
     @MainActor static func run() async throws {
@@ -45,6 +49,21 @@ enum CaptureFlowChecks {
         precondition(service.ambientEnabled && microphone.startCalls == 3, "Capture did not recover after two failed starts")
         precondition(service.notice.isEmpty, "A recovered start left a notice behind: \(service.notice)")
         precondition(service.input.startBlocker() == nil, "A shortcut press is blocked while listening")
+
+        // An open menu or a live window resize runs the main run loop in event-tracking mode, from an event the run loop delivers. AppKit makes that mode common; this tool has no NSApplication, so it does the same, and a one-shot timer stands in for the event.
+        let tracking = CFRunLoopMode(RunLoop.Mode.eventTracking.rawValue as CFString)
+        // A mode cannot be removed from the common modes, so event tracking stays common for the rest of this harness run, as it does in the app.
+        CFRunLoopAddCommonMode(CFRunLoopGetMain(), tracking)
+        microphone.drains = 0
+        let drains = await withCheckedContinuation { (done: CheckedContinuation<Int, Never>) in
+            let openMenu = Timer(timeInterval: 0, repeats: false) { _ in
+                CFRunLoopRunInMode(tracking, 1, false)
+                done.resume(returning: microphone.drains)
+            }
+            RunLoop.main.add(openMenu, forMode: .default)
+        }
+        precondition(drains >= 2, "Audio drained \(drains) times in a second of menu tracking")
+        print("PASS: audio keeps draining while a menu is open or the window is being resized.")
 
         // The device never comes back: the retries stop, the notice says so, and a shortcut press explains itself.
         service.pause()

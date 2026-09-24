@@ -45,6 +45,7 @@ struct RecoveryFlowChecks {
         }
         defer { watchdog.cancel() }
         checkRecognitionCommitWindow()
+        checkCPUReadout()
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("jot-recovery-checks-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = try TranscriptStore(directory: directory)
@@ -126,6 +127,8 @@ struct RecoveryFlowChecks {
         print("PASS: Pause during model preparation or failed preparation does not enqueue unprocessable final audio.")
 
         try await checkQuietAndStall(directory: directory)
+        try await checkCPUReadoutWhileListening(directory: directory)
+        try await checkIdleRedraws(directory: directory)
         try await CaptureFlowChecks.run()
         if CommandLine.arguments.contains("--cleanup-model") { try await checkPhraseCleanupModel() }
 
@@ -226,6 +229,63 @@ struct RecoveryFlowChecks {
         precondition(afterError.samples.count == 30 && afterError.bufferOffset == 23,
             "An abandoned recognition plan retained failed audio")
         print("PASS: recognition windows retain bounded context, flush tails, deduplicate seams, preserve repeats, and reset at boundaries.")
+    }
+
+    /// The process's CPU time from getrusage, which ps agrees with.
+    static func kernelCPUSeconds() -> Double {
+        var usage = rusage()
+        getrusage(RUSAGE_SELF, &usage)
+        let user = Double(usage.ru_utime.tv_sec) + Double(usage.ru_utime.tv_usec) / 1_000_000
+        let system = Double(usage.ru_stime.tv_sec) + Double(usage.ru_stime.tv_usec) / 1_000_000
+        return user + system
+    }
+
+    /// Keeps one core busy for half a second and compares the CPU readout with the kernel's count.
+    static func checkCPUReadout() {
+        let sampler = ResourceSampler()
+        _ = sampler.sample()
+        let began = ProcessInfo.processInfo.systemUptime
+        let kernelBegan = kernelCPUSeconds()
+        while ProcessInfo.processInfo.systemUptime - began < 0.5 {}
+        let readout = sampler.sample().processCPUPercent
+        let expected = (kernelCPUSeconds() - kernelBegan) / (ProcessInfo.processInfo.systemUptime - began) * 100
+        precondition(abs(readout - expected) < expected / 10, "CPU readout \(readout)% disagrees with the kernel's \(expected)%")
+        print("PASS: the CPU readout matches the kernel's count while the process keeps a core busy.")
+    }
+
+    /// A finished recognition samples CPU for `jot diagnostics`, and the readout must still count that recognition's CPU. Each readout covers the time since the one before it, so weighting each by its interval adds up the CPU they report together.
+    @MainActor static func checkCPUReadoutWhileListening(directory: URL) async throws {
+        let probe = Probe()
+        let store = try TranscriptStore(directory: directory.appendingPathComponent("cpu"))
+        let service = SpeechService(dependencies: .init(infer: { _, _, _ in
+            let began = ProcessInfo.processInfo.systemUptime
+            while ProcessInfo.processInfo.systemUptime - began < 0.2 {}
+            return SpeechOutput(transcripts: [], text: "", processingSeconds: 0.2)
+        }, deliver: { _, text in try probe.deliver(text) }, now: { probe.now }))
+        service.keepAudioForSpeakerPass = false
+        service.cleanUpTranscriptions = false
+        service.beginRecoveryVerification(store: store, startedAt: probe.now)
+        defer { service.shutdown() }
+        var readouts: [(snapshot: ResourceSnapshot, kernelSeconds: Double)] = []
+        let watcher = service.$resources.dropFirst().sink { readouts.append(($0, kernelCPUSeconds())) }
+        defer { watcher.cancel() }
+        // Digital silence in real time: every 0.8 seconds the silence closes a chunk, and its recognition keeps a core busy for 0.2 seconds. The tick publishes the readout once a second.
+        for _ in 1...16 {
+            probe.now += 0.2
+            service.ingestRecoveryVerification(samples: Array(repeating: 0, count: 3_200), rms: 0, at: probe.now)
+            service.tickRecoveryVerification()
+            await service.waitForRecoveryVerification()
+            try await Task.sleep(for: .milliseconds(200))
+        }
+        precondition(readouts.count == 4, "The tick published the CPU readout \(readouts.count) times in 16 ticks, not 4")
+        let span = readouts[3].snapshot.uptimeSeconds - readouts[0].snapshot.uptimeSeconds
+        let reportedSeconds = zip(readouts, readouts.dropFirst()).reduce(0.0) { total, pair in
+            total + pair.1.snapshot.processCPUPercent / 100 * (pair.1.snapshot.uptimeSeconds - pair.0.snapshot.uptimeSeconds)
+        }
+        let readout = reportedSeconds / span * 100
+        let expected = (readouts[3].kernelSeconds - readouts[0].kernelSeconds) / span * 100
+        precondition(abs(readout - expected) < expected / 10, "Over three readouts of listening the CPU readout said \(readout)%, the kernel \(expected)%")
+        print(String(format: "PASS: while each recognition keeps a core busy for 0.2 seconds, three CPU readouts in a row match the kernel's count (%.1f%% against %.1f%%).", readout, expected))
     }
 
     @MainActor static func checkFailureAndCleanup(directory: URL) async throws {
@@ -444,6 +504,34 @@ struct RecoveryFlowChecks {
         precondition(service.pauseRequested && service.notice.hasPrefix("Microphone stopped delivering audio"), "Five seconds without microphone audio did not pause")
         while service.lifecycle.phase != .paused { try await Task.sleep(for: .milliseconds(10)) }
         print("PASS: five seconds without microphone audio pauses automatically.")
+    }
+
+    /// Every screen observes the whole service, so each published assignment tells the window to redraw. Listening should do that once a second for the CPU and memory readout, not on every audio drain or after a recognition that finds no speech.
+    @MainActor static func checkIdleRedraws(directory: URL) async throws {
+        let probe = Probe()
+        let store = try TranscriptStore(directory: directory.appendingPathComponent("idle"))
+        var recognitions = 0
+        let service = SpeechService(dependencies: .init(infer: { _, _, _ in
+            recognitions += 1
+            return SpeechOutput(transcripts: [], text: "", processingSeconds: 0.05)
+        }, deliver: { _, text in try probe.deliver(text) }, now: { probe.now }))
+        service.keepAudioForSpeakerPass = false
+        service.cleanUpTranscriptions = false
+        service.beginRecoveryVerification(store: store, startedAt: probe.now)
+        defer { service.shutdown() }
+        var changes = 0
+        let counter = service.objectWillChange.sink { changes += 1 }
+        defer { counter.cancel() }
+        // Two seconds of digital silence, drained and ticked every 0.2 seconds like the timer. Every 0.8 seconds the silence closes a chunk, and recognition finds no speech in it.
+        for _ in 1...10 {
+            probe.now += 0.2
+            service.ingestRecoveryVerification(samples: Array(repeating: 0, count: 3_200), rms: 0, at: probe.now)
+            service.tickRecoveryVerification()
+            await service.waitForRecoveryVerification()
+        }
+        precondition(recognitions == 2, "Two seconds of silence ran \(recognitions) recognitions, not two")
+        precondition(changes == 2, "Two seconds of listening told the window to redraw \(changes) times, not twice")
+        print("PASS: two seconds of listening to silence, with two recognitions that find no speech, tell the window to redraw exactly twice: once a second for the CPU and memory readout.")
     }
 
     @MainActor static func checkRealRecognition(_ file: URL) async throws {
