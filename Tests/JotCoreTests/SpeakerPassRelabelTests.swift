@@ -40,6 +40,13 @@ final class SpeakerPassRelabelTests: XCTestCase {
         let words = [word("First", 0, 0.5), word("second", 2.5, 3.0), word("at", 3.1, 3.5), word("sign", 3.6, 3.9), word("home", 4.0, 4.3)]
         let turns = SpeakerPassRelabel.turns(words: words, segments: [("S1", 0, 4)], tuning: .init())
         XCTAssertEqual(turns.map(\.speaker), ["speaker-1", "speaker-1"])
-        XCTAssertEqual(turns.map(\.text), ["First", "second@home"])
+        XCTAssertEqual(turns.map(\.text), ["First", "second at sign home"])
+    }
+
+    func testSpeakerPassKeepsOrdinarySymbolWords() {
+        let words = ["for", "a", "period", "of", "time", "and", "colon", "cancer"]
+            .enumerated().map { word($0.element, Double($0.offset), Double($0.offset) + 0.5) }
+        let turns = SpeakerPassRelabel.turns(words: words, segments: [("S1", 0, 8)], tuning: .init())
+        XCTAssertEqual(turns.map(\.text), ["for a period of time and colon cancer"])
     }
 }
