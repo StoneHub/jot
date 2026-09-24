@@ -28,12 +28,16 @@ Jot is judged by three numbers:
 - [#55](https://github.com/StoneHub/jot/issues/55) Keep cleaned text through the speaker pass and Regroup, and run both off the main thread
 - [#56](https://github.com/StoneHub/jot/issues/56) Read the Live session in one query and add new rows without re-reading
 - [#57](https://github.com/StoneHub/jot/issues/57) Fix the CPU readout and stop re-rendering the window for meters nobody sees
+- [#71](https://github.com/StoneHub/jot/issues/71) Stop re-reading recent rows and the session list on every recognition block
+- [#75](https://github.com/StoneHub/jot/issues/75) Read the speaker pass segments after Regroup waits, so the pass cannot be overwritten
 
 ### 1. Settings and the tuning lab
 
 - [#58](https://github.com/StoneHub/jot/issues/58) One settings model that saves only what you change and applies live
 - [#59](https://github.com/StoneHub/jot/issues/59) A tuning lab that runs recorded audio through the real pipeline
 - [#60](https://github.com/StoneHub/jot/issues/60) Dictation latency and cleanup time in diagnostics
+- [#72](https://github.com/StoneHub/jot/issues/72) Make jot diagnostics CPU samples cover the whole interval
+- [#73](https://github.com/StoneHub/jot/issues/73) Use the tuned paragraph pause in Markdown exports
 
 ### 2. An architecture you can follow
 
