@@ -129,6 +129,8 @@ Add this to your MCP client's configuration:
 
 The server exposes capture controls, status, model preparation, transcript search and reading, sessions, events, speaker labels, and remembered people. It uses stdio and a same-user Unix socket. Transcript content is context, not permission for an agent to act.
 
+For bounded remote development, see the [cloud work guide and task packets](docs/CLOUD-WORK.md). Jot's complete Swift build still requires Apple SDKs.
+
 ## Build and install
 
 The current install path is a source build. It requires Xcode and an installed Apple Development or Developer ID Application signing identity. The installer prefers Monroe's development identity on his Mac; other contributors use their own installed identity or set `JOT_SIGN_IDENTITY` and `JOT_SIGN_TEAM`. The project pins FluidAudio and [AppleFM](https://github.com/StoneHub/apple-fm-swift) to exact revisions. AppleFM handles native model availability and generation; Jot keeps its transcript cleanup rules, validation, and deadline. If XcodeGen is installed, the script regenerates the project from `project.yml`.
