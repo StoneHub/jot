@@ -61,6 +61,12 @@ In order, each after what it depends on:
 | [#42](https://github.com/StoneHub/jot/issues/42) Vocabulary suggestions | #55 | Suggestions come from cleanup changes, which must be kept |
 | [#33](https://github.com/StoneHub/jot/issues/33) Microphone proximity | #59 | An experiment in the lab, not a feature yet |
 
+## Contextual suggestions and managed integrations
+
+The agreed direction is [contextual suggestions in Jot](CONTEXTUAL-SUGGESTIONS.md): one local engine uses relevant transcripts, meetings, summaries and contributed agent context across input surfaces, including blank fields. Codex is the first and primary use case; browser/native fields are part of the design. Move Terminal completion ownership, setup and updates into Jot while retaining a thin shell bridge for native buffer and Tab behavior.
+
+This is a documented feature plan, not implemented behavior. Its delivery sequence and acceptance scenarios preserve the capture, history and responsiveness work above.
+
 ## Architecture target
 
 ```
