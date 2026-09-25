@@ -74,6 +74,8 @@ The worker does not merge a code PR whose declared Mac gate is still pending. Th
 
 ## Initial queue
 
+For the named companion projects and copy-ready prompts, see the [personal repository cloud queue](cloud-tasks/portfolio.md).
+
 | Task packet | Priority/lane | Boundary |
 | --- | --- | --- |
 | [Suggestion evaluation fixtures](cloud-tasks/suggestion-fixtures.md), part of [#79](https://github.com/StoneHub/jot/issues/79) | First portable pilot | Create synthetic evidence and validation tooling; no app/engine implementation or live model run |
