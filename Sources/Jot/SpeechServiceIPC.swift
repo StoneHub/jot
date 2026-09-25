@@ -79,7 +79,7 @@ extension SpeechService {
                 guard let id = params["sessionID"] as? String else { throw JotError.message("sessionID is required") }
                 let (session, rows) = try exportable(id)
                 if params["format"] as? String == "json" { result = try object(TranscriptGrouping.foldContinuations(rows)) }
-                else { result = ["sessionID": id, "text": TranscriptExport.markdown(session: session, rows: rows)] }
+                else { result = ["sessionID": id, "text": TranscriptExport.markdown(session: session, rows: rows, tuning: tuning)] }
             case "speech.transcribe_file":
                 guard lifecycle.phase == .paused, !capture.running, processing == nil, jobs.isEmpty, !diagnosticActive else { throw JotError.message("Pause Jot before diagnostic file transcription.") }
                 guard ModelCache.bytesOnDisk() > 0 else { throw JotError.message("Prepare speech models before diagnostic file transcription.") }

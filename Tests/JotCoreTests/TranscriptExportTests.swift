@@ -61,6 +61,39 @@ final class TranscriptExportTests: XCTestCase {
         XCTAssertTrue(text.contains("4 segments, 0:00:14 of audio"), text)
     }
 
+    func testMarkdownUsesTheTunedParagraphPauseLikeSessions() throws {
+        // Gaps of 2 s: past the default 1.5 s pause, within a tuned 2.4 s one.
+        let rows = [row(0, 1, "We should ship", speaker: "speaker-1"), row(3, 4, "on Friday.", speaker: nil),
+                    row(6, 7, "Agreed.", speaker: "speaker-2"), row(9, 10, "Then tests.", speaker: "speaker-2"),
+                    row(10.5, 11, "typed note", speaker: "speaker-2", mode: "dictation")]
+        let session = TranscriptSession(sessionID: "s", startedAt: started, lastTranscriptAt: started.addingTimeInterval(11), transcriptCount: 5)
+        var tuning = TranscriptionTuning(); tuning.paragraphPause = 2.4
+
+        XCTAssertEqual(TranscriptExport.readingParagraphs(rows, tuning: .init()).map(\.text),
+                       ["We should ship", "on Friday.", "Agreed.", "Then tests.", "typed note"])
+        XCTAssertEqual(TranscriptExport.readingParagraphs(rows, tuning: tuning).map(\.text),
+                       ["We should ship on Friday.", "Agreed. Then tests.", "typed note"], "Mode still separates paragraphs")
+        XCTAssertTrue(TranscriptExport.markdown(session: session, rows: rows).contains("**[0:00:03] Unattributed:** on Friday."))
+
+        // The Sessions pipeline as SessionLibrary built it before sharing readingParagraphs.
+        let sessions = TranscriptExport.paragraphs(TranscriptGrouping.foldContinuations(rows, gap: 2.4), mergeWithin: 2.4)
+            .map { "**[\(TranscriptExport.clock($0.startSeconds))] \(TranscriptExport.speakerName($0)):** \($0.text)" }
+        XCTAssertEqual(sessions, ["**[0:00:00] Speaker 1:** We should ship on Friday.", "**[0:00:06] Speaker 2:** Agreed. Then tests.",
+                                  "**[0:00:10] Speaker 2:** typed note"])
+        let exported = TranscriptExport.markdown(session: session, rows: rows, tuning: tuning)
+        XCTAssertEqual(exported.components(separatedBy: "\n").filter { $0.hasPrefix("**[") }, sessions)
+
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = try TranscriptExport.write(session: session, rows: rows, directory: directory, tuning: tuning)
+        XCTAssertEqual(try String(contentsOf: url), exported)
+
+        // Export bounds the pause as Sessions does: 10 s acts as 2.5 s, so a 3 s gap still separates.
+        var excessive = TranscriptionTuning(); excessive.paragraphPause = 10
+        let apart = [row(0, 1, "First.", speaker: "speaker-1"), row(4, 5, "Second.", speaker: "speaker-1")]
+        XCTAssertEqual(TranscriptExport.readingParagraphs(apart, tuning: excessive).map(\.text), ["First.", "Second."])
+    }
+
     func testHistoryNameSharesSpeakerWordingWithExportExceptForRowsWithoutASpeaker() {
         var labeled = row(0, 1, "hi", speaker: "speaker-1"); labeled.speakerLabel = "Innocent"
         var blankLabel = row(0, 1, "hi", speaker: nil); blankLabel.speakerLabel = ""
