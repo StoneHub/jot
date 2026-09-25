@@ -33,7 +33,33 @@ git diff --check
 
 The existing five Python tests mock signing operations. Their success does not mean an app is signed or Swift works. Source feedback checks do not validate a built product. During preparation these commands passed on the Mac; a hosted Linux rehearsal has not been performed.
 
-For the local integrator, `python3 scripts/cloud-preflight.py --require-macos` checks tool presence only. Then run the task's focused Swift tests, broaden when needed, and build the app if app sources changed. For an authorized delivery, follow `AGENTS.md` and `scripts/build-install.py`; the cloud worker cannot claim installed behavior. Private transcripts, captured audio and signing credentials remain on the Mac.
+For the local integrator, `python3 scripts/cloud-preflight.py --require-macos` checks tool presence only. Then check the PR as below. For an authorized delivery, follow `AGENTS.md` and `scripts/build-install.py`; the cloud worker cannot claim installed behavior. Private transcripts, captured audio and signing credentials remain on the Mac.
+
+## Local check of a cloud PR
+
+From any Jot checkout on the Mac:
+
+```sh
+python3 scripts/local-pr-check.py <PR> --dry-run   # show the gates the diff needs
+python3 scripts/local-pr-check.py <PR> --post      # run them and post the report on the PR
+```
+
+The script fetches the PR into its own worktree, `work/pr-<PR>`, without switching or editing the current checkout. It picks gates from the changed paths:
+
+| Gate | Runs when the diff touches | Command |
+| --- | --- | --- |
+| Portable | always | `git diff --check`, `scripts/test_*.py`, `check-no-feedback.py`, `check-suggestion-fixtures.py` when present |
+| Swift tests | `Sources/`, `Tests/`, `Package.*` | any `--filter` tests first, then `swift test` |
+| App build | `Sources/`, `Resources/`, `project.yml`, `Jot.xcodeproj/`, `Package.*`, build/signing scripts | `scripts/build-install.py --build-only` (Debug; no install) |
+| Recovery checks | `Sources/Jot/`, `Sources/JotCore/`, the recovery-check scripts, `project.yml`, `Package.*` | build and run `JotRecoveryChecks` with a fresh `CFFIXED_USER_HOME` |
+
+`--all` runs every gate, and `--skip <gate>` omits one. The verdict is `PASS` (exit 0), `FAIL` (1) or `INCOMPLETE` (3). A skipped gate, or one that is unavailable on this machine, makes the result INCOMPLETE. Logs and `report.md`/`report.json` are written to `work/pr-checks/pr-<PR>-<commit>/`, with the home directory replaced by `~`. The report carries `<!-- jot-local-check verdict=... head=<full commit> -->`, so it applies only to that commit; a new push needs a new report. The script never installs, approves or merges. It does not cover interactive UI, Accessibility, physical Fn, installed-app, updater or live capture behavior, or manual checks the PR lists.
+
+GitHub does not let an account approve its own PR, so for PRs opened under the owner's account the approval is a PASS report posted from that account. Merge when the latest owner report is PASS for the current head, the PR's manual review items are done, and no later owner comment reports a problem. A watching cloud session may merge on that signal. After merge, installation still follows `AGENTS.md`.
+
+Copy-ready prompt for a local agent:
+
+> Check Jot PR #N. From the Jot checkout, run `python3 scripts/local-pr-check.py N --dry-run`, then `python3 scripts/local-pr-check.py N --post --note "<what you reviewed>"`. Before posting, do the manual review items in the PR description and summarize them in the note. If a gate fails, investigate in `work/pr-N`. For a small fix within the PR's scope, commit there, push with the command the script prints, and run the check again. Otherwise post the failing evidence and the fix you propose. Do not install or merge unless Monroe asks, and leave the canonical checkout and capture alone.
 
 ## Stop environment loops early
 
@@ -67,7 +93,7 @@ Return:
 - Issue and branch/PR URL, base and final commit.
 - What changed and why, with the scoped file list.
 - Commands actually run, results and pre-existing failures.
-- Explicit unavailable checks, next exact Mac command and remaining runtime proof.
+- Explicit unavailable checks, remaining runtime proof, and the local check command (`python3 scripts/local-pr-check.py <PR>`, with any `--filter` tests the packet names).
 - Any deviations, environment blocker, and measured usage if the runner exposes it.
 
 The worker does not merge a code PR whose declared Mac gate is still pending. This is a division of responsibility: the local integrator completes the authorized delivery after validation.
