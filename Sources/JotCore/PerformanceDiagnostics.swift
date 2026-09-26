@@ -129,9 +129,12 @@ public struct PerformanceDiagnostics: Sendable {
         events.append(.init(elapsedSeconds: seconds, kind: kind, footprintMiB: current?.footprintMiB))
         if events.count > Self.eventCapacity { events.removeFirst(events.count - Self.eventCapacity) }
     }
+    /// Continuous recognition records a job every few seconds, so dropping the oldest job would push out held dictations within minutes. Each mode keeps at least half the jobs before its own oldest goes.
     public mutating func record(_ job: PerformanceJob) {
         jobs.append(job)
-        if jobs.count > Self.jobCapacity { jobs.removeFirst(jobs.count - Self.jobCapacity) }
+        guard jobs.count > Self.jobCapacity else { return }
+        let mode: PerformanceJob.Mode = jobs.lazy.filter { $0.mode == .dictation }.count > Self.jobCapacity / 2 ? .dictation : .ambient
+        jobs.remove(at: jobs.firstIndex { $0.mode == mode } ?? 0)
     }
     public var report: PerformanceReport {
         let successful = jobs.filter { $0.outcome == .completed || $0.outcome == .deliveryUnverified || $0.outcome == .noSpeech }

@@ -41,6 +41,24 @@ final class PerformanceDiagnosticsTests: XCTestCase {
         XCTAssertEqual(diagnostics.report.dictationLatency.count, 199)
         XCTAssertEqual(diagnostics.report.dictationLatency.p95Seconds, 290)
     }
+    func testContinuousRecognitionDoesNotPushOutHeldDictations() {
+        var diagnostics = PerformanceDiagnostics()
+        func job(_ mode: PerformanceJob.Mode, _ elapsed: Double) {
+            diagnostics.record(.init(elapsedSeconds: elapsed, mode: mode, outcome: .completed, audioSeconds: 3, queueWaitSeconds: 0,
+                inferenceSeconds: mode == .ambient ? 0.2 : nil, completionSeconds: elapsed))
+        }
+        for index in 0..<10 { job(.dictation, Double(index)) }
+        for index in 0..<1_000 { job(.ambient, Double(10 + index)) }
+        XCTAssertEqual(diagnostics.report.jobs.count, PerformanceDiagnostics.jobCapacity)
+        XCTAssertEqual(diagnostics.report.dictationLatency.count, 10)
+        XCTAssertEqual(diagnostics.report.jobs.last?.elapsedSeconds, 1_009)
+        // Dictations past half the jobs give up their own oldest, so recognition timings stay too.
+        for index in 0..<500 { job(.dictation, Double(2_000 + index)) }
+        XCTAssertEqual(diagnostics.report.jobs.count, PerformanceDiagnostics.jobCapacity)
+        XCTAssertEqual(diagnostics.report.dictationLatency.count, PerformanceDiagnostics.jobCapacity / 2)
+        XCTAssertEqual(diagnostics.report.dictationLatency.medianSeconds ?? 0, 2_449.5, accuracy: 1e-9)
+        XCTAssertEqual(diagnostics.report.inferenceLatency.count, PerformanceDiagnostics.jobCapacity / 2)
+    }
     func testDictationLatencyIsSplitByWhetherCleanupRan() throws {
         var diagnostics = PerformanceDiagnostics()
         func dictation(_ outcome: PerformanceJob.Outcome, completion: Double, cleanup: Double? = nil, cleanupOutcome: String? = nil) {
