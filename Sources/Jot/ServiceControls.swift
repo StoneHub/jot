@@ -177,6 +177,14 @@ private struct PermissionBanner: View {
     }
 }
 
+/// Observe resource samples only inside the meters, without rebuilding their parent.
+struct ResourceReadoutView<Content: View>: View {
+    @ObservedObject var readout: ResourceReadout
+    @ViewBuilder var content: (ResourceSnapshot) -> Content
+
+    var body: some View { content(readout.snapshot) }
+}
+
 struct MenuControls: View {
     @ObservedObject var service: SpeechService
     let delegate: JotDelegate
@@ -194,8 +202,10 @@ struct MenuControls: View {
             ServiceControls(service: service, compact: true)
                 .padding(18).modifier(GlassSurface(tint: Color(nsColor: .controlAccentColor).opacity(0.04)))
             HStack {
-                Text(String(format: "CPU %.1f%% · %.0f MB", service.resources.processCPUPercent, service.resources.residentMiB))
-                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                ResourceReadoutView(readout: service.resourceReadout) { resources in
+                    Text(String(format: "CPU %.1f%% · %.0f MB", resources.processCPUPercent, resources.residentMiB))
+                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                }
                 Spacer()
                 Button("Quit") { NSApp.terminate(nil) }.buttonStyle(.plain)
             }
