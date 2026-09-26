@@ -71,7 +71,7 @@ public enum SourceSelector {
         if outdated { return .stale }
         if source.kind == "shown-suggestion" { return .generatedNotIntent }
         if source.duplicateOf != nil { return .duplicate }
-        if association == .explicitRecentRequest { return nil }
+        if association == .explicitRecentRequest || association == .automaticRecentContext { return nil }
         return Self.association(of: source, with: target)
     }
 

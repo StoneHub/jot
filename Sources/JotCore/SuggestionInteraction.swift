@@ -88,3 +88,23 @@ public final class SuggestionShortcutPreferences {
         defaults.set(try JSONEncoder().encode(shortcut), forKey: JotDefaultsKey.suggestionShortcut)
     }
 }
+
+/// Debounces automatic requests and remembers the last attempted draft, including abstentions and dismissal.
+/// A failed/no-result request is not retried until the target changes; accepted text can be suppressed too.
+public struct SuggestionAutomaticTrigger<Key: Equatable> {
+    private var observed: Key?
+    private var attempted: Key?
+    private var stableSince: TimeInterval = 0
+    private var nextRequest: TimeInterval = 0
+    public init() {}
+    public mutating func observe(_ key: Key?, at now: TimeInterval) -> Bool {
+        guard let key else { observed = nil; return false }
+        if observed != key { observed = key; stableSince = now; return false }
+        guard attempted != key, now - stableSince >= 0.75, now >= nextRequest else { return false }
+        attempted = key; nextRequest = now + 2
+        return true
+    }
+    public mutating func suppress(_ key: Key, at now: TimeInterval) {
+        observed = key; attempted = key; stableSince = now; nextRequest = now + 2
+    }
+}

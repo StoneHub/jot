@@ -337,6 +337,38 @@ final class DictationInput {
         }
     }
 
+    /// A read-only probe; it never takes or clears the target owned by dictation/delivery.
+    struct SuggestionProbe: Equatable {
+        let pid: pid_t
+        let element: AXUIElement
+        let draft: SuggestionDraftSnapshot
+        let bundleID: String
+        let role: String
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.pid == rhs.pid && CFEqual(lhs.element, rhs.element) && lhs.draft == rhs.draft
+                && lhs.bundleID == rhs.bundleID && lhs.role == rhs.role
+        }
+    }
+    func probeSuggestionField() -> SuggestionProbe? {
+        guard isEnabled, !isRecordingShortcut, !recording, Self.accessibilityGranted,
+              let app = NSWorkspace.shared.frontmostApplication,
+              app.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+              let bundle = app.bundleIdentifier else { return nil }
+        let application = AXUIElementCreateApplication(app.processIdentifier)
+        guard let field = focusedField(application, timeout: 0.005) else { return nil }
+        AXUIElementSetMessagingTimeout(field, 0.005)
+        guard (try? validateEditable(field)) != nil else { return nil }
+        let value = snapshot(field)
+        guard let text = value.value, let range = value.selection,
+              let draft = SuggestionDraftSnapshot(value: text, location: range.location, length: range.length),
+              let role = stringAttribute(field, kAXRoleAttribute), draft.mode(bundleID: bundle, role: role) != nil else { return nil }
+        return SuggestionProbe(pid: app.processIdentifier, element: field, draft: draft, bundleID: bundle, role: role)
+    }
+    func capturedSuggestionMatches(_ probe: SuggestionProbe, field: SuggestionField) -> Bool {
+        guard let target else { return false }
+        return target.pid == probe.pid && CFEqual(target.field, probe.element) && field.draft == probe.draft
+    }
+
     struct SuggestionField {
         let draft: SuggestionDraftSnapshot
         let bundleID: String

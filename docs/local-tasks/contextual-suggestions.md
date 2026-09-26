@@ -7,6 +7,10 @@ Monroe decided on 2026-09-26, after the first Mac run:
 - Do it on the Mac, where it can be built, seen and debugged.
 - Tab accepts a visible suggestion.
 
+## Updated trigger decision (September 26)
+
+Monroe clarified: Jot should suggest automatically; Tab accepts, and typing dismisses the suggestion while keeping the user’s own input. This supersedes the request-shortcut-only trigger and the exclusion of automatic suggestions below. No shortcut choice is required. The optional shortcut remains for requesting again. Wait for a stable draft, avoid repeating a dismissed/abstained draft, and never insert without Tab. Automatic empty results stay quiet.
+
 ## Outcome
 
 In a text field (Codex first, any ordinary native field too), the user presses the suggestion shortcut. Jot reads the field's draft and recent Jot context, and a card at the field shows a suggested next input with its sources. **Tab** inserts it through Jot's verified insertion. **Escape**, typing, or a change of focus or source dismisses it. Nothing is ever sent, submitted or executed. Listening and capture are unaffected.

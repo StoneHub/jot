@@ -2,6 +2,43 @@ import XCTest
 @testable import JotCore
 
 final class SuggestionEvaluationInteractionTests: XCTestCase {
+    func testAutomaticSuggestionsWaitForStableDraftAndDoNotRepeatDismissedDraft() {
+        var trigger = SuggestionAutomaticTrigger<String>()
+        XCTAssertFalse(trigger.observe("draft", at: 0))
+        XCTAssertFalse(trigger.observe("draft", at: 0.5))
+        XCTAssertFalse(trigger.observe("edited draft", at: 0.6))
+        XCTAssertFalse(trigger.observe("edited draft", at: 1))
+        XCTAssertTrue(trigger.observe("edited draft", at: 1.4))
+        XCTAssertFalse(trigger.observe("edited draft", at: 30))
+        XCTAssertFalse(trigger.observe(nil, at: 31))
+        XCTAssertFalse(trigger.observe("edited draft", at: 32))
+        XCTAssertFalse(trigger.observe("edited draft", at: 33))
+    }
+
+    func testNewContextCanSuggestInAnUnchangedDraft() {
+        struct Key: Equatable { let draft: String; let revision: Int }
+        var trigger = SuggestionAutomaticTrigger<Key>()
+        let first = Key(draft: "", revision: 1), newSpeech = Key(draft: "", revision: 2)
+        XCTAssertFalse(trigger.observe(first, at: 0))
+        XCTAssertTrue(trigger.observe(first, at: 1))
+        XCTAssertFalse(trigger.observe(first, at: 10))
+        XCTAssertFalse(trigger.observe(newSpeech, at: 11))
+        XCTAssertTrue(trigger.observe(newSpeech, at: 12))
+    }
+
+    func testAutomaticSuggestionsRespectCooldownAndDoNotCompleteTheirOwnInsertion() {
+        var trigger = SuggestionAutomaticTrigger<String>()
+        XCTAssertFalse(trigger.observe("a", at: 0))
+        XCTAssertTrue(trigger.observe("a", at: 1))
+        XCTAssertFalse(trigger.observe("b", at: 1.1))
+        XCTAssertFalse(trigger.observe("b", at: 2))
+        XCTAssertTrue(trigger.observe("b", at: 3))
+        trigger.suppress("accepted text", at: 3.5)
+        XCTAssertFalse(trigger.observe("accepted text", at: 10))
+        XCTAssertFalse(trigger.observe("user edit", at: 11))
+        XCTAssertTrue(trigger.observe("user edit", at: 12))
+    }
+
     private let shortcut = DictationShortcut(keyCode: 38, modifiers: [.control, .option], keyLabel: "J")
     private func key(_ tracker: inout SuggestionKeyTracker, _ code: UInt16 = 48,
                      event: ShortcutTracker.Event = .keyDown, flags: ShortcutModifiers = [], repeating: Bool = false,
@@ -118,6 +155,7 @@ final class SuggestionEvaluationInteractionTests: XCTestCase {
         let target = Target(app: "Codex", mode: .reply, purpose: "agent-prompt", before: "", after: "", requestedAt: "now")
         XCTAssertTrue(SourceSelector.select(ScenarioInput(target: target, sources: context.sources)).selected.isEmpty)
         XCTAssertEqual(SourceSelector.select(context.input(target: target)).selected.count, 2)
+        XCTAssertEqual(SourceSelector.select(context.input(target: target, association: .automaticRecentContext)).selected, context.sources)
         XCTAssertEqual(context.attribution(selected: context.sources), "Recent dictation + Meeting ‘Standup’")
     }
 

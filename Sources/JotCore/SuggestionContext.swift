@@ -21,9 +21,9 @@ public struct SuggestionContext: Sendable {
                           revision: revision, status: .current, text: row.text)
         }
     }
-    public func input(target: Target) -> ScenarioInput {
+    public func input(target: Target, association: ContextAssociation = .explicitRecentRequest) -> ScenarioInput {
         var input = ScenarioInput(target: target, sources: sources)
-        input.association = .explicitRecentRequest
+        input.association = association
         return input
     }
     public func attribution(selected: [Source]) -> String {
