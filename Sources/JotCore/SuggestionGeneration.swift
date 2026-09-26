@@ -19,7 +19,7 @@ public enum AppleFMGeneration {
         if #available(macOS 26.0, *) {
             do {
                 return try await AppleFMClient().generate(instructions: request.instructions, prompt: request.prompt,
-                    options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: request.maximumResponseTokens))
+                    options: GenerationOptions(sampling: .greedy, maximumResponseTokens: request.maximumResponseTokens))
             } catch AppleFMError.unavailable(let availability) {
                 throw ModelUnavailable(reason: availability.rawValue)
             }
