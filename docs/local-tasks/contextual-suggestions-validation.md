@@ -4,7 +4,7 @@ The user saw the automatic card, but it contained the composer placeholder and a
 
 The follow-up validates AX placeholder/count consistency and rejects exact placeholder/draft echoes. This is a defensive fix: the original Codex AX attributes could not be inspected, so its precise cause is not established. Chat history is not yet connected; see the [updated task scope](contextual-suggestions.md#updated-trigger-decision-september-26).
 
-The source is ready for full Mac gates. The installed app is still the earlier automatic candidate; active capture must be safely paused before installation. Physical double-Fn, hold-Fn, and Tab acceptance remain required. The PR remains draft for that gate.
+At implementation `e7ef52b`, 42 focused and all 229 Swift tests, 44 Python tests, fixture/no-feedback/diff checks, signed Debug build and isolated recovery checks passed. UI-help-only follow-up `0c6fe84` passed signed Release build-only validation. Release executable SHA-256: `bf6e015a2832a429ad02702eb224b220a362b1bf076c73675a1273ef604a6bef`. The installed app is still the earlier automatic candidate. Its Automatic suggestions switch was turned off through the app UI while capture continued; active capture must be safely paused before installation. Physical double-Fn, hold-Fn, and Tab acceptance remain required. The PR remains draft for that gate.
 
 ---
 
