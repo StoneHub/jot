@@ -1,6 +1,19 @@
 import XCTest
 @testable import JotCore
 final class TranscriptGroupingTests: XCTestCase {
+    func testPresetMatchesItsValuesDespiteSliderRoundingAndOtherwiseIsCustom() {
+        for preset in TuningPreset.allCases { XCTAssertEqual(TuningPreset.matching(preset.tuning), preset) }
+        var stepped = TranscriptionTuning()
+        stepped.speakerConfidence = 0.45 + 4 * 0.05
+        stepped.minimumSpeakerTurn = 0.2 + 10 * 0.1
+        XCTAssertEqual(TuningPreset.matching(stepped), .balanced)
+        var custom = TranscriptionTuning()
+        custom.speakerConfidence = 0.55; custom.minimumSpeakerTurn = 0.6; custom.paragraphPause = 0.8
+        XCTAssertNil(TuningPreset.matching(custom))
+        var fillersShown = TranscriptionTuning(); fillersShown.hideFillerRows = false
+        XCTAssertNil(TuningPreset.matching(fillersShown), "A preset includes filler visibility")
+    }
+
     func testBriefUncertaintyKeepsSpeakerButLongUncertaintyDoesNot() {
         let words = [AttributedWord(text: "We discussed", start: 0, end: 1.5, probabilities: [0.9]),
                      AttributedWord(text: "the next step", start: 1.5, end: 3, probabilities: []),
