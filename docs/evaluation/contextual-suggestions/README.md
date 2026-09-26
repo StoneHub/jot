@@ -1,6 +1,6 @@
 # Contextual-suggestion scenarios
 
-Synthetic scenarios for step 1 of [contextual suggestions](../../CONTEXTUAL-SUGGESTIONS.md), the context-and-quality experiment ([#79](https://github.com/StoneHub/jot/issues/79), [#81](https://github.com/StoneHub/jot/issues/81)). They fix the expected source selection, outcome and scoring rubric before any prompt is tuned. The people, projects, paths and conversations are invented. Every expected result and `idealText` was written by a person; nothing here is model output or a measured result.
+Synthetic scenarios for step 1 of [contextual suggestions](../../CONTEXTUAL-SUGGESTIONS.md), the context-and-quality experiment ([#79](https://github.com/StoneHub/jot/issues/79), [#81](https://github.com/StoneHub/jot/issues/81)). They fix the expected source selection, outcome and scoring rubric before any prompt is tuned. The people, projects, paths and conversations are invented. Expected results and `idealText` are authored synthetic test expectations, prepared with coding-agent assistance. They are not outputs from a Jot suggestion run or measured results.
 
 ## Validate
 
