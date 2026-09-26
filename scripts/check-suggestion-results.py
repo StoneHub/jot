@@ -151,7 +151,15 @@ def check_record(record, path, run, scenario, fail):
             fail(f'{path}.{key}', 'must be an integer >= 0 or null')
     if (prompt is None) != (generation is None):
         fail(path, 'promptSHA256 and generationMs are both set exactly when a request was made')
-    if not selected_ids and (outcome != 'abstain' or prompt is not None or record.get('detail') != 'no-selected-source'):
+    # A draft is generated from the user's notes, so only the other modes abstain for want of a source.
+    # Without the corpus the mode is unknown, and a request with no source may be a draft.
+    target_mode = scenario['target'].get('mode') if scenario is not None else None
+    abstained_before_inference = (outcome == 'abstain' and prompt is None
+                                  and record.get('detail') == 'no-selected-source')
+    if target_mode == 'draft':
+        if prompt is None:
+            fail(path, 'a draft is generated from its notes, so every draft record has a request')
+    elif not selected_ids and not abstained_before_inference and (target_mode is not None or prompt is None):
         fail(path, 'with no selected source the record must abstain before inference (no-selected-source)')
     if prompt is None and (raw is not None or run_label is not None):
         fail(path, 'output or a cold/warm label without a request')

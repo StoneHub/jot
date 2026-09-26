@@ -36,7 +36,9 @@ class SuggestionFixtureTests(unittest.TestCase):
 
     def test_committed_corpus_is_valid(self):
         self.assertEqual(fixtures.validate(self.corpus), [])
-        self.assertTrue(10 <= len(self.corpus['scenarios']) <= 12)
+        drafts = [scenario for scenario in self.corpus['scenarios'] if scenario['target']['mode'] == 'draft']
+        self.assertTrue(10 <= len(self.corpus['scenarios']) - len(drafts) <= 12)
+        self.assertTrue(5 <= len(drafts) <= 8, 'a focused set of draft cases')
 
     def test_command_accepts_committed_corpus(self):
         result = self.run_command()
@@ -120,6 +122,36 @@ class SuggestionFixtureTests(unittest.TestCase):
                                     and scenario['expected']['outcome'] != 'invalidate']
         self.assertRejected("missing required coverage: ['changed-input-revision', 'hostile-instruction']")
         self.assertRejected("needs at least one 'invalidate' scenario")
+
+    def test_draft_needs_notes_and_only_draft_has_them(self):
+        target = self.scenario('draft-seed-only-casual-reply')['target']
+        del target['seed']
+        self.assertRejected('draft mode needs the non-empty notes it rewrites')
+        for blank in ('', '  \n', None, 7, [], {}):
+            target['seed'] = blank
+            with self.subTest(seed=blank):
+                self.assertRejected('draft mode needs the non-empty notes it rewrites')
+        self.setUp()
+        self.scenario('agent-explain-before-fix')['target']['seed'] = 'explain first'
+        self.assertRejected('agent-explain-before-fix).target.seed: only draft mode has a seed')
+
+    def test_only_a_draft_may_rest_on_its_notes_alone(self):
+        self.assertEqual(self.scenario('draft-seed-only-casual-reply')['expected']['includedSources'], [])
+        self.assertEqual(fixtures.validate(self.corpus), [], 'A seed-only draft suggestion is grounded in the notes')
+        target = self.scenario('draft-seed-only-casual-reply')['target']
+        target['mode'] = 'reply'
+        del target['seed']
+        self.assertRejected('draft-seed-only-casual-reply).expected.includedSources: '
+                            'a suggestion must be grounded in at least one included source')
+
+    def test_draft_scenarios_keep_the_other_selection_rules(self):
+        expected = self.scenario('draft-notes-ignore-unrelated-ambient')['expected']
+        expected['excludedSources'] = []
+        expected['includedSources'] = ['s1']
+        self.assertRejected("'s1' belongs to project 'lumen-api', not the target project")
+        self.setUp()
+        self.scenario('draft-notes-without-intent')['expected']['idealText'] = {'origin': 'authored', 'text': 'Hmm.'}
+        self.assertRejected('only a suggest outcome can have ideal text')
 
     def test_unknown_keys_and_values(self):
         self.scenario('agent-unknown-preference')['expected']['idealtext'] = 'typo'

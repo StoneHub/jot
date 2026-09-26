@@ -10,6 +10,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Storage and local transport tests
         run: swift test
+      - name: App compile (unsigned; signing and installation stay local)
+        run: xcodebuild -project Jot.xcodeproj -scheme Jot -configuration Debug -derivedDataPath build/ci CODE_SIGNING_ALLOWED=NO build
       - name: Signing ownership checks
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Feedback removal guard

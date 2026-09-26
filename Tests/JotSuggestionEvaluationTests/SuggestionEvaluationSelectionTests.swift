@@ -10,7 +10,14 @@ final class SuggestionEvaluationSelectionTests: XCTestCase {
         XCTAssertEqual(corpus.version, 1)
         XCTAssertTrue(corpus.synthetic)
         XCTAssertEqual(corpus.scenarios.count, (json["scenarios"] as? [Any])?.count)
-        XCTAssertEqual(Set(corpus.scenarios.map(\.input.target.mode)), [.reply, .continuation, .shellCommand])
+        XCTAssertEqual(Set(corpus.scenarios.map(\.input.target.mode)), [.reply, .continuation, .shellCommand, .draft])
+        for scenario in corpus.scenarios {
+            if scenario.input.target.mode == .draft {
+                XCTAssertFalse(scenario.input.target.seed?.isEmpty ?? true, "A draft carries the notes it rewrites: \(scenario.id)")
+            } else {
+                XCTAssertNil(scenario.input.target.seed, scenario.id)
+            }
+        }
         let invalidations = corpus.scenarios.filter { $0.change != nil }
         XCTAssertEqual(invalidations.map { $0.change?.kind }, ["input-edited", "source-deleted"])
         XCTAssertTrue(invalidations.allSatisfy { $0.pendingSuggestion != nil })
@@ -50,7 +57,7 @@ final class SuggestionEvaluationSelectionTests: XCTestCase {
             scenarios[index]["covers"] = ["ORACLE-MARKER"]
             scenarios[index]["expected"] = [
                 "outcome": "suggest",
-                "includedSources": [ids[0]],
+                "includedSources": Array(ids.prefix(1)),
                 "excludedSources": ids.dropFirst().map { ["id": $0, "reason": "not-relevant"] },
                 "reason": "ORACLE-MARKER reason",
                 "idealText": ["origin": "authored", "text": "ORACLE-MARKER ideal"],
