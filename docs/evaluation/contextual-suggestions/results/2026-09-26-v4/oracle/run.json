@@ -1,0 +1,57 @@
+{
+  "completed" : true,
+  "corpus" : {
+    "format" : "jot.contextual-suggestion-scenarios",
+    "path" : "docs/evaluation/contextual-suggestions/scenarios.json",
+    "scenarioCount" : 18,
+    "sha256" : "e9dc1b37aef57ae0093f83ea8e3c1aa0bea604b85da16a3fede5ad1db34e8ada",
+    "version" : 1
+  },
+  "finishedAt" : "2026-09-26T19:03:29Z",
+  "format" : "jot.suggestion-evaluation-run",
+  "generation" : {
+    "cancellationGraceMs" : 2000,
+    "deadlineMs" : 2000,
+    "draftDeadlineMs" : 8000,
+    "draftMaximumResponseTokensRange" : [
+      128,
+      400
+    ],
+    "freshSessionPerRequest" : true,
+    "maximumResponseTokens" : 128,
+    "outstandingRequests" : 1,
+    "sampling" : "greedy"
+  },
+  "generator" : "apple-fm",
+  "iterations" : 3,
+  "mode" : "oracle-context",
+  "notice" : "Synthetic corpus only. Scores stay null until a person reviews the outputs. Cold marks the first request this process sent; the system may already have had the model loaded. Apple does not expose a model revision.",
+  "prompt" : {
+    "abstainMarker" : "NO_SUGGESTION",
+    "instructionsSHA256" : {
+      "continuation" : "e8663e7baaa68039f7559a4817ff873a56763768e31be2ad1d79798bab8273dc",
+      "draft" : "778a774c596d21d0ebcc91ba9de48a327ed014f8711a9b232cc7b9cbcaa64068",
+      "reply" : "e187bf865439beb2a21fb55e88e13759a14da3ba41b23d8684c348622c2a7acf",
+      "shell-command" : "766ac77a5a1da497d921fd8bf4b87ee8ac6501fd7857ad831ef9019dc251fc2b"
+    },
+    "templateID" : "jot-suggestion-v4"
+  },
+  "recordCount" : 54,
+  "runId" : "58f06757-29c9-4e04-993e-2bd62ab20313",
+  "runtime" : {
+    "appleFMRevision" : "737fac9e7147403f2777e0901f02452e8fc25ae7",
+    "hardwareModel" : "Mac17,9",
+    "model" : "SystemLanguageModel.default",
+    "modelAvailability" : "available",
+    "modelRevision" : null,
+    "operatingSystem" : "Version 27.2 (Build 26B5086k)"
+  },
+  "selection" : {
+    "maximumSourceBytes" : 4096,
+    "maximumSources" : 6
+  },
+  "sourceRevision" : "80842e24a4a000f7e180255f5cdc3b452bd49028",
+  "startedAt" : "2026-09-26T19:03:03Z",
+  "stopReason" : null,
+  "version" : 1
+}
