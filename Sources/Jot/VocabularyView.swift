@@ -13,8 +13,6 @@ struct VocabularyView: View {
         ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                Text("Your spellings, every time you dictate. Original transcripts stay unchanged.")
-                    .font(.callout).foregroundStyle(.secondary)
                 if let loadError = service.vocabularyLoadError {
                     Text(loadError).foregroundStyle(.red).textSelection(.enabled)
                 }
@@ -65,8 +63,6 @@ struct VocabularyView: View {
                         }
                     })
                 }
-                Text("Matches whole words and phrases, ignoring capitalization. Longer phrases win at the same position. Applies to your next dictation; this does not train the speech model.")
-                    .font(.caption).foregroundStyle(.secondary)
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
             .modifier(GlassButton())
@@ -75,7 +71,10 @@ struct VocabularyView: View {
 
     private var editor: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(editing ? "Edit entry" : "Add a word or phrase").font(.headline)
+            HStack(spacing: 6) {
+                Text(editing ? "Edit entry" : "Add a word or phrase").font(.headline)
+                InfoButton(title: "Matching", detail: "Matches whole words and phrases, ignoring capitalization. Longer phrases win at the same position. Applies to your next dictation; this does not train the speech model.")
+            }
             VStack(alignment: .leading, spacing: 5) {
                 Text("Preferred spelling").font(.body.weight(.medium)).foregroundStyle(.secondary)
                 TextField("For example, SwiftUI", text: $draft.preferred)

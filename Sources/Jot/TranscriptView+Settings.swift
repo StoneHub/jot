@@ -39,7 +39,7 @@ private struct AppUpdateRow: View {
 }
 
 /// A setting's explanation behind a small (i). Resting the pointer on it opens a popover; a click or Space keeps it open until clicked again, for keyboard and VoiceOver use.
-private struct InfoButton: View {
+struct InfoButton: View {
     let title: String
     let detail: String
     @State private var showing = false

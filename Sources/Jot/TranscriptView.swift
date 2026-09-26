@@ -49,6 +49,14 @@ struct TranscriptView: View {
         case live = "Live", dictations = "Dictations", sessions = "Sessions", people = "People", general = "General", vocabulary = "Vocabulary", models = "Models & updates", activity = "Activity"
         /// The four under the Settings heading, drawn quieter than the places where transcripts live.
         var isSetting: Bool { self == .general || self == .vocabulary || self == .models || self == .activity }
+        /// Help for the page as a whole, behind the (i) beside its title.
+        var info: String? {
+            switch self {
+            case .people: "Jot recognizes these voices in new sessions. Delete a person and their voice is forgotten."
+            case .vocabulary: "Your spellings, every time you dictate. Original transcripts stay unchanged."
+            default: nil
+            }
+        }
         var symbol: String {
             switch self {
             case .live: "dot.radiowaves.left.and.right"
@@ -125,6 +133,7 @@ struct TranscriptView: View {
     private var titleRow: some View {
         HStack {
             Text(section.rawValue).font(.system(size: 26, weight: .bold, design: .rounded))
+            if let info = section.info { InfoButton(title: section.rawValue, detail: info) }
             Spacer()
             if section == .dictations {
                 Button("Open Dictations in Finder", systemImage: "folder") {
@@ -184,8 +193,7 @@ struct TranscriptView: View {
                     }.pickerStyle(.segmented).labelsHidden().frame(width: 150)
                         .accessibilityLabel("Dictations view")
                     if historyTextView {
-                        Text("Drag to highlight, then ⌘C. ⌘A selects all loaded text.")
-                            .font(.caption).foregroundStyle(.secondary)
+                        InfoButton(title: "Text view", detail: "Oldest to newest. Drag to highlight, then ⌘C. ⌘A selects all loaded text. New updates wait while text is selected.")
                     }
                 }
             }
@@ -197,11 +205,9 @@ struct TranscriptView: View {
                 SelectableHistory(transcripts: service.history, search: search)
                     .id(service.historyRevision)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                HStack {
-                    Text("Oldest to newest · New updates wait while text is selected")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    if service.hasMoreHistory {
+                if service.hasMoreHistory {
+                    HStack {
+                        Spacer()
                         Button("Load more") { service.loadMoreHistory() }
                     }
                 }

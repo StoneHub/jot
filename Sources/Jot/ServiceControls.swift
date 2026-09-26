@@ -138,7 +138,10 @@ private struct ModelDownloadPrompt: View {
     let bytes: Int64
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Download speech models?").font(.headline)
+            HStack(spacing: 6) {
+                Text("Download speech models?").font(.headline)
+                InfoButton(title: "Model sizes", detail: "Sizes are approximate and depend on the published model revision.")
+            }
             Text("Jot downloads \(ModelCache.formatted(bytes)) once, then transcribes and separates speakers on this Mac without sending audio anywhere.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             ForEach(ModelCache.expected) { model in
@@ -151,8 +154,6 @@ private struct ModelDownloadPrompt: View {
                     Text(ModelCache.formatted(model.bytes)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                 }
             }
-            Text("Sizes are approximate and depend on the published model revision.")
-                .font(.caption).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
             HStack {
                 Button("Not now") { service.downloadPrompt = nil }.modifier(GlassButton())
                 Spacer()
