@@ -194,6 +194,8 @@ final class SuggestionEvaluationSelectionTests: XCTestCase {
         XCTAssertEqual(SuggestionOutput.process("NO_SUGGESTION", mode: .reply), .abstained("model-abstained"))
         XCTAssertEqual(SuggestionOutput.process(" NO_SUGGESTION.\n", mode: .reply), .abstained("model-abstained"))
         XCTAssertEqual(SuggestionOutput.process(" \n", mode: .reply), .abstained("empty-output"))
+        XCTAssertEqual(SuggestionOutput.process("\"\"", mode: .reply), .abstained("empty-output"))
+        XCTAssertEqual(SuggestionOutput.process("``", mode: .continuation), .abstained("empty-output"))
         XCTAssertEqual(SuggestionOutput.process("Sure. NO_SUGGESTION", mode: .reply), .rejected("mixed-abstain-marker"))
         XCTAssertEqual(SuggestionOutput.process("make a\nmake b", mode: .shellCommand), .rejected("multiline-shell-command"))
         XCTAssertEqual(SuggestionOutput.process("First line\nsecond line", mode: .reply), .suggestion("First line\nsecond line"))

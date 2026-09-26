@@ -112,7 +112,7 @@ enum ProcessedOutput: Equatable {
 enum SuggestionOutput {
     static func process(_ raw: String, mode: SuggestionMode) -> ProcessedOutput {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if text.count > 2, let first = text.first, first == text.last, first == "`" || first == "\"" {
+        if text.count >= 2, let first = text.first, first == text.last, first == "`" || first == "\"" {
             text = String(text.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
         }
         let marker = SuggestionPrompt.abstainMarker
