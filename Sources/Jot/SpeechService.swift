@@ -252,14 +252,14 @@ final class SpeechService: ObservableObject {
 
     @Published var fnEnabled = false
     @Published var droppedSeconds = 0.0
-    @Published var queuedSeconds = 0.0
     /// No screen shows these, so they are not published: each published assignment tells the window to redraw, and these change on every audio drain or recognition.
     var processedAudioSeconds = 0.0
     var lastAudioAt: Date?
     var lastTranscriptAt: Date?
-    /// The Activity screen shows these and redraws with the CPU readout once a second, so they are not published either: they change after every recognition, including the silent chunk recognized every 0.8 seconds of quiet.
+    /// The Activity screen shows these and redraws with the CPU readout once a second, so they are not published either: they change after every recognition, including the silent chunk recognized every 0.8 seconds of quiet. Queued audio counts the chunk the same tick has just cut, before the worker takes it, so publishing it told the whole window to redraw whenever the status second landed on a chunk close, about every four seconds of quiet.
     var lagSeconds = 0.0
     var lastInferenceSeconds = 0.0
+    var queuedSeconds = 0.0
     private(set) var preparing = false
     let pipeline = SpeechPipeline()
     private let sampler = ResourceSampler()
@@ -700,8 +700,7 @@ final class SpeechService: ObservableObject {
             // A published assignment tells the window to redraw even when the value is the same, so only changes are assigned.
             let availability = TranscriptCleanup.availability
             if cleanupAvailability != availability { cleanupAvailability = availability }
-            let queued = jobs.reduce(0) { $0 + AudioClock.seconds(samples: $1.samples.count) }
-            if queuedSeconds != queued { queuedSeconds = queued }
+            queuedSeconds = jobs.reduce(0) { $0 + AudioClock.seconds(samples: $1.samples.count) }
             if !pauseRequested, ambientEnabled || dictation.isActive, let lastAudioAt, dependencies.now().timeIntervalSince(lastAudioAt) > 4 {
                 recordEvent(.inputStalled, "No microphone samples for more than four seconds."); pause(automatic: true); notice = "Microphone stopped delivering audio. Resume to reconnect; a capture gap occurred."
             }
