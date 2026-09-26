@@ -1,15 +1,11 @@
 import Foundation
 import JotCore
 
-/// The raw values are stored in the transcripts table, whose CHECK constraint allows exactly these two.
-enum CaptureMode: String, Sendable { case ambient, dictation }
-
 struct AudioJob: Sendable {
     let sessionID: String
     let startedAt: Date
     let offset: Double
     let samples: [Float]
-    let mode: CaptureMode
     let ticket: UUID
     var isFinal = false
     var submittedUptime = ProcessInfo.processInfo.systemUptime
