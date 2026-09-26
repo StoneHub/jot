@@ -57,7 +57,7 @@ final class MCPToolsTests: XCTestCase {
     }
 
     func testOnlyReadingToolsAreReadOnly() {
-        XCTAssertEqual(MCPTool.catalog.filter(\.readOnly).map(\.name), ["speech_status", "speech_doctor", "transcripts_search", "transcripts_recent",
+        XCTAssertEqual(MCPTool.catalog.filter(\.readOnly).map(\.name), ["speech_status", "transcripts_search", "transcripts_recent",
                                                                         "transcripts_since", "transcripts_read", "transcripts_sessions", "transcripts_export", "transcripts_events", "people_list"])
     }
 }

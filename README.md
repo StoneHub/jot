@@ -97,7 +97,6 @@ jot status
 jot pause
 jot resume
 jot start                 # Resume continuous listening
-jot ambient-off           # Compatibility alias for pause
 jot search 'blue notebook'
 jot recent --limit 20
 jot since --cursor 0              # Rows added or changed since a cursor; pass back the returned cursor
@@ -108,7 +107,6 @@ jot export <session-id>          # Whole session as Markdown; add --json for row
 jot title <session-id> <title>
 jot people                       # Voices Jot remembers
 jot forget <person-id>           # Forget one voice; session names stay
-jot doctor
 jot diagnostics            # Local performance report, no captured content
 jot --help
 ```

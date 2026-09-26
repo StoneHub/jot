@@ -27,7 +27,7 @@ public struct PerformanceSample: Codable, Equatable, Sendable {
 
 public enum PerformanceEventKind: String, Codable, Sendable {
     case launch, modelLoadStarted, modelsReady, modelsUnloaded, pause, resume
-    case dictationStarted, dictationReleased, dictationCancelled, ambientStarted, ambientStopped
+    case dictationStarted, dictationReleased, dictationCancelled, ambientStarted
     case sleep, deviceChange, audioGap, processingFailed
 }
 public struct PerformanceEvent: Codable, Sendable {

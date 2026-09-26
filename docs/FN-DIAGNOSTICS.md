@@ -2,7 +2,7 @@
 
 The shortcut defaults to Fn/Globe and can be changed using the key label beside Hold to talk. The global listener belongs to the application service; closing the main window changes the app's activation policy but does not explicitly disable the listener.
 
-For a failure in another app, run `/Applications/Jot.app/Contents/Helpers/jot doctor` before and after a failed Fn attempt. The `dictationInput` object contains only listener health and counters, not transcript or field text:
+For a failure in another app, run `/Applications/Jot.app/Contents/Helpers/jot status` before and after a failed Fn attempt. The `dictationInput` object contains only listener health and counters, not transcript or field text:
 
 - `eventTapEnabled`: the live macOS event-tap state, separate from the selected Fn preference.
 - `shortcutPresses`: matching shortcut presses observed since launch. `fnPresses` counts only the Fn subset for compatibility.

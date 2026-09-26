@@ -11,7 +11,7 @@ enum ModelState: String { case notLoaded = "not loaded", preparing, ready, faile
 /// The raw values are stored in the capture_events table and shown in History.
 enum CaptureEventKind: String {
     case started, paused, stopped, sleep
-    case ambientOff = "ambient_off", deviceChange = "device_change", inputStalled = "input_stalled"
+    case deviceChange = "device_change", inputStalled = "input_stalled"
     case audioGap = "audio_gap", audioDiscarded = "audio_discarded", processingError = "processing_error"
     case speakerPass = "speaker_pass", sessionSplit = "session_split", databaseReplaced = "database_replaced"
 }
@@ -547,16 +547,6 @@ final class SpeechService: ObservableObject {
         updateSuggestionMonitoring()
     }
 
-    func setAmbient(_ enabled: Bool) async {
-        if enabled {
-            ambientRequested = true
-            do { try await startAmbient() }
-            catch { notice = error.localizedDescription }
-        } else {
-            pause()
-        }
-    }
-
     // MARK: Sessions and meetings
 
     /// A meeting is ambient capture with a name, and an export when it ends.
@@ -701,8 +691,6 @@ final class SpeechService: ObservableObject {
             resumeAfterSleepIfReady()
         }
     }
-
-    func stop() { ambientRequested = false; pause() }
 
     private func tick() {
         if lifecycle.phase == .ready { drainAudio() }
@@ -871,7 +859,6 @@ final class SpeechService: ObservableObject {
         let marker: PerformanceEventKind?
         switch kind {
         case .started: marker = .ambientStarted
-        case .ambientOff: marker = .ambientStopped
         case .sleep: marker = .sleep
         case .deviceChange: marker = .deviceChange
         case .audioGap: marker = .audioGap
