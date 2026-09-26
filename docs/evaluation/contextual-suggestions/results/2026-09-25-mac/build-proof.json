@@ -1,0 +1,12 @@
+{
+  "sourceRevision": "a6c32b2b3c0fe7b11685b6a5e7032ece94850950",
+  "configuration": "release",
+  "product": "jot-suggestion-eval",
+  "sha256": "c9bbc08b24cf8f7597a47116513e13afc1063245e3c672459f578d5d86ba3fe0",
+  "corpusSHA256": "1c81a12c393d560e245c3ab61a8e58e7e10daf38c9b38df195d01d0500e3fab6",
+  "runDirectories": [
+    "normal",
+    "oracle"
+  ],
+  "initialRunSourceRevision": "0ee69d2f86d1d2b98424b2c92e680d3336ee7b61"
+}
