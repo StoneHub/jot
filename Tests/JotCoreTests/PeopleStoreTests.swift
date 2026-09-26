@@ -11,7 +11,7 @@ final class PeopleStoreTests: XCTestCase {
     private func length(_ vector: [Float]) -> Float { vector.reduce(0) { $0 + $1 * $1 }.squareRoot() }
 
     func testPeopleAreAddedListedRenamedAndDeleted() throws {
-        let store = try PeopleStore(directory: directory)
+        let store = try PeopleStore(sharing: TranscriptStore(directory: directory))
         let added = try store.add(name: "  Monroe ", embedding: [3, 4])
         try store.add(name: "alice", embedding: [0, 1])
         XCTAssertEqual(try store.list().map(\.name), ["alice", "Monroe"])
@@ -27,11 +27,11 @@ final class PeopleStoreTests: XCTestCase {
         XCTAssertThrowsError(try store.add(name: " ", embedding: [1]))
         XCTAssertThrowsError(try store.add(name: "Zero", embedding: [0, 0]))
         // The same file the transcripts use; a second connection sees the rows.
-        XCTAssertEqual(try PeopleStore(directory: directory).list().map(\.name), ["alice"])
+        XCTAssertEqual(try PeopleStore(sharing: TranscriptStore(directory: directory)).list().map(\.name), ["alice"])
     }
 
     func testUpdatingAnEmbeddingAveragesByWeightAndKeepsUnitLength() throws {
-        let store = try PeopleStore(directory: directory)
+        let store = try PeopleStore(sharing: TranscriptStore(directory: directory))
         let later = Date(timeIntervalSince1970: 2_000_000_000)
         let person = try store.add(name: "Monroe", embedding: [1, 0], now: Date(timeIntervalSince1970: 1_000_000_000))
         try store.updateEmbedding(id: person.id, with: [0, 2], now: later)

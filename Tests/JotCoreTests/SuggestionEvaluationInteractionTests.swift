@@ -323,7 +323,7 @@ final class SuggestionEvaluationInteractionTests: XCTestCase {
         let refreshed = try store.suggestionContext(now: now)
         XCTAssertEqual(refreshed.sources.first { $0.id == "latest" }?.speaker, "Rowan")
         let dictation = try XCTUnwrap(refreshed.rows.first { $0.id == "dictation" })
-        try store.setReadableText("Changed synthetic request", for: dictation)
+        try store.setReadablePhrase(["Changed synthetic request"], for: [dictation])
         XCTAssertFalse(try store.suggestionRowsUnchanged(refreshed.rows))
         let edited = try store.suggestionContext(now: now)
         XCTAssertTrue(try store.suggestionRowsUnchanged(edited.rows))

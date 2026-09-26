@@ -41,7 +41,7 @@ extension SpeechService {
             let offset = params["offset"] as? Int ?? 0
             var result: Any = [:]
             switch method {
-            case "speech.status", "speech.doctor": result = try status()
+            case "speech.status": result = try status()
             case "models.prepare": result = ["state": modelState.rawValue, "downloadBytes": prepareFromCommand()]
             case "models.check": checkModelUpdates(); if let modelCheck { await modelCheck.value }; result = try object(modelUpdates)
             case "speech.diagnostics":
@@ -49,8 +49,6 @@ extension SpeechService {
             case "speech.start": try await startAmbient(); result = try status()
             case "speech.pause": pause(); result = try status()
             case "speech.resume": _ = prepareFromCommand(); result = try status()
-            case "speech.ambient_off": await setAmbient(false); result = try status()
-            case "speech.stop": stop(); result = try status()
             case "speech.meeting_start":
                 guard let title = params["title"] as? String else { throw JotError.message("Meeting needs a title") }
                 await startMeeting(title)
@@ -93,8 +91,7 @@ extension SpeechService {
                 diagnosticActive = true
                 defer { diagnosticActive = false }
                 let token = lifecycle.generation
-                // Resume now always listens. File diagnostics use an isolated pipeline
-                // while paused, so they never reset the live speaker timeline.
+                // File diagnostics use an isolated pipeline while paused, so they never reset the live speaker timeline.
                 let filePipeline = SpeechPipeline()
                 let fileTask = Task {
                     do {

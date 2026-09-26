@@ -104,7 +104,7 @@ extension SpeechService {
     // MARK: Dictation
 
     func beginDictation() { dictation.begin() }
-    func endDictation() { if dictation.end() { level = 0 } }
+    func endDictation() { dictation.end() }
     func cancelTapDictation() { dictation.cancelTap() }
     func recoverRecentDictation() { dictation.recoverRecent() }
 }

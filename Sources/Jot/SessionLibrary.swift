@@ -35,8 +35,6 @@ final class SessionLibrary: ObservableObject {
     private var historyRows: [Transcript] = []
     /// False until the Dictations read succeeds, and after one fails; the next block then reads the list in full.
     private var historyIsCurrent = false
-    /// Uptime of the last Clear; recognition jobs submitted before it must not append to the cleared list.
-    private(set) var historyClearedAt: TimeInterval = -1
     private(set) var deletedSessions = Set<String>()
     /// Relabels waiting for their session to settle or writing.
     @Published private var relabelsInFlight = 0
@@ -288,7 +286,6 @@ final class SessionLibrary: ObservableObject {
         guard let store else { throw JotError.message("Transcript storage is unavailable.") }
         discardAttempt()
         try store.clearHistory()
-        historyClearedAt = ProcessInfo.processInfo.systemUptime
         lastExport = nil
         historyLimit = 50
         didDeleteHistory()

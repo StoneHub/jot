@@ -61,30 +61,27 @@ actor SpeechPipeline {
         guard Double(file.length) / file.processingFormat.sampleRate <= 60 else { throw JotError.message("Diagnostic files must be at most 60 seconds.") }
         let samples = try AudioConverter().resampleAudioFile(url)
         return try await infer(AudioJob(sessionID: UUID().uuidString, startedAt: Date(), offset: 0,
-            samples: samples, mode: .ambient, ticket: UUID(), isFinal: true), tuning: tuning)
+            samples: samples, ticket: UUID(), isFinal: true), tuning: tuning)
     }
 
     func infer(_ job: AudioJob, tuning: TranscriptionTuning = .init()) async throws -> SpeechOutput {
         guard let asr, let vad, let diarizer else { throw JotError.message("Prepare models before listening.") }
         try Task.checkCancellation()
         let begin = Date()
-        var recognitionPlan: RecognitionCommitWindow.Plan?
-        var recognitionPlanResolved = job.mode != .ambient
-        if job.mode == .ambient {
-            if sessionID != job.sessionID || abs(job.offset - expectedOffset) > 0.02 {
-                diarizer.reset(); speakerFeed.reset(); probabilities.removeAll(); recognitionWindow.reset()
-                sessionID = job.sessionID; baseOffset = job.offset; lastSpeaker = nil
-            }
-            expectedOffset = job.offset + Double(job.samples.count) / 16000
-            recognitionPlan = recognitionWindow.plan(sessionID: job.sessionID, offset: job.offset,
-                newSamples: job.samples, isFinal: job.isFinal)
+        var recognitionPlanResolved = false
+        if sessionID != job.sessionID || abs(job.offset - expectedOffset) > 0.02 {
+            diarizer.reset(); speakerFeed.reset(); probabilities.removeAll(); recognitionWindow.reset()
+            sessionID = job.sessionID; baseOffset = job.offset; lastSpeaker = nil
         }
-        let recognitionSamples = recognitionPlan?.samples ?? job.samples
+        expectedOffset = job.offset + Double(job.samples.count) / 16000
+        let recognitionPlan = recognitionWindow.plan(sessionID: job.sessionID, offset: job.offset,
+            newSamples: job.samples, isFinal: job.isFinal)
+        let recognitionSamples = recognitionPlan.samples
         defer {
             // A final barrier or failed inference closes this recognition
             // segment. SpeechService records a gap after errors, while the
             // pipeline must not grow or replay unbounded failed audio.
-            if job.mode == .ambient && (job.isFinal || !recognitionPlanResolved) {
+            if job.isFinal || !recognitionPlanResolved {
                 recognitionWindow.reset()
             }
         }
@@ -96,34 +93,32 @@ actor SpeechPipeline {
                 heardSpeech = try await vad.process(recognitionSamples).contains(where: { $0.probability >= 0.20 })
             } catch {
                 // Held, not lost: the model's frames stay on the session clock after a failed job.
-                if job.mode == .ambient { speakerFeed.holdQuiet(job.samples) }
+                speakerFeed.holdQuiet(job.samples)
                 throw error
             }
         }
-        if job.mode == .ambient {
-            if heardSpeech {
-                let audio = speakerFeed.releaseForSpeech(job.samples)
-                if !audio.isEmpty {
-                    diarizer.addAudio(audio)
-                    while let update = try diarizer.process() {
-                        try Task.checkCancellation()
-                        let chunk = update.chunkResult
-                        for frame in 0..<chunk.finalizedFrameCount {
-                            probabilities[speakerFeed.sessionFrame(forModelFrame: chunk.startFrame + frame)] = (0..<4).map { chunk.probability(speaker: $0, frame: frame, numSpeakers: 4) }
-                        }
-                        for frame in 0..<chunk.tentativeFrameCount {
-                            probabilities[speakerFeed.sessionFrame(forModelFrame: chunk.tentativeStartFrame + frame)] = (0..<4).map { chunk.tentativeProbability(speaker: $0, frame: frame, numSpeakers: 4) }
-                        }
+        if heardSpeech {
+            let audio = speakerFeed.releaseForSpeech(job.samples)
+            if !audio.isEmpty {
+                diarizer.addAudio(audio)
+                while let update = try diarizer.process() {
+                    try Task.checkCancellation()
+                    let chunk = update.chunkResult
+                    for frame in 0..<chunk.finalizedFrameCount {
+                        probabilities[speakerFeed.sessionFrame(forModelFrame: chunk.startFrame + frame)] = (0..<4).map { chunk.probability(speaker: $0, frame: frame, numSpeakers: 4) }
+                    }
+                    for frame in 0..<chunk.tentativeFrameCount {
+                        probabilities[speakerFeed.sessionFrame(forModelFrame: chunk.tentativeStartFrame + frame)] = (0..<4).map { chunk.tentativeProbability(speaker: $0, frame: frame, numSpeakers: 4) }
                     }
                 }
-            } else {
-                speakerFeed.holdQuiet(job.samples)
             }
-            let keepFrom = Int((job.offset - baseOffset - 2) / 0.08)
-            probabilities = probabilities.filter { $0.key >= keepFrom }
+        } else {
+            speakerFeed.holdQuiet(job.samples)
         }
+        let keepFrom = Int((job.offset - baseOffset - 2) / 0.08)
+        probabilities = probabilities.filter { $0.key >= keepFrom }
         guard heardSpeech else {
-            if let recognitionPlan { recognitionWindow.commit(recognitionPlan) }
+            recognitionWindow.commit(recognitionPlan)
             recognitionPlanResolved = true
             return SpeechOutput(transcripts: [], text: "", processingSeconds: Date().timeIntervalSince(begin))
         }
@@ -131,24 +126,17 @@ actor SpeechPipeline {
         var state = try TdtDecoderState()
         let result = try await asr.transcribe(recognitionSamples, decoderState: &state)
         try Task.checkCancellation()
-        let allWords = result.tokenTimings.map { buildWordTimings(from: $0) } ?? []
-        let words: [WordTiming]
-        if let recognitionPlan {
-            guard result.tokenTimings != nil else {
-                throw JotError.message("Streaming recognition did not return word timing data.")
-            }
-            words = recognitionWindow.newWords(from: allWords, for: recognitionPlan)
-        } else {
-            words = allWords
+        guard let tokenTimings = result.tokenTimings else {
+            throw JotError.message("Streaming recognition did not return word timing data.")
         }
-        let rawText = result.tokenTimings == nil ? result.text : words.map(\.word).joined(separator: " ")
-        let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let recognitionPlan { recognitionWindow.commit(recognitionPlan, words: words) }
+        let words = recognitionWindow.newWords(from: buildWordTimings(from: tokenTimings), for: recognitionPlan)
+        let text = words.map(\.word).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        recognitionWindow.commit(recognitionPlan, words: words)
         recognitionPlanResolved = true
         guard !text.isEmpty else { return SpeechOutput(transcripts: [], text: "", processingSeconds: Date().timeIntervalSince(begin)) }
         var segments: [Transcript] = []
         var wordsByTranscript: [String: [AttributedWord]] = [:]
-        if job.mode == .ambient, let recognitionPlan, !words.isEmpty {
+        if !words.isEmpty {
             let attributed = words.map { word -> AttributedWord in
                 let start = recognitionPlan.bufferOffset + word.startTime - job.offset
                 let end = recognitionPlan.bufferOffset + word.endTime - job.offset
@@ -160,13 +148,13 @@ actor SpeechPipeline {
             segments = turns.map { turn in
                 Transcript(sessionID: job.sessionID, startedAt: job.startedAt,
                     startSeconds: job.offset + turn.start, endSeconds: job.offset + turn.end,
-                    text: turn.text, speakerID: turn.speaker, mode: job.mode.rawValue)
+                    text: turn.text, speakerID: turn.speaker, mode: "ambient")
             }
             wordsByTranscript = Dictionary(uniqueKeysWithValues: zip(segments, turns).map { ($0.id, Array(attributed[$1.wordRange])) })
         }
         if segments.isEmpty {
             segments = [Transcript(sessionID: job.sessionID, startedAt: job.startedAt, startSeconds: job.offset,
-                endSeconds: job.offset + Double(job.samples.count) / 16000, text: text, speakerID: nil, mode: job.mode.rawValue)]
+                endSeconds: job.offset + Double(job.samples.count) / 16000, text: text, speakerID: nil, mode: "ambient")]
         }
         return SpeechOutput(transcripts: segments, text: text, processingSeconds: Date().timeIntervalSince(begin), wordsByTranscript: wordsByTranscript)
     }

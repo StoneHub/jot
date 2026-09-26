@@ -5,9 +5,9 @@ final class ServiceLifecycleTests: XCTestCase {
     func testSleepResumeWaitsForWakeAndUnloadInEitherOrder() {
         for wakeFirst in [true, false] {
             var policy = SleepResumePolicy()
-            policy.willSleep(ambientRunning: true, keepAwake: true)
+            policy.willSleep(ambientRunning: true)
             // Duplicate sleep notifications must not erase the interrupted capture.
-            policy.willSleep(ambientRunning: false, keepAwake: true)
+            policy.willSleep(ambientRunning: false)
             if wakeFirst {
                 policy.didWake()
                 XCTAssertFalse(policy.takeResume(phase: .pausing))
@@ -21,15 +21,13 @@ final class ServiceLifecycleTests: XCTestCase {
         }
     }
 
-    func testSleepResumeRequiresInterruptedListeningButNotKeepAwake() {
-        for optedIn in [false, true] {
-            var policy = SleepResumePolicy()
-            policy.willSleep(ambientRunning: true, keepAwake: optedIn)
-            policy.didWake()
-            XCTAssertTrue(policy.takeResume(phase: .paused))
-        }
+    func testSleepResumeRequiresInterruptedListening() {
+        var policy = SleepResumePolicy()
+        policy.willSleep(ambientRunning: true)
+        policy.didWake()
+        XCTAssertTrue(policy.takeResume(phase: .paused))
         var idle = SleepResumePolicy()
-        idle.willSleep(ambientRunning: false, keepAwake: true)
+        idle.willSleep(ambientRunning: false)
         idle.didWake()
         XCTAssertFalse(idle.takeResume(phase: .paused))
     }
@@ -37,12 +35,12 @@ final class ServiceLifecycleTests: XCTestCase {
     func testExplicitCancellationPreventsResumeEvenWhileUnloading() {
         for wakeFirst in [true, false] {
             var policy = SleepResumePolicy()
-            policy.willSleep(ambientRunning: true, keepAwake: true)
+            policy.willSleep(ambientRunning: true)
             if wakeFirst { policy.didWake() }
             policy.cancel() // Explicit Pause/Stop.
             policy.didWake()
             XCTAssertFalse(policy.takeResume(phase: .paused))
-            policy.willSleep(ambientRunning: true, keepAwake: true)
+            policy.willSleep(ambientRunning: true)
             policy.didWake()
             XCTAssertTrue(policy.takeResume(phase: .paused), "A later capture can opt in again")
         }

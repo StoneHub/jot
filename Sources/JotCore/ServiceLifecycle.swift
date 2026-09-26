@@ -1,12 +1,11 @@
 import Foundation
 
 /// A sleep interruption resumes only the listening session that sleep interrupted.
-/// `keepAwake` remains in the call seam for compatibility but controls power only.
 public struct SleepResumePolicy: Sendable {
     private var sleeping = false
     private var pending = false
     public init() {}
-    public mutating func willSleep(ambientRunning: Bool, keepAwake: Bool) {
+    public mutating func willSleep(ambientRunning: Bool) {
         guard !sleeping else { return }
         sleeping = true
         pending = ambientRunning

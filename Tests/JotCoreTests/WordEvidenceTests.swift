@@ -13,6 +13,10 @@ final class WordEvidenceTests: XCTestCase {
     private func word(_ transcript: String, _ position: Int, _ text: String, _ start: Double, _ end: Double, _ probabilities: [Float] = [0.7, 0.1, 0.1, 0.1]) -> StoredWord {
         StoredWord(transcriptID: transcript, position: position, word: text, startSeconds: start, endSeconds: end, probabilities: probabilities)
     }
+    /// One row's words, read the way the app reads them: its session's words, in time order.
+    private func words(_ store: TranscriptStore, row id: String) throws -> [StoredWord] {
+        try store.words(sessionID: "a").filter { $0.transcriptID == id }
+    }
     private func count(_ sql: String) throws -> Int {
         var db: OpaquePointer?; var stmt: OpaquePointer?
         defer { sqlite3_finalize(stmt); sqlite3_close(db) }
@@ -27,7 +31,7 @@ final class WordEvidenceTests: XCTestCase {
             try store.append(row("t1", start: 0, end: 2)); try store.append(row("t2", start: 2.5, end: 4))
             try store.appendWords([word("t2", 0, "again", 2.5, 3, [0.1, 0.8, 0.05, 0.05]), word("t2", 1, "please", 3, 4, []),
                                    word("t1", 0, "hello", 0, 1), word("t1", 1, "there", 1.2, 2)])
-            XCTAssertEqual(try store.words(transcriptID: "t1").map(\.word), ["hello", "there"])
+            XCTAssertEqual(try words(store, row: "t1").map(\.word), ["hello", "there"])
         }
         let store = try TranscriptStore(directory: directory)
         let words = try store.words(sessionID: "a")
@@ -52,9 +56,9 @@ final class WordEvidenceTests: XCTestCase {
         XCTAssertThrowsError(try store.appendWords([good, word("t1", 1, "x", 0.5, 2)]), "start goes backwards")
         XCTAssertThrowsError(try store.appendWords([good, word("missing", 0, "x", 2, 3)]), "no such transcript")
         XCTAssertThrowsError(try store.appendWords((0...20_000).map { word("t1", $0, "x", Double($0), Double($0)) }), "batch too large")
-        XCTAssertTrue(try store.words(transcriptID: "t1").isEmpty, "A refused batch stores nothing, not even its valid words")
+        XCTAssertTrue(try words(store, row: "t1").isEmpty, "A refused batch stores nothing, not even its valid words")
         try store.appendWords([good])
-        XCTAssertEqual(try store.words(transcriptID: "t1").count, 1)
+        XCTAssertEqual(try words(store, row: "t1").count, 1)
     }
 
     func testDeletingRowsRemovesTheirWordsWithoutOrphans() throws {
@@ -78,8 +82,8 @@ final class WordEvidenceTests: XCTestCase {
         try store.append(row("t1", start: 0, end: 1, text: "First person"))
         try store.append(row("t2", start: 1, end: 3, text: "so we should ship it"))
         try store.append(row("other", session: "b"))
-        try store.setReadableText("First person.", for: try XCTUnwrap(store.read(id: "t1")))
-        try store.setReadableText("So we should ship it.", for: try XCTUnwrap(store.read(id: "t2")))
+        try store.setReadablePhrase(["First person."], for: [try XCTUnwrap(store.read(id: "t1"))])
+        try store.setReadablePhrase(["So we should ship it."], for: [try XCTUnwrap(store.read(id: "t2"))])
         try store.setTitle(sessionID: "a", title: "Standup")
         try store.label(sessionID: "a", speakerID: "speaker-1", name: "Gina")
         try store.appendEvent(CaptureEvent(sessionID: "a", kind: "started", detail: "Started"))
@@ -103,8 +107,8 @@ final class WordEvidenceTests: XCTestCase {
         XCTAssertEqual(rows.map(\.startSeconds), [0, 1, 2])
         XCTAssertEqual(rows.map(\.endSeconds), [1, 2, 3])
         XCTAssertEqual(rows.map(\.startedAt), Array(repeating: Date(timeIntervalSince1970: 100), count: 3))
-        XCTAssertEqual(try store.words(transcriptID: rows[1].id).map(\.word), ["so", "we", "should"])
-        XCTAssertEqual(try store.words(transcriptID: rows[2].id).map(\.position), [0, 1])
+        XCTAssertEqual(try words(store, row: rows[1].id).map(\.word), ["so", "we", "should"])
+        XCTAssertEqual(try words(store, row: rows[2].id).map(\.position), [0, 1])
         XCTAssertEqual(try store.words(sessionID: "a").map(\.word), seen)
         XCTAssertEqual(try store.sessionSummary(id: "a")?.title, "Standup")
         XCTAssertEqual(try store.labels(sessionID: "a"), ["speaker-1": "Gina"])
@@ -141,19 +145,5 @@ final class WordEvidenceTests: XCTestCase {
         XCTAssertEqual(try count("SELECT COUNT(*) FROM transcripts WHERE session_id = 'a'"), 0)
         XCTAssertEqual(try count("SELECT COUNT(*) FROM transcript_words"), 0)
         XCTAssertFalse(try store.relabelSession("a", speakers: noWords))
-    }
-
-    func testOpeningAnOlderDatabaseAddsTheWordTableAndKeepsRows() throws {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        var db: OpaquePointer?
-        let path = directory.appendingPathComponent("transcripts.sqlite3").path
-        XCTAssertEqual(sqlite3_open(path, &db), SQLITE_OK)
-        XCTAssertEqual(sqlite3_exec(db, "CREATE TABLE transcripts (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, started_at REAL NOT NULL, start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, text TEXT NOT NULL, speaker_id TEXT, mode TEXT NOT NULL CHECK(mode IN ('ambient','dictation'))); INSERT INTO transcripts VALUES('old','s',100,0,2,'kept','speaker-1','ambient'); PRAGMA user_version=4;", nil, nil, nil), SQLITE_OK)
-        sqlite3_close(db)
-        let store = try TranscriptStore(directory: directory)
-        XCTAssertEqual(try store.read(id: "old")?.text, "kept")
-        XCTAssertTrue(try store.words(sessionID: "s").isEmpty)
-        XCTAssertEqual(try count("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='transcript_words'"), 1)
-        XCTAssertEqual(try count("PRAGMA user_version"), 8)
     }
 }

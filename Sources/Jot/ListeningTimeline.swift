@@ -1,14 +1,13 @@
 import Foundation
 import JotCore
 
-/// What the listening timeline needs from the service: whether it is listening, the speaker-pass and quiet settings, the meters it updates, the recognition queue it feeds, and a place to report gaps.
+/// What the listening timeline needs from the service: whether it is listening, the speaker-pass and quiet settings, the audio counters it updates, the recognition queue it feeds, and a place to report gaps.
 @MainActor
 protocol ListeningTimelineHost: AnyObject {
     var dependencies: SpeechServiceDependencies { get }
     var ambientEnabled: Bool { get }
     var keepAudioForSpeakerPass: Bool { get }
     var newSessionAfterSilence: Int { get }
-    var level: Float { get set }
     var lastAudioAt: Date? { get set }
     var droppedSeconds: Double { get set }
     var notice: String { get set }
@@ -53,7 +52,6 @@ final class ListeningTimeline: ObservableObject {
 
     func ingestAudio(samples: [Float], dropped: Int, lastAudio: Date, rms: Float) {
         guard !samples.isEmpty || dropped > 0 else { return }
-        host.level = rms
         host.lastAudioAt = lastAudio
         if dropped > 0 {
             let lostSeconds = AudioClock.seconds(samples: dropped + ambient.count)
@@ -108,14 +106,13 @@ final class ListeningTimeline: ObservableObject {
         if ambient.isEmpty { consecutiveSilentSamples = 0 }
         let start = ambientOffset; ambientOffset += AudioClock.seconds(samples: samples.count)
         guard final || samples.count >= Self.minimumJobSamples else { return }
-        let pendingAmbient = host.jobs.lazy.filter { $0.mode == .ambient }.count
-        if pendingAmbient >= 40 && !final {
+        if host.jobs.count >= 40 && !final {
             host.droppedSeconds += AudioClock.seconds(samples: samples.count)
             host.recordEvent(.audioGap, "Inference queue full; segment discarded.", duration: AudioClock.seconds(samples: samples.count), session: nil)
             host.notice = "Inference fell behind; bounded audio queue dropped a segment."
             host.markDictationGap("Dictation is partially saved, but an inference backlog caused an audio gap. Retry only after reviewing it.")
             return
         }
-        host.jobs.append(AudioJob(sessionID: sessionID, startedAt: sessionStarted, offset: start, samples: samples, mode: .ambient, ticket: UUID(), isFinal: final))
+        host.jobs.append(AudioJob(sessionID: sessionID, startedAt: sessionStarted, offset: start, samples: samples, ticket: UUID(), isFinal: final))
     }
 }

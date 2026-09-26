@@ -545,7 +545,7 @@ struct RecoveryFlowChecks {
         service.keepAudioForSpeakerPass = false
         service.cleanUpTranscriptions = false
         service.cleanUpDictation = false
-        service.peopleStore = try PeopleStore(directory: folder)
+        service.peopleStore = try PeopleStore(sharing: store)
         service.beginRecoveryVerification(store: store, startedAt: probe.now)
         defer { service.shutdown() }
         let id = service.activeSessionID!
@@ -854,8 +854,8 @@ struct RecoveryFlowChecks {
             }))
         service.keepAudioForSpeakerPass = false
         service.cleanUpTranscriptions = true
-        service.speakerStore = try SpeakerPassStore(directory: folder)
-        service.peopleStore = try PeopleStore(directory: folder)
+        service.speakerStore = try SpeakerPassStore(sharing: store)
+        service.peopleStore = try PeopleStore(sharing: store)
         // A remembered voice that matches the pass's first speaker.
         _ = try service.peopleStore?.add(name: "Ada", embedding: [1])
         service.beginRecoveryVerification(store: store, startedAt: probe.now)
@@ -954,7 +954,7 @@ struct RecoveryFlowChecks {
             now: Date.init))
         service.keepAudioForSpeakerPass = false
         service.cleanUpTranscriptions = false
-        let passStore = try SpeakerPassStore(directory: folder)
+        let passStore = try SpeakerPassStore(sharing: store)
         service.speakerStore = passStore
         service.beginRecoveryVerification(store: store)
         defer { service.shutdown() }
@@ -1122,7 +1122,7 @@ struct RecoveryFlowChecks {
         let service = SpeechService(dependencies: dependencies)
         service.keepAudioForSpeakerPass = false
         service.cleanUpTranscriptions = false
-        service.speakerStore = try SpeakerPassStore(directory: folder)
+        service.speakerStore = try SpeakerPassStore(sharing: store)
         service.beginRecoveryVerification(store: store)
         defer { service.shutdown() }
 

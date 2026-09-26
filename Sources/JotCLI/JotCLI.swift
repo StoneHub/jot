@@ -22,15 +22,13 @@ struct JotCLI {
     private static let usage = """
     Jot — local transcription service
 
-    jot status                         Listening state and system impact
+    jot status                         Listening state, permissions, models, and system impact
     jot start                          Resume continuous listening
     jot pause                          Pause all speech work, unload models, and end any meeting
     jot resume                         Reload models and start listening
-    jot ambient-off                    Compatibility alias for Pause
     jot meeting start <title>          Ambient capture with a name; exports when it ends
     jot meeting end                    Stop, wait for the last audio, save Markdown to ~/Documents/Jot Sessions
     jot title <session-id> <title>     Name or rename a session
-    jot stop                           Stop the current capture session
     jot search <query> [--limit N] [--offset N]
     jot recent [--limit N] [--offset N]
     jot sessions [--limit N]
@@ -44,7 +42,6 @@ struct JotCLI {
     jot label <session-id> <speaker-id> <name>
     jot people                         Voices Jot remembers
     jot forget <person-id>             Forget one remembered voice; session names stay
-    jot doctor                         Permissions, models, and service health
     jot diagnostics                    Bounded performance report; no captured content
     jot models prepare                 Download/prepare local speech models
     jot models check                   Check published model revisions (no download)
@@ -57,7 +54,7 @@ struct JotCLI {
     private static func command(_ args: [String]) throws -> (String, [String: Any]) {
         guard let first = args.first else { throw CLIError.usage(usage) }
         switch first {
-        case "status", "start", "pause", "resume", "stop", "doctor", "diagnostics":
+        case "status", "start", "pause", "resume", "diagnostics":
             guard args.count == 1 else { throw CLIError.usage("Unexpected arguments for \(first)") }
             return ("speech." + first, [:])
         case "clear-history":
@@ -66,9 +63,6 @@ struct JotCLI {
         case "delete-session":
             guard args.count == 2 else { throw CLIError.usage("Use: jot delete-session <session-id>") }
             return ("transcripts.delete_session", ["sessionID": args[1]])
-        case "ambient-off":
-            guard args.count == 1 else { throw CLIError.usage("Use: jot ambient-off") }
-            return ("speech.ambient_off", [:])
         case "meeting":
             if args.count >= 3, args[1] == "start" { return ("speech.meeting_start", ["title": args.dropFirst(2).joined(separator: " ")]) }
             if args.count == 2, args[1] == "end" { return ("speech.meeting_end", [:]) }

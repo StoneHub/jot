@@ -11,9 +11,9 @@ enum ModelState: String { case notLoaded = "not loaded", preparing, ready, faile
 /// The raw values are stored in the capture_events table and shown in History.
 enum CaptureEventKind: String {
     case started, paused, stopped, sleep
-    case ambientOff = "ambient_off", deviceChange = "device_change", inputStalled = "input_stalled"
+    case deviceChange = "device_change", inputStalled = "input_stalled"
     case audioGap = "audio_gap", audioDiscarded = "audio_discarded", processingError = "processing_error"
-    case speakerPass = "speaker_pass", sessionSplit = "session_split"
+    case speakerPass = "speaker_pass", sessionSplit = "session_split", databaseReplaced = "database_replaced"
 }
 
 /// Injectable seams for the agent-runnable recovery harness. Production still uses
@@ -253,7 +253,6 @@ final class SpeechService: ObservableObject {
     @Published var fnEnabled = false
     @Published var droppedSeconds = 0.0
     /// No screen shows these, so they are not published: each published assignment tells the window to redraw, and these change on every audio drain or recognition.
-    var level: Float = 0
     var processedAudioSeconds = 0.0
     var lastAudioAt: Date?
     var lastTranscriptAt: Date?
@@ -319,11 +318,16 @@ final class SpeechService: ObservableObject {
         do { vocabulary = try vocabularyPreferences.load() }
         catch { vocabularyLoadError = "Could not load vocabulary. Saved entries were preserved. " + error.localizedDescription }
         do {
-            store = try TranscriptStore()
+            let opened = try TranscriptStore()
+            store = opened
+            if opened.replacedDatabase {
+                recordEvent(.databaseReplaced, "Saved history was in a format this version does not read; it was deleted and an empty database created.")
+                notice = "Saved history was in a format this version does not read, so it was replaced with an empty history."
+            }
             // Converts interrupted holds with the vocabulary loaded above.
             try dictation.finalizeInterruptedAttempts()
-            speakerStore = try SpeakerPassStore()
-            peopleStore = try PeopleStore(); refreshPeople()
+            speakerStore = try SpeakerPassStore(sharing: opened)
+            peopleStore = try PeopleStore(sharing: opened); refreshPeople()
             let service = LocalServiceServer { [weak self] data in
                 guard let self else { return Data("{\"ok\":false,\"error\":\"Service unavailable\"}".utf8) }
                 return await self.handle(data)
@@ -353,7 +357,7 @@ final class SpeechService: ObservableObject {
         observers.append(center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                self.sleepResume.willSleep(ambientRunning: self.ambientEnabled, keepAwake: self.keepMacAwakeWhileListening)
+                self.sleepResume.willSleep(ambientRunning: self.ambientEnabled)
                 self.recordEvent(.sleep, "Capture paused because the Mac is sleeping."); self.pause(automatic: true); self.notice = "Paused for sleep."
             }
         })
@@ -542,16 +546,6 @@ final class SpeechService: ObservableObject {
         updateSuggestionMonitoring()
     }
 
-    func setAmbient(_ enabled: Bool) async {
-        if enabled {
-            ambientRequested = true
-            do { try await startAmbient() }
-            catch { notice = error.localizedDescription }
-        } else {
-            pause()
-        }
-    }
-
     // MARK: Sessions and meetings
 
     /// A meeting is ambient capture with a name, and an export when it ends.
@@ -682,7 +676,7 @@ final class SpeechService: ObservableObject {
             guard let token = lifecycle.beginPause() else {
                 pauseRequested = false; pausing = nil; return
             }
-            ambientEnabled = false; level = 0; queuedSeconds = 0
+            ambientEnabled = false; queuedSeconds = 0
             // Optional text-only cleanup may finish after capture/models stop.
             // Original recognition is already durable; no microphone is retained.
             modelState = .unloading; updateMode(); notice = "Releasing models…"; scheduleTimer()
@@ -696,8 +690,6 @@ final class SpeechService: ObservableObject {
             resumeAfterSleepIfReady()
         }
     }
-
-    func stop() { ambientRequested = false; pause() }
 
     private func tick() {
         if lifecycle.phase == .ready { drainAudio() }
@@ -782,7 +774,7 @@ final class SpeechService: ObservableObject {
                 lagSeconds = max(0, dependencies.now().timeIntervalSince(job.startedAt) - job.offset - AudioClock.seconds(samples: job.samples.count))
                 // Persist recognition before awaiting optional cleanup. Capture keeps draining while we await.
                 let sources = output.transcripts
-                if (job.mode == .ambient || job.submittedUptime > library.historyClearedAt) && !sessionIsDeleted(job.sessionID) {
+                if !sessionIsDeleted(job.sessionID) {
                     // Live must see recognition before the model's cleanup suspension. It adds each row once it is saved, without re-reading the session, so a row saved before a later one fails still shows.
                     // Recent rows, Sessions and Dictations take in every saved row when the block ends, even when a later row or the words fail.
                     var saved: [Transcript] = []
@@ -792,7 +784,7 @@ final class SpeechService: ObservableObject {
                         saved.append(transcript)
                         library.appendLive([transcript])
                     }
-                    // Word evidence is kept in the session's clock so a saved session can be regrouped later. Dictation rows keep none.
+                    // Word evidence is kept in the session's clock so a saved session can be regrouped later.
                     let words = sources.flatMap { transcript in
                         (output.wordsByTranscript[transcript.id] ?? []).enumerated().map { position, word in
                             StoredWord(transcriptID: transcript.id, position: position, word: word.text, startSeconds: job.offset + word.start, endSeconds: job.offset + word.end, probabilities: word.probabilities)
@@ -801,7 +793,7 @@ final class SpeechService: ObservableObject {
                     try store?.appendWords(words)
                     if !sources.isEmpty {
                         lastTranscriptAt = dependencies.now()
-                        if job.mode == .ambient, job.sessionID == sessionID { timeline.lastAmbientRowAt = dependencies.now() }
+                        if job.sessionID == sessionID { timeline.lastAmbientRowAt = dependencies.now() }
                     }
                 }
                 cleanup.scheduleCleanup(sources: sources, final: job.isFinal)
@@ -811,12 +803,12 @@ final class SpeechService: ObservableObject {
                 recognitionFailures += 1
                 dictation.noteRecognitionFailure(for: job)
                 if !(error is CancellationError) { recordEvent(.processingError, error.localizedDescription, session: job.sessionID) }
-                if lifecycle.acceptsWork(generation), job.mode != .dictation || job.ticket == dictation.ticket {
-                    notice = "\(job.mode.rawValue.capitalized): \(error.localizedDescription). Transcript insertion was not completed."
+                if lifecycle.acceptsWork(generation) {
+                    notice = "Ambient: \(error.localizedDescription). Transcript insertion was not completed."
                 }
             }
             diagnostics.record(.init(elapsedSeconds: ProcessInfo.processInfo.systemUptime - diagnosticsBegan,
-                mode: job.mode == .dictation ? .dictation : .ambient, outcome: outcome,
+                mode: .ambient, outcome: outcome,
                 audioSeconds: AudioClock.seconds(samples: job.samples.count), queueWaitSeconds: waitSeconds,
                 inferenceSeconds: inferenceSeconds, completionSeconds: max(0, ProcessInfo.processInfo.systemUptime - job.submittedUptime),
                 cleanupSeconds: nil, deliverySeconds: nil))
@@ -865,7 +857,6 @@ final class SpeechService: ObservableObject {
         let marker: PerformanceEventKind?
         switch kind {
         case .started: marker = .ambientStarted
-        case .ambientOff: marker = .ambientStopped
         case .sleep: marker = .sleep
         case .deviceChange: marker = .deviceChange
         case .audioGap: marker = .audioGap

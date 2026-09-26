@@ -59,58 +59,36 @@ if options.build_only:
     sys.exit(0)
 destination = Path('/Applications') / s['FULL_PRODUCT_NAME']
 helper = destination / 'Contents/Helpers/jot'
-# Upgrade the previous product only while both services are idle.
-legacy = Path('/Applications/Porch Speech.app')
-support = Path.home() / 'Library/Application Support'
-old_data, new_data = support / 'PorchSpeech', support / 'Jot'
-if legacy.exists() and old_data.exists() and new_data.exists():
-    raise SystemExit('Both legacy and Jot data exist; refusing to merge or overwrite history.')
-for app, cli, executable in [(destination, helper, s['EXECUTABLE_NAME']),
-                             (legacy, legacy / 'Contents/Helpers/porch', 'Porch Speech')]:
-    if not app.exists():
-        continue
-    status = subprocess.run([str(cli), 'status'], capture_output=True, text=True)
-    expected = str(app / 'Contents/MacOS' / executable)
+# Replace the installed app only while it is idle.
+if destination.exists():
+    status = subprocess.run([str(helper), 'status'], capture_output=True, text=True)
+    expected = str(destination / 'Contents/MacOS' / s['EXECUTABLE_NAME'])
     if status.returncode != 0:
         processes = subprocess.check_output(['ps', '-axo', 'comm='], text=True).splitlines()
         if expected in [line.strip() for line in processes]:
-            raise SystemExit(f'Cannot establish idle state for {app}; product not replaced.')
-        continue
-    current = json.loads(status.stdout)['result']
-    recovery = current.get('dictationRecovery', {})
-    if (current['microphoneRunning'] or current['queuedAudioSeconds'] > 0
-            or current.get('inferenceRunning') or current['models'] in ('preparing', 'unloading')
-            or current.get('servicePhase') == 'pausing'
-            or recovery.get('attemptPending') or recovery.get('recoveryRunning')
-            or recovery.get('cleanupPending', 0) > 0):
-        raise SystemExit('Build succeeded. Pause capture and wait for inference/model setup before installing.')
-    pid = current['resources']['processID']
-    command = subprocess.check_output(['ps', '-p', str(pid), '-o', 'comm='], text=True).strip()
-    if command != expected:
-        raise SystemExit(f'Refusing to stop a different runtime: {command}')
-    os.kill(pid, signal.SIGTERM)
-    for _ in range(50):
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            break
-        time.sleep(.1)
+            raise SystemExit(f'Cannot establish idle state for {destination}; product not replaced.')
     else:
-        raise SystemExit('Installed app did not stop. Product not replaced.')
-if old_data.exists() and not new_data.exists():
-    old_data.rename(new_data)
-# Import preferences once before the new bundle starts; preserve the old domain.
-old_preferences = subprocess.run(['defaults', 'export', 'space.porchspeech.app', '-'], capture_output=True)
-new_preferences = subprocess.run(['defaults', 'export', 'space.jot.app', '-'], capture_output=True)
-if old_preferences.returncode == 0:
-    previous = plistlib.loads(old_preferences.stdout)
-    preferences = plistlib.loads(new_preferences.stdout) if new_preferences.returncode == 0 else {}
-    if not preferences.get('jotLegacyPreferencesMigrated'):
-        for key in ['fnRequested', 'historyTextView', 'modelUpdateChecks', 'modelsPrepared', 'servicePaused', 'transcriptionTuning', 'keepMacAwakeWhileListening']:
-            if key in previous and key not in preferences:
-                preferences[key] = previous[key]
-        preferences['jotLegacyPreferencesMigrated'] = True
-        subprocess.run(['defaults', 'import', 'space.jot.app', '-'], input=plistlib.dumps(preferences), check=True)
+        current = json.loads(status.stdout)['result']
+        recovery = current.get('dictationRecovery', {})
+        if (current['microphoneRunning'] or current['queuedAudioSeconds'] > 0
+                or current.get('inferenceRunning') or current['models'] in ('preparing', 'unloading')
+                or current.get('servicePhase') == 'pausing'
+                or recovery.get('attemptPending') or recovery.get('recoveryRunning')
+                or recovery.get('cleanupPending', 0) > 0):
+            raise SystemExit('Build succeeded. Pause capture and wait for inference/model setup before installing.')
+        pid = current['resources']['processID']
+        command = subprocess.check_output(['ps', '-p', str(pid), '-o', 'comm='], text=True).strip()
+        if command != expected:
+            raise SystemExit(f'Refusing to stop a different runtime: {command}')
+        os.kill(pid, signal.SIGTERM)
+        for _ in range(50):
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(.1)
+        else:
+            raise SystemExit('Installed app did not stop. Product not replaced.')
 subprocess.run(['codesign', '--verify', '--deep', '--strict', str(source)], check=True)
 # ditto merges existing directories: Debug-only dylibs would invalidate a Release seal.
 # The runtime is already idle/stopped. Preserve its bundle and install into an empty path.
@@ -157,15 +135,3 @@ for _ in range(50):
     time.sleep(.2)
 else:
     raise SystemExit('Installed app launched but service did not become ready; inspect its status window.')
-
-# Retire the old app reversibly after Jot has passed installation and launch checks.
-if legacy.exists():
-    archive = work / 'legacy-app-backup'
-    archive.mkdir(exist_ok=True)
-    saved = archive / legacy.name
-    if saved.exists():
-        raise SystemExit(f'Jot is installed; existing backup at {saved} prevents retiring the old app.')
-    shutil.move(str(legacy), str(saved))
-old_link = Path.home() / '.local/bin/porch'
-if old_link.is_symlink() and os.readlink(old_link) == str(legacy / 'Contents/Helpers/porch'):
-    old_link.unlink()

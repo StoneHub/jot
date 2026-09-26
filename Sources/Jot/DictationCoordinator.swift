@@ -41,7 +41,7 @@ protocol DictationHost: AnyObject {
 final class DictationCoordinator {
     private(set) var isActive = false
     private(set) var isPending = false
-    private(set) var ticket = UUID()
+    private var ticket = UUID()
     private var started = Date()
     private(set) var currentAttempt: DictationAttempt?
     private var attemptEndOffset: Double?
@@ -83,11 +83,9 @@ final class DictationCoordinator {
         host.notice = "Listening for dictation… release \(host.shortcutName) to insert."
     }
 
-    /// Returns true when a hold ended, so the caller can drop the level meter.
-    @discardableResult
-    func end() -> Bool {
+    func end() {
         speakerMute.end()
-        guard isActive, var attempt = currentAttempt else { highlight.hide(); return false }
+        guard isActive, var attempt = currentAttempt else { highlight.hide(); return }
         let released = ProcessInfo.processInfo.systemUptime
         host.closeChunk()
         isActive = false
@@ -107,7 +105,6 @@ final class DictationCoordinator {
         recoveryTask = Task { [weak self] in
             await self?.finishAttempt(id: attempt.id, throughOffset: self?.attemptEndOffset ?? 0, releasedAt: released)
         }
-        return true
     }
 
     /// A tap explicitly discards only the current held intent. Continuous listening
