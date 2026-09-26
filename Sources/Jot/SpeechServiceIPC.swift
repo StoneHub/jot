@@ -73,6 +73,11 @@ extension SpeechService {
             case "transcripts.recent": result = try object(store?.recent(limit: limit, offset: offset) ?? [])
             case "transcripts.events": result = try object(store?.events(sessionID: params["sessionID"] as? String, limit: limit, offset: offset) ?? [])
             case "transcripts.sessions": result = try object(store?.sessions(limit: limit) ?? [])
+            case "transcripts.since":
+                guard let cursor = params["cursor"] as? Int ?? (params["cursor"] == nil ? 0 : nil), cursor >= 0 else { throw JotError.message("cursor must be a nonnegative integer") }
+                let sessionID = params["sessionID"] as? String
+                guard params["sessionID"] == nil || sessionID?.isEmpty == false else { throw JotError.message("sessionID must be a nonempty string") }
+                result = try object(store?.changes(since: Int64(cursor), sessionID: sessionID, limit: limit) ?? TranscriptChanges(rows: [], cursor: Int64(cursor), hasMore: false))
             case "transcripts.read":
                 guard let id = params["id"] as? String, let item = try store?.read(id: id) else { throw JotError.message("Transcript not found") }
                 result = try object(item)
