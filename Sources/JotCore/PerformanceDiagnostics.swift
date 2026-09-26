@@ -96,20 +96,28 @@ public struct PerformanceDiagnostics: Sendable {
     private var current: PerformanceSample?
     private var peak: Double?
     private var samples: [PerformanceSample] = []
+    /// CPU seconds reported since the last kept sample, by samples that were not kept.
+    private var cpuSecondsSinceKept = 0.0
     private var events: [PerformanceEvent] = []
     private var jobs: [PerformanceJob] = []
     private let build: PerformanceReport.Build
     public init(build: PerformanceReport.Build = .unspecified) { self.build = build }
 
     /// Call with existing resource samples. Failed resource reads must not be submitted.
+    /// Each sample's CPU covers the time since the previous sample observed; a kept sample's CPU is rewritten to cover the time since the previous kept sample.
     public mutating func observe(_ sample: PerformanceSample) {
         guard [sample.elapsedSeconds, sample.footprintMiB, sample.residentMiB, sample.cpuPercent].allSatisfy({ $0.isFinite && $0 >= 0 }) else { return }
         if let current, sample.elapsedSeconds < current.elapsedSeconds { return }
+        if let current { cpuSecondsSinceKept += sample.cpuPercent / 100 * (sample.elapsedSeconds - current.elapsedSeconds) }
         if startup == nil { startup = sample }
         current = sample
         peak = max(peak ?? 0, sample.footprintMiB)
-        if samples.last.map({ sample.elapsedSeconds - $0.elapsedSeconds >= Self.sampleInterval }) ?? true {
-            samples.append(sample)
+        let interval = samples.last.map { sample.elapsedSeconds - $0.elapsedSeconds }
+        if interval.map({ $0 >= Self.sampleInterval }) ?? true {
+            var kept = sample
+            if let interval { kept.cpuPercent = cpuSecondsSinceKept / interval * 100 }
+            cpuSecondsSinceKept = 0
+            samples.append(kept)
             if samples.count > Self.sampleCapacity { samples.removeFirst(samples.count - Self.sampleCapacity) }
         }
     }
