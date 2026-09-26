@@ -46,6 +46,11 @@ final class SpeechService: ObservableObject {
     lazy var library = SessionLibrary(host: self)
     lazy var speakers = SpeakerRecognizer(pass: pipeline.speakerPass, host: self)
     lazy var dictation = DictationCoordinator(host: self)
+    lazy var suggestions = SuggestionCoordinator(input: input, store: { [weak self] in self?.store },
+        allowed: { [weak self] in self?.canRequestSuggestion == true },
+        readsScreen: { [weak self] in self?.suggestionScreenContext == true },
+        meetingByDefault: { [weak self] in self?.suggestionMeetingContext == true },
+        notice: { [weak self] in self?.notice = $0 })
     lazy var timeline = ListeningTimeline(host: self)
     lazy var cleanup = LiveCleanup(host: self)
     private var relays: [AnyCancellable] = []
@@ -62,6 +67,47 @@ final class SpeechService: ObservableObject {
     @Published var lifecycle = ServiceLifecycle()
     @Published var fnRequested = UserDefaults.standard.bool(forKey: JotDefaultsKey.fnRequested)
     @Published private(set) var shortcut = ShortcutPreferences().load()
+    @Published private(set) var suggestionShortcut = SuggestionShortcutPreferences().load()
+    @Published private(set) var suggestionsEnabled = UserDefaults.standard.object(forKey: JotDefaultsKey.suggestionsEnabled) as? Bool ?? true
+    /// Read the text shown above the field, such as a chat, for a request. Local and never stored.
+    @Published private(set) var suggestionScreenContext = UserDefaults.standard.object(forKey: JotDefaultsKey.suggestionScreenContext) as? Bool ?? true
+    func setSuggestionScreenContext(_ enabled: Bool) {
+        suggestionScreenContext = enabled
+        UserDefaults.standard.set(enabled, forKey: JotDefaultsKey.suggestionScreenContext)
+        suggestions.dismiss()
+    }
+    /// Add the latest meeting to every request. Off by default; the card offers it either way.
+    @Published private(set) var suggestionMeetingContext = UserDefaults.standard.bool(forKey: JotDefaultsKey.suggestionMeetingContext)
+    func setSuggestionMeetingContext(_ enabled: Bool) {
+        suggestionMeetingContext = enabled
+        UserDefaults.standard.set(enabled, forKey: JotDefaultsKey.suggestionMeetingContext)
+        suggestions.dismiss()
+    }
+    var canRequestSuggestion: Bool {
+        suggestionsEnabled && !dictation.isActive && !dictation.isPending && !diagnosticActive && !preparing && !cleanup.isRunning
+    }
+    func setSuggestionsEnabled(_ enabled: Bool) {
+        suggestionsEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: JotDefaultsKey.suggestionsEnabled)
+        if enabled && !DictationInput.accessibilityGranted { input.requestAccessibility() }
+        if !enabled { suggestions.dismiss() }
+        updateSuggestionMonitoring()
+    }
+    func setSuggestionShortcut(_ value: DictationShortcut) throws {
+        guard canChangeShortcut else { throw JotError.message("Finish dictation before changing a shortcut.") }
+        try SuggestionShortcutPreferences().save(value, dictation: shortcut)
+        suggestionShortcut = value; input.suggestionShortcut = value
+        if suggestionsEnabled && !DictationInput.accessibilityGranted { input.requestAccessibility() }
+        updateSuggestionMonitoring()
+    }
+    private func updateSuggestionMonitoring() {
+        input.dictationEnabled = fnEnabled
+        if fnEnabled || (suggestionsEnabled && DictationInput.accessibilityGranted) {
+            _ = input.enable()
+        } else { input.disable() }
+        input.fnSuggestionsEnabled = suggestionsEnabled
+        suggestions.dismiss()
+    }
     var canChangeShortcut: Bool { !dictation.isActive && !dictation.isPending }
     var canChangeInput: Bool { !capture.running && !dictation.isPending && !diagnosticActive }
     /// Replacing the app must not interrupt capture, a pending dictation, inference, model setup, cleanup, or a session's relabel.
@@ -112,10 +158,13 @@ final class SpeechService: ObservableObject {
     @Published var recoveryNotice = ""
     @Published private(set) var cleanupAvailability = TranscriptCleanup.availability
 
-    func setShortcutRecording(_ active: Bool) { input.isRecordingShortcut = active }
+    func setShortcutRecording(_ active: Bool) { suggestions.dismiss(); input.isRecordingShortcut = active }
 
     func setShortcut(_ value: DictationShortcut) throws {
         guard canChangeShortcut else { throw JotError.message("Finish dictation before changing its shortcut.") }
+        if let suggestionShortcut, value.keyCode == suggestionShortcut.keyCode && value.modifiers == suggestionShortcut.modifiers {
+            throw JotError.message("Choose a key different from the suggestion shortcut.")
+        }
         try ShortcutPreferences().save(value)
         shortcut = value
         input.shortcut = value
@@ -229,6 +278,15 @@ final class SpeechService: ObservableObject {
     lazy var input: DictationInput = {
         let result = DictationInput(onStart: { [weak self] in self?.beginDictation() }, onStop: { [weak self] in self?.endDictation() })
         result.shortcut = shortcut
+        result.dictationEnabled = false
+        result.suggestionShortcut = suggestionShortcut
+        result.suggestionAllowed = { [weak self] in
+            guard let self else { return false }
+            return self.canRequestSuggestion && self.suggestions.keyboardAllowsSuggestions
+        }
+        result.onSuggestionRequest = { [weak self] in self?.suggestions.request() }
+        result.onSuggestionAccept = { [weak self] in self?.suggestions.accept() }
+        result.onSuggestionDismiss = { [weak self] in self?.suggestions.dismiss() }
         result.startBlocker = { [weak self] in
             guard let self else { return "Jot is shutting down." }
             return DictationReadiness.blocker(phase: self.lifecycle.phase, modelsReady: self.modelState == .ready,
@@ -280,6 +338,8 @@ final class SpeechService: ObservableObject {
             }
         } catch { notice = "Service startup: \(error.localizedDescription)" }
         promptForPermissionsAtLaunch()
+        _ = suggestions
+        updateSuggestionMonitoring()
         scheduleTimer()
         let center = NSWorkspace.shared.notificationCenter
         observers.append(center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
@@ -463,6 +523,7 @@ final class SpeechService: ObservableObject {
         guard await requestMic(), lifecycle.acceptsWork(token), fnRequested else { return }
         if !DictationInput.accessibilityGranted { input.requestAccessibility() }
         fnEnabled = input.enable()
+        input.dictationEnabled = fnEnabled
         if !fnEnabled { notice = "Enable Accessibility access in System Settings, then switch dictation on again." }
     }
 
@@ -470,6 +531,7 @@ final class SpeechService: ObservableObject {
         fnRequested = false; UserDefaults.standard.set(false, forKey: JotDefaultsKey.fnRequested)
         if dictation.isActive { endDictation() }
         input.disable(); fnEnabled = false
+        updateSuggestionMonitoring()
     }
 
     func setAmbient(_ enabled: Bool) async {
@@ -596,6 +658,7 @@ final class SpeechService: ObservableObject {
         let outcome = PauseOutcome(automatic: automatic, ambientRequested: ambientRequested, meetingTitle: meetingTitle)
         ambientRequested = outcome.ambientRequested; meetingTitle = outcome.meetingTitle
         input.disable(); fnEnabled = false
+        updateSuggestionMonitoring()
         if dictation.isActive { endDictation() }
         let loadingTask = preparation, fileTask = diagnostic
         loadingTask?.cancel(); fileTask?.cancel()
@@ -826,6 +889,7 @@ final class SpeechService: ObservableObject {
         cleanup.shutdown()
         if ambientEnabled { recordEvent(.stopped, "Application quit; capture ended.") }
         modelCheck?.cancel(); preparation?.cancel(); processing?.cancel(); diagnostic?.cancel(); pausing?.cancel()
+        suggestions.dismiss()
         timer?.invalidate(); dictation.releaseFieldEffects(); input.disable(); capture.stop(); updateKeepAwakeAssertion(); server?.stop()
         capture.stopWatching()
         for observer in observers { NSWorkspace.shared.notificationCenter.removeObserver(observer); NotificationCenter.default.removeObserver(observer) }

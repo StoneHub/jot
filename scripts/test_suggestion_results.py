@@ -54,7 +54,7 @@ def fake_run(mode='normal', iterations=1):
                 'scores': {criterion: None for criterion in scenario['scoring']['criteria']}, 'scorer': None,
                 'notes': None,
             }
-            if included:
+            if included or scenario['target']['mode'] == 'draft':
                 record.update(run='cold' if cold else 'warm', promptSHA256='0' * 64, generationMs=3)
                 cold = False
                 if expected['outcome'] == 'abstain':
@@ -137,6 +137,25 @@ class SuggestionResultTests(unittest.TestCase):
         self.record('shell-blank-matching-project').update(outcome='unavailable', detail='model_not_ready',
                                                             rawOutput=None, outputText=None, timeToPreviewMs=None)
         self.assertRejected('neither cold nor warm')
+
+    def test_drafts_are_generated_without_a_source_and_other_modes_are_not(self):
+        draft = self.record('draft-seed-only-casual-reply')
+        self.assertEqual((draft['selectedSources'], draft['outcome']), ([], 'suggest'))
+        self.assertEqual(self.errors(), [])
+        draft.update(outcome='abstain', detail='no-selected-source', run=None, promptSHA256=None, generationMs=None,
+                     rawOutput=None, outputText=None, timeToPreviewMs=None,
+                     outcomeComparison={'expected': 'suggest', 'matches': False})
+        self.assertRejected('a draft is generated from its notes, so every draft record has a request')
+        self.setUp()
+        self.record('draft-notes-without-intent').update(run=None, promptSHA256=None, generationMs=None,
+                                                          rawOutput=None, detail=None)
+        self.assertRejected('every draft record has a request')
+        self.setUp()
+        self.record('shell-blank-unrelated-project').update(run='warm', promptSHA256='0' * 64, generationMs=3,
+                                                              rawOutput='NO_SUGGESTION', detail='model-abstained')
+        self.assertRejected('abstain before inference')
+        self.write()
+        self.assertEqual(results.validate(self.path)[0], [], 'Without the corpus, a request with no source may be a draft')
 
     def test_rejects_invalidation_without_a_withdrawn_preview(self):
         self.record('agent-same-length-edit-after-preview')['change']['generatedPreviewWithdrawn'] = False

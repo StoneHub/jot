@@ -1,6 +1,6 @@
 import Foundation
 
-enum ExclusionReason: String {
+public enum ExclusionReason: String, Sendable {
     case deleted, stale, duplicate
     case generatedNotIntent = "generated-not-intent"
     case unrelatedScope = "unrelated-scope"
@@ -11,35 +11,38 @@ enum ExclusionReason: String {
 }
 
 /// The experiment's proposed bounds from docs/CONTEXTUAL-SUGGESTIONS.md; tunable, not architecture.
-struct SelectionLimits: Equatable {
-    var maximumSources = 6
-    var maximumSourceBytes = 4096
-    static let experiment = SelectionLimits()
+public struct SelectionLimits: Equatable, Sendable {
+    public init(maximumSources: Int = 6, maximumSourceBytes: Int = 4096) {
+        self.maximumSources = maximumSources; self.maximumSourceBytes = maximumSourceBytes
+    }
+    public var maximumSources = 6
+    public var maximumSourceBytes = 4096
+    public static let experiment = SelectionLimits()
 }
 
-struct SourceSelection: Equatable {
-    struct Exclusion: Equatable {
-        let id: String
-        let reason: ExclusionReason
+public struct SourceSelection: Equatable, Sendable {
+    public struct Exclusion: Equatable, Sendable {
+        public let id: String
+        public let reason: ExclusionReason
     }
     /// Oldest first, as the prompt presents them.
-    var selected: [Source]
+    public var selected: [Source]
     /// Corpus order.
-    var excluded: [Exclusion]
+    public var excluded: [Exclusion]
 
-    var references: [SourceRevision] { selected.map { SourceRevision(id: $0.id, revision: $0.revision) } }
+    public var references: [SourceRevision] { selected.map { SourceRevision(id: $0.id, revision: $0.revision) } }
 }
 
 /// Deterministic retrieval over one scenario's sources: explicit pins and scope, role and provenance,
 /// current revisions, duplicates and the size bounds. Time never makes a source relevant; it only
 /// orders sources that already qualify when the bounds force a choice. Whole sources are kept or
 /// excluded, never truncated, so a negation or prerequisite cannot be cut off.
-enum SourceSelector {
-    static func select(_ input: ScenarioInput, limits: SelectionLimits = .experiment) -> SourceSelection {
+public enum SourceSelector {
+    public static func select(_ input: ScenarioInput, limits: SelectionLimits = .experiment) -> SourceSelection {
         var reasons: [String: ExclusionReason] = [:]
         var candidates: [Source] = []
         for source in input.sources {
-            if let reason = ineligibility(of: source, among: input.sources, for: input.target) {
+            if let reason = ineligibility(of: source, among: input.sources, for: input.target, association: input.association) {
                 reasons[source.id] = reason
             } else {
                 candidates.append(source)
@@ -49,13 +52,13 @@ enum SourceSelector {
     }
 
     /// Oracle-context mode: exactly the authored included sources, to isolate generation from retrieval.
-    static func oracleContext(_ input: ScenarioInput, included: [String], limits: SelectionLimits = .experiment) -> SourceSelection {
+    public static func oracleContext(_ input: ScenarioInput, included: [String], limits: SelectionLimits = .experiment) -> SourceSelection {
         var reasons: [String: ExclusionReason] = [:]
         for source in input.sources where !included.contains(source.id) { reasons[source.id] = .notInOracleContext }
         return bounded(input.sources.filter { included.contains($0.id) }, reasons: reasons, input: input, limits: limits)
     }
 
-    static func ineligibility(of source: Source, among sources: [Source], for target: Target) -> ExclusionReason? {
+    public static func ineligibility(of source: Source, among sources: [Source], for target: Target, association: ContextAssociation = .scoped) -> ExclusionReason? {
         switch source.status {
         case .deleted: return .deleted
         case .stale: return .stale
@@ -68,12 +71,13 @@ enum SourceSelector {
         if outdated { return .stale }
         if source.kind == "shown-suggestion" { return .generatedNotIntent }
         if source.duplicateOf != nil { return .duplicate }
-        return association(of: source, with: target)
+        if association == .explicitRecentRequest || association == .automaticRecentContext { return nil }
+        return Self.association(of: source, with: target)
     }
 
     /// nil when the source belongs to the target's context. A user pin is explicit association; otherwise
     /// a known project or conversation must match, and a conflicting one excludes the source.
-    static func association(of source: Source, with target: Target) -> ExclusionReason? {
+    public static func association(of source: Source, with target: Target) -> ExclusionReason? {
         if source.kind == "pinned-selection" { return nil }
         if let project = source.scope.project, let current = target.project, project != current { return .unrelatedScope }
         if let conversation = source.scope.conversation, let current = target.conversation, conversation != current {

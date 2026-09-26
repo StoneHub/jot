@@ -69,8 +69,29 @@ extension TranscriptView {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 8) {
+                    Toggle("Suggestions", isOn: Binding(get: { service.suggestionsEnabled }, set: service.setSuggestionsEnabled))
+                        .toggleStyle(.switch)
+                    HStack {
+                        Text("Additional shortcut (optional)")
+                        Spacer()
+                        ShortcutSettings(service: service, forSuggestions: true)
+                    }
+                    Text("Type or dictate rough notes in any text field, then double-tap Fn: Jot drafts finished text, and Tab replaces your notes (or just the selected part). In an empty chat box, double-tap Fn for a reply to the conversation shown above it. Typing or Escape dismisses. Nothing is sent. Works while listening is paused.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Toggle("Use visible conversation", isOn: Binding(get: { service.suggestionScreenContext }, set: service.setSuggestionScreenContext))
+                        .toggleStyle(.switch)
+                    Text("Reads the text shown above the field in the same window when you ask for a suggestion. It stays on this Mac and is never saved.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Toggle("Include the latest meeting", isOn: Binding(get: { service.suggestionMeetingContext }, set: service.setSuggestionMeetingContext))
+                        .toggleStyle(.switch)
+                    Text("Adds speech from the latest session in the last 30 minutes to every suggestion. When off, the card offers it with one click.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text("Experimental: review each draft. Suggestions can get facts or speaker roles wrong.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                VStack(alignment: .leading, spacing: 8) {
                     Text("Recover dictation").font(.headline)
-                    Text("Focus a text field and double-tap \(service.shortcut.displayName) to retry an undelivered dictation. Otherwise, insert speech from the recent window below.")
+                    Text("With Suggestions off, focus a text field and double-tap \(service.shortcut.displayName) to retry an undelivered dictation. Otherwise, insert speech from the recent window below.")
                         .font(.callout).foregroundStyle(.secondary)
                     HStack {
                         Text("Recent speech window")

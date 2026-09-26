@@ -17,26 +17,28 @@ extension ShortcutModifiers {
 /// The shortcut button alone; the row that labels it lives with the other controls so it lines up with them.
 struct ShortcutSettings: View {
     @ObservedObject var service: SpeechService
+    var forSuggestions = false
     @State private var showing = false
     var body: some View {
-        Button(service.shortcut.displayName) { showing = true }
-            .font(.callout.monospaced()).accessibilityLabel("Change dictation shortcut")
+        Button(forSuggestions ? (service.suggestionShortcut?.displayName ?? "Choose shortcut…") : service.shortcut.displayName) { showing = true }
+            .font(.callout.monospaced()).accessibilityLabel(forSuggestions ? "Change suggestion shortcut" : "Change dictation shortcut")
             .disabled(!service.canChangeShortcut)
             .popover(isPresented: $showing) {
-                ShortcutEditor(service: service, dismiss: { showing = false })
+                ShortcutEditor(service: service, forSuggestions: forSuggestions, dismiss: { showing = false })
             }
     }
 }
 
 private struct ShortcutEditor: View {
     @ObservedObject var service: SpeechService
+    let forSuggestions: Bool
     let dismiss: () -> Void
     @State private var monitor: Any?
     @State private var error: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Dictation shortcut").font(.headline)
-            Text("Press a key with Control, Option, or Command. Hold to dictate; release to insert. Double-tap to recover saved or recent speech.")
+            Text(forSuggestions ? "Suggestion shortcut" : "Dictation shortcut").font(.headline)
+            Text(forSuggestions ? "Press a key with Control, Option, or Command. Request a draft using recent Jot context; Tab inserts without sending." : "Press a key with Control, Option, or Command. Hold to dictate; release to insert. Double-tap to recover saved or recent speech.")
                 .font(.callout).fixedSize(horizontal: false, vertical: true)
             Text("Press shortcut…").font(.title3.monospaced())
                 .frame(maxWidth: .infinity).padding(12)
@@ -45,7 +47,7 @@ private struct ShortcutEditor: View {
             Text("Choose a shortcut you don’t use in other apps.")
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
-                Button("Use Fn / Globe") { save(.fn) }
+                if !forSuggestions { Button("Use Fn / Globe") { save(.fn) } }
                 Spacer()
                 Button("Cancel", action: dismiss)
             }
@@ -81,7 +83,11 @@ private struct ShortcutEditor: View {
         service.setShortcutRecording(false)
     }
     private func save(_ shortcut: DictationShortcut) {
-        do { try service.setShortcut(shortcut); end(); dismiss() }
+        do {
+            if forSuggestions { try service.setSuggestionShortcut(shortcut) }
+            else { try service.setShortcut(shortcut) }
+            end(); dismiss()
+        }
         catch { self.error = error.localizedDescription }
     }
 }

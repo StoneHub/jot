@@ -10,6 +10,10 @@ Move the existing Terminal completion into Jot's product ownership. Jot owns loc
 
 Shared context is a central requirement, not an optional enhancement after ordinary autocomplete. For example, a recent discussion about checking a project's tests could help suggest a test command in that project's blank shell prompt, or a question about the test failure in Codex. The source must actually identify the command or supply enough evidence; Jot should not invent it from a vaguely related meeting.
 
+## September 26 refinement
+
+The product remains a general solution for compatible computer text fields; Codex is the primary test case. After live use, the user chose request-only double-Fn suggestions with Tab acceptance, superseding automatic offers below. The user also proposed typing or dictating a brain dump directly into a field when surrounding context is unavailable, then turning it into a useful draft. The [next-slice plan](local-tasks/field-context-drafting.md) specifies seed-only generation and previewed replacement, independent of app-specific hooks. This behavior is proposed, not installed.
+
 ## Agreed behavior
 
 - Use one shared engine with distinct modes for a user's next reply, text continuation and shell-command completion. Each mode has its own examples and validation.

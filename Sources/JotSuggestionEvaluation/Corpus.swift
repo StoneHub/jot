@@ -1,3 +1,4 @@
+import JotCore
 import Foundation
 
 enum EvaluationError: Error, CustomStringConvertible {
@@ -51,61 +52,9 @@ struct CorpusScenario: Decodable {
     var oracle: ScenarioOracle { ScenarioOracle(expected: expected, scoring: scoring) }
 }
 
-/// What an integration could know when the request is made; it carries no scenario ID or expectation.
-struct ScenarioInput: Equatable {
-    var target: Target
-    var sources: [Source]
-}
-
 struct ScenarioOracle {
     let expected: Expected
     let scoring: Scoring
-}
-
-enum SuggestionMode: String, Decodable, CaseIterable {
-    case reply, continuation
-    case shellCommand = "shell-command"
-}
-
-struct Target: Decodable, Equatable {
-    var app: String
-    var mode: SuggestionMode
-    var purpose: String
-    var project: String?
-    var conversation: String?
-    var cwd: String?
-    var inputRevision: Int
-    var before: String
-    var after: String
-    var requestedAt: String
-}
-
-struct SourceRevision: Decodable, Equatable, Hashable {
-    let id: String
-    let revision: Int
-}
-
-struct Source: Decodable, Equatable {
-    enum Status: String, Decodable { case current, stale, deleted }
-    struct Scope: Decodable, Equatable {
-        var project: String?
-        var conversation: String?
-        var session: String?
-    }
-
-    let id: String
-    let kind: String
-    let role: String
-    let speaker: String?
-    let origin: String
-    let scope: Scope
-    /// UTC `yyyy-MM-ddTHH:mm:ssZ`, so string order is time order.
-    let timestamp: String
-    var revision: Int
-    var status: Status
-    let text: String
-    let derivedFrom: [SourceRevision]?
-    let duplicateOf: String?
 }
 
 /// The input revision and sources of the corpus's authored preview. Its text is deliberately not decoded.

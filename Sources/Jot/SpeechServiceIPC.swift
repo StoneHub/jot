@@ -13,6 +13,7 @@ extension SpeechService {
         let pendingAudioSeconds = jobs.reduce(0.0) { $0 + AudioClock.seconds(samples: $1.samples.count) }
         var result: [String: Any] = ["mode": mode, "models": modelState.rawValue, "microphoneRunning": capture.running,
             "microphonePermission": AVCaptureDevice.authorizationStatus(for: .audio).rawValue,
+            "suggestions": suggestions.diagnostics,
             "accessibilityGranted": DictationInput.accessibilityGranted, "fnEnabled": fnEnabled,
             "dictationShortcut": shortcut.displayName, "fnRequested": fnRequested, "ambientRequested": ambientRequested, "ambientEnabled": ambientEnabled, "keepMacAwakeWhileListening": keepMacAwakeWhileListening, "keepAwakeActive": keepAwakeActive, "servicePhase": lifecycle.phase.rawValue,
             "notice": notice, "sessionID": sessionID, "inferenceRunning": processing != nil || diagnosticActive, "speakerPassRunning": speakerPassRunning, "resources": try object(resources),

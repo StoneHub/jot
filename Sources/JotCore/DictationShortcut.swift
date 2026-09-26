@@ -62,6 +62,12 @@ public struct ShortcutTracker {
     public static let shortTapMaximumDuration: TimeInterval = 0.2
     public static let doubleTapMaximumInterval: TimeInterval = 0.35
 
+    /// The physical Fn flags events are authoritative. Some Macs also emit a non-text
+    /// key pair after Fn release: 179 was recorded on the supported Mac; 63 is Fn itself.
+    public static func isFnCompanionEvent(_ event: Event, keyCode: UInt16) -> Bool {
+        event != .flagsChanged && (keyCode == 63 || keyCode == 179)
+    }
+
     private var held = false
     private var suppressKeyUp = false
     private var suppressFnUntilRelease = false
@@ -81,6 +87,7 @@ public struct ShortcutTracker {
     public mutating func handle(_ event: Event, keyCode: UInt16, modifiers: ShortcutModifiers,
                                 repeating: Bool = false, shortcut: DictationShortcut,
                                 at timestamp: TimeInterval = ProcessInfo.processInfo.systemUptime) -> Result {
+        if Self.isFnCompanionEvent(event, keyCode: keyCode) { return Result() }
         expireTapSequence(at: timestamp)
         if shortcut.keyCode == nil {
             if suppressFnUntilRelease {
