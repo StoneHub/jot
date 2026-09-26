@@ -28,6 +28,40 @@ public struct Transcript: Codable, Sendable, Identifiable, Equatable {
     }
 }
 
+/// One row from the change feed: the row as `transcripts.recent` returns it, plus the change sequence that delivered it. Encodes flat, so a reader sees the transcript's own keys and `sequence`.
+public struct TranscriptChange: Codable, Sendable, Equatable {
+    public var transcript: Transcript
+    public var sequence: Int64
+    public init(_ transcript: Transcript, sequence: Int64) { self.transcript = transcript; self.sequence = sequence }
+
+    private enum Keys: String, CodingKey { case sequence }
+    public init(from decoder: Decoder) throws {
+        transcript = try Transcript(from: decoder)
+        sequence = try decoder.container(keyedBy: Keys.self).decode(Int64.self, forKey: .sequence)
+    }
+    public func encode(to encoder: Encoder) throws {
+        try transcript.encode(to: encoder)
+        var container = encoder.container(keyedBy: Keys.self)
+        try container.encode(sequence, forKey: .sequence)
+    }
+}
+
+/// One `transcripts.since` page. Pass `cursor` back to read what changed after it; `hasMore` asks for the next page now, otherwise wait `pollAfterSeconds`.
+public struct TranscriptChanges: Codable, Sendable, Equatable {
+    /// How long a caught-up follower should wait before polling again. The server does not refuse faster polls; a caught-up poll costs one counter read.
+    public static let caughtUpPollSeconds = 2.0
+    public var rows: [TranscriptChange]
+    public var cursor: Int64
+    public var hasMore: Bool
+    /// The cursor was ahead of this store, as after its database was recreated, so the page starts from the beginning.
+    public var reset: Bool
+    public var pollAfterSeconds: Double
+    public init(rows: [TranscriptChange], cursor: Int64, hasMore: Bool, reset: Bool = false) {
+        self.rows = rows; self.cursor = cursor; self.hasMore = hasMore; self.reset = reset
+        pollAfterSeconds = hasMore ? 0 : Self.caughtUpPollSeconds
+    }
+}
+
 public struct TranscriptSession: Codable, Sendable, Identifiable {
     public let sessionID: String
     public let startedAt: Date
@@ -116,13 +150,79 @@ public final class TranscriptStore: @unchecked Sendable {
             if try !hasColumn("has_gap", in: "dictation_attempts") {
                 try execute("ALTER TABLE dictation_attempts ADD COLUMN has_gap INTEGER NOT NULL DEFAULT 0")
             }
-            try execute("PRAGMA user_version=7")
+            try execute(Self.changeSchema)
+            if try userVersion() < 8 {
+                // Rows saved before the change feed existed join it once, in spoken order. Triggers keep it current from then on, including writes by an older build.
+                try transaction { try execute("INSERT INTO transcript_changes(transcript_id) SELECT t.id FROM transcripts t WHERE NOT EXISTS (SELECT 1 FROM transcript_changes c WHERE c.transcript_id = t.id) ORDER BY (t.started_at + t.start_seconds), t.id") }
+            }
+            try execute("PRAGMA user_version=8")
         } catch {
             sqlite3_close(db); db = nil; throw error
         }
     }
 
     deinit { sqlite3_close(db) }
+
+    /// The change feed behind `transcripts.since`: one entry per row, holding the sequence number of the row's latest visible change. AUTOINCREMENT never reuses a number, so a row that is added, cleaned, or relabeled moves past every cursor already handed out, and its entry goes when the row is deleted. Entries hold ids and numbers only, no text.
+    private static let changeSchema = """
+        CREATE TABLE IF NOT EXISTS transcript_changes (seq INTEGER PRIMARY KEY AUTOINCREMENT, transcript_id TEXT NOT NULL UNIQUE REFERENCES transcripts(id) ON DELETE CASCADE ON UPDATE CASCADE);
+        CREATE TRIGGER IF NOT EXISTS transcript_change_insert AFTER INSERT ON transcripts BEGIN
+          DELETE FROM transcript_changes WHERE transcript_id = NEW.id; INSERT INTO transcript_changes(transcript_id) VALUES(NEW.id); END;
+        CREATE TRIGGER IF NOT EXISTS transcript_change_update AFTER UPDATE ON transcripts
+          WHEN OLD.text IS NOT NEW.text OR OLD.speaker_id IS NOT NEW.speaker_id OR OLD.session_id IS NOT NEW.session_id OR OLD.started_at IS NOT NEW.started_at
+            OR OLD.start_seconds IS NOT NEW.start_seconds OR OLD.end_seconds IS NOT NEW.end_seconds OR OLD.mode IS NOT NEW.mode BEGIN
+          DELETE FROM transcript_changes WHERE transcript_id = NEW.id; INSERT INTO transcript_changes(transcript_id) VALUES(NEW.id); END;
+        CREATE TRIGGER IF NOT EXISTS transcript_change_readable_insert AFTER INSERT ON transcript_readable BEGIN
+          DELETE FROM transcript_changes WHERE transcript_id = NEW.transcript_id; INSERT INTO transcript_changes(transcript_id) VALUES(NEW.transcript_id); END;
+        CREATE TRIGGER IF NOT EXISTS transcript_change_readable_update AFTER UPDATE ON transcript_readable WHEN OLD.text IS NOT NEW.text BEGIN
+          DELETE FROM transcript_changes WHERE transcript_id = NEW.transcript_id; INSERT INTO transcript_changes(transcript_id) VALUES(NEW.transcript_id); END;
+        """
+
+    /// Rows added or changed after `cursor`, oldest change first, each row at most once with its current text. A cleanup rewrite or speaker relabel returns the same row id again with the new text; it is never a second row. The cursor is a change sequence, not a row id or time, so it survives cleanup rewrites and session rotation, and a session filter only narrows what is returned. A cursor ahead of this store (a recreated database) restarts from the beginning and sets `reset`. A caught-up poll reads one counter row and returns without a query.
+    public func changes(since cursor: Int64 = 0, sessionID: String? = nil, limit: Int = 50) throws -> TranscriptChanges {
+        guard cursor >= 0 else { throw StoreError.invalid("Cursor must be a nonnegative integer") }
+        return try locked {
+            let head = try changeHead()
+            let reset = cursor > head
+            let start = reset ? 0 : cursor
+            guard start < head else { return TranscriptChanges(rows: [], cursor: head, hasMore: false, reset: reset) }
+            let size = clamp(limit)
+            let stmt = try prepare("SELECT c.seq,t.id,t.session_id,t.started_at,t.start_seconds,t.end_seconds,COALESCE(r.text,t.text),t.speaker_id,t.mode,l.name FROM transcript_changes c JOIN transcripts t ON t.id=c.transcript_id LEFT JOIN transcript_readable r ON r.transcript_id=t.id LEFT JOIN speaker_labels l ON t.session_id=l.session_id AND t.speaker_id=l.speaker_id WHERE c.seq > ? AND c.seq <= ?\(sessionID == nil ? "" : " AND t.session_id = ?") ORDER BY c.seq LIMIT ?")
+            defer { sqlite3_finalize(stmt) }
+            sqlite3_bind_int64(stmt, 1, start)
+            sqlite3_bind_int64(stmt, 2, head)
+            var index: Int32 = 3
+            if let sessionID { bind(sessionID, to: index, in: stmt); index += 1 }
+            sqlite3_bind_int(stmt, index, Int32(size + 1))
+            var rows: [TranscriptChange] = []
+            while true {
+                let status = sqlite3_step(stmt)
+                if status == SQLITE_DONE { break }
+                guard status == SQLITE_ROW else { throw error() }
+                rows.append(TranscriptChange(Transcript(id: column(stmt, 1)!, sessionID: column(stmt, 2)!, startedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 3)), startSeconds: sqlite3_column_double(stmt, 4), endSeconds: sqlite3_column_double(stmt, 5), text: column(stmt, 6)!, speakerID: column(stmt, 7), mode: column(stmt, 8)!, speakerLabel: column(stmt, 9)), sequence: sqlite3_column_int64(stmt, 0)))
+            }
+            let hasMore = rows.count > size
+            if hasMore { rows.removeLast(rows.count - size) }
+            return TranscriptChanges(rows: rows, cursor: hasMore ? rows[rows.count - 1].sequence : head, hasMore: hasMore, reset: reset)
+        }
+    }
+
+    /// The newest change sequence ever assigned; 0 before the first row. Caller holds the lock.
+    private func changeHead() throws -> Int64 {
+        let stmt = try prepare("SELECT seq FROM sqlite_sequence WHERE name = 'transcript_changes'")
+        defer { sqlite3_finalize(stmt) }
+        let status = sqlite3_step(stmt)
+        if status == SQLITE_DONE { return 0 }
+        guard status == SQLITE_ROW else { throw error() }
+        return sqlite3_column_int64(stmt, 0)
+    }
+
+    private func userVersion() throws -> Int32 {
+        let stmt = try prepare("PRAGMA user_version")
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_step(stmt) == SQLITE_ROW else { throw error() }
+        return sqlite3_column_int(stmt, 0)
+    }
 
     public func append(_ transcript: Transcript) throws {
         guard !transcript.id.isEmpty, !transcript.sessionID.isEmpty,

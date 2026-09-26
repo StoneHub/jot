@@ -93,7 +93,7 @@ final class CaptureRecoveryTests: XCTestCase {
         statement = nil
         XCTAssertEqual(sqlite3_prepare_v2(reopened, "PRAGMA user_version", -1, &statement, nil), SQLITE_OK)
         XCTAssertEqual(sqlite3_step(statement), SQLITE_ROW)
-        XCTAssertEqual(sqlite3_column_int(statement, 0), 7)
+        XCTAssertEqual(sqlite3_column_int(statement, 0), 8)
         sqlite3_finalize(statement)
         sqlite3_close(reopened)
     }
