@@ -1,15 +1,16 @@
 import Foundation
 
 /// The model reported that it cannot run. `reason` is an AppleFM availability value, never model error text.
-struct ModelUnavailable: Error, Equatable {
-    let reason: String
+public struct ModelUnavailable: Error, Equatable {
+    public let reason: String
 }
 
-enum ModelCallResult: Equatable {
+public enum ModelCallResult: Equatable {
     case output(String)
     case unavailable(String)
     case failed
     case timedOut
+    case cancelled
     /// An earlier request has not returned, so nothing was started.
     case blocked
 }
@@ -17,43 +18,55 @@ enum ModelCallResult: Equatable {
 /// One outstanding request with a deadline. A timeout cancels the request, but the gate stays closed until
 /// the generator actually returns, so a model that ignores cancellation cannot overlap the next request.
 @MainActor
-final class ModelCallGate {
-    typealias Generator = @Sendable (ModelRequest) async throws -> String
+public final class ModelCallGate {
+    public typealias Generator = @Sendable (ModelRequest) async throws -> String
 
-    let deadline: Duration
-    private(set) var outstanding = false
+    public let deadline: Duration
+    public private(set) var outstanding = false
     private var waiters: [Completion<Bool>] = []
+    private var interrupt: (() -> Void)?
 
-    init(deadline: Duration = .seconds(2)) {
+    /// Dismissal releases the caller immediately, but retains the gate until generation actually ends.
+    public func cancel() { interrupt?() }
+
+    public init(deadline: Duration = .seconds(2)) {
         self.deadline = deadline
     }
 
-    func call(_ request: ModelRequest, generator: @escaping Generator) async -> ModelCallResult {
+    public func call(_ request: ModelRequest, generator: @escaping Generator) async -> ModelCallResult {
+        guard !Task.isCancelled else { return .cancelled }
         guard !outstanding else { return .blocked }
         outstanding = true
         let deadline = self.deadline
         return await withCheckedContinuation { continuation in
             let completion = Completion(continuation)
+            let generation = Task.detached(priority: .userInitiated) { try await generator(request) }
             let work = Task {
                 let result: ModelCallResult
-                do { result = .output(try await generator(request)) }
+                do { result = .output(try await generation.value) }
                 catch let error as ModelUnavailable { result = .unavailable(error.reason) }
                 catch { result = .failed }
                 outstanding = false
+                interrupt = nil
                 completion.finish(result)
                 let settled = waiters
                 waiters = []
                 for waiter in settled { waiter.finish(true) }
             }
+            interrupt = {
+                completion.finish(.cancelled)
+                generation.cancel()
+                work.cancel()
+            }
             Task {
                 try? await Task.sleep(for: deadline)
-                if completion.finish(.timedOut) { work.cancel() }
+                if completion.finish(.timedOut) { generation.cancel(); work.cancel() }
             }
         }
     }
 
     /// Waits up to `limit` for an outstanding request to return. False means it is still running.
-    func settle(within limit: Duration) async -> Bool {
+    public func settle(within limit: Duration) async -> Bool {
         guard outstanding else { return true }
         return await withCheckedContinuation { continuation in
             let completion = Completion(continuation)
@@ -69,8 +82,8 @@ final class ModelCallGate {
 @MainActor
 final class Completion<Value: Sendable> {
     private var continuation: CheckedContinuation<Value, Never>?
-    init(_ continuation: CheckedContinuation<Value, Never>) { self.continuation = continuation }
-    @discardableResult func finish(_ value: Value) -> Bool {
+    public init(_ continuation: CheckedContinuation<Value, Never>) { self.continuation = continuation }
+    @discardableResult public func finish(_ value: Value) -> Bool {
         guard let continuation else { return false }
         self.continuation = nil
         continuation.resume(returning: value)

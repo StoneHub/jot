@@ -69,6 +69,19 @@ extension TranscriptView {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 8) {
+                    Toggle("Contextual suggestions", isOn: Binding(get: { service.suggestionsEnabled }, set: service.setSuggestionsEnabled))
+                        .toggleStyle(.switch)
+                    HStack {
+                        Text("Request a suggestion")
+                        Spacer()
+                        ShortcutSettings(service: service, forSuggestions: true)
+                    }
+                    Text("Uses the focused draft and the last 30 minutes of dictation and the latest session, on this Mac. Tab inserts; nothing is sent. Available while listening is paused.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text("Experimental: review each draft. Suggestions can get facts or speaker roles wrong.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                VStack(alignment: .leading, spacing: 8) {
                     Text("Recover dictation").font(.headline)
                     Text("Focus a text field and double-tap \(service.shortcut.displayName) to retry an undelivered dictation. Otherwise, insert speech from the recent window below.")
                         .font(.callout).foregroundStyle(.secondary)

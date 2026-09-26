@@ -1,3 +1,4 @@
+import JotCore
 import Foundation
 
 enum EvaluationMode: String, CaseIterable {
@@ -222,6 +223,9 @@ final class SuggestionEvaluation {
         case .failed:
             record.outcome = .error
             record.detail = "generation-failed"
+        case .cancelled:
+            record.outcome = .error
+            record.detail = "generation-cancelled"
         case .timedOut:
             record.outcome = .timeout
             if await gate.settle(within: configuration.cancellationGrace) {

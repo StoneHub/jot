@@ -1,0 +1,172 @@
+import XCTest
+@testable import JotCore
+
+final class SuggestionEvaluationInteractionTests: XCTestCase {
+    private let shortcut = DictationShortcut(keyCode: 38, modifiers: [.control, .option], keyLabel: "J")
+    private func key(_ tracker: inout SuggestionKeyTracker, _ code: UInt16 = 48,
+                     event: ShortcutTracker.Event = .keyDown, flags: ShortcutModifiers = [], repeating: Bool = false,
+                     allowed: Bool = true) -> SuggestionKeyTracker.Decision {
+        tracker.handle(event, keyCode: code, modifiers: flags, repeating: repeating, shortcut: shortcut, allowed: allowed)
+    }
+
+    func testTabPassesWithoutReadyCardAndAfterTyping() {
+        var tracker = SuggestionKeyTracker()
+        XCTAssertFalse(key(&tracker).consume)
+        tracker.show(.loading)
+        XCTAssertEqual(key(&tracker), .init(.dismiss))
+        tracker.show(.ready)
+        XCTAssertEqual(key(&tracker, 0), .init(.dismiss))
+        XCTAssertFalse(key(&tracker).consume)
+        XCTAssertFalse(key(&tracker, 48, event: .keyUp).consume)
+    }
+
+    func testAcceptedTabConsumesExactlyItsPairDespiteDismissalAndModifierRelease() {
+        var tracker = SuggestionKeyTracker()
+        tracker.show(.ready)
+        XCTAssertEqual(key(&tracker), .init(.accept, consume: true))
+        tracker.dismiss()
+        XCTAssertEqual(key(&tracker, 48, event: .keyUp, flags: [.shift]), .init(consume: true))
+        XCTAssertFalse(key(&tracker, 48, event: .keyUp).consume)
+        XCTAssertFalse(key(&tracker).consume)
+    }
+
+    func testModifiedAndRepeatedTabNeverAccept() {
+        for flags: ShortcutModifiers in [[.shift], [.control], [.option], [.command]] {
+            var tracker = SuggestionKeyTracker(); tracker.show(.ready)
+            XCTAssertEqual(key(&tracker, flags: flags), .init(.dismiss))
+            XCTAssertFalse(key(&tracker, event: .keyUp, flags: flags).consume)
+        }
+        var tracker = SuggestionKeyTracker(); tracker.show(.ready)
+        XCTAssertEqual(key(&tracker, repeating: true), .init(.dismiss))
+    }
+
+    func testEscapeConsumesOnlyWithVisibleCard() {
+        var tracker = SuggestionKeyTracker()
+        XCTAssertFalse(key(&tracker, 53).consume)
+        tracker.show(.requesting)
+        XCTAssertEqual(key(&tracker, 53), .init(.dismiss))
+        for state: SuggestionKeyTracker.State in [.loading, .ready, .notice] {
+            tracker.show(state)
+            XCTAssertEqual(key(&tracker, 53), .init(.dismiss, consume: true))
+            XCTAssertTrue(key(&tracker, 53, event: .keyUp).consume)
+            XCTAssertFalse(key(&tracker, 53).consume)
+        }
+    }
+
+    func testBusyOrIMEPreflightCannotStartOrAcceptAndRequestUpIsPaired() {
+        var tracker = SuggestionKeyTracker()
+        XCTAssertFalse(key(&tracker, 38, flags: shortcut.modifiers, allowed: false).consume)
+        XCTAssertEqual(key(&tracker, 38, flags: shortcut.modifiers), .init(.request, consume: true))
+        XCTAssertTrue(key(&tracker, 38, event: .keyUp).consume)
+        tracker.show(.ready)
+        XCTAssertEqual(key(&tracker, allowed: false), .init(.dismiss))
+    }
+
+    func testSameLengthDraftAndSelectionChangesHaveDifferentSnapshots() throws {
+        let first = try XCTUnwrap(SuggestionDraftSnapshot(value: "fix guard", location: 9, length: 0))
+        let edited = try XCTUnwrap(SuggestionDraftSnapshot(value: "add guard", location: 9, length: 0))
+        XCTAssertEqual(first.value.count, edited.value.count)
+        XCTAssertNotEqual(first, edited); XCTAssertNotEqual(first.revision, edited.revision)
+        let selection = try XCTUnwrap(SuggestionDraftSnapshot(value: "fix guard", location: 0, length: 3))
+        XCTAssertNotEqual(first, selection)
+        XCTAssertEqual(selection.before, ""); XCTAssertEqual(selection.after, " guard")
+        let emoji = try XCTUnwrap(SuggestionDraftSnapshot(value: "Hi 👋!", location: 5, length: 0))
+        XCTAssertEqual(emoji.before, "Hi 👋"); XCTAssertEqual(emoji.after, "!")
+        XCTAssertNil(SuggestionDraftSnapshot(value: "x", location: 2, length: 0))
+        XCTAssertNil(SuggestionDraftSnapshot(value: "x", location: 0, length: 2))
+    }
+
+    func testBlankFieldRequiresCodexComposerAndOtherDraftsUseContinuation() throws {
+        let blank = try XCTUnwrap(SuggestionDraftSnapshot(value: "", location: 0, length: 0))
+        XCTAssertEqual(blank.mode(bundleID: "com.openai.codex", role: "AXTextArea"), .reply)
+        XCTAssertNil(blank.mode(bundleID: "com.openai.codex", role: "AXTextField"))
+        XCTAssertNil(blank.mode(bundleID: "com.apple.Safari", role: "AXTextArea"))
+        let draft = try XCTUnwrap(SuggestionDraftSnapshot(value: "Please ", location: 7, length: 0))
+        XCTAssertEqual(draft.mode(bundleID: "com.apple.TextEdit", role: "AXTextArea"), .continuation)
+    }
+
+    func testContinuationKeepsTheSeparatorNeededAtTheCursor() {
+        XCTAssertEqual(SuggestionOutput.process(" and rerun the tests.", mode: .continuation),
+                       .suggestion(" and rerun the tests."))
+        XCTAssertEqual(SuggestionOutput.process("\" and rerun the tests.\"", mode: .continuation),
+                       .suggestion(" and rerun the tests."))
+        XCTAssertEqual(SuggestionOutput.process("  NO_SUGGESTION  ", mode: .continuation), .abstained("model-abstained"))
+        XCTAssertEqual(SuggestionOutput.process("  ", mode: .continuation), .abstained("empty-output"))
+    }
+
+    func testShortcutIsUnassignedUntilChosenAndConflictsAreRejected() throws {
+        let name = "suggestion-tests-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let preferences = SuggestionShortcutPreferences(defaults: defaults)
+        XCTAssertNil(preferences.load())
+        XCTAssertThrowsError(try preferences.save(.fn, dictation: .fn))
+        XCTAssertThrowsError(try preferences.save(shortcut, dictation: shortcut))
+        try preferences.save(shortcut, dictation: .fn)
+        XCTAssertEqual(preferences.load(), shortcut)
+    }
+
+    func testExplicitContextPreservesRolesAndDoesNotChangeCorpusScopeRules() {
+        let rows = [
+            Transcript(id: "d", sessionID: "d", startedAt: Date(), startSeconds: 0, endSeconds: 1, text: "Explain the failing test.", mode: "dictation"),
+            Transcript(id: "m", sessionID: "m", startedAt: Date(), startSeconds: 0, endSeconds: 1, text: "I will send it.", mode: "ambient")
+        ]
+        let context = SuggestionContext(rows: rows, sessionTitle: "Standup")
+        XCTAssertEqual(context.sources.map(\.role), ["user", "participant"])
+        XCTAssertEqual(context.sources[1].speaker, "unlabeled speaker")
+        XCTAssertFalse(context.sources.contains { $0.kind == "pinned-selection" })
+        let target = Target(app: "Codex", mode: .reply, purpose: "agent-prompt", before: "", after: "", requestedAt: "now")
+        XCTAssertTrue(SourceSelector.select(ScenarioInput(target: target, sources: context.sources)).selected.isEmpty)
+        XCTAssertEqual(SourceSelector.select(context.input(target: target)).selected.count, 2)
+        XCTAssertEqual(context.attribution(selected: context.sources), "Recent dictation + Meeting ‘Standup’")
+    }
+
+    func testStoreContextUsesTimeWindowLatestSessionAndRevalidatesEditsAndDeletion() throws {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = try TranscriptStore(directory: directory), now = Date(timeIntervalSince1970: 10_000)
+        func row(_ id: String, session: String, age: Double, mode: String) -> Transcript {
+            Transcript(id: id, sessionID: session, startedAt: now.addingTimeInterval(-age), startSeconds: 0, endSeconds: 1,
+                       text: "Synthetic " + id, speakerID: "speaker-1", mode: mode)
+        }
+        try store.append(row("old", session: "old", age: 1801, mode: "dictation"))
+        try store.append(row("other", session: "other", age: 100, mode: "ambient"))
+        try store.append(row("latest", session: "latest", age: 30, mode: "ambient"))
+        try store.append(row("dictation", session: "dictation", age: 60, mode: "dictation"))
+        try store.setTitle(sessionID: "latest", title: "Standup")
+        let context = try store.suggestionContext(now: now)
+        XCTAssertEqual(Set(context.rows.map(\.id)), ["latest", "dictation"])
+        XCTAssertEqual(context.sessionTitle, "Standup")
+        XCTAssertTrue(try store.suggestionRowsUnchanged(context.rows))
+        try store.label(sessionID: "latest", speakerID: "speaker-1", name: "Rowan")
+        XCTAssertFalse(try store.suggestionRowsUnchanged(context.rows))
+        let refreshed = try store.suggestionContext(now: now)
+        XCTAssertEqual(refreshed.sources.first { $0.id == "latest" }?.speaker, "Rowan")
+        try store.deleteTranscripts(ids: ["dictation"])
+        XCTAssertFalse(try store.suggestionRowsUnchanged(refreshed.rows))
+        XCTAssertEqual(try store.suggestionContext(now: now).rows.map(\.id), ["latest"])
+    }
+
+    @MainActor func testDismissalCancelsCallerButKeepsGateClosedUntilGeneratorReturns() async {
+        actor Blocker {
+            var continuation: CheckedContinuation<String, Never>?
+            func wait() async -> String { await withCheckedContinuation { continuation = $0 } }
+            func release() { continuation?.resume(returning: "late"); continuation = nil }
+        }
+        let blocker = Blocker(), gate = ModelCallGate(deadline: .seconds(10))
+        let started = expectation(description: "generator started")
+        let request = ModelRequest(instructions: "test", prompt: "test", maximumResponseTokens: 1)
+        let task = Task { await gate.call(request) { _ in
+            started.fulfill(); return await blocker.wait()
+        } }
+        await fulfillment(of: [started], timeout: 1)
+        gate.cancel()
+        let cancelled = await task.value
+        XCTAssertEqual(cancelled, .cancelled)
+        let blocked = await gate.call(request) { _ in XCTFail("overlap"); return "bad" }
+        XCTAssertEqual(blocked, .blocked)
+        await blocker.release()
+        let settled = await gate.settle(within: .seconds(1))
+        XCTAssertTrue(settled)
+    }
+}

@@ -1,3 +1,4 @@
+@testable import JotCore
 import XCTest
 @testable import JotSuggestionEvaluation
 

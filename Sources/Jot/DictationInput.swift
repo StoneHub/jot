@@ -58,7 +58,19 @@ final class DictationInput {
     private var observedApplication: AXUIElement?
     private var target: Target?
     var shortcut: DictationShortcut = .fn { didSet { tracker.reset() } }
-    var isRecordingShortcut = false { didSet { tracker.reset() } }
+    var isRecordingShortcut = false { didSet { tracker.reset(); dismissSuggestionKeys() } }
+    var dictationEnabled = true
+    var suggestionShortcut: DictationShortcut?
+    var suggestionAllowed: () -> Bool = { false }
+    var onSuggestionRequest: (() -> Void)?
+    var onSuggestionAccept: (() -> Void)?
+    var onSuggestionDismiss: (() -> Void)?
+    private var suggestionKeys = SuggestionKeyTracker()
+    private var suggestionKeyRevision = 0
+    var suggestionState: SuggestionKeyTracker.State { suggestionKeys.state }
+    func showSuggestionKeys(_ state: SuggestionKeyTracker.State) { suggestionKeys.show(state) }
+    func dismissSuggestionKeys() { suggestionKeys.dismiss() }
+
     private var tracker = ShortcutTracker()
     private var shortcutPresses = 0
     private var fnPresses = 0
@@ -183,6 +195,8 @@ final class DictationInput {
         if let activationObserver { NSWorkspace.shared.notificationCenter.removeObserver(activationObserver) }
         activationObserver = nil
         tracker.reset()
+        suggestionKeys.reset()
+        onSuggestionDismiss?()
         gestureAccepted = false
         clearTarget()
         if recording { recording = false; onStop() }
@@ -191,7 +205,7 @@ final class DictationInput {
     }
 
     /// May also be used by a separate explicit dictation command.
-    func captureTarget() throws {
+    func captureTarget(wakeRetry: Bool = true) throws {
         clearTarget()
         guard Self.accessibilityGranted else { throw InputError.accessibilityRequired }
         guard let app = NSWorkspace.shared.frontmostApplication,
@@ -199,19 +213,22 @@ final class DictationInput {
             throw InputError.noTextField(app: "no other app in front", role: "none")
         }
         let application = AXUIElementCreateApplication(app.processIdentifier)
-        let field = try editableField(in: application, of: app)
+        if !wakeRetry { AXUIElementSetMessagingTimeout(application, 0.005) }
+        let field = try editableField(in: application, of: app, wakeRetry: wakeRetry)
         target = Target(pid: app.processIdentifier, field: field)
         observeFocus(application, pid: app.processIdentifier)
     }
 
     /// Electron and Chromium apps keep their accessibility tree off until asked. The first failed look wakes it and looks once more.
-    private func editableField(in application: AXUIElement, of app: NSRunningApplication) throws -> AXUIElement {
+    private func editableField(in application: AXUIElement, of app: NSRunningApplication, wakeRetry: Bool) throws -> AXUIElement {
         let name = app.bundleIdentifier ?? app.localizedName ?? "unknown app"
         do {
             guard let field = focusedField(application) else { throw InputError.noTextField(app: name, role: "no focused element") }
+            if !wakeRetry { AXUIElementSetMessagingTimeout(field, 0.005) }
             try validateEditable(field)
             return field
         } catch InputError.noTextField {
+            guard wakeRetry else { throw InputError.noTextField(app: name, role: "unavailable text field") }
             Self.wakeAccessibility(app.processIdentifier)
             usleep(250_000)
             guard let field = focusedField(application) else { throw InputError.noTextField(app: name, role: "no focused element") }
@@ -228,10 +245,10 @@ final class DictationInput {
 
     /// Screen rectangle of the captured field in AppKit coordinates, or nil when the app is not in front or does not report one.
     /// Called from a repeating main-thread timer, so a busy target app must not be allowed to block the read.
-    func targetFrame() -> CGRect? {
+    func targetFrame(timeout: Float = 0.1) -> CGRect? {
         guard let target, NSWorkspace.shared.frontmostApplication?.processIdentifier == target.pid else { return nil }
         // The timeout lives on this element ref, which insert() also reads; it is reset before this synchronous call returns so insert() keeps the default.
-        AXUIElementSetMessagingTimeout(target.field, 0.1)
+        AXUIElementSetMessagingTimeout(target.field, timeout)
         defer { AXUIElementSetMessagingTimeout(target.field, 0) }
         var positionValue: CFTypeRef?; var sizeValue: CFTypeRef?
         guard AXUIElementCopyAttributeValue(target.field, kAXPositionAttribute as CFString, &positionValue) == .success,
@@ -254,7 +271,7 @@ final class DictationInput {
 
     /// Never equates a successful AX call or dispatched shortcut with verified insertion.
     /// Field contents are used transiently for verification and never included in diagnostics.
-    func insert(_ text: String) async throws -> DeliveryResult {
+    func insert(_ text: String, expected: SuggestionField? = nil) async throws -> DeliveryResult {
         guard let target else { throw InputError.targetChanged }
         let generation = targetGeneration
         var path = "accessibility"
@@ -262,6 +279,7 @@ final class DictationInput {
         do {
             try validateTransaction(target, generation: generation)
             guard !text.isEmpty else { return delivery(target, path: "none", outcome: "empty", verified: false) }
+            if let expected, !suggestionFieldIsCurrent(expected) { throw InputError.targetChanged }
             let before = snapshot(target.field)
             var writable = DarwinBoolean(false)
             var attemptedAX = false
@@ -274,7 +292,7 @@ final class DictationInput {
                 // accessibility tree a turn, then inspect what actually changed.
                 try await Task.sleep(nanoseconds: 70_000_000)
                 try validateTransaction(target, generation: generation)
-                switch compare(before, snapshot(target.field), inserted: text) {
+                switch compare(before, snapshot(target.field), inserted: text, requireValue: expected != nil) {
                 case .verified: return delivery(target, path: path, outcome: "verified", verified: true)
                 case .changed:
                     return delivery(target, path: path, outcome: "changed_unverified_no_retry", verified: false)
@@ -286,9 +304,10 @@ final class DictationInput {
             path = "clipboard_hid"
             // Use a fresh snapshot; do not overwrite a user's edit made while AX settled.
             try validateTransaction(target, generation: generation)
+            if let expected, !suggestionFieldIsCurrent(expected) { throw InputError.targetChanged }
             let pasteBefore = snapshot(target.field)
             if attemptedAX {
-                switch compare(before, pasteBefore, inserted: text) {
+                switch compare(before, pasteBefore, inserted: text, requireValue: expected != nil) {
                 case .verified: return delivery(target, path: "accessibility", outcome: "verified", verified: true)
                 case .changed: return delivery(target, path: "accessibility", outcome: "changed_unverified_no_retry", verified: false)
                 default: break
@@ -305,7 +324,7 @@ final class DictationInput {
             for delay in [70_000_000, 130_000_000, 250_000_000, 300_000_000] as [UInt64] {
                 try await Task.sleep(nanoseconds: delay)
                 try validateTransaction(target, generation: generation)
-                switch compare(pasteBefore, snapshot(target.field), inserted: text) {
+                switch compare(pasteBefore, snapshot(target.field), inserted: text, requireValue: expected != nil) {
                 case .verified: return delivery(target, path: path, outcome: "verified", verified: true)
                 case .changed: return delivery(target, path: path, outcome: "changed_unverified_no_retry", verified: false)
                 case .unchanged, .unknown: break
@@ -316,6 +335,35 @@ final class DictationInput {
             _ = delivery(target, path: path, outcome: "cancelled_or_failed", verified: false)
             throw error
         }
+    }
+
+    struct SuggestionField {
+        let draft: SuggestionDraftSnapshot
+        let bundleID: String
+        let role: String
+        fileprivate let generation: Int
+        fileprivate let keyRevision: Int
+    }
+
+    func readSuggestionField() -> SuggestionField? {
+        guard let target else { return nil }
+        AXUIElementSetMessagingTimeout(target.field, 0.005)
+        defer { AXUIElementSetMessagingTimeout(target.field, 0) }
+        guard (try? validateCurrent(target, timeout: 0.005)) != nil else { return nil }
+        let current = snapshot(target.field)
+        guard let value = current.value, let range = current.selection,
+              let draft = SuggestionDraftSnapshot(value: value, location: range.location, length: range.length),
+              let bundle = NSRunningApplication(processIdentifier: target.pid)?.bundleIdentifier,
+              let role = stringAttribute(target.field, kAXRoleAttribute) else { return nil }
+        return SuggestionField(draft: draft, bundleID: bundle, role: role,
+                               generation: targetGeneration, keyRevision: suggestionKeyRevision)
+    }
+
+    func suggestionFieldIsCurrent(_ expected: SuggestionField) -> Bool {
+        guard expected.generation == targetGeneration, expected.keyRevision == suggestionKeyRevision,
+              let current = readSuggestionField() else { return false }
+        return current.generation == expected.generation && current.bundleID == expected.bundleID
+            && current.role == expected.role && current.draft == expected.draft
     }
 
     private struct FieldSnapshot {
@@ -337,7 +385,8 @@ final class DictationInput {
         return FieldSnapshot(value: value, selection: selection)
     }
 
-    private func compare(_ before: FieldSnapshot, _ after: FieldSnapshot, inserted text: String) -> Readback {
+    private func compare(_ before: FieldSnapshot, _ after: FieldSnapshot, inserted text: String, requireValue: Bool = false) -> Readback {
+        if requireValue && (before.value == nil || after.value == nil) { return .unknown }
         if let original = before.value, let actual = after.value {
             if let range = before.selection,
                range.location >= 0, range.length >= 0,
@@ -381,6 +430,8 @@ final class DictationInput {
     private func handle(_ type: CGEventType, event: CGEvent) -> Bool {
         guard isEnabled else { return false }
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            suggestionKeys.reset()
+            onSuggestionDismiss?()
             cancel(InputError.shortcutCancelled)
             gestureAccepted = false
             tracker.reset()
@@ -399,11 +450,50 @@ final class DictationInput {
         let eventTimestamp = event.timestamp == 0
             ? ProcessInfo.processInfo.systemUptime
             : Double(event.timestamp) / 1_000_000_000
+        let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+        let modifiers = ShortcutModifiers(event.flags).subtracting(.fn)
+        let repeating = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+        let allowed = !recording && suggestionAllowed()
+        let suggestion = suggestionKeys.handle(kind, keyCode: keyCode, modifiers: modifiers,
+                                              repeating: repeating, shortcut: suggestionShortcut, allowed: allowed)
+        switch suggestion.action {
+        case .request:
+            suggestionKeyRevision += 1
+            let requestedPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+            Task { @MainActor [weak self] in
+                guard let self, self.suggestionKeys.state == .requesting,
+                      requestedPID == NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
+                self.onSuggestionRequest?()
+            }
+        case .accept:
+            Task { @MainActor [weak self] in
+                guard let self, self.suggestionKeys.state == .accepting else { return }
+                self.onSuggestionAccept?()
+            }
+        case .dismiss:
+            suggestionKeyRevision += 1
+            // No AX calls in this branch: acceptance checks this integer before any insertion.
+            Task { @MainActor [weak self] in
+                guard let self, self.suggestionKeys.state == .idle else { return }
+                self.onSuggestionDismiss?()
+            }
+        case .none: break
+        }
+        if suggestion.consume { return true }
+        if kind == .keyDown { suggestionKeyRevision += 1 }
+        if let request = suggestionShortcut, request.keyCode == keyCode,
+           request.modifiers == modifiers, !allowed { return false }
+        // While Fn dictation is held, the suggestion chord's modifiers must not cancel capture.
+        if recording, shortcut.keyCode == nil, kind == .flagsChanged, event.flags.contains(.maskSecondaryFn),
+           let request = suggestionShortcut, !modifiers.isEmpty,
+           modifiers.subtracting(request.modifiers).isEmpty { return false }
+        guard dictationEnabled else { return false }
         let result = tracker.handle(kind, keyCode: UInt16(event.getIntegerValueField(.keyboardEventKeycode)),
             modifiers: shortcut.keyCode == nil ? ShortcutModifiers(event.flags) : ShortcutModifiers(event.flags).subtracting(.fn), repeating: event.getIntegerValueField(.keyboardEventAutorepeat) != 0,
             shortcut: shortcut, at: eventTimestamp)
         switch result.action {
         case .start:
+            onSuggestionDismiss?()
             shortcutPresses += 1
             if shortcut.keyCode == nil { fnPresses += 1 }
             if let reason = startBlocker() {
@@ -487,10 +577,14 @@ final class DictationInput {
     private func checkFocus() {
         guard let target else { return }
         do { try validateCurrent(target) }
-        catch { cancel(error) }
+        catch {
+            if suggestionKeys.state != .idle { onSuggestionDismiss?() }
+            else { cancel(error) }
+        }
     }
 
-    private func focusedField(_ application: AXUIElement) -> AXUIElement? {
+    private func focusedField(_ application: AXUIElement, timeout: Float? = nil) -> AXUIElement? {
+        if let timeout { AXUIElementSetMessagingTimeout(application, timeout) }
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(application, kAXFocusedUIElementAttribute as CFString, &value) == .success,
               let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
@@ -526,9 +620,9 @@ final class DictationInput {
            let enabled = value as? Bool, !enabled { throw InputError.noTextField(app: owner(of: field), role: "\(role ?? "field") (disabled)") }
     }
 
-    private func validateCurrent(_ target: Target) throws {
+    private func validateCurrent(_ target: Target, timeout: Float? = nil) throws {
         guard NSWorkspace.shared.frontmostApplication?.processIdentifier == target.pid,
-              let current = focusedField(AXUIElementCreateApplication(target.pid)),
+              let current = focusedField(AXUIElementCreateApplication(target.pid), timeout: timeout),
               CFEqual(current, target.field) else { throw InputError.targetChanged }
         try validateEditable(current)
     }

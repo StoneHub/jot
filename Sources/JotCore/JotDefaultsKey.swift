@@ -15,6 +15,8 @@ public enum JotDefaultsKey {
     public static let modelsPrepared = "modelsPrepared"
     public static let servicePaused = "servicePaused"
     public static let historyTextView = "historyTextView"
+    public static let suggestionShortcut = "suggestionShortcut"
+    public static let suggestionsEnabled = "suggestionsEnabled"
     public static let dictationShortcut = "dictationShortcut"
     public static let personalVocabulary = "personalVocabulary"
     public static let recoveryLookbackSeconds = "recoveryLookbackSeconds"

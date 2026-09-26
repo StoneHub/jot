@@ -10,7 +10,7 @@ let package = Package(name: "JotCore", platforms: [.macOS(.v14)], products: [
     .target(name: "JotCore", dependencies: [.product(name: "AppleFM", package: "apple-fm-swift")],
             linkerSettings: [.linkedLibrary("sqlite3")]),
     .executableTarget(name: "JotCLI", dependencies: ["JotCore"]),
-    .executableTarget(name: "JotSuggestionEvaluation", dependencies: [.product(name: "AppleFM", package: "apple-fm-swift")]),
+    .executableTarget(name: "JotSuggestionEvaluation", dependencies: ["JotCore"]),
     .testTarget(name: "JotCoreTests", dependencies: ["JotCore"]),
     .testTarget(name: "JotSuggestionEvaluationTests", dependencies: ["JotSuggestionEvaluation"])
 ])
