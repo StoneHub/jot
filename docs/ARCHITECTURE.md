@@ -61,4 +61,4 @@ Jot stores the Codable vocabulary separately in its `personalVocabulary` prefere
 
 `PerformanceDiagnostics` in JotCore keeps bounded numeric samples, typed lifecycle events, and per-job timings. SpeechService feeds it from the existing sampler, captures lifecycle transitions, and measures job queue/inference/completion time using monotonic uptime. Reports are exposed through `jot diagnostics` and `speech_diagnostics`; they have no SwiftUI view or published view model. See [local performance investigation](PERFORMANCE.md) for limits and measurement semantics.
 
-Jot no longer depends on DevFeedback. Debug and Release use the same product UI, with no picker, overlay, feedback tags, or generated row keys. Historical verification records describe earlier builds.
+Debug and Release use the same product UI, with no DevFeedback picker, overlay, feedback tags, or generated row keys.

@@ -91,8 +91,7 @@ extension SpeechService {
                 diagnosticActive = true
                 defer { diagnosticActive = false }
                 let token = lifecycle.generation
-                // Resume now always listens. File diagnostics use an isolated pipeline
-                // while paused, so they never reset the live speaker timeline.
+                // File diagnostics use an isolated pipeline while paused, so they never reset the live speaker timeline.
                 let filePipeline = SpeechPipeline()
                 let fileTask = Task {
                     do {
