@@ -198,6 +198,12 @@ def gh_pr(number, root):
         return None
 
 
+def require_postable_head(info, head):
+    """A report may only be posted to an open PR whose current revision was tested."""
+    if not info or info.get('state') != 'OPEN' or info.get('headRefOid') != head:
+        raise SystemExit('Cannot post: the open PR head does not match the checked commit. Fetch and check it again.')
+
+
 def remote_branch(root, remote, head):
     """Name the remote branch at `head`, for the push hint when gh is unavailable."""
     listing = subprocess.run(['git', 'ls-remote', '--heads', remote], cwd=root, capture_output=True, text=True)
@@ -273,6 +279,9 @@ def main(argv=None):
         tree = None if args.dry_run else prepare_worktree(root, args.pr, head)
         branch = (info or {}).get('headRefName') or remote_branch(root, args.remote, head)
 
+    if args.post:
+        require_postable_head(info, head)
+
     merge_base = git('merge-base', f'{args.remote}/{base}', head, cwd=root)
     files = [path for path in git('diff', '--name-only', merge_base, head, cwd=root).splitlines() if path]
     if args.current:
@@ -308,6 +317,9 @@ def main(argv=None):
          'steps': g.steps} for g in gates]), indent=2) + '\n')
     print(report)
     if args.post:
+        require_postable_head(gh_pr(args.pr, root), head)
+        if git('rev-parse', 'HEAD', cwd=tree) != head or git('status', '--porcelain', cwd=tree):
+            raise SystemExit('Cannot post: the checked worktree changed while checks ran. Commit and check it again.')
         subprocess.run(['gh', 'pr', 'comment', str(args.pr), '--body-file', str(logs / 'report.md')], cwd=root, check=True)
     if not args.current:
         print(f'The PR stays checked out in {redact(str(tree))}. To push a fix from there: '

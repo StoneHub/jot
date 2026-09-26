@@ -64,6 +64,13 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(check.verdict([gate('passed'), gate('unavailable')]), 'INCOMPLETE')
         self.assertEqual(check.verdict([gate('skipped'), gate('failed')]), 'FAIL')
 
+    def test_posting_requires_a_verified_open_pr_at_the_checked_head(self):
+        check.require_postable_head({'state': 'OPEN', 'headRefOid': 'checked'}, 'checked')
+        for info in (None, {'state': 'OPEN', 'headRefOid': 'other'},
+                     {'state': 'MERGED', 'headRefOid': 'checked'}):
+            with self.subTest(info=info), self.assertRaises(SystemExit):
+                check.require_postable_head(info, 'checked')
+
     def test_report_binds_the_head_and_hides_the_home_directory(self):
         home = str(Path.home())
         gate = check.Gate('swift-test', 'Swift', [['swift', 'test']], status='failed', tail=[f'{home}/x.swift: error'])
