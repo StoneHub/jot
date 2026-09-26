@@ -94,8 +94,7 @@ final class SessionLibrary: ObservableObject {
     /// Folded and merged rows for reading one session. Stored rows are untouched.
     func sessionParagraphs(_ id: String) -> [Transcript] {
         guard let store else { return [] }
-        let gap = host.tuning.bounded.paragraphPause
-        do { return TranscriptExport.paragraphs(TranscriptGrouping.foldContinuations(try store.session(id: id), gap: gap), mergeWithin: gap) }
+        do { return TranscriptExport.readingParagraphs(try store.session(id: id), tuning: host.tuning) }
         catch { host.notice = error.localizedDescription; return [] }
     }
 
@@ -175,7 +174,7 @@ final class SessionLibrary: ObservableObject {
     @discardableResult
     func exportSession(_ id: String) throws -> URL {
         let (session, rows) = try exportable(id)
-        let url = try TranscriptExport.write(session: session, rows: rows, directory: Self.exportDirectory)
+        let url = try TranscriptExport.write(session: session, rows: rows, directory: Self.exportDirectory, tuning: host.tuning)
         lastExport = url
         return url
     }

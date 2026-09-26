@@ -31,9 +31,14 @@ public enum TranscriptExport {
         paragraph.endSeconds = max(paragraph.endSeconds, row.endSeconds)
     }
 
-    public static func markdown(session: TranscriptSession, rows: [Transcript]) -> String {
-        let folded = TranscriptGrouping.foldContinuations(rows)
-        let merged = paragraphs(folded)
+    /// The paragraphs Sessions shows and Markdown exports: continuations folded and rows merged at the tuning's paragraph pause.
+    public static func readingParagraphs(_ rows: [Transcript], tuning: TranscriptionTuning) -> [Transcript] {
+        let pause = tuning.bounded.paragraphPause
+        return paragraphs(TranscriptGrouping.foldContinuations(rows, gap: pause), mergeWithin: pause)
+    }
+
+    public static func markdown(session: TranscriptSession, rows: [Transcript], tuning: TranscriptionTuning = TranscriptionTuning()) -> String {
+        let merged = readingParagraphs(rows, tuning: tuning)
         let duration = rows.map(\.endSeconds).max() ?? 0
         var lines = ["# \(session.title ?? "Session") \(timestamp(session.startedAt))", "",
                      "Session \(session.sessionID). \(rows.count) segments, \(clock(duration)) of audio, ending \(timestamp(session.lastTranscriptAt)).",
@@ -54,10 +59,10 @@ public enum TranscriptExport {
     }
 
     /// Exclusive creation preserves earlier exports, including files edited outside Jot.
-    public static func write(session: TranscriptSession, rows: [Transcript], directory: URL) throws -> URL {
+    public static func write(session: TranscriptSession, rows: [Transcript], directory: URL, tuning: TranscriptionTuning = TranscriptionTuning()) throws -> URL {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let base = URL(fileURLWithPath: fileName(for: session)).deletingPathExtension().lastPathComponent
-        let data = Data(markdown(session: session, rows: rows).utf8)
+        let data = Data(markdown(session: session, rows: rows, tuning: tuning).utf8)
         var attempt = 1
         while true {
             let suffix = attempt == 1 ? "" : " (\(attempt))"
