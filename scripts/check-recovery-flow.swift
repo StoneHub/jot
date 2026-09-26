@@ -68,6 +68,10 @@ struct RecoveryFlowChecks {
             try await profileQuietListening(CommandLine.arguments.dropFirst(flag + 1).map { URL(fileURLWithPath: $0) })
             return
         }
+        if CommandLine.arguments.contains("--listening-overhead") {
+            try await measureListeningOverhead()
+            return
+        }
         let watchdog = Task.detached {
             try await Task.sleep(for: .seconds(90))
             FileHandle.standardError.write(Data("Recovery checks timed out.\n".utf8))
@@ -760,10 +764,14 @@ struct RecoveryFlowChecks {
         let probe = Probe()
         let store = try TranscriptStore(directory: directory.appendingPathComponent("idle"))
         var recognitions = 0
-        let service = SpeechService(dependencies: .init(infer: { _, _, _ in
+        // The timer tick drains the microphone itself, as in the app, so a chunk cut by a drain is still in the queue when the same tick does its once-a-second status work.
+        let microphone = ConstantMicrophone(seconds: 0.2, value: 0)
+        var dependencies = SpeechServiceDependencies(infer: { _, _, _ in
             recognitions += 1
             return SpeechOutput(transcripts: [], text: "", processingSeconds: 0.05)
-        }, deliver: { _, text in try probe.deliver(text) }, now: { probe.now }))
+        }, deliver: { _, text in try probe.deliver(text) }, now: { probe.now })
+        dependencies.makeMicrophone = { microphone }
+        let service = SpeechService(dependencies: dependencies)
         service.keepAudioForSpeakerPass = false
         service.cleanUpTranscriptions = false
         service.beginRecoveryVerification(store: store, startedAt: probe.now)
@@ -771,16 +779,16 @@ struct RecoveryFlowChecks {
         var changes = 0
         let counter = service.objectWillChange.sink { changes += 1 }
         defer { counter.cancel() }
-        // Two seconds of digital silence, drained and ticked every 0.2 seconds like the timer. Every 0.8 seconds the silence closes a chunk, and recognition finds no speech in it.
-        for _ in 1...10 {
+        // Five seconds of digital silence, drained and ticked every 0.2 seconds like the timer. Every 0.8 seconds the silence closes a chunk, and recognition finds no speech in it. The status second lands on a chunk close at 3.2 seconds, as it does about every four seconds of quiet in the app.
+        for _ in 1...25 {
             probe.now += 0.2
-            service.ingestRecoveryVerification(samples: Array(repeating: 0, count: 3_200), rms: 0, at: probe.now)
+            microphone.lastAudio = probe.now
             service.tickRecoveryVerification()
             await service.waitForRecoveryVerification()
         }
-        precondition(recognitions == 2, "Two seconds of silence ran \(recognitions) recognitions, not two")
+        precondition(recognitions == 6, "Five seconds of silence ran \(recognitions) recognitions, not six")
         precondition(changes == 0, "Resource-only ticks told the whole window to redraw \(changes) times")
-        print("PASS: resource-only ticks and two recognitions that find no speech do not invalidate the whole window.")
+        print("PASS: resource-only ticks and six recognitions that find no speech do not invalidate the whole window, even when the status second lands on a chunk close.")
 
         service.pause()
         while service.lifecycle.phase != .paused { try await Task.sleep(for: .milliseconds(10)) }
@@ -1381,6 +1389,97 @@ extension RecoveryFlowChecks {
                 print(String(format: "QUIET CPU WORD: [%.2f] %@ %@", word.startSeconds, word.word,
                     word.probabilities.map { String(format: "%.3f", $0) }.joined(separator: ",")))
             }
+        }
+    }
+}
+
+/// `JotRecoveryChecks --listening-overhead` measures what the service itself does around recognition while it listens, with recognition stubbed to return at once: the once-a-second status work, the 0.2-second timer tick that drains the microphone, saving a row, and how often each of them tells every screen to redraw (`objectWillChange`). Nothing here starts a microphone or a window; the redraw cost itself is the screens', measured on the installed app. `JOT_OVERHEAD_SECONDS` sizes the wall-clock runs.
+extension RecoveryFlowChecks {
+    /// A microphone that owes the same packet on every drain: `seconds` of one sample value, at the RMS the tap would report for it. The caller keeps `lastAudio` on its clock, real or fake, so the stalled-input check sees audio arriving.
+    final class ConstantMicrophone: MicrophoneSource, @unchecked Sendable {
+        private let packet: [Float]
+        private let rms: Float
+        var lastAudio = Date()
+        private(set) var running = false
+        init(seconds: Double, value: Float) {
+            packet = Array(repeating: value, count: AudioClock.samples(seconds: seconds))
+            rms = abs(value)
+        }
+        var bufferedSampleCount: Int { 0 }
+        func setInput(uid: String?) throws {}
+        func setInputForNextStart(uid: String?) {}
+        func shouldIgnoreConfigurationChange() -> Bool { false }
+        func start() throws { running = true }
+        func stop() { running = false }
+        func drain() -> (samples: [Float], dropped: Int, lastAudio: Date, rms: Float) { (packet, 0, lastAudio, rms) }
+    }
+
+    @MainActor static func measureListeningOverhead() async throws {
+        func perCall(_ label: String, _ count: Int, _ body: () -> Void) {
+            let began = kernelCPUSeconds()
+            for _ in 0..<count { body() }
+            let seconds = kernelCPUSeconds() - began
+            print(String(format: "OVERHEAD CALL: %@: %.4f ms CPU per call over %d calls", label, seconds / Double(count) * 1000, count))
+        }
+        let sampler = ResourceSampler()
+        perCall("ResourceSampler.sample (proc_pid_rusage)", 2000) { _ = sampler.sample() }
+        perCall("DictationInput.accessibilityGranted (AXIsProcessTrusted)", 2000) { _ = DictationInput.accessibilityGranted }
+        let live = SpeechServiceDependencies.live
+        perCall("AVCaptureDevice.authorizationStatus(.audio)", 2000) { _ = live.microphoneAuthorization() }
+        perCall("TranscriptCleanup.availability (Foundation Models)", 200) { _ = TranscriptCleanup.availability }
+
+        let seconds = Double(ProcessInfo.processInfo.environment["JOT_OVERHEAD_SECONDS"] ?? "") ?? 40
+        // Each run: the real service on the wall clock, its timer tick called every 0.2 seconds as the timer would, the fake microphone owing 0.2 seconds of audio per drain. Recognition is stubbed: no speech, or one row per block.
+        struct Run { let name: String; let value: Float; let rows: Bool; let ticks: Bool }
+        let runs = [
+            Run(name: "digital silence, tick path (drain + once-a-second status work)", value: 0, rows: false, ticks: true),
+            Run(name: "digital silence, drain only (no tick, no status work)", value: 0, rows: false, ticks: false),
+            Run(name: "steady tone above the gate, one saved row per 3-second block, tick path", value: 0.01, rows: true, ticks: true),
+        ]
+        for run in runs {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("jot-overhead-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let store = try TranscriptStore(directory: directory)
+            var jobs = 0, rowsSaved = 0
+            var dependencies = SpeechServiceDependencies(infer: { _, job, _ in
+                jobs += 1
+                guard run.rows, !job.samples.isEmpty else { return SpeechOutput(transcripts: [], text: "", processingSeconds: 0) }
+                let duration = AudioClock.seconds(samples: job.samples.count)
+                let text = "block \(jobs) of steady tone with eight words"
+                let row = Transcript(sessionID: job.sessionID, startedAt: job.startedAt, startSeconds: job.offset, endSeconds: job.offset + duration, text: text, speakerID: "speaker-1", mode: "ambient")
+                let words = text.split(separator: " ").enumerated().map { index, word in
+                    AttributedWord(text: String(word), start: Double(index) * duration / 8, end: Double(index + 1) * duration / 8, probabilities: [0.9, 0.05, 0.03, 0.02])
+                }
+                rowsSaved += 1
+                return SpeechOutput(transcripts: [row], text: text, processingSeconds: 0, wordsByTranscript: [row.id: words])
+            }, deliver: { _, _ in .init(verified: true, path: "synthetic", outcome: "verified", targetApp: "synthetic-test", targetPID: 0, role: "AXTextField", subrole: nil) }, now: { Date() })
+            let microphone = ConstantMicrophone(seconds: 0.2, value: run.value)
+            dependencies.makeMicrophone = { microphone }
+            let service = SpeechService(dependencies: dependencies)
+            service.keepAudioForSpeakerPass = false; service.cleanUpTranscriptions = false; service.cleanUpDictation = false
+            service.highlightTargetField = false; service.muteSpeakersDuringDictation = false; service.newSessionAfterSilence = 0
+            service.beginRecoveryVerification(store: store)
+            try microphone.start()
+            var invalidations = 0
+            let counter = service.objectWillChange.sink { invalidations += 1 }
+            var readouts = 0
+            let meters = service.resourceReadout.$snapshot.dropFirst().sink { _ in readouts += 1 }
+            let ticks = Int(seconds / 0.2)
+            let began = ContinuousClock.now
+            let cpuBegan = kernelCPUSeconds()
+            for tick in 1...ticks {
+                microphone.lastAudio = Date()
+                if run.ticks { service.tickRecoveryVerification() }
+                else { service.drainAudio(); service.kickWorker() }
+                try await Task.sleep(until: began + .milliseconds(200 * tick), clock: .continuous)
+            }
+            await service.waitForRecoveryVerification()
+            let cpu = kernelCPUSeconds() - cpuBegan
+            let wall = Double(began.duration(to: .now) / .milliseconds(1)) / 1_000
+            counter.cancel(); meters.cancel()
+            print(String(format: "OVERHEAD RUN: %@: %.1f s wall, %.3f CPU s (%.2f CPU s per minute, %.2f%% of a core), %d ticks, %d recognition jobs, %d rows saved, %d meter readouts, %d whole-window invalidations",
+                run.name, wall, cpu, cpu / wall * 60, cpu / wall * 100, ticks, jobs, rowsSaved, readouts, invalidations))
+            service.shutdown()
         }
     }
 }
