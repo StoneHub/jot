@@ -10,8 +10,6 @@ struct PeopleView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Jot recognizes these voices in new sessions. Delete a person and their voice is forgotten.")
-                .font(.callout).foregroundStyle(.secondary)
             if service.people.isEmpty {
                 Text("No one yet. Name a speaker in Sessions with \"Remember this voice\" on.").foregroundStyle(.secondary)
             }
