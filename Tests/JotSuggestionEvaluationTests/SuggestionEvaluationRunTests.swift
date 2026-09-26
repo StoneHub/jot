@@ -241,6 +241,7 @@ final class SuggestionEvaluationRunTests: XCTestCase {
         XCTAssertEqual(generation["maximumResponseTokens"] as? Int, 128)
         XCTAssertEqual(generation["deadlineMs"] as? Int, 2000)
         XCTAssertEqual(generation["draftDeadlineMs"] as? Int, 8000)
+        XCTAssertEqual(generation["draftMaximumResponseTokensRange"] as? [Int], [128, 400])
         XCTAssertEqual(generation["outstandingRequests"] as? Int, 1)
 
         func lines(_ name: String) throws -> [[String: Any]] {

@@ -25,6 +25,7 @@ public enum ContentHash {
 public enum SuggestionPrompt {
     public static let templateID = "jot-suggestion-v4"
     public static let maximumResponseTokens = 128
+    public static let maximumDraftResponseTokens = 400
     public static let abstainMarker = "NO_SUGGESTION"
 
     public static func request(for input: ScenarioInput, sources: [Source]) -> ModelRequest {
@@ -36,7 +37,7 @@ public enum SuggestionPrompt {
     public static func maximumResponseTokens(for target: Target) -> Int {
         guard target.mode == .draft else { return maximumResponseTokens }
         let seed = ((target.seed ?? "") as NSString).length
-        return min(400, max(maximumResponseTokens, seed / 2 + 96))
+        return min(maximumDraftResponseTokens, max(maximumResponseTokens, seed / 2 + 96))
     }
 
     public static func instructions(for mode: SuggestionMode) -> String {

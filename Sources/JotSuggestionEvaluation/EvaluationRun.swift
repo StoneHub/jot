@@ -307,6 +307,9 @@ struct RunMetadata {
                                "maximumSourceBytes": configuration.limits.maximumSourceBytes]
         object["generation"] = ["sampling": AppleFMGeneration.sampling,
                                 "maximumResponseTokens": SuggestionPrompt.maximumResponseTokens,
+                                // Scaled to the notes within this range; prompts.jsonl has each request's value.
+                                "draftMaximumResponseTokensRange": [SuggestionPrompt.maximumResponseTokens,
+                                                                    SuggestionPrompt.maximumDraftResponseTokens],
                                 "deadlineMs": milliseconds(configuration.deadline),
                                 "draftDeadlineMs": milliseconds(configuration.draftDeadline),
                                 "cancellationGraceMs": milliseconds(configuration.cancellationGrace),

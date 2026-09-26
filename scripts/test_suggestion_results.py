@@ -145,7 +145,11 @@ class SuggestionResultTests(unittest.TestCase):
         draft.update(outcome='abstain', detail='no-selected-source', run=None, promptSHA256=None, generationMs=None,
                      rawOutput=None, outputText=None, timeToPreviewMs=None,
                      outcomeComparison={'expected': 'suggest', 'matches': False})
-        self.assertRejected('a draft is generated from its notes and never abstains for want of a source')
+        self.assertRejected('a draft is generated from its notes, so every draft record has a request')
+        self.setUp()
+        self.record('draft-notes-without-intent').update(run=None, promptSHA256=None, generationMs=None,
+                                                          rawOutput=None, detail=None)
+        self.assertRejected('every draft record has a request')
         self.setUp()
         self.record('shell-blank-unrelated-project').update(run='warm', promptSHA256='0' * 64, generationMs=3,
                                                               rawOutput='NO_SUGGESTION', detail='model-abstained')
