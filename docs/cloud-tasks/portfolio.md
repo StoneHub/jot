@@ -1,8 +1,8 @@
 # Personal repository cloud queue
 
-Prepared 2026-09-25 for repository-based cloud sessions. This is a launch plan, not a record of launched runs or spending. The first actual hosted preflight remains pending. Each repository carries its own setup/task instructions so a runner does not need this whole planning conversation or another local checkout.
+Prepared 2026-09-25 for repository-based cloud sessions. The initial queue below is historical: its first batch produced eight merged PRs plus a reviewed ThreadSpace design. See [the next batch](next-batch.md) for current assignments and local acceptance evidence. Each repository carries its own setup/task instructions so a runner does not need this whole planning conversation or another local checkout.
 
-## Recommended sequence
+## Initial sequence (completed or superseded)
 
 | Order | Repository / task | Expected result | Environment boundary |
 | --- | --- | --- | --- |
@@ -51,4 +51,4 @@ Set any available credit/spending controls in the actual service before launch; 
 
 ## Evidence so far
 
-Local Mac checks passed for Jot's portable scripts, Jev's 10 tests/source checks/package, VS Code's compilation/regressions/31 golden replies with supported Ruby, and terminal's fake-model PTY suite. These are useful baselines, not hosted Linux, live-model, installed browser/editor, or multi-device ThreadSpace acceptance. ThreadSpace's implementation baseline needs its own focused environment rehearsal after the review chooses a slice.
+The first batch has now had Mac integration. Jot passed 187 Swift tests, 35 Python tests, signed build and recovery checks; its Release executable is installed and hash-verified. Jev passed 15 tests and isolated Chromium smoke; loading the unpacked extension into the user profile remains manual. VS Code and Terminal have separate installed/runtime acceptance records. ThreadSpace delivered reviewed documentation, not a new runtime. See the next-batch handoff for precise links and remaining gates.
