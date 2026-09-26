@@ -55,6 +55,7 @@ final class DictationInput {
     private var eventTap: CFMachPort?
     private var eventSource: CFRunLoopSource?
     private var activationObserver: NSObjectProtocol?
+    private var mouseUpMonitor: Any?
     private var focusObserver: AXObserver?
     private var observedApplication: AXUIElement?
     private var target: Target?
@@ -134,6 +135,7 @@ final class DictationInput {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(focusObserver), .commonModes)
         }
         if let activationObserver { NSWorkspace.shared.notificationCenter.removeObserver(activationObserver) }
+        if let mouseUpMonitor { NSEvent.removeMonitor(mouseUpMonitor) }
         clipboardRestore?()
     }
 
@@ -181,6 +183,10 @@ final class DictationInput {
                 self?.checkFocus()
             }
         }
+        // A drag or window click finishes an interactive screenshot; the keys after it belong to the field again.
+        mouseUpMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [weak self] _ in
+            MainActor.assumeIsolated { self?.suggestionKeys.endScreenshot() }
+        }
         if let front = NSWorkspace.shared.frontmostApplication { Self.wakeAccessibility(front.processIdentifier) }
         isEnabled = true
         return true
@@ -197,6 +203,8 @@ final class DictationInput {
         eventSource = nil
         if let activationObserver { NSWorkspace.shared.notificationCenter.removeObserver(activationObserver) }
         activationObserver = nil
+        if let mouseUpMonitor { NSEvent.removeMonitor(mouseUpMonitor) }
+        mouseUpMonitor = nil
         tracker.reset()
         suggestionFn.reset()
         suggestionKeys.reset()
@@ -595,8 +603,8 @@ final class DictationInput {
         let modifiers = ShortcutModifiers(event.flags).subtracting(.fn)
         let repeating = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
         let allowed = !recording && suggestionAllowed()
-        let suggestion = suggestionKeys.handle(kind, keyCode: keyCode, modifiers: modifiers,
-                                              repeating: repeating, shortcut: suggestionShortcut, allowed: allowed)
+        let suggestion = suggestionKeys.handle(kind, keyCode: keyCode, modifiers: modifiers, repeating: repeating,
+                                              shortcut: suggestionShortcut, allowed: allowed, at: eventTimestamp)
         switch suggestion.action {
         case .request:
             scheduleSuggestionRequest()
@@ -615,7 +623,7 @@ final class DictationInput {
         case .none: break
         }
         if suggestion.consume { return true }
-        if kind == .keyDown { suggestionKeyRevision += 1 }
+        if kind == .keyDown && !suggestion.screenshot { suggestionKeyRevision += 1 }
         if let request = suggestionShortcut, request.keyCode == keyCode,
            request.modifiers == modifiers, !allowed { return false }
         // While Fn dictation is held, the suggestion chord's modifiers must not cancel capture.

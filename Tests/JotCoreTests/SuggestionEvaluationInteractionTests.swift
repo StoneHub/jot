@@ -130,8 +130,61 @@ final class SuggestionEvaluationInteractionTests: XCTestCase {
     private let shortcut = DictationShortcut(keyCode: 38, modifiers: [.control, .option], keyLabel: "J")
     private func key(_ tracker: inout SuggestionKeyTracker, _ code: UInt16 = 48,
                      event: ShortcutTracker.Event = .keyDown, flags: ShortcutModifiers = [], repeating: Bool = false,
-                     allowed: Bool = true) -> SuggestionKeyTracker.Decision {
-        tracker.handle(event, keyCode: code, modifiers: flags, repeating: repeating, shortcut: shortcut, allowed: allowed)
+                     allowed: Bool = true, at time: TimeInterval = 0) -> SuggestionKeyTracker.Decision {
+        tracker.handle(event, keyCode: code, modifiers: flags, repeating: repeating, shortcut: shortcut, allowed: allowed, at: time)
+    }
+
+    func testScreenshotChordsLeaveTheCardUp() {
+        for code: UInt16 in [20, 21, 22, 23] {
+            for flags: ShortcutModifiers in [[.command, .shift], [.command, .shift, .control]] {
+                var tracker = SuggestionKeyTracker(); tracker.show(.ready)
+                XCTAssertEqual(key(&tracker, code, flags: flags), .init(screenshot: true))
+                XCTAssertEqual(tracker.state, .ready)
+                XCTAssertFalse(key(&tracker, code, event: .keyUp, flags: flags).consume)
+            }
+        }
+        var tracker = SuggestionKeyTracker(); tracker.show(.ready)
+        XCTAssertEqual(key(&tracker, 21, flags: [.command, .shift, .option]), .init(.dismiss))
+        var idle = SuggestionKeyTracker()
+        XCTAssertEqual(key(&idle, 21, flags: [.command, .shift]), .init())
+    }
+
+    func testInteractiveScreenshotKeysReachTheToolUntilItEnds() {
+        var tracker = SuggestionKeyTracker(); tracker.show(.loading)
+        _ = key(&tracker, 21, flags: [.command, .shift], at: 1)
+        // Space switches to window capture; Escape cancels the tool and is not swallowed.
+        XCTAssertEqual(key(&tracker, 49, at: 2), .init(screenshot: true))
+        XCTAssertEqual(key(&tracker, 53, at: 3), .init(screenshot: true))
+        XCTAssertEqual(tracker.state, .loading)
+        XCTAssertEqual(key(&tracker, 53, at: 4), .init(.dismiss, consume: true))
+
+        tracker.show(.ready)
+        _ = key(&tracker, 23, flags: [.command, .shift], at: 10)
+        tracker.endScreenshot()
+        XCTAssertEqual(key(&tracker, 0, at: 11), .init(.dismiss))
+
+        tracker.show(.ready)
+        _ = key(&tracker, 21, flags: [.command, .shift], at: 20)
+        XCTAssertEqual(key(&tracker, 0, at: 36), .init(.dismiss))
+    }
+
+    func testTabAndRequestStillWorkDuringScreenshot() {
+        var tracker = SuggestionKeyTracker(); tracker.show(.ready)
+        _ = key(&tracker, 21, flags: [.command, .shift], at: 1)
+        XCTAssertEqual(key(&tracker, at: 2), .init(.accept, consume: true))
+        tracker.show(.ready)
+        _ = key(&tracker, 21, flags: [.command, .shift], at: 3)
+        XCTAssertEqual(key(&tracker, 38, flags: shortcut.modifiers, at: 4), .init(.request, consume: true))
+    }
+
+    func testCaptureChordRepeatsAndIdleScreenshotDoNotHold() {
+        var tracker = SuggestionKeyTracker(); tracker.show(.ready)
+        _ = key(&tracker, 20, flags: [.command, .shift], at: 1)
+        XCTAssertEqual(key(&tracker, 0, at: 2), .init(.dismiss))
+        tracker.dismiss()
+        _ = key(&tracker, 21, flags: [.command, .shift], at: 3)
+        tracker.show(.ready)
+        XCTAssertEqual(key(&tracker, 0, at: 4), .init(.dismiss))
     }
 
     func testTabPassesWithoutReadyCardAndAfterTyping() {
