@@ -1,0 +1,51 @@
+{
+  "completed" : true,
+  "corpus" : {
+    "format" : "jot.contextual-suggestion-scenarios",
+    "path" : "docs/evaluation/contextual-suggestions/scenarios.json",
+    "scenarioCount" : 12,
+    "sha256" : "1c81a12c393d560e245c3ab61a8e58e7e10daf38c9b38df195d01d0500e3fab6",
+    "version" : 1
+  },
+  "finishedAt" : "2026-09-26T01:44:59Z",
+  "format" : "jot.suggestion-evaluation-run",
+  "generation" : {
+    "cancellationGraceMs" : 2000,
+    "deadlineMs" : 2000,
+    "freshSessionPerRequest" : true,
+    "maximumResponseTokens" : 128,
+    "outstandingRequests" : 1,
+    "sampling" : "greedy"
+  },
+  "generator" : "apple-fm",
+  "iterations" : 3,
+  "mode" : "normal",
+  "notice" : "Synthetic corpus only. Scores stay null until a person reviews the outputs. Cold marks the first request this process sent; the system may already have had the model loaded. Apple does not expose a model revision.",
+  "prompt" : {
+    "abstainMarker" : "NO_SUGGESTION",
+    "instructionsSHA256" : {
+      "continuation" : "e8663e7baaa68039f7559a4817ff873a56763768e31be2ad1d79798bab8273dc",
+      "reply" : "e187bf865439beb2a21fb55e88e13759a14da3ba41b23d8684c348622c2a7acf",
+      "shell-command" : "517af799f23291ffd05ecd47f6b161e3116e2d97315ef32c5c72c5e4d74092ae"
+    },
+    "templateID" : "jot-suggestion-v1"
+  },
+  "recordCount" : 36,
+  "runId" : "3bfb7ae3-179a-4b8f-ae64-3b6f3403ee63",
+  "runtime" : {
+    "appleFMRevision" : "737fac9e7147403f2777e0901f02452e8fc25ae7",
+    "hardwareModel" : "Mac17,9",
+    "model" : "SystemLanguageModel.default",
+    "modelAvailability" : "available",
+    "modelRevision" : null,
+    "operatingSystem" : "Version 27.2 (Build 26B5086k)"
+  },
+  "selection" : {
+    "maximumSourceBytes" : 4096,
+    "maximumSources" : 6
+  },
+  "sourceRevision" : "a6c32b2b3c0fe7b11685b6a5e7032ece94850950",
+  "startedAt" : "2026-09-26T01:44:45Z",
+  "stopReason" : null,
+  "version" : 1
+}
