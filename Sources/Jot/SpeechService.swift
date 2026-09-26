@@ -778,8 +778,12 @@ final class SpeechService: ObservableObject {
                 let sources = output.transcripts
                 if (job.mode == .ambient || job.submittedUptime > library.historyClearedAt) && !sessionIsDeleted(job.sessionID) {
                     // Live must see recognition before the model's cleanup suspension. It adds each row once it is saved, without re-reading the session, so a row saved before a later one fails still shows.
+                    // Recent rows, Sessions and Dictations take in every saved row when the block ends, even when a later row or the words fail.
+                    var saved: [Transcript] = []
+                    defer { library.didSave(saved) }
                     for transcript in sources {
                         try store?.append(transcript)
+                        saved.append(transcript)
                         library.appendLive([transcript])
                     }
                     // Word evidence is kept in the session's clock so a saved session can be regrouped later. Dictation rows keep none.
@@ -792,7 +796,6 @@ final class SpeechService: ObservableObject {
                     if !sources.isEmpty {
                         lastTranscriptAt = dependencies.now()
                         if job.mode == .ambient, job.sessionID == sessionID { timeline.lastAmbientRowAt = dependencies.now() }
-                        refreshRecent(); refreshSessions()
                     }
                 }
                 cleanup.scheduleCleanup(sources: sources, final: job.isFinal)

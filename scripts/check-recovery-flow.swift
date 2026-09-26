@@ -99,6 +99,7 @@ struct RecoveryFlowChecks {
             precondition(service.live.paragraphs.last?.text.hasSuffix("segment\(index)") == true, "Live did not add the row when it was saved")
         }
         precondition(probe.chunks.allSatisfy { $0 <= 3 }, "Recognition still waits for a large audio block")
+        try libraryMatchesStore(service, store, "25 dictation blocks")
         service.endDictation()
         await service.waitForRecoveryVerification()
         let expected = (1...25).map { "segment\($0)" }.joined(separator: " ")
@@ -407,6 +408,7 @@ struct RecoveryFlowChecks {
         precondition(cleaned.recoveryDiagnostics["cleanupApplied"] as? Int == 2, "Cleanup outcome was not reported")
         precondition(cleaned.live.paragraphs.map(\.text) == ["Segment1 Segment2"] && cleaned.live.cleanupRevision == 2,
             "Live did not put cleaned text in place of the raw text")
+        try libraryMatchesStore(cleaned, cleanedStore, "phrase cleanup")
         cleaned.shutdown()
         print("PASS: raw text publishes before delayed cleanup; the next recognition completes while cleanup runs, then the first row is replaced.")
         print("PASS: Live shows raw rows as they are saved and puts each cleaned phrase in place, without re-reading the session.")
@@ -480,6 +482,7 @@ struct RecoveryFlowChecks {
             await speak(index)
         }
         precondition(shown().last == "Speaker 2: segment4" && shown() == fullRead(), "Live lost a saved row when the next row of its block could not be saved")
+        try libraryMatchesStore(service, store, "a block whose second row could not be saved")
         let revision = service.live.revision
         service.showLive(id)
         precondition(service.live.revision == revision, "Live read its session again when it was shown a second time")
@@ -488,6 +491,7 @@ struct RecoveryFlowChecks {
         service.endDictation()
         await service.waitForRecoveryVerification()
         precondition(service.live.paragraphs.contains { $0.mode == "dictation" } && shown() == fullRead(), "Live did not show the session as saved")
+        try libraryMatchesStore(service, store, "a dictation held while listening")
 
         service.labelSpeaker(session: id, speaker: "speaker-1", name: "Ada")
         precondition(shown().contains("Ada: segment1") && shown() == fullRead(), "Live kept the old name after a speaker was named")
@@ -530,8 +534,22 @@ struct RecoveryFlowChecks {
         renameTable("hidden_labels", to: "speaker_labels", in: folder)
         service.showLive(id)
         precondition(shown().contains("Ada King: segment1") && shown() == fullRead(), "Live did not read the session again after a failed reload")
+        await speak(7)
+        try libraryMatchesStore(service, store, "speaker names, a delete and failed reads, then a block")
         print("PASS: Live keeps a row saved before a failed one, and reads its session again after a speaker name, a failed voice, speakers.label, a new paragraph pause, and a delete, but not after another setting or a second show.")
         print("PASS: after a failed switch Live shows the rows saved next; after a failed reload it keeps its rows; either way the next read retries.")
+        print("PASS: recent rows, Sessions and Dictations take in each block's saved rows and cleaned text without a full read, and match one.")
+    }
+
+    /// Recent rows, Sessions and Dictations fold in each block's saved rows and each phrase's cleaned text instead of reading the store again; what they hold must be what a full read returns.
+    @MainActor static func libraryMatchesStore(_ service: SpeechService, _ store: TranscriptStore, _ step: String) throws {
+        let recent = try store.recent(limit: 20), sessions = try store.sessions(limit: 200)
+        precondition(service.recent == recent, "Recent rows differ from a full read after \(step)")
+        precondition(service.sessions == sessions, "Sessions differ from a full read after \(step)")
+        let history = service.history, count = service.dictationCount, more = service.hasMoreHistory
+        service.library.refreshHistory()
+        precondition(service.history == history && service.dictationCount == count && service.hasMoreHistory == more,
+            "Dictations differ from a full read after \(step)")
     }
 
     /// Renames a table of a store's database over a second connection, so the store's next query of it fails, or works again.
@@ -1004,7 +1022,7 @@ struct RecoveryFlowChecks {
         let segments = (0..<1_500).map { turn in (speaker: "S\(turn % 3 + 1)", start: Double(turn) * 6 + 1.5, end: Double(turn) * 6 + 7.5) }
         let pass = SpeakerPassResult(segments: segments, speakers: ["S1": [1], "S2": [2], "S3": [3]], durationSeconds: 9_000, processingSeconds: 1)
 
-        // Listening goes on. Every 5 ms the ticker drains the microphone and does what a recognized block does: it saves a row and its word, adds the row to Live, and refreshes the recent rows and the Sessions list. It returns the longest gap between wakes beyond the 5 ms it sleeps.
+        // Listening goes on. Every 5 ms the ticker drains the microphone and does what a recognized block does: it saves a row and its word, adds the row to Live, and folds it into the recent rows and the Sessions list. It returns the longest gap between wakes beyond the 5 ms it sleeps.
         let listening = service.activeSessionID!
         func listen() -> Task<Duration, Never> {
             // The clock starts before the ticker's first run, so a stall that keeps it from starting is counted too.
@@ -1026,8 +1044,7 @@ struct RecoveryFlowChecks {
                     try? store.append(row)
                     service.appendLive([row])
                     try? store.appendWords([StoredWord(transcriptID: row.id, position: 0, word: "tick", startSeconds: start, endSeconds: start + 0.005, probabilities: [])])
-                    service.refreshRecent()
-                    service.refreshSessions()
+                    service.library.didSave([row])
                 }
                 return longest
             }

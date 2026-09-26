@@ -44,6 +44,7 @@ extension SpeechService {
     func showLive(_ id: String?) { library.showLive(id) }
     func appendLive(_ rows: [Transcript]) { library.appendLive(rows) }
     func replaceLive(texts: [String: String]) { library.replaceLive(texts: texts) }
+    func didClean(_ sources: [Transcript], texts: [String: String]) { library.didClean(sources, texts: texts) }
     func searchSessions(_ query: String) -> [Transcript] { library.searchSessions(query) }
     func renameSession(_ id: String, title: String) { library.renameSession(id, title: title) }
     func exportable(_ id: String) throws -> (session: TranscriptSession, rows: [Transcript]) { try library.exportable(id) }
