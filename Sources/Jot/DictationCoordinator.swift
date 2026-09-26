@@ -28,11 +28,12 @@ protocol DictationHost: AnyObject {
     func kickWorker()
     func waitUntilProcessed(sessionID: String, through offset: Double) async
     func markPerformance(_ kind: PerformanceEventKind)
+    func recordPerformance(_ job: PerformanceJob)
     func updateMode()
     func refreshRecent()
     func appendLive(_ rows: [Transcript])
     func cancelDictationCleanup()
-    func cleanDictation(_ text: String) async -> String
+    func cleanDictation(_ text: String) async -> (text: String, outcome: CleanupResult.Outcome)
 }
 
 /// One held dictation at a time: the attempt record it saves while the key is down, the text it gathers from the listening timeline on release, the insertion, and the double-tap recovery of anything undelivered.
@@ -87,6 +88,7 @@ final class DictationCoordinator {
     func end() -> Bool {
         speakerMute.end()
         guard isActive, var attempt = currentAttempt else { highlight.hide(); return false }
+        let released = ProcessInfo.processInfo.systemUptime
         host.closeChunk()
         isActive = false
         isPending = true
@@ -103,7 +105,7 @@ final class DictationCoordinator {
         host.kickWorker()
         recoveryTask?.cancel()
         recoveryTask = Task { [weak self] in
-            await self?.finishAttempt(id: attempt.id, throughOffset: self?.attemptEndOffset ?? 0)
+            await self?.finishAttempt(id: attempt.id, throughOffset: self?.attemptEndOffset ?? 0, releasedAt: released)
         }
         return true
     }
@@ -164,17 +166,52 @@ final class DictationCoordinator {
     func endSpeakerMute() { speakerMute.end() }
     func hideHighlight() { highlight.hide() }
 
-    private func finishAttempt(id: String, throughOffset: Double) async {
+    /// One held dictation's timings for `jot diagnostics`, measured from release. Numbers and outcome names only.
+    private struct Timing {
+        let released: Double
+        var holdSeconds = 0.0
+        var recognitionSeconds = 0.0
+        var cleanupSeconds: Double?
+        var cleanupOutcome: String?
+        var deliverySeconds: Double?
+        var outcome = PerformanceJob.Outcome.cancelled
+        var completionSeconds: Double?
+
+        static var now: Double { ProcessInfo.processInfo.systemUptime }
+        var sinceRelease: Double { max(0, Self.now - released) }
+        mutating func finish(_ outcome: PerformanceJob.Outcome, at uptime: Double = Timing.now) {
+            self.outcome = outcome
+            completionSeconds = max(0, uptime - released)
+        }
+        var job: PerformanceJob {
+            .init(elapsedSeconds: 0, mode: .dictation, outcome: outcome, audioSeconds: holdSeconds, queueWaitSeconds: recognitionSeconds,
+                  inferenceSeconds: nil, completionSeconds: completionSeconds ?? sinceRelease, cleanupSeconds: cleanupSeconds,
+                  deliverySeconds: deliverySeconds, cleanupOutcome: cleanupOutcome)
+        }
+    }
+
+    private func finishAttempt(id: String, throughOffset: Double, releasedAt released: Double) async {
         // The outline stays through recognition, cleanup, and insertion; a newer hold keeps its own.
         defer { if !isActive { highlight.hide() } }
+        // Every released hold records one timing; one that never finishes is recorded as cancelled.
+        var timing = Timing(released: released)
+        defer { host.recordPerformance(timing.job) }
         guard let started = currentAttempt, started.id == id else { recoveryTask = nil; return }
+        timing.holdSeconds = max(0, (started.endedAt ?? started.startedAt).timeIntervalSince(started.startedAt))
         await host.waitUntilProcessed(sessionID: started.sessionID, through: throughOffset)
+        timing.recognitionSeconds = timing.sinceRelease
         guard !Task.isCancelled, !discardedAttemptIDs.contains(id), !host.sessionIsDeleted(started.sessionID),
               var attempt = currentAttempt, attempt.id == id else { recoveryTask = nil; return }
         do {
             let raw = try host.store?.recoveryText(from: attempt.startedAt, through: attempt.endedAt ?? host.dependencies.now()) ?? ""
             var text = DictationCleanup.applying(to: vocabulary.applyingToDictation(raw))
-            if host.cleanUpDictation, !text.isEmpty { text = await host.cleanDictation(text) }
+            if host.cleanUpDictation, !text.isEmpty {
+                let began = Timing.now
+                let cleaned = await host.cleanDictation(text)
+                text = cleaned.text
+                timing.cleanupSeconds = max(0, Timing.now - began)
+                timing.cleanupOutcome = cleaned.outcome.rawValue
+            }
             guard !Task.isCancelled, !discardedAttemptIDs.contains(id) else { recoveryTask = nil; return }
             attempt.text = text
             attempt.hasGap = attemptHadGap
@@ -190,6 +227,7 @@ final class DictationCoordinator {
                     host.recoveryNotice = "No speech was recognized for that hold. Recent listening history is still available."
                     host.notice = "No text to insert."
                 }
+                timing.finish(attemptHadGap ? .failed : .noSpeech)
             } else {
                 attempt.state = .ready
                 try host.store?.saveDictationAttempt(attempt)
@@ -209,7 +247,10 @@ final class DictationCoordinator {
                     }
                 }
                 currentAttempt = attempt
-                await deliverAttempt(attempt)
+                if let delivery = await deliverAttempt(attempt) {
+                    timing.deliverySeconds = delivery.seconds
+                    timing.finish(delivery.outcome, at: delivery.finishedUptime)
+                }
             }
         } catch {
             // Still recognizing means reading the held range failed, so the text is the words the blocks saved.
@@ -221,18 +262,25 @@ final class DictationCoordinator {
             currentAttempt = attempt
             host.recoveryNotice = "Dictation was saved but could not be finished. Use the recovery gesture to retry."
             host.notice = "Dictation: \(error.localizedDescription)"
+            timing.finish(.failed)
         }
         host.input.discardTarget()
         isPending = false; attemptEndOffset = nil; recoveryTask = nil
         host.refreshRecent()
     }
 
-    private func deliverAttempt(_ original: DictationAttempt) async {
+    /// Returns how delivery ended and how long insertion took, or nil when the attempt was discarded.
+    @discardableResult
+    private func deliverAttempt(_ original: DictationAttempt) async -> (outcome: PerformanceJob.Outcome, seconds: Double, finishedUptime: Double)? {
         var attempt = original
-        guard !discardedAttemptIDs.contains(attempt.id), !host.sessionIsDeleted(attempt.sessionID) else { return }
+        guard !discardedAttemptIDs.contains(attempt.id), !host.sessionIsDeleted(attempt.sessionID) else { return nil }
+        let began = Timing.now
         do {
             let delivery = try await host.dependencies.deliver(host.input, attempt.text)
-            guard !discardedAttemptIDs.contains(attempt.id), !host.sessionIsDeleted(attempt.sessionID) else { return }
+            let finished = Timing.now
+            let timing = (outcome: delivery.verified ? PerformanceJob.Outcome.completed : .deliveryUnverified,
+                          seconds: max(0, finished - began), finishedUptime: finished)
+            guard !discardedAttemptIDs.contains(attempt.id), !host.sessionIsDeleted(attempt.sessionID) else { return nil }
             attempt.state = delivery.verified ? .delivered : .deliveryUnverified
             attempt.updatedAt = host.dependencies.now()
             currentAttempt = attempt
@@ -241,7 +289,7 @@ final class DictationCoordinator {
                 deliveryStateSaveFailed = true
                 host.recoveryNotice = "Text was sent, but its delivery record could not be saved. Check the field; automatic recovery is blocked to avoid duplicates."
                 host.notice = "Could not save delivery status: \(error.localizedDescription)"
-                return
+                return timing
             }
             if delivery.verified {
                 highlight.finish()
@@ -252,8 +300,10 @@ final class DictationCoordinator {
                     : "Dictation was saved, but insertion could not be verified. Use the recovery gesture to retry."
             }
             host.notice = ""
+            return timing
         } catch {
-            guard !discardedAttemptIDs.contains(attempt.id), !host.sessionIsDeleted(attempt.sessionID) else { return }
+            let finished = Timing.now
+            guard !discardedAttemptIDs.contains(attempt.id), !host.sessionIsDeleted(attempt.sessionID) else { return nil }
             attempt.state = .deliveryFailed; attempt.updatedAt = host.dependencies.now()
             try? host.store?.saveDictationAttempt(attempt)
             currentAttempt = attempt
@@ -261,6 +311,7 @@ final class DictationCoordinator {
                 ? "Partial dictation was saved. Review it in Sessions; focus a field and use recovery to insert the recognized portion."
                 : "Dictation was saved. Focus a text field and use the recovery gesture to retry."
             host.notice = "Text was not inserted: \(error.localizedDescription)"
+            return (.failed, max(0, finished - began), finished)
         }
     }
 
