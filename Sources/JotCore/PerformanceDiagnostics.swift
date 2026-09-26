@@ -41,18 +41,24 @@ public struct PerformanceJob: Codable, Sendable {
     public var elapsedSeconds: Double
     public var mode: Mode
     public var outcome: Outcome
+    /// For dictation, how long the key was held.
     public var audioSeconds: Double
+    /// For dictation, from release until recognition of the held range finished.
     public var queueWaitSeconds: Double
     public var inferenceSeconds: Double?
+    /// Dictation cleanup time; nil when cleanup did not run.
     public var cleanupSeconds: Double?
+    /// The cleanup outcome (a `CleanupResult.Outcome` name, never text); nil when cleanup did not run.
+    public var cleanupOutcome: String?
     public var deliverySeconds: Double?
     /// From submission (Fn release for dictation) to completion, including delivery.
     public var completionSeconds: Double
     public init(elapsedSeconds: Double, mode: Mode, outcome: Outcome, audioSeconds: Double, queueWaitSeconds: Double,
-                inferenceSeconds: Double?, completionSeconds: Double, cleanupSeconds: Double? = nil, deliverySeconds: Double? = nil) {
+                inferenceSeconds: Double?, completionSeconds: Double, cleanupSeconds: Double? = nil, deliverySeconds: Double? = nil,
+                cleanupOutcome: String? = nil) {
         self.elapsedSeconds = elapsedSeconds; self.mode = mode; self.outcome = outcome; self.audioSeconds = audioSeconds
         self.queueWaitSeconds = queueWaitSeconds; self.inferenceSeconds = inferenceSeconds; self.completionSeconds = completionSeconds
-        self.cleanupSeconds = cleanupSeconds; self.deliverySeconds = deliverySeconds
+        self.cleanupSeconds = cleanupSeconds; self.deliverySeconds = deliverySeconds; self.cleanupOutcome = cleanupOutcome
     }
 }
 public struct LatencySummary: Codable, Sendable {
@@ -83,7 +89,13 @@ public struct PerformanceReport: Codable, Sendable {
     public let samples: [PerformanceSample]
     public let events: [PerformanceEvent]
     public let jobs: [PerformanceJob]
+    /// Release to text in the field, over dictations that were inserted.
     public let dictationLatency: LatencySummary
+    /// `dictationLatency` split by whether dictation cleanup ran.
+    public let dictationLatencyWithCleanup: LatencySummary
+    public let dictationLatencyWithoutCleanup: LatencySummary
+    /// Time spent in dictation cleanup, over every dictation where it ran.
+    public let dictationCleanupLatency: LatencySummary
     public let inferenceLatency: LatencySummary
 }
 
@@ -123,10 +135,15 @@ public struct PerformanceDiagnostics: Sendable {
     }
     public var report: PerformanceReport {
         let successful = jobs.filter { $0.outcome == .completed || $0.outcome == .deliveryUnverified || $0.outcome == .noSpeech }
+        let dictations = jobs.filter { $0.mode == .dictation }
+        let inserted = dictations.filter { $0.outcome == .completed || $0.outcome == .deliveryUnverified }
         return .init(build: build, schemaVersion: 1, sampleIntervalSeconds: Self.sampleInterval,
                      sampleCapacity: Self.sampleCapacity, eventCapacity: Self.eventCapacity, jobCapacity: Self.jobCapacity,
                      startup: startup, current: current, sampledPeakFootprintMiB: peak, samples: samples, events: events, jobs: jobs,
-                     dictationLatency: .init(successful.filter { $0.mode == .dictation }.map(\.completionSeconds)),
+                     dictationLatency: .init(inserted.map(\.completionSeconds)),
+                     dictationLatencyWithCleanup: .init(inserted.filter { $0.cleanupOutcome != nil }.map(\.completionSeconds)),
+                     dictationLatencyWithoutCleanup: .init(inserted.filter { $0.cleanupOutcome == nil }.map(\.completionSeconds)),
+                     dictationCleanupLatency: .init(dictations.filter { $0.cleanupOutcome != nil }.compactMap(\.cleanupSeconds)),
                      inferenceLatency: .init(successful.compactMap(\.inferenceSeconds)))
     }
     public func export() throws -> Data {
