@@ -59,7 +59,7 @@ extension SpeechService {
 
     func regroupSession(_ id: String) async throws {
         guard canDeleteSession(id) else { throw JotError.message("Stop recording this session before regrouping it.") }
-        try await library.regroupSession(id, segments: try speakers.segments(sessionID: id))
+        try await library.regroupSession(id) { try speakers.segments(sessionID: id) }
     }
 
     func deleteHistoryCard(_ item: Transcript) throws {

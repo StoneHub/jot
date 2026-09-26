@@ -225,24 +225,24 @@ final class SessionLibrary: ObservableObject {
         host.notice = "Session deleted."
     }
 
-    /// Relabels a saved session's rows from its stored words under the current Tuning: from the speaker pass's segments when the session has them, otherwise from the live probabilities. Rows keep their cleaned text; a row whose speaker changes inside it splits there.
-    func regroupSession(_ id: String, segments: [(speaker: String, start: Double, end: Double)]) async throws {
+    /// Relabels a saved session's rows from its stored words under the current Tuning: from the speaker pass's segments when the session has them, otherwise from the live probabilities. Rows keep their cleaned text; a row whose speaker changes inside it splits there. `segments` is read once the session has settled, so a pass that stores its segments while Regroup waits is used rather than overwritten with the live speakers.
+    func regroupSession(_ id: String, segments: () throws -> [(speaker: String, start: Double, end: Double)]) async throws {
         let tuning = host.tuning
-        let speakers: @Sendable ([StoredWord]) -> [String?]
-        if segments.isEmpty {
-            speakers = { TranscriptGrouping.speakers(words: $0, tuning: tuning) }
-        } else {
-            speakers = { SpeakerPassRelabel.speakers(words: $0, segments: segments, tuning: tuning) }
-        }
+        var fromPass = false
         // Batches written before a failure stay, so Live and Sessions reload either way.
         defer { didDeleteHistory() }
-        let changed = try await relabel(id, speakers: speakers)
+        let changed = try await relabel(id, makeSpeakers: {
+            let segments = try segments()
+            fromPass = !segments.isEmpty
+            if segments.isEmpty { return { TranscriptGrouping.speakers(words: $0, tuning: tuning) } }
+            return { SpeakerPassRelabel.speakers(words: $0, segments: segments, tuning: tuning) }
+        })
         // Deleted while the Regroup waited its turn; the delete has said so already.
         if deletedSessions.contains(id) { return }
         guard changed else {
             throw JotError.message("This session was recorded before Jot kept word timings; it cannot be regrouped.")
         }
-        host.notice = segments.isEmpty ? "Session regrouped with the current tuning." : "Session regrouped from the speaker pass."
+        host.notice = fromPass ? "Session regrouped from the speaker pass." : "Session regrouped with the current tuning."
     }
 
     /// A relabel is waiting or writing; Install Update waits for it.
@@ -250,10 +250,16 @@ final class SessionLibrary: ObservableObject {
 
     /// Relabels one finished session's rows from one speaker per stored word. It waits until the session is settled: a row split while its phrase is still being cleaned would never get the cleaned text. Then the work and the store writes run on the relabel queue, after any relabel already there; the caller reloads the screens. False when the session has no stored words.
     func relabel(_ id: String, speakers: @escaping @Sendable ([StoredWord]) -> [String?]) async throws -> Bool {
+        try await relabel(id, makeSpeakers: { speakers })
+    }
+
+    /// The same relabel, with its speakers made once the session has settled, just before the work joins the relabel queue: what `makeSpeakers` reads then is what a pass stored while this waited, and any relabel that joins the queue later writes after this one.
+    func relabel(_ id: String, makeSpeakers: () throws -> @Sendable ([StoredWord]) -> [String?]) async throws -> Bool {
         guard let store else { throw JotError.message("Transcript storage is unavailable.") }
         relabelsInFlight += 1
         defer { relabelsInFlight -= 1 }
         try await waitUntilSettled(id)
+        let speakers = try makeSpeakers()
         return try await withCheckedThrowingContinuation { continuation in
             Self.relabelQueue.async {
                 continuation.resume(with: Result(catching: { try store.relabelSession(id, speakers: speakers) }))
