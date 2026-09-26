@@ -33,11 +33,12 @@ public final class ModelCallGate {
         self.deadline = deadline
     }
 
-    public func call(_ request: ModelRequest, generator: @escaping Generator) async -> ModelCallResult {
+    /// `deadline` overrides the gate's own for one request, such as a longer draft.
+    public func call(_ request: ModelRequest, deadline: Duration? = nil, generator: @escaping Generator) async -> ModelCallResult {
         guard !Task.isCancelled else { return .cancelled }
         guard !outstanding else { return .blocked }
         outstanding = true
-        let deadline = self.deadline
+        let deadline = deadline ?? self.deadline
         return await withCheckedContinuation { continuation in
             let completion = Completion(continuation)
             let generation = Task.detached(priority: .userInitiated) { try await generator(request) }

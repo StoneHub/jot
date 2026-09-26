@@ -19,6 +19,8 @@ struct EvaluationConfiguration {
     var generatorLabel: String
     var limits = SelectionLimits.experiment
     var deadline: Duration = .seconds(2)
+    /// The app's draft deadline: a draft can run to several sentences.
+    var draftDeadline: Duration = .seconds(8)
     var cancellationGrace: Duration = .seconds(2)
 }
 
@@ -169,7 +171,8 @@ final class SuggestionEvaluation {
         }
         var record = EvaluationRecord(scenarioID: scenario.id, iteration: iteration, configuration: configuration,
                                       selection: selection)
-        if selection.selected.isEmpty {
+        // A draft is generated from the user's notes (`Target.seed`), so it needs no source.
+        if selection.selected.isEmpty && input.target.mode != .draft {
             record.detail = "no-selected-source"
         } else {
             await generate(SuggestionPrompt.request(for: input, sources: selection.selected), mode: input.target.mode,
@@ -195,7 +198,8 @@ final class SuggestionEvaluation {
                           into record: inout EvaluationRecord) async {
         record.request = request
         let callBegan = ContinuousClock.now
-        let result = await gate.call(request, generator: generator)
+        let result = await gate.call(request, deadline: mode == .draft ? configuration.draftDeadline : nil,
+                                     generator: generator)
         record.generationMs = milliseconds(callBegan.duration(to: .now))
         switch result {
         case .unavailable, .blocked: break
@@ -303,7 +307,11 @@ struct RunMetadata {
                                "maximumSourceBytes": configuration.limits.maximumSourceBytes]
         object["generation"] = ["sampling": AppleFMGeneration.sampling,
                                 "maximumResponseTokens": SuggestionPrompt.maximumResponseTokens,
+                                // Scaled to the notes within this range; prompts.jsonl has each request's value.
+                                "draftMaximumResponseTokensRange": [SuggestionPrompt.maximumResponseTokens,
+                                                                    SuggestionPrompt.maximumDraftResponseTokens],
                                 "deadlineMs": milliseconds(configuration.deadline),
+                                "draftDeadlineMs": milliseconds(configuration.draftDeadline),
                                 "cancellationGraceMs": milliseconds(configuration.cancellationGrace),
                                 "outstandingRequests": 1, "freshSessionPerRequest": true] as [String: Any]
         object["prompt"] = ["templateID": SuggestionPrompt.templateID, "abstainMarker": SuggestionPrompt.abstainMarker,

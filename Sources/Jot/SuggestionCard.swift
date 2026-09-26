@@ -3,14 +3,24 @@ import SwiftUI
 
 @MainActor
 final class SuggestionCard {
+    /// One clickable choice, such as adding the latest meeting. Keys keep their meaning; this is mouse-only.
+    struct Option {
+        let title: String
+        let action: @MainActor () -> Void
+    }
+
     private var panel: NSPanel?
     private let model = CardModel()
     var isVisible: Bool { panel?.isVisible == true }
 
-    func show(text: String, sources: String = "", loading: Bool = false, ready: Bool = false, at field: CGRect) {
-        model.text = text; model.sources = sources; model.loading = loading; model.ready = ready
+    func show(text: String, title: String = "Jot suggestion", sources: String = "", action: String = "Tab to insert",
+              option: Option? = nil, loading: Bool = false, ready: Bool = false, at field: CGRect) {
+        model.text = text; model.title = title; model.sources = sources; model.action = action
+        model.option = option; model.loading = loading; model.ready = ready
         let panel = self.panel ?? makePanel()
         self.panel = panel
+        // Clicks reach the card only while it has a choice; otherwise they pass through to the app underneath.
+        panel.ignoresMouseEvents = option == nil
         place(at: field)
         panel.orderFrontRegardless()
     }
@@ -35,9 +45,15 @@ final class SuggestionCard {
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
         panel.ignoresMouseEvents = true; panel.hidesOnDeactivate = false; panel.level = .statusBar
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-        panel.contentView = NSHostingView(rootView: SuggestionCardView(model: model))
+        panel.contentView = CardHostingView(rootView: SuggestionCardView(model: model))
         return panel
     }
+}
+
+/// The borderless, nonactivating panel never becomes key, so a click here leaves Jot inactive and the target
+/// field focused. Taking the first click makes the button work without an activating click first.
+private final class CardHostingView: NSHostingView<SuggestionCardView> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
 private extension CGRect { var area: CGFloat { isNull ? 0 : width * height } }
@@ -45,7 +61,10 @@ private extension CGRect { var area: CGFloat { isNull ? 0 : width * height } }
 @MainActor
 private final class CardModel: ObservableObject {
     @Published var text = ""
+    @Published var title = "Jot suggestion"
     @Published var sources = ""
+    @Published var action = "Tab to insert"
+    @Published var option: SuggestionCard.Option?
     @Published var loading = false
     @Published var ready = false
 }
@@ -57,13 +76,21 @@ private struct SuggestionCardView: View {
             HStack(spacing: 8) {
                 if model.loading { ProgressView().controlSize(.small) }
                 else { Image(systemName: "text.bubble").foregroundStyle(Color.accentColor) }
-                Text("Jot suggestion").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Text(model.title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             }
             Text(model.text).font(.body).fixedSize(horizontal: false, vertical: true)
-            if !model.sources.isEmpty {
-                Text(model.sources).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            if !model.sources.isEmpty || model.option != nil {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    if !model.sources.isEmpty {
+                        Text(model.sources).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                    Spacer(minLength: 0)
+                    if let option = model.option {
+                        Button(option.title) { option.action() }.buttonStyle(.link).font(.caption)
+                    }
+                }
             }
-            Text(model.ready ? "Tab to insert · Esc to dismiss" : "Esc to dismiss")
+            Text(model.ready ? "\(model.action) · Esc to dismiss" : "Esc to dismiss")
                 .font(.caption2).foregroundStyle(.secondary)
         }
         .frame(width: 388, alignment: .leading).padding(16)

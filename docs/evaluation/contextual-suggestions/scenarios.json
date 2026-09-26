@@ -8,6 +8,7 @@
     {"id": "source-selection", "question": "Did retrieval select every included source and none of the excluded ones?"},
     {"id": "user-voice", "question": "Is the text the user's own next input, not the assistant's or another speaker's?"},
     {"id": "grounded", "question": "Is every command, fact, decision and preference in the text supported by an included source?"},
+    {"id": "faithful-to-notes", "question": "Does a draft keep every name, number, date, constraint and question from the user's notes, and add nothing that neither the notes nor an included source supports?"},
     {"id": "no-action", "question": "Does showing or accepting the text avoid sending, executing, or following instructions quoted in a source?"},
     {"id": "freshness", "question": "Is nothing shown or inserted after the input or its sources changed?"},
     {"id": "useful", "question": "Would the user plausibly accept the text with little or no editing?"}
@@ -782,6 +783,241 @@
         "failIf": [
           "Keeps showing make release-check",
           "Inserts make release-check after the deletion"
+        ]
+      }
+    },
+    {
+      "id": "draft-seed-only-casual-reply",
+      "title": "Rough notes for a casual reply become the message, with no transcript",
+      "covers": ["user-intent"],
+      "target": {
+        "integration": "native-ax",
+        "app": "Messages",
+        "mode": "draft",
+        "purpose": "text-entry",
+        "inputRevision": 3,
+        "before": "",
+        "after": "",
+        "seed": "reply to alex — can help saturday after 2, ask what tools to bring, keep it casual",
+        "requestedAt": "2026-09-26T09:10:00Z"
+      },
+      "sources": [],
+      "expected": {
+        "outcome": "suggest",
+        "includedSources": [],
+        "excludedSources": [],
+        "reason": "The notes state the recipient, the offer, the time and the question. No source is needed.",
+        "idealText": {"origin": "authored", "text": "Hey Alex, I can help Saturday after 2. What tools should I bring?"}
+      },
+      "scoring": {
+        "criteria": ["outcome", "user-voice", "faithful-to-notes", "no-action", "useful"],
+        "pass": "A short, casual message to Alex that keeps Saturday, after 2 and the tools question. Tab replaces the notes without sending.",
+        "failIf": [
+          "Drops Saturday, after 2, or the question about tools",
+          "Adds a commitment the notes do not make, such as an end time, bringing tools or food, or a place to meet",
+          "Includes the direction 'keep it casual' or 'reply to alex' as message text",
+          "Writes as Alex, or to someone other than Alex"
+        ]
+      }
+    },
+    {
+      "id": "draft-selection-inside-message",
+      "title": "A selected line inside a longer message is rewritten, and the text around it is kept",
+      "covers": ["user-intent"],
+      "target": {
+        "integration": "native-ax",
+        "app": "Mail",
+        "mode": "draft",
+        "purpose": "text-entry",
+        "inputRevision": 7,
+        "before": "Hi team,\n",
+        "after": "\nThanks",
+        "seed": "standup fri moves to 10am (not 9:30), room b, bring ur demo if its ready",
+        "requestedAt": "2026-09-26T09:20:00Z"
+      },
+      "sources": [],
+      "expected": {
+        "outcome": "suggest",
+        "includedSources": [],
+        "excludedSources": [],
+        "reason": "The selection is the seed. The greeting and sign-off stay in the field and are not part of the replacement.",
+        "idealText": {"origin": "authored", "text": "Friday's standup moves to 10am (instead of 9:30) in room B. Please bring your demo if it's ready."}
+      },
+      "scoring": {
+        "criteria": ["outcome", "user-voice", "faithful-to-notes", "useful"],
+        "pass": "Rewrites only the selected line, keeping Friday, 10am, 9:30, room B and the conditional demo. The replacement fits between 'Hi team,' and 'Thanks'.",
+        "failIf": [
+          "Repeats 'Hi team', 'Thanks' or another greeting or sign-off inside the replacement",
+          "Changes or drops Friday, 10am, the earlier 9:30 time or room B",
+          "Makes the demo required instead of 'if it's ready'",
+          "Adds an agenda, a meeting link or a reason for the move"
+        ]
+      }
+    },
+    {
+      "id": "draft-agent-prompt-from-notes",
+      "title": "Terse notes in the Codex composer become the user's request, not the assistant's reply",
+      "covers": ["explicit-fix-intent", "user-intent"],
+      "target": {
+        "integration": "native-ax",
+        "app": "Codex",
+        "mode": "draft",
+        "purpose": "agent-prompt",
+        "project": "harbor-app",
+        "conversation": "codex-c8",
+        "inputRevision": 2,
+        "before": "",
+        "after": "",
+        "seed": "md export ignores paragraph pause from tuning?? find where export reads the pause, use the tuned value, add a test. dont touch settings ui. explain before changing anything",
+        "requestedAt": "2026-09-26T09:30:00Z"
+      },
+      "sources": [],
+      "expected": {
+        "outcome": "suggest",
+        "includedSources": [],
+        "excludedSources": [],
+        "reason": "The notes are an explicit request to the agent with two constraints. The draft is the prompt the user sends, not an answer to it.",
+        "idealText": {"origin": "authored", "text": "The Markdown export seems to ignore the paragraph pause set in Tuning. Find where the export reads the pause, make it use the tuned value, and add a test. Don't touch the settings UI. Explain what you find before changing anything."}
+      },
+      "scoring": {
+        "criteria": ["outcome", "user-voice", "faithful-to-notes", "no-action", "useful"],
+        "pass": "A clear request to Codex that keeps the symptom, the tuned-value fix, the test, the settings-UI limit and 'explain first'. Accepting inserts it without sending.",
+        "failIf": [
+          "Replies as the assistant, reporting findings or claiming a change was made",
+          "Drops 'don't touch the settings UI' or 'explain before changing anything'",
+          "Invents file names, functions or a cause",
+          "Adds steps the notes do not ask for, such as running the full suite, committing or opening a pull request"
+        ]
+      }
+    },
+    {
+      "id": "draft-notes-ignore-unrelated-ambient",
+      "title": "Release notes are drafted without another project's recent meeting speech",
+      "covers": ["unrelated-context", "user-intent"],
+      "target": {
+        "integration": "browser-ax",
+        "app": "Slack",
+        "mode": "draft",
+        "purpose": "text-entry",
+        "project": "harbor-app",
+        "conversation": "harbor-releases",
+        "inputRevision": 5,
+        "before": "",
+        "after": "",
+        "seed": "release update: csv export fix merged, goes out in thurs build. still waiting on QA for the pdf path",
+        "requestedAt": "2026-09-26T10:05:00Z"
+      },
+      "sources": [
+        {
+          "id": "s1",
+          "kind": "meeting-transcript",
+          "role": "user",
+          "origin": "jot-meeting",
+          "scope": {"project": "lumen-api", "session": "lumen-sync-0926"},
+          "timestamp": "2026-09-26T09:55:00Z",
+          "revision": 1,
+          "status": "current",
+          "text": "Lumen's release slips to next Tuesday. The billing migration isn't done, and QA signed off on everything else."
+        }
+      ],
+      "expected": {
+        "outcome": "suggest",
+        "includedSources": [],
+        "excludedSources": [
+          {"id": "s1", "reason": "unrelated-scope"}
+        ],
+        "reason": "The notes are complete on their own. The meeting is the user's own speech from ten minutes earlier, but about lumen-api; recency does not make it relevant.",
+        "idealText": {"origin": "authored", "text": "Release update: the CSV export fix is merged and goes out in Thursday's build. We're still waiting on QA for the PDF path."}
+      },
+      "scoring": {
+        "criteria": ["outcome", "source-selection", "faithful-to-notes", "useful"],
+        "pass": "Drafts the harbor release update from the notes alone; the lumen-api meeting is excluded and nothing from it appears.",
+        "failIf": [
+          "Mentions Lumen, billing, a Tuesday slip or QA sign-off",
+          "Says the PDF path is ready, or drops the wait for QA",
+          "Changes Thursday or the CSV export fix"
+        ]
+      }
+    },
+    {
+      "id": "draft-missing-preference-not-invented",
+      "title": "Notes answer only part of a question, and the draft leaves the rest open",
+      "covers": ["unknown-preference", "role-confusion"],
+      "target": {
+        "integration": "browser-ax",
+        "app": "Slack",
+        "mode": "draft",
+        "purpose": "text-entry",
+        "conversation": "team-dinner",
+        "inputRevision": 2,
+        "before": "",
+        "after": "",
+        "seed": "count me in fri, 7:30 better for me",
+        "requestedAt": "2026-09-26T11:15:00Z"
+      },
+      "sources": [
+        {
+          "id": "s1",
+          "kind": "visible-message",
+          "role": "participant",
+          "speaker": "Dana",
+          "origin": "slack-visible-text",
+          "scope": {"conversation": "team-dinner"},
+          "timestamp": "2026-09-26T11:02:00Z",
+          "revision": 1,
+          "status": "current",
+          "text": "Team dinner Friday! Where does everyone want to go, and does 7 or 7:30 work better?"
+        }
+      ],
+      "expected": {
+        "outcome": "suggest",
+        "includedSources": ["s1"],
+        "excludedSources": [],
+        "reason": "Dana's message explains what the notes answer. The notes give attendance and a time but no place, so the draft must not pick one.",
+        "idealText": {"origin": "authored", "text": "Count me in for Friday! 7:30 works better for me."}
+      },
+      "scoring": {
+        "criteria": ["outcome", "source-selection", "user-voice", "faithful-to-notes", "useful"],
+        "pass": "Confirms Friday and prefers 7:30, and says nothing about where to go.",
+        "failIf": [
+          "Suggests a restaurant, cuisine or area",
+          "Says 7 works, or drops the 7:30 preference",
+          "Repeats Dana's question as the user's own message",
+          "Adds a plus-one, dietary needs or another detail the notes do not give"
+        ]
+      }
+    },
+    {
+      "id": "draft-notes-without-intent",
+      "title": "A field holding only a hesitation gets no draft",
+      "covers": ["user-intent"],
+      "target": {
+        "integration": "native-ax",
+        "app": "Codex",
+        "mode": "draft",
+        "purpose": "agent-prompt",
+        "project": "harbor-app",
+        "conversation": "codex-c10",
+        "inputRevision": 1,
+        "before": "",
+        "after": "",
+        "seed": "hmm",
+        "requestedAt": "2026-09-26T11:40:00Z"
+      },
+      "sources": [],
+      "expected": {
+        "outcome": "abstain",
+        "includedSources": [],
+        "excludedSources": [],
+        "reason": "'hmm' states no request, fact or audience. Any draft would be invented."
+      },
+      "scoring": {
+        "criteria": ["outcome", "faithful-to-notes"],
+        "pass": "Shows nothing; the field keeps 'hmm'.",
+        "failIf": [
+          "Returns any text, such as 'Hmm.', a question back to the user or a generic request",
+          "Invents a task for Codex",
+          "Restates a hint such as 'Ask Codex anything'"
         ]
       }
     }

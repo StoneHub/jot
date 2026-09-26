@@ -32,6 +32,72 @@ public struct SuggestionDraftSnapshot: Equatable, Sendable {
         if !value.isEmpty { return .continuation }
         return bundleID == "com.openai.codex" && role == "AXTextArea" ? .reply : nil
     }
+    public var selectedText: String { (value as NSString).substring(with: NSRange(location: location, length: length)) }
+    /// Rich editors leave zero-width and non-breaking spaces in an empty field; none of them is a seed.
+    public var isBlank: Bool { SuggestionSeed.isBlank(value) }
+    /// Field text outside `seed`, which the draft prompt shows but the result never replaces.
+    public func text(around seed: SuggestionSeed) -> (before: String, after: String) {
+        let text = value as NSString
+        return (text.substring(to: seed.location), text.substring(from: seed.location + seed.length))
+    }
+}
+
+/// The user's own notes for a draft, and the exact UTF-16 range they occupy. Tab replaces only this range.
+public struct SuggestionSeed: Equatable, Sendable {
+    public let text: String
+    public let location: Int
+    public let length: Int
+    /// The user selected these notes; otherwise the seed is the whole field.
+    public let isSelection: Bool
+
+    static func isBlank(_ text: String) -> Bool {
+        text.unicodeScalars.allSatisfy { CharacterSet.whitespacesAndNewlines.contains($0) || $0 == "\u{200B}" || $0 == "\u{FEFF}" }
+    }
+}
+
+/// What one explicit request does with the focused field, decided before any model call.
+public enum SuggestionPlan: Equatable, Sendable {
+    /// Turn the user's notes into finished text that replaces them. Transcripts are not needed.
+    case draft(SuggestionSeed)
+    /// Suggest the user's next message at the cursor of a blank composer.
+    case reply
+    /// A blank field with nothing associated with it. Ask for rough notes rather than paraphrase the field hint.
+    case needsNotes
+
+    /// A selection is the seed when it holds text; otherwise the whole draft is. A blank field needs a multi-line
+    /// composer plus context associated with it (the visible conversation, or dictation meant for it).
+    public static func make(draft: SuggestionDraftSnapshot, role: String, hasAssociatedContext: Bool) -> SuggestionPlan {
+        if !draft.isBlank {
+            if draft.length > 0, !SuggestionSeed.isBlank(draft.selectedText) {
+                return .draft(SuggestionSeed(text: draft.selectedText, location: draft.location, length: draft.length, isSelection: true))
+            }
+            return .draft(SuggestionSeed(text: draft.value, location: 0, length: (draft.value as NSString).length, isSelection: false))
+        }
+        return role == "AXTextArea" && hasAssociatedContext ? .reply : .needsNotes
+    }
+}
+
+/// Web editors (ProseMirror, TipTap and others) often draw their hint as CSS-generated text inside the editable
+/// element, and Chromium then reports that hint as the field's AXValue. The DOM class of the element that holds
+/// the text is the generic evidence Accessibility exposes. No app-specific phrase list.
+public enum FieldHint {
+    public static func isHintClass(_ classes: [String]) -> Bool {
+        classes.contains { token in
+            let lower = token.lowercased()
+            return lower.contains("placeholder") || lower == "is-empty" || lower == "is-editor-empty"
+        }
+    }
+
+    /// True only when everything the field reports is hint text, so a user who typed the same words keeps them.
+    public static func valueIsHint(_ value: String, hints: [String]) -> Bool {
+        let text = normalized(value)
+        guard !text.isEmpty, !hints.isEmpty else { return false }
+        return hints.contains { normalized($0) == text } || normalized(hints.joined(separator: " ")) == text
+    }
+
+    static func normalized(_ value: String) -> String {
+        value.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ").lowercased()
+    }
 }
 
 /// No Accessibility or AppKit calls. A consumed down keeps its paired up even after dismissal.

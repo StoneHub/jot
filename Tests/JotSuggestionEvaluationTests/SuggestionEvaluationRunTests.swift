@@ -82,6 +82,42 @@ final class SuggestionEvaluationRunTests: XCTestCase {
         XCTAssertEqual(log.count, 0)
     }
 
+    @MainActor func testDraftsAreGeneratedFromTheNotesWithoutASourceAndGetTheDraftDeadline() async throws {
+        let corpus = try EvaluationFixture.corpus()
+        let drafts = corpus.scenarios.filter { $0.input.target.mode == .draft }
+        XCTAssertFalse(drafts.isEmpty)
+        let records = try await EvaluationFixture.records(corpus)
+        for scenario in drafts {
+            let record = try XCTUnwrap(records.first { $0.scenarioID == scenario.id })
+            XCTAssertNotEqual(record.detail, "no-selected-source", scenario.id)
+            let request = try XCTUnwrap(record.request, "The notes alone are a valid request: \(scenario.id)")
+            XCTAssertTrue(request.prompt.contains("Notes to rewrite: " + SuggestionPrompt.quoted(scenario.input.target.seed ?? "")))
+            XCTAssertEqual(request.maximumResponseTokens, SuggestionPrompt.maximumResponseTokens(for: scenario.input.target))
+            XCTAssertEqual(record.outcome, .suggest, "The fake generator's text is processed as a draft")
+        }
+        let seedOnly = try XCTUnwrap(records.first { $0.scenarioID == "draft-seed-only-casual-reply" })
+        XCTAssertTrue(seedOnly.selection.selected.isEmpty)
+        XCTAssertFalse(try XCTUnwrap(seedOnly.request).prompt.contains("Sources"))
+        let ambient = try XCTUnwrap(records.first { $0.scenarioID == "draft-notes-ignore-unrelated-ambient" })
+        XCTAssertEqual(ambient.selection.excluded, [.init(id: "s1", reason: .unrelatedScope)])
+        XCTAssertFalse(try XCTUnwrap(ambient.request).prompt.contains("Lumen"), "Excluded speech never reaches the prompt")
+
+        // A reply keeps the short deadline while a draft that takes longer still returns its text.
+        let configuration = EvaluationConfiguration(generatorLabel: "test-fake", deadline: .milliseconds(50),
+                                                    draftDeadline: .seconds(5), cancellationGrace: .seconds(1))
+        let evaluation = SuggestionEvaluation(configuration: configuration, generator: { _ in
+            try await Task.sleep(for: .milliseconds(200))
+            return "TEST DATA slow"
+        })
+        let draftScenario = try XCTUnwrap(drafts.first)
+        let draft = await evaluation.evaluate(draftScenario, iteration: 1)
+        XCTAssertEqual(draft.outcome, .suggest)
+        XCTAssertEqual(draft.outputText, "TEST DATA slow")
+        let replyScenario = try EvaluationFixture.scenario("agent-explain-before-fix")
+        let reply = await evaluation.evaluate(replyScenario, iteration: 1)
+        XCTAssertEqual(reply.outcome, .timeout)
+    }
+
     @MainActor func testUnavailableAndFailedModelsAreRecordedHonestly() async throws {
         let corpus = try EvaluationFixture.corpus()
         let unavailable = try await EvaluationFixture.records(corpus, generator: { _ in
@@ -105,7 +141,7 @@ final class SuggestionEvaluationRunTests: XCTestCase {
     @MainActor func testTimedOutRequestThatHonorsCancellationLetsTheRunContinue() async throws {
         let corpus = try EvaluationFixture.corpus()
         let configuration = EvaluationConfiguration(generatorLabel: "test-fake", deadline: .milliseconds(50),
-                                                    cancellationGrace: .seconds(1))
+                                                    draftDeadline: .milliseconds(50), cancellationGrace: .seconds(1))
         let evaluation = SuggestionEvaluation(configuration: configuration, generator: { _ in
             try await Task.sleep(for: .seconds(10))
             return "late"
@@ -204,6 +240,8 @@ final class SuggestionEvaluationRunTests: XCTestCase {
         let generation = try XCTUnwrap(run["generation"] as? [String: Any])
         XCTAssertEqual(generation["maximumResponseTokens"] as? Int, 128)
         XCTAssertEqual(generation["deadlineMs"] as? Int, 2000)
+        XCTAssertEqual(generation["draftDeadlineMs"] as? Int, 8000)
+        XCTAssertEqual(generation["draftMaximumResponseTokensRange"] as? [Int], [128, 400])
         XCTAssertEqual(generation["outstandingRequests"] as? Int, 1)
 
         func lines(_ name: String) throws -> [[String: Any]] {
