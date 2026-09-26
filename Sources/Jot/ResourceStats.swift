@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import Darwin
 import JotCore
 
@@ -13,6 +14,12 @@ struct ResourceSnapshot: Codable {
     var processID: Int32 = getpid()
     var sampleTimestamp: Date = Date()
     var acceleratorPolicy = "Core ML: CPU + Neural Engine requested; actual placement not measured"
+}
+
+/// Frequently changing meters have their own observation boundary. Sampling them
+/// must not invalidate every view that observes the speech service.
+@MainActor final class ResourceReadout: ObservableObject {
+    @Published var snapshot = ResourceSnapshot()
 }
 
 final class ResourceSampler {

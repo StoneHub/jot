@@ -81,14 +81,16 @@ struct TranscriptView: View {
                 }
                 // Glass inside a scroll view still draws above the title bar unless the scroll view clips it.
                 .clipped()
-                HStack(spacing: 14) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("CPU").font(.caption).foregroundStyle(.secondary)
-                        Text(String(format: "%.1f%%", service.resources.processCPUPercent)).monospacedDigit()
-                    }
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Memory").font(.caption).foregroundStyle(.secondary)
-                        Text(String(format: "%.0f MB", service.resources.residentMiB)).monospacedDigit()
+                ResourceReadoutView(readout: service.resourceReadout) { resources in
+                    HStack(spacing: 14) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("CPU").font(.caption).foregroundStyle(.secondary)
+                            Text(String(format: "%.1f%%", resources.processCPUPercent)).monospacedDigit()
+                        }
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Memory").font(.caption).foregroundStyle(.secondary)
+                            Text(String(format: "%.0f MB", resources.residentMiB)).monospacedDigit()
+                        }
                     }
                 }.padding(.horizontal, 8)
             }.padding(8).frame(width: 282)

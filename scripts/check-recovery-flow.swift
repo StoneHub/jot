@@ -303,7 +303,7 @@ struct RecoveryFlowChecks {
         service.beginRecoveryVerification(store: store, startedAt: probe.now)
         defer { service.shutdown() }
         var readouts: [(snapshot: ResourceSnapshot, kernelSeconds: Double)] = []
-        let watcher = service.$resources.dropFirst().sink { readouts.append(($0, kernelCPUSeconds())) }
+        let watcher = service.resourceReadout.$snapshot.dropFirst().sink { readouts.append(($0, kernelCPUSeconds())) }
         defer { watcher.cancel() }
         // Digital silence in real time: every 0.8 seconds the silence closes a chunk, and its recognition keeps a core busy for 0.2 seconds. The tick publishes the readout once a second.
         for _ in 1...16 {
@@ -657,7 +657,7 @@ struct RecoveryFlowChecks {
         print("PASS: five seconds without microphone audio pauses automatically.")
     }
 
-    /// Every screen observes the whole service, so each published assignment tells the window to redraw. Listening should do that once a second for the CPU and memory readout, not on every audio drain or after a recognition that finds no speech.
+    /// Resource samples must refresh their readouts without invalidating every screen that observes the service.
     @MainActor static func checkIdleRedraws(directory: URL) async throws {
         let probe = Probe()
         let store = try TranscriptStore(directory: directory.appendingPathComponent("idle"))
@@ -681,8 +681,23 @@ struct RecoveryFlowChecks {
             await service.waitForRecoveryVerification()
         }
         precondition(recognitions == 2, "Two seconds of silence ran \(recognitions) recognitions, not two")
-        precondition(changes == 2, "Two seconds of listening told the window to redraw \(changes) times, not twice")
-        print("PASS: two seconds of listening to silence, with two recognitions that find no speech, tell the window to redraw exactly twice: once a second for the CPU and memory readout.")
+        precondition(changes == 0, "Resource-only ticks told the whole window to redraw \(changes) times")
+        print("PASS: resource-only ticks and two recognitions that find no speech do not invalidate the whole window.")
+
+        service.pause()
+        while service.lifecycle.phase != .paused { try await Task.sleep(for: .milliseconds(10)) }
+        changes = 0
+        var readouts = 0
+        let meters = service.resourceReadout.$snapshot.dropFirst().sink { _ in readouts += 1 }
+        defer { meters.cancel() }
+        for _ in 1...6 {
+            probe.now += 5
+            service.tickRecoveryVerification()
+        }
+        precondition(readouts == 6, "Paused CPU and memory meters stopped refreshing")
+        precondition(changes == 0, "Paused resource ticks told the whole window to redraw \(changes) times")
+        precondition(service.resources.valid, "The diagnostic snapshot no longer sees the current resource readout")
+        print("PASS: six paused ticks refresh the resource meters without invalidating the whole window.")
     }
 
     /// A finished session keeps its cleaned text through the speaker pass and takes the pass's speakers; Regroup from the stored pass then changes nothing. Regroup pressed while a session's last phrase is still being cleaned keeps the cleaned text too.
