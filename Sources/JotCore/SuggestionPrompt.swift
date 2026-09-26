@@ -113,6 +113,17 @@ public enum ProcessedOutput: Equatable, Sendable {
 }
 
 public enum SuggestionOutput {
+    /// A field hint or verbatim draft echo is not a useful new input. No app-specific phrase blacklist.
+    public static func isFieldEcho(_ text: String, draft: SuggestionDraftSnapshot, placeholder: String?) -> Bool {
+        func normalized(_ value: String) -> String {
+            value.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ").lowercased()
+        }
+        let candidate = normalized(text)
+        guard !candidate.isEmpty else { return true }
+        return candidate == normalized(draft.value)
+            || placeholder.map { !normalized($0).isEmpty && candidate == normalized($0) } == true
+    }
+
     public static func process(_ raw: String, mode: SuggestionMode) -> ProcessedOutput {
         let trimming: CharacterSet = mode == .continuation ? .newlines : .whitespacesAndNewlines
         var text = raw.trimmingCharacters(in: trimming)

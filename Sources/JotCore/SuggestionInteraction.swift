@@ -10,6 +10,18 @@ public struct SuggestionDraftSnapshot: Equatable, Sendable {
         guard location >= 0, length >= 0, location <= count, length <= count - location else { return nil }
         self.value = value; self.location = location; self.length = length
     }
+    /// Some hosts expose a hint as AXValue. Treat it as empty only when the host independently
+    /// reports zero characters and an empty selection. Ambiguous or inconsistent values abstain.
+    public static func accessibilityDraft(value: String, placeholder: String?, characterCount: Int?,
+                                          location: Int, length: Int) -> Self? {
+        if characterCount == 0, location == 0, length == 0,
+           value.isEmpty || (placeholder != nil && value == placeholder) {
+            return Self(value: "", location: 0, length: 0)
+        }
+        if let characterCount, characterCount != (value as NSString).length { return nil }
+        if characterCount == nil, let placeholder, !placeholder.isEmpty, value == placeholder { return nil }
+        return Self(value: value, location: location, length: length)
+    }
     public var before: String { (value as NSString).substring(to: location) }
     public var after: String { (value as NSString).substring(from: location + length) }
     public var revision: Int {
@@ -106,5 +118,18 @@ public struct SuggestionAutomaticTrigger<Key: Equatable> {
     }
     public mutating func suppress(_ key: Key, at now: TimeInterval) {
         observed = key; attempted = key; stableSince = now; nextRequest = now + 2
+    }
+}
+
+/// Fn request recognition when Fn is not also the active dictation shortcut.
+/// Shares dictation's short-tap timing and rejects intervening typing and modifier chords.
+public struct SuggestionFnGesture {
+    private var tracker = ShortcutTracker()
+    public init() {}
+    public mutating func reset() { tracker.reset() }
+    public mutating func handle(_ event: ShortcutTracker.Event, keyCode: UInt16,
+                                modifiers: ShortcutModifiers, at time: TimeInterval, enabled: Bool) -> Bool {
+        guard enabled else { tracker.reset(); return false }
+        return tracker.handle(event, keyCode: keyCode, modifiers: modifiers, shortcut: .fn, at: time).action == .recover
     }
 }

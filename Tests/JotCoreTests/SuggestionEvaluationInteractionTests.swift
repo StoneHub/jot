@@ -2,6 +2,63 @@ import XCTest
 @testable import JotCore
 
 final class SuggestionEvaluationInteractionTests: XCTestCase {
+    func testFnRequestsOnSecondShortReleaseButNeverOnHold() {
+        var gesture = SuggestionFnGesture()
+        XCTAssertFalse(gesture.handle(.flagsChanged, keyCode: 63, modifiers: [.fn], at: 0, enabled: true))
+        XCTAssertFalse(gesture.handle(.flagsChanged, keyCode: 63, modifiers: [], at: 0.1, enabled: true))
+        XCTAssertFalse(gesture.handle(.flagsChanged, keyCode: 63, modifiers: [.fn], at: 0.2, enabled: true))
+        XCTAssertTrue(gesture.handle(.flagsChanged, keyCode: 63, modifiers: [], at: 0.3, enabled: true))
+        XCTAssertFalse(gesture.handle(.flagsChanged, keyCode: 63, modifiers: [.fn], at: 1, enabled: true))
+        XCTAssertFalse(gesture.handle(.flagsChanged, keyCode: 63, modifiers: [], at: 2, enabled: true))
+        XCTAssertFalse(gesture.handle(.flagsChanged, keyCode: 63, modifiers: [.fn], at: 2.1, enabled: true))
+        XCTAssertFalse(gesture.handle(.flagsChanged, keyCode: 63, modifiers: [], at: 2.2, enabled: true))
+    }
+
+    func testFnTypingModifiersDisableAndSlowTapsBreakTheSequence() {
+        for interruption in 0..<4 {
+            var gesture = SuggestionFnGesture()
+            _ = gesture.handle(.flagsChanged, keyCode: 63, modifiers: [.fn], at: 0, enabled: true)
+            _ = gesture.handle(.flagsChanged, keyCode: 63, modifiers: [], at: 0.1, enabled: true)
+            switch interruption {
+            case 0: _ = gesture.handle(.keyDown, keyCode: 0, modifiers: [], at: 0.15, enabled: true)
+            case 1: _ = gesture.handle(.flagsChanged, keyCode: 63, modifiers: [.fn, .shift], at: 0.15, enabled: true)
+            case 2: _ = gesture.handle(.flagsChanged, keyCode: 63, modifiers: [], at: 0.15, enabled: false)
+            default: break
+            }
+            let start: TimeInterval = interruption == 3 ? 1 : 0.2
+            _ = gesture.handle(.flagsChanged, keyCode: 63, modifiers: [.fn], at: start, enabled: true)
+            XCTAssertFalse(gesture.handle(.flagsChanged, keyCode: 63, modifiers: [], at: start + 0.1, enabled: true))
+        }
+    }
+
+    func testPlaceholderIsNotDraftTextAndAmbiguousAXValuesAbstain() throws {
+        let blank = try XCTUnwrap(SuggestionDraftSnapshot.accessibilityDraft(value: "Do anything", placeholder: "Do anything",
+            characterCount: 0, location: 0, length: 0))
+        XCTAssertEqual(blank.value, "")
+        XCTAssertEqual(blank.mode(bundleID: "com.openai.codex", role: "AXTextArea"), .reply)
+        XCTAssertNil(SuggestionDraftSnapshot.accessibilityDraft(value: "Do anything", placeholder: "Do anything",
+            characterCount: nil, location: 0, length: 0))
+        XCTAssertNil(SuggestionDraftSnapshot.accessibilityDraft(value: "unidentified hint", placeholder: nil,
+            characterCount: 0, location: 0, length: 0))
+    }
+
+    func testActuallyTypedPlaceholderWordsRemainUserText() throws {
+        let typed = try XCTUnwrap(SuggestionDraftSnapshot.accessibilityDraft(value: "Do anything", placeholder: "Do anything",
+            characterCount: 11, location: 11, length: 0))
+        XCTAssertEqual(typed.value, "Do anything")
+        XCTAssertEqual(typed.mode(bundleID: "com.openai.codex", role: "AXTextArea"), .continuation)
+        XCTAssertNil(SuggestionDraftSnapshot.accessibilityDraft(value: "changed", placeholder: nil,
+            characterCount: 4, location: 4, length: 0))
+    }
+
+    func testOutputCannotEchoPlaceholderOrEntireDraft() throws {
+        let blank = try XCTUnwrap(SuggestionDraftSnapshot(value: "", location: 0, length: 0))
+        XCTAssertTrue(SuggestionOutput.isFieldEcho("  DO   anything ", draft: blank, placeholder: "Do anything"))
+        let draft = try XCTUnwrap(SuggestionDraftSnapshot(value: "Explain the failure", location: 19, length: 0))
+        XCTAssertTrue(SuggestionOutput.isFieldEcho("Explain the failure", draft: draft, placeholder: nil))
+        XCTAssertFalse(SuggestionOutput.isFieldEcho(" without changing files.", draft: draft, placeholder: "Do anything"))
+    }
+
     func testAutomaticSuggestionsWaitForStableDraftAndDoNotRepeatDismissedDraft() {
         var trigger = SuggestionAutomaticTrigger<String>()
         XCTAssertFalse(trigger.observe("draft", at: 0))

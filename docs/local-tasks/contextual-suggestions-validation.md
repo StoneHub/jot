@@ -1,3 +1,13 @@
+# Request-only follow-up: September 26 live feedback
+
+The user saw the automatic card, but it contained the composer placeholder and appeared too often. This confirms a visible preview, not useful output or Tab insertion. The request-only follow-up removes the automatic scheduling task and uses double-tap Fn. Holding Fn keeps dictation; disabling Suggestions restores the former double-tap recovery behavior. Fn suggestions also work when dictation is disabled or bound to another key. Busy/IME/unsafe fields still abstain.
+
+The follow-up validates AX placeholder/count consistency and rejects exact placeholder/draft echoes. This is a defensive fix: the original Codex AX attributes could not be inspected, so its precise cause is not established. Chat history is not yet connected; see the [updated task scope](contextual-suggestions.md#updated-trigger-decision-september-26).
+
+The source is ready for full Mac gates. The installed app is still the earlier automatic candidate; active capture must be safely paused before installation. Physical double-Fn, hold-Fn, and Tab acceptance remain required. The PR remains draft for that gate.
+
+---
+
 # Automatic contextual suggestions: local acceptance status
 
 PR [#89](https://github.com/StoneHub/jot/pull/89), issue [#88](https://github.com/StoneHub/jot/issues/88). Implementation revision: `b86adccf04a13c1c68dc248135b3d53d237688e6`. Later documentation commits do not change the app. This automatic candidate is installed and enabled. The PR remains a draft because physical Tab/card acceptance is still unverified; canonical main remains `5c8e62f`.

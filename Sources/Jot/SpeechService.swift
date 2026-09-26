@@ -84,13 +84,13 @@ final class SpeechService: ObservableObject {
         if suggestionsEnabled && !DictationInput.accessibilityGranted { input.requestAccessibility() }
         updateSuggestionMonitoring()
     }
-    private var suggestionMonitoringStarted = false
     private func updateSuggestionMonitoring() {
         input.dictationEnabled = fnEnabled
         if fnEnabled || (suggestionsEnabled && DictationInput.accessibilityGranted) {
             _ = input.enable()
         } else { input.disable() }
-        suggestions.setAutomaticEnabled(suggestionMonitoringStarted && suggestionsEnabled && input.isEnabled)
+        input.fnSuggestionsEnabled = suggestionsEnabled
+        suggestions.dismiss()
     }
     var canChangeShortcut: Bool { !dictation.isActive && !dictation.isPending }
     var canChangeInput: Bool { !capture.running && !dictation.isPending && !diagnosticActive }
@@ -323,7 +323,6 @@ final class SpeechService: ObservableObject {
         } catch { notice = "Service startup: \(error.localizedDescription)" }
         promptForPermissionsAtLaunch()
         _ = suggestions
-        suggestionMonitoringStarted = true
         updateSuggestionMonitoring()
         scheduleTimer()
         let center = NSWorkspace.shared.notificationCenter
@@ -874,7 +873,7 @@ final class SpeechService: ObservableObject {
         cleanup.shutdown()
         if ambientEnabled { recordEvent(.stopped, "Application quit; capture ended.") }
         modelCheck?.cancel(); preparation?.cancel(); processing?.cancel(); diagnostic?.cancel(); pausing?.cancel()
-        suggestions.setAutomaticEnabled(false)
+        suggestions.dismiss()
         timer?.invalidate(); dictation.releaseFieldEffects(); input.disable(); capture.stop(); updateKeepAwakeAssertion(); server?.stop()
         capture.stopWatching()
         for observer in observers { NSWorkspace.shared.notificationCenter.removeObserver(observer); NotificationCenter.default.removeObserver(observer) }

@@ -69,21 +69,21 @@ extension TranscriptView {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Toggle("Automatic suggestions", isOn: Binding(get: { service.suggestionsEnabled }, set: service.setSuggestionsEnabled))
+                    Toggle("Suggestions", isOn: Binding(get: { service.suggestionsEnabled }, set: service.setSuggestionsEnabled))
                         .toggleStyle(.switch)
                     HStack {
-                        Text("Request again (optional)")
+                        Text("Additional shortcut (optional)")
                         Spacer()
                         ShortcutSettings(service: service, forSuggestions: true)
                     }
-                    Text("Suggestions appear after you pause typing, using the focused draft and recent dictation or the latest session on this Mac. Tab inserts; typing or Escape dismisses. Nothing is sent. Works while listening is paused.")
+                    Text("Double-tap Fn in a text field to request a suggestion using the focused draft and recent dictation or the latest session on this Mac. Hold Fn to dictate. Tab inserts; typing or Escape dismisses. Nothing is sent. Works while listening is paused.")
                         .font(.caption).foregroundStyle(.secondary)
                     Text("Experimental: review each draft. Suggestions can get facts or speaker roles wrong.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Recover dictation").font(.headline)
-                    Text("Focus a text field and double-tap \(service.shortcut.displayName) to retry an undelivered dictation. Otherwise, insert speech from the recent window below.")
+                    Text("With Suggestions off, focus a text field and double-tap \(service.shortcut.displayName) to retry an undelivered dictation. Otherwise, insert speech from the recent window below.")
                         .font(.callout).foregroundStyle(.secondary)
                     HStack {
                         Text("Recent speech window")

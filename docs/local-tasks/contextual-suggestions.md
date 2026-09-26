@@ -9,7 +9,11 @@ Monroe decided on 2026-09-26, after the first Mac run:
 
 ## Updated trigger decision (September 26)
 
-Monroe clarified: Jot should suggest automatically; Tab accepts, and typing dismisses the suggestion while keeping the user’s own input. This supersedes the request-shortcut-only trigger and the exclusion of automatic suggestions below. No shortcut choice is required. The optional shortcut remains for requesting again. Wait for a stable draft, avoid repeating a dismissed/abstained draft, and never insert without Tab. Automatic empty results stay quiet.
+After trying the automatic card, Monroe found it appeared too often and chose request-only suggestions: **double-tap Fn in a text field**, then Tab to accept or type/Escape to dismiss. This supersedes the earlier automatic-trigger decision. No idle timer may request suggestions. Holding Fn still dictates. When Suggestions is enabled, double-tap Fn requests a suggestion instead of dictation recovery; switching Suggestions off restores the previous recovery gesture. An optional additional request shortcut remains available.
+
+The live card also echoed the composer placeholder. Add conservative AX placeholder/value validation and reject a result equal to the placeholder or whole draft. Physical Codex AX details remain unverified; the guard is not proof of the original cause.
+
+Chat context remains a separate integration: the current app uses only the focused draft and bounded recent Jot transcripts. Codex [hooks](https://learn.chatgpt.com/docs/hooks) document `UserPromptSubmit.prompt` and `Stop.last_assistant_message` with session IDs. A future opt-in bridge must bind context to the current conversation, retain role labels, bound storage, and use stable payload fields. It must not assume the globally latest conversation is active, parse private databases, or install persistent hooks as part of this trigger change. Track under [#79](https://github.com/StoneHub/jot/issues/79).
 
 ## Outcome
 
