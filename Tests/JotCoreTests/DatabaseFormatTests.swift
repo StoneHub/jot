@@ -195,6 +195,26 @@ final class DatabaseFormatTests: XCTestCase {
         }
     }
 
+    /// Only a format the store could read is ever replaced: a file it cannot open or read fails to open, and stays as it was.
+    func testAFileThatCannotBeReadIsNeverDeleted() throws {
+        let garbage = Data("not a database, but maybe someone's history".utf8)
+        try garbage.write(to: databaseURL)
+        XCTAssertThrowsError(try TranscriptStore(directory: directory))
+        XCTAssertEqual(try Data(contentsOf: databaseURL), garbage)
+        try FileManager.default.removeItem(at: databaseURL)
+
+        // A connection holding the file exclusively keeps the format from being read at all.
+        writeFormerDatabase(version: 6)
+        let before = try dump()
+        var holder: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(databaseURL.path, &holder), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(holder, "PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE", nil, nil, nil), SQLITE_OK, String(cString: sqlite3_errmsg(holder)))
+        XCTAssertThrowsError(try TranscriptStore(directory: directory))
+        XCTAssertEqual(sqlite3_exec(holder, "ROLLBACK", nil, nil, nil), SQLITE_OK)
+        sqlite3_close(holder)
+        XCTAssertEqual(try dump(), before, "A store that could not read the format deleted nothing")
+    }
+
     func testDeletingTheDatabaseRemovesOnlyItsOwnFilesAndNeverADirectory() throws {
         let names = ["transcripts.sqlite3", "transcripts.sqlite3-wal", "transcripts.sqlite3-shm", "transcripts.sqlite3-journal",
                      "transcripts.sqlite3.bak", "transcripts.sqlite3-wal.keep", "other.sqlite3-shm"]
