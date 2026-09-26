@@ -215,7 +215,8 @@ final class SpeechService: ObservableObject {
     }
 
     var modelCheck: Task<Void, Never>?
-    @Published var resources = ResourceSnapshot()
+    let resourceReadout = ResourceReadout()
+    var resources: ResourceSnapshot { resourceReadout.snapshot }
     #if DEBUG
     var diagnostics = PerformanceDiagnostics(build: .debug)
     #else
@@ -306,7 +307,7 @@ final class SpeechService: ObservableObject {
 
     func launch() {
         markPerformance(.launch)
-        resources = readoutSampler.sample()
+        resourceReadout.snapshot = readoutSampler.sample()
         capture.watchDevices()
         do { vocabulary = try vocabularyPreferences.load() }
         catch { vocabularyLoadError = "Could not load vocabulary. Saved entries were preserved. " + error.localizedDescription }
@@ -696,7 +697,7 @@ final class SpeechService: ObservableObject {
         tickCount += 1
         if dependencies.now().timeIntervalSince(lastStatsTime) >= 1 {
             samplePerformance(); lastStatsTime = dependencies.now(); refreshPermissions()
-            resources = readoutSampler.sample()
+            resourceReadout.snapshot = readoutSampler.sample()
             // A published assignment tells the window to redraw even when the value is the same, so only changes are assigned.
             let availability = TranscriptCleanup.availability
             if cleanupAvailability != availability { cleanupAvailability = availability }
