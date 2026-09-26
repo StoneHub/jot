@@ -35,6 +35,7 @@ def main():
         "portableChecks": [
             "python3 -m unittest discover -s scripts -p 'test_*.py'",
             "python3 scripts/check-no-feedback.py",
+            "python3 scripts/check-suggestion-fixtures.py",
             "git diff --check",
         ],
         "macValidation": "Not run. Jot needs Apple SDKs; Linux Swift cannot build the current package.",

@@ -28,10 +28,11 @@ Available portable checks:
 ```sh
 python3 -m unittest discover -s scripts -p 'test_*.py'
 python3 scripts/check-no-feedback.py
+python3 scripts/check-suggestion-fixtures.py
 git diff --check
 ```
 
-The existing five Python tests mock signing operations. Their success does not mean an app is signed or Swift works. Source feedback checks do not validate a built product. During preparation these commands passed on the Mac; a hosted Linux rehearsal has not been performed.
+The five signing tests mock signing operations. Their success does not mean an app is signed or Swift works. Source feedback checks do not validate a built product, and the suggestion-fixture check validates structure, not model quality. These commands passed on the Mac during preparation and on a hosted Linux runner in the first pilot ([#83](https://github.com/StoneHub/jot/pull/83)).
 
 For the local integrator, `python3 scripts/cloud-preflight.py --require-macos` checks tool presence only. Then check the PR as below. For an authorized delivery, follow `AGENTS.md` and `scripts/build-install.py`; the cloud worker cannot claim installed behavior. Private transcripts, captured audio and signing credentials remain on the Mac.
 
