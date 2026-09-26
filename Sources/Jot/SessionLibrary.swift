@@ -10,11 +10,14 @@ protocol SessionLibraryHost: AnyObject {
     func sessionIsSettled(_ id: String) -> Bool
 }
 
-/// Reads and edits saved sessions and dictations for the screens and the socket API: recent rows, the paged Dictations list, Sessions, export, rename, delete, and regroup. Capture writes rows itself and hands the saved rows and cleaned text to the Live feed here.
+/// Reads and edits saved sessions and dictations for the screens and the socket API: recent rows, the paged Dictations list, Sessions, export, rename, delete, and regroup. Capture writes rows itself and hands the saved rows and cleaned text here, to Live, the recent rows, Sessions and Dictations.
 @MainActor
 final class SessionLibrary: ObservableObject {
     var store: TranscriptStore?
-    @Published var recent: [Transcript] = []
+    /// Recent rows and Sessions: read in full on an edit, and kept current from each recognition block's saved rows.
+    @Published private var rows = LibraryRows()
+    var recent: [Transcript] { rows.recent }
+    var sessions: [TranscriptSession] { rows.sessions }
     /// The session Live shows. It is read once when shown; after that new rows and cleaned text arrive as they are saved.
     /// Not @Published: its setter would copy every row of the feed on each change. The feed changes in place after objectWillChange.
     private(set) var live = LiveFeed()
@@ -26,9 +29,12 @@ final class SessionLibrary: ObservableObject {
     /// Every saved dictation row, for the Dictations count in the sidebar.
     @Published private(set) var dictationCount = 0
     @Published private(set) var historyRevision = 0
-    @Published private(set) var sessions: [TranscriptSession] = []
     @Published private(set) var lastExport: URL?
     private var historySources: [String: [String]] = [:]
+    /// The rows Dictations was built from, newest first, one past the page so it knows there is more.
+    private var historyRows: [Transcript] = []
+    /// False until the Dictations read succeeds, and after one fails; the next block then reads the list in full.
+    private var historyIsCurrent = false
     /// Uptime of the last Clear; recognition jobs submitted before it must not append to the cleared list.
     private(set) var historyClearedAt: TimeInterval = -1
     private(set) var deletedSessions = Set<String>()
@@ -48,7 +54,7 @@ final class SessionLibrary: ObservableObject {
 
     func refreshRecent() {
         do {
-            recent = try store?.recent(limit: 20) ?? []
+            try rows.readRecent(from: store)
             events = try store?.events(limit: 50) ?? []
             refreshHistory()
         }
@@ -60,13 +66,36 @@ final class SessionLibrary: ObservableObject {
     }
 
     func refreshSessions() {
-        do { sessions = try store?.sessions(limit: 200) ?? [] } catch { host.notice = error.localizedDescription }
+        do { try rows.readSessions(from: store) } catch { host.notice = error.localizedDescription }
+    }
+
+    /// Rows a recognition block has just saved. Recent rows, Sessions and Dictations take them in without reading the whole store, so a block's work does not grow with the history.
+    func didSave(_ saved: [Transcript]) {
+        guard let store, !saved.isEmpty else { return }
+        do { try rows.add(saved, savedTo: store) } catch { host.notice = error.localizedDescription }
+        let dictations = saved.filter { $0.mode == "dictation" }
+        // A Dictations read that failed is tried again on the next block. A search matches on text the store compares, so a new row is read through it.
+        if !historyIsCurrent || (!dictations.isEmpty && !historyQuery.isEmpty) { refreshHistory(); return }
+        guard !dictations.isEmpty else { return }
+        do {
+            let stored = try LibraryRows.stored(dictations, labels: store.labels(sessionID:))
+            showHistory(LibraryRows.newest(stored, merging: historyRows, limit: historyLimit + 1), count: dictationCount + dictations.count)
+        } catch { refreshHistory() }
+    }
+
+    /// Cleaned text a phrase has just saved, by row id, for the rows it replaced. Only the text of rows already listed changes, so nothing is read again, except a searched Dictations list, whose matches the text decides.
+    func didClean(_ sources: [Transcript], texts: [String: String]) {
+        rows.replace(texts: texts)
+        guard sources.contains(where: { $0.mode == "dictation" }) else { return }
+        guard historyQuery.isEmpty, historyIsCurrent else { refreshHistory(); return }
+        showHistory(LibraryRows.replacing(texts, in: historyRows), count: dictationCount)
     }
 
     func searchHistory(_ query: String) { historyQuery = query; historyLimit = 50; refreshHistory() }
     func loadMoreHistory() { historyLimit += 50; refreshHistory() }
 
     func refreshHistory() {
+        historyIsCurrent = false
         do {
             // Store limits each request to 200; page so the UI can browse its whole history.
             var found: [Transcript] = []
@@ -77,12 +106,18 @@ final class SessionLibrary: ObservableObject {
                 let items = page ?? []; found.append(contentsOf: items)
                 if items.count < count { break }
             }
-            hasMoreHistory = found.count > historyLimit
-            dictationCount = try store?.count(mode: "dictation") ?? 0
-            let groups = TranscriptGrouping.historyGroups(Array(found.prefix(historyLimit)), tuning: host.tuning)
-            history = groups.map(\.transcript)
-            historySources = Dictionary(uniqueKeysWithValues: groups.map { ($0.transcript.id, $0.sourceIDs) })
+            showHistory(found, count: try store?.count(mode: "dictation") ?? 0)
+            historyIsCurrent = true
         } catch { host.notice = error.localizedDescription }
+    }
+
+    private func showHistory(_ found: [Transcript], count: Int) {
+        historyRows = found
+        hasMoreHistory = found.count > historyLimit
+        dictationCount = count
+        let groups = TranscriptGrouping.historyGroups(Array(found.prefix(historyLimit)), tuning: host.tuning)
+        history = groups.map(\.transcript)
+        historySources = Dictionary(uniqueKeysWithValues: groups.map { ($0.transcript.id, $0.sourceIDs) })
     }
 
     func didDeleteHistory() {
