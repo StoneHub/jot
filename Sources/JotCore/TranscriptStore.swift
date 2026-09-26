@@ -28,7 +28,7 @@ public struct Transcript: Codable, Sendable, Identifiable, Equatable {
     }
 }
 
-public struct TranscriptSession: Codable, Sendable, Identifiable {
+public struct TranscriptSession: Codable, Sendable, Identifiable, Equatable {
     public let sessionID: String
     public let startedAt: Date
     public let lastTranscriptAt: Date
