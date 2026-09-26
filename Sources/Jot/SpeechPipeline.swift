@@ -12,7 +12,10 @@ actor SpeechPipeline {
     private var sessionID = ""
     private var expectedOffset: Double = 0
     private var baseOffset: Double = 0
+    /// Speaker probabilities by 0.08-second frame of the session clock, counted from `baseOffset`.
     private var probabilities: [Int: [Float]] = [:]
+    /// Holds quiet audio back from the speaker model and maps its frames onto the session clock.
+    private var speakerFeed = SpeakerModelFeed()
     private var recognitionWindow = RecognitionCommitWindow()
     /// Last confirmed speaker of the previous ambient block, carried forward while audio stays continuous.
     private var lastSpeaker: String?
@@ -47,7 +50,7 @@ actor SpeechPipeline {
 
     func unload() async {
         await speakerPass.unload()
-        asr = nil; vad = nil; diarizer = nil; lastSpeaker = nil
+        asr = nil; vad = nil; diarizer = nil; lastSpeaker = nil; speakerFeed.reset()
         probabilities.removeAll(keepingCapacity: false)
         recognitionWindow.reset()
         sessionID = ""; expectedOffset = 0; baseOffset = 0
@@ -69,27 +72,12 @@ actor SpeechPipeline {
         var recognitionPlanResolved = job.mode != .ambient
         if job.mode == .ambient {
             if sessionID != job.sessionID || abs(job.offset - expectedOffset) > 0.02 {
-                diarizer.reset(); probabilities.removeAll(); recognitionWindow.reset()
+                diarizer.reset(); speakerFeed.reset(); probabilities.removeAll(); recognitionWindow.reset()
                 sessionID = job.sessionID; baseOffset = job.offset; lastSpeaker = nil
             }
             expectedOffset = job.offset + Double(job.samples.count) / 16000
             recognitionPlan = recognitionWindow.plan(sessionID: job.sessionID, offset: job.offset,
                 newSamples: job.samples, isFinal: job.isFinal)
-            if !job.samples.isEmpty {
-                diarizer.addAudio(job.samples)
-                while let update = try diarizer.process() {
-                    try Task.checkCancellation()
-                    let chunk = update.chunkResult
-                    for frame in 0..<chunk.finalizedFrameCount {
-                        probabilities[chunk.startFrame + frame] = (0..<4).map { chunk.probability(speaker: $0, frame: frame, numSpeakers: 4) }
-                    }
-                    for frame in 0..<chunk.tentativeFrameCount {
-                        probabilities[chunk.tentativeStartFrame + frame] = (0..<4).map { chunk.tentativeProbability(speaker: $0, frame: frame, numSpeakers: 4) }
-                    }
-                }
-            }
-            let keepFrom = Int((job.offset - baseOffset - 2) / 0.08)
-            probabilities = probabilities.filter { $0.key >= keepFrom }
         }
         let recognitionSamples = recognitionPlan?.samples ?? job.samples
         defer {
@@ -100,14 +88,41 @@ actor SpeechPipeline {
                 recognitionWindow.reset()
             }
         }
-        guard !recognitionSamples.isEmpty else {
-            if let recognitionPlan { recognitionWindow.commit(recognitionPlan) }
-            recognitionPlanResolved = true
-            return SpeechOutput(transcripts: [], text: "", processingSeconds: Date().timeIntervalSince(begin))
-        }
         // Conservative neural speech gate; uncertain speaker attribution does not suppress ASR.
-        let activity = try await vad.process(recognitionSamples)
-        guard activity.contains(where: { $0.probability >= 0.20 }) else {
+        // It runs before the speaker model so quiet audio is held back from it rather than fed.
+        var heardSpeech = false
+        if !recognitionSamples.isEmpty {
+            do {
+                heardSpeech = try await vad.process(recognitionSamples).contains(where: { $0.probability >= 0.20 })
+            } catch {
+                // Held, not lost: the model's frames stay on the session clock after a failed job.
+                if job.mode == .ambient { speakerFeed.holdQuiet(job.samples) }
+                throw error
+            }
+        }
+        if job.mode == .ambient {
+            if heardSpeech {
+                let audio = speakerFeed.releaseForSpeech(job.samples)
+                if !audio.isEmpty {
+                    diarizer.addAudio(audio)
+                    while let update = try diarizer.process() {
+                        try Task.checkCancellation()
+                        let chunk = update.chunkResult
+                        for frame in 0..<chunk.finalizedFrameCount {
+                            probabilities[speakerFeed.sessionFrame(forModelFrame: chunk.startFrame + frame)] = (0..<4).map { chunk.probability(speaker: $0, frame: frame, numSpeakers: 4) }
+                        }
+                        for frame in 0..<chunk.tentativeFrameCount {
+                            probabilities[speakerFeed.sessionFrame(forModelFrame: chunk.tentativeStartFrame + frame)] = (0..<4).map { chunk.tentativeProbability(speaker: $0, frame: frame, numSpeakers: 4) }
+                        }
+                    }
+                }
+            } else {
+                speakerFeed.holdQuiet(job.samples)
+            }
+            let keepFrom = Int((job.offset - baseOffset - 2) / 0.08)
+            probabilities = probabilities.filter { $0.key >= keepFrom }
+        }
+        guard heardSpeech else {
             if let recognitionPlan { recognitionWindow.commit(recognitionPlan) }
             recognitionPlanResolved = true
             return SpeechOutput(transcripts: [], text: "", processingSeconds: Date().timeIntervalSince(begin))
