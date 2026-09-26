@@ -543,6 +543,7 @@ public final class TranscriptStore: @unchecked Sendable {
                   AND (t.started_at + t.start_seconds) <= \(now.timeIntervalSince1970)
                   AND (t.mode = 'dictation' OR t.session_id = (
                     SELECT session_id FROM transcripts WHERE mode = 'ambient'
+                      AND (started_at + start_seconds) <= \(now.timeIntervalSince1970)
                     ORDER BY (started_at + start_seconds) DESC, id DESC LIMIT 1))
                 """
             let selected = try rows(where: clause, value: String(cutoff), limit: 100, offset: 0)

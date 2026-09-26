@@ -22,7 +22,7 @@ final class SuggestionCard {
         guard let screen else { return }
         let bounds = screen.visibleFrame.insetBy(dx: 8, dy: 8)
         let width = min(420, bounds.width)
-        let height = min(250, max(100, panel.contentView?.fittingSize.height ?? 130))
+        let height = min(bounds.height, max(100, panel.contentView?.fittingSize.height ?? 130))
         var origin = CGPoint(x: field.minX, y: field.maxY + 8)
         if origin.y + height > bounds.maxY { origin.y = field.minY - height - 8 }
         origin.x = min(max(bounds.minX, origin.x), bounds.maxX - width)
@@ -59,14 +59,14 @@ private struct SuggestionCardView: View {
                 else { Image(systemName: "text.bubble").foregroundStyle(Color.accentColor) }
                 Text("Jot suggestion").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             }
-            Text(model.text).font(.body).lineLimit(7).fixedSize(horizontal: false, vertical: true)
+            Text(model.text).font(.body).fixedSize(horizontal: false, vertical: true)
             if !model.sources.isEmpty {
                 Text(model.sources).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }
             Text(model.ready ? "Tab to insert · Esc to dismiss" : "Esc to dismiss")
                 .font(.caption2).foregroundStyle(.secondary)
         }
-        .padding(16).frame(width: 388, alignment: .leading)
+        .frame(width: 388, alignment: .leading).padding(16)
         .modifier(CardMaterial())
         .accessibilityElement(children: .combine)
     }

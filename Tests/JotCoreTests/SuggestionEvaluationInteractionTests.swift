@@ -131,6 +131,7 @@ final class SuggestionEvaluationInteractionTests: XCTestCase {
         }
         try store.append(row("old", session: "old", age: 1801, mode: "dictation"))
         try store.append(row("other", session: "other", age: 100, mode: "ambient"))
+        try store.append(row("future", session: "future", age: -100, mode: "ambient"))
         try store.append(row("latest", session: "latest", age: 30, mode: "ambient"))
         try store.append(row("dictation", session: "dictation", age: 60, mode: "dictation"))
         try store.setTitle(sessionID: "latest", title: "Standup")
@@ -142,16 +143,25 @@ final class SuggestionEvaluationInteractionTests: XCTestCase {
         XCTAssertFalse(try store.suggestionRowsUnchanged(context.rows))
         let refreshed = try store.suggestionContext(now: now)
         XCTAssertEqual(refreshed.sources.first { $0.id == "latest" }?.speaker, "Rowan")
-        try store.deleteTranscripts(ids: ["dictation"])
+        let dictation = try XCTUnwrap(refreshed.rows.first { $0.id == "dictation" })
+        try store.setReadableText("Changed synthetic request", for: dictation)
         XCTAssertFalse(try store.suggestionRowsUnchanged(refreshed.rows))
+        let edited = try store.suggestionContext(now: now)
+        XCTAssertTrue(try store.suggestionRowsUnchanged(edited.rows))
+        try store.deleteTranscripts(ids: ["dictation"])
+        XCTAssertFalse(try store.suggestionRowsUnchanged(edited.rows))
         XCTAssertEqual(try store.suggestionContext(now: now).rows.map(\.id), ["latest"])
     }
 
     @MainActor func testDismissalCancelsCallerButKeepsGateClosedUntilGeneratorReturns() async {
         actor Blocker {
             var continuation: CheckedContinuation<String, Never>?
-            func wait() async -> String { await withCheckedContinuation { continuation = $0 } }
-            func release() { continuation?.resume(returning: "late"); continuation = nil }
+            var released = false
+            func wait() async -> String {
+                if released { return "late" }
+                return await withCheckedContinuation { continuation = $0 }
+            }
+            func release() { released = true; continuation?.resume(returning: "late"); continuation = nil }
         }
         let blocker = Blocker(), gate = ModelCallGate(deadline: .seconds(10))
         let started = expectation(description: "generator started")
