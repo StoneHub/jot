@@ -48,6 +48,7 @@ final class SpeechService: ObservableObject {
     lazy var dictation = DictationCoordinator(host: self)
     lazy var suggestions = SuggestionCoordinator(input: input, store: { [weak self] in self?.store },
         allowed: { [weak self] in self?.canRequestSuggestion == true },
+        readsScreen: { [weak self] in self?.suggestionScreenContext == true },
         notice: { [weak self] in self?.notice = $0 })
     lazy var timeline = ListeningTimeline(host: self)
     lazy var cleanup = LiveCleanup(host: self)
@@ -67,6 +68,13 @@ final class SpeechService: ObservableObject {
     @Published private(set) var shortcut = ShortcutPreferences().load()
     @Published private(set) var suggestionShortcut = SuggestionShortcutPreferences().load()
     @Published private(set) var suggestionsEnabled = UserDefaults.standard.object(forKey: JotDefaultsKey.suggestionsEnabled) as? Bool ?? true
+    /// Read the text shown above the field, such as a chat, for a request. Local and never stored.
+    @Published private(set) var suggestionScreenContext = UserDefaults.standard.object(forKey: JotDefaultsKey.suggestionScreenContext) as? Bool ?? true
+    func setSuggestionScreenContext(_ enabled: Bool) {
+        suggestionScreenContext = enabled
+        UserDefaults.standard.set(enabled, forKey: JotDefaultsKey.suggestionScreenContext)
+        suggestions.dismiss()
+    }
     var canRequestSuggestion: Bool {
         suggestionsEnabled && !dictation.isActive && !dictation.isPending && !diagnosticActive && !preparing && !cleanup.isRunning
     }

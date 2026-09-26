@@ -76,7 +76,11 @@ extension TranscriptView {
                         Spacer()
                         ShortcutSettings(service: service, forSuggestions: true)
                     }
-                    Text("Double-tap Fn in a text field to request a suggestion using the focused draft and recent dictation or the latest session on this Mac. Hold your dictation shortcut to dictate. Tab inserts; typing or Escape dismisses. Nothing is sent. Works while listening is paused.")
+                    Text("Type or dictate rough notes in any text field, then double-tap Fn: Jot drafts finished text, and Tab replaces your notes (or just the selected part). In an empty chat box, double-tap Fn for a reply to the conversation shown above it. Typing or Escape dismisses. Nothing is sent. Works while listening is paused.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Toggle("Use visible conversation", isOn: Binding(get: { service.suggestionScreenContext }, set: service.setSuggestionScreenContext))
+                        .toggleStyle(.switch)
+                    Text("Reads the text shown above the field in the same window when you ask for a suggestion. It stays on this Mac and is never saved.")
                         .font(.caption).foregroundStyle(.secondary)
                     Text("Experimental: review each draft. Suggestions can get facts or speaker roles wrong.")
                         .font(.caption).foregroundStyle(.secondary)

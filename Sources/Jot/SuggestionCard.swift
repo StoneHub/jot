@@ -7,8 +7,10 @@ final class SuggestionCard {
     private let model = CardModel()
     var isVisible: Bool { panel?.isVisible == true }
 
-    func show(text: String, sources: String = "", loading: Bool = false, ready: Bool = false, at field: CGRect) {
-        model.text = text; model.sources = sources; model.loading = loading; model.ready = ready
+    func show(text: String, title: String = "Jot suggestion", sources: String = "", action: String = "Tab to insert",
+              loading: Bool = false, ready: Bool = false, at field: CGRect) {
+        model.text = text; model.title = title; model.sources = sources; model.action = action
+        model.loading = loading; model.ready = ready
         let panel = self.panel ?? makePanel()
         self.panel = panel
         place(at: field)
@@ -45,7 +47,9 @@ private extension CGRect { var area: CGFloat { isNull ? 0 : width * height } }
 @MainActor
 private final class CardModel: ObservableObject {
     @Published var text = ""
+    @Published var title = "Jot suggestion"
     @Published var sources = ""
+    @Published var action = "Tab to insert"
     @Published var loading = false
     @Published var ready = false
 }
@@ -57,13 +61,13 @@ private struct SuggestionCardView: View {
             HStack(spacing: 8) {
                 if model.loading { ProgressView().controlSize(.small) }
                 else { Image(systemName: "text.bubble").foregroundStyle(Color.accentColor) }
-                Text("Jot suggestion").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Text(model.title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             }
             Text(model.text).font(.body).fixedSize(horizontal: false, vertical: true)
             if !model.sources.isEmpty {
                 Text(model.sources).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }
-            Text(model.ready ? "Tab to insert · Esc to dismiss" : "Esc to dismiss")
+            Text(model.ready ? "\(model.action) · Esc to dismiss" : "Esc to dismiss")
                 .font(.caption2).foregroundStyle(.secondary)
         }
         .frame(width: 388, alignment: .leading).padding(16)
