@@ -17,6 +17,7 @@
 		0C1F40871B30A9D4D3645961 /* SpeechPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1BBAEB2DD84C459697477F /* SpeechPipeline.swift */; };
 		0C6637B88C039C4EEEB58198 /* ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = 2AF537A90CCFD9AEEF273426 /* ThirdPartyNotices.txt */; };
 		0C918687DE78757C418F4D09 /* ServiceControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 963CF0B6CB7AC19969690774 /* ServiceControls.swift */; };
+		0DB308115BFD1B01FC3BDC49 /* SpeakerModelFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3BCABDCF03AE6090F9A5558 /* SpeakerModelFeed.swift */; };
 		0E71688FA69F1010183DC1B4 /* AudioInputDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF344F7E5776F61E5C4A985D /* AudioInputDevice.swift */; };
 		0F17B8853D38D40260052561 /* CaptureRecovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F2995B6746A085B7F078A93 /* CaptureRecovery.swift */; };
 		106BA473BF7AB2A72F82BFC5 /* LiveCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0481ADADD05BFA1A6D0E293C /* LiveCleanup.swift */; };
@@ -238,6 +239,7 @@
 		ADA7E9C72BDB6EB8F6F5A74C /* ScreenGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenGeometry.swift; sourceTree = "<group>"; };
 		B02C95F663096FB499C5FD80 /* JotDefaultsKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JotDefaultsKey.swift; sourceTree = "<group>"; };
 		B091B8659394C293AB6A5B14 /* ShortcutSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutSettings.swift; sourceTree = "<group>"; };
+		B3BCABDCF03AE6090F9A5558 /* SpeakerModelFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerModelFeed.swift; sourceTree = "<group>"; };
 		B84EA74928EFDD284B87A3FE /* SuggestionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionCard.swift; sourceTree = "<group>"; };
 		BA19A72F6D28FCFD5CA7D316 /* MCPTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPTools.swift; sourceTree = "<group>"; };
 		BA481F222D31A9389BA6E913 /* TranscriptView+Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TranscriptView+Settings.swift"; sourceTree = "<group>"; };
@@ -429,6 +431,7 @@
 				1C33A3E252A64EE9389B3646 /* SessionSplit.swift */,
 				0F426834033E58473457EA73 /* SourceSelection.swift */,
 				91BE6EEF6AD6F736A1D00FE4 /* SpeakerAssignment.swift */,
+				B3BCABDCF03AE6090F9A5558 /* SpeakerModelFeed.swift */,
 				CAF736D13A8D0B0B5B88B3D6 /* SpeakerPassRelabel.swift */,
 				6426715E1DD091B61B49DB51 /* SpeakerPassStore.swift */,
 				12855DDC22F95E87740F7F47 /* SuggestionContext.swift */,
@@ -726,6 +729,7 @@
 				AE5F58B04CE443D34C9291BA /* SessionSplit.swift in Sources */,
 				C5AB8F2A7FE2EE570E1FB413 /* SourceSelection.swift in Sources */,
 				3DD394A4CDE801E64E1CFA12 /* SpeakerAssignment.swift in Sources */,
+				0DB308115BFD1B01FC3BDC49 /* SpeakerModelFeed.swift in Sources */,
 				B8963CAA9974229526F3C449 /* SpeakerPassRelabel.swift in Sources */,
 				826FA796B9F9ADF21CBC9447 /* SpeakerPassStore.swift in Sources */,
 				E1CDB9B50BB3FC7A318C93FB /* SuggestionContext.swift in Sources */,
