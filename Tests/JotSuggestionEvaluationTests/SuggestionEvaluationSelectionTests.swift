@@ -162,7 +162,8 @@ final class SuggestionEvaluationSelectionTests: XCTestCase {
         XCTAssertLessThanOrEqual(selection.selected.reduce(0) { $0 + $1.text.utf8.count }, SelectionLimits.experiment.maximumSourceBytes)
         let request = SuggestionPrompt.request(for: input, sources: selection.selected)
         XCTAssertEqual(request.prompt.components(separatedBy: long).count - 1, 2, "Each selected source appears whole")
-        XCTAssertFalse(request.prompt.contains("not a"))
+        XCTAssertFalse(request.prompt.contains(SuggestionPrompt.quoted(input.sources[0].text)),
+                       "The excluded source must not appear; prompt instructions may contain the same words")
         XCTAssertEqual(request.maximumResponseTokens, 128)
     }
 
