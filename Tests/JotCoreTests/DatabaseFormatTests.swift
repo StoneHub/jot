@@ -109,6 +109,47 @@ final class DatabaseFormatTests: XCTestCase {
         XCTAssertEqual(try dump(), before, "Opening changed no object, row, or format")
     }
 
+    /// What 0.2.6 ran, copied verbatim from its TranscriptStore, SpeakerPassStore and PeopleStore: format 7 has no change feed and still has the older session index.
+    private static let release026Schemas = [
+        "PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS transcripts (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, started_at REAL NOT NULL, start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, text TEXT NOT NULL, speaker_id TEXT, mode TEXT NOT NULL CHECK(mode IN ('ambient','dictation'))); CREATE INDEX IF NOT EXISTS transcript_absolute_time ON transcripts((started_at + start_seconds) DESC, id DESC); CREATE INDEX IF NOT EXISTS transcript_session ON transcripts(session_id); CREATE TABLE IF NOT EXISTS speaker_labels (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY(session_id,speaker_id)); CREATE TABLE IF NOT EXISTS capture_events (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, timestamp REAL NOT NULL, kind TEXT NOT NULL, detail TEXT NOT NULL, duration_seconds REAL CHECK(duration_seconds >= 0)); CREATE INDEX IF NOT EXISTS capture_event_time ON capture_events(timestamp DESC,id DESC); CREATE INDEX IF NOT EXISTS capture_event_session_time ON capture_events(session_id,timestamp DESC,id DESC); CREATE TABLE IF NOT EXISTS session_titles (session_id TEXT PRIMARY KEY, title TEXT NOT NULL); CREATE TABLE IF NOT EXISTS transcript_readable (transcript_id TEXT PRIMARY KEY REFERENCES transcripts(id) ON DELETE CASCADE, text TEXT NOT NULL); CREATE TABLE IF NOT EXISTS session_speakers (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, embedding BLOB NOT NULL, duration_seconds REAL NOT NULL CHECK(duration_seconds >= 0), PRIMARY KEY(session_id, speaker_id)); CREATE TABLE IF NOT EXISTS session_segments (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, start_seconds REAL NOT NULL CHECK(start_seconds >= 0), end_seconds REAL NOT NULL CHECK(end_seconds >= start_seconds)); CREATE INDEX IF NOT EXISTS session_segment_time ON session_segments(session_id, start_seconds); CREATE TABLE IF NOT EXISTS transcript_words (transcript_id TEXT NOT NULL REFERENCES transcripts(id) ON DELETE CASCADE, position INTEGER NOT NULL, word TEXT NOT NULL, start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, p1 REAL, p2 REAL, p3 REAL, p4 REAL, PRIMARY KEY(transcript_id, position)); CREATE TABLE IF NOT EXISTS dictation_attempts (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, started_at REAL NOT NULL, ended_at REAL, text TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('capturing','recognizing','ready','deliveryFailed','deliveryUnverified','delivered','discarded')), has_gap INTEGER NOT NULL DEFAULT 0, updated_at REAL NOT NULL); CREATE INDEX IF NOT EXISTS dictation_attempt_state_time ON dictation_attempts(state, updated_at DESC); PRAGMA user_version=7;",
+        "PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; CREATE TABLE IF NOT EXISTS session_speakers (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, embedding BLOB NOT NULL, duration_seconds REAL NOT NULL CHECK(duration_seconds >= 0), PRIMARY KEY(session_id, speaker_id)); CREATE TABLE IF NOT EXISTS session_segments (session_id TEXT NOT NULL, speaker_id TEXT NOT NULL, start_seconds REAL NOT NULL CHECK(start_seconds >= 0), end_seconds REAL NOT NULL CHECK(end_seconds >= start_seconds)); CREATE INDEX IF NOT EXISTS session_segment_time ON session_segments(session_id, start_seconds);",
+        "PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; CREATE TABLE IF NOT EXISTS people (id TEXT PRIMARY KEY, name TEXT NOT NULL, embedding BLOB NOT NULL, sample_count INTEGER NOT NULL CHECK(sample_count >= 1), created_at REAL NOT NULL, updated_at REAL NOT NULL);",
+    ]
+
+    /// The installed 0.2.6 wrote format 7, so this is the file the first launch of this build opens.
+    func testDatabaseRelease026WroteOpensWithEveryRowAndGainsOnlyTheChangeFeed() throws {
+        for sql in Self.release026Schemas + [Self.rows + "PRAGMA user_version=7;"] {
+            var db: OpaquePointer?
+            XCTAssertEqual(sqlite3_open(databaseURL.path, &db), SQLITE_OK)
+            XCTAssertEqual(sqlite3_exec(db, sql, nil, nil, nil), SQLITE_OK, String(cString: sqlite3_errmsg(db)))
+            sqlite3_close(db)
+        }
+        let before = try dump()
+        XCTAssertEqual(before.first, "7")
+        do {
+            let store = try TranscriptStore(directory: directory)
+            XCTAssertFalse(store.replacedDatabase)
+            let pass = try SpeakerPassStore(sharing: store)
+            let people = try PeopleStore(sharing: store)
+            XCTAssertEqual(try store.session(id: "s1").map(\.text), ["Hello there.", "general kenobi"])
+            XCTAssertEqual(try store.session(id: "s1").map(\.speakerLabel), ["Gina", nil])
+            XCTAssertEqual(try store.sessions().map(\.title), ["Standup"])
+            XCTAssertEqual(try store.recent(mode: "dictation").map(\.id), ["d1"])
+            XCTAssertEqual(try store.words(sessionID: "s1").map(\.word), ["um", "hello", "there", "general", "kenobi"])
+            XCTAssertEqual(try store.events(sessionID: "s1").map(\.id), ["e1"])
+            XCTAssertTrue(try XCTUnwrap(store.latestRecoverableDictationAttempt()).hasGap)
+            XCTAssertEqual(try store.changes(since: 0).rows.map(\.transcript.id), ["a1", "a2", "d1"], "Saved rows join the feed once, in spoken order")
+            XCTAssertEqual(try pass.speakers(sessionID: "s1"), [.init(speakerID: "speaker-1", embedding: [1, 0], durationSeconds: 2)])
+            XCTAssertEqual(try pass.segments(sessionID: "s1"), [.init(speakerID: "speaker-1", start: 0, end: 2)])
+            XCTAssertEqual(try people.list().map(\.name), ["Ada"])
+        }
+        let after = try dump()
+        XCTAssertEqual(after.first, "8")
+        XCTAssertEqual(Set(before.dropFirst()).subtracting(after), [], "Every object and row 0.2.6 wrote is still there, unchanged")
+        XCTAssertFalse(try TranscriptStore(directory: directory).replacedDatabase)
+        XCTAssertEqual(try dump(), after, "Reopening changes nothing and enqueues no row twice")
+    }
+
     func testNewDatabaseHasExactlyTheFormerSchema() throws {
         let former = directory.appendingPathComponent("former.sqlite3")
         writeFormerDatabase(version: 8, rows: "", at: former)
