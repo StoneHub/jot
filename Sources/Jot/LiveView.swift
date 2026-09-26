@@ -68,9 +68,28 @@ struct LiveView: View {
         }
     }
 
+    /// One row while it fits; in a narrow window the buttons move under the title and chips.
     private var header: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                status.layoutPriority(1)
+                Spacer()
+                clearButton
+                tools
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                status
+                HStack(spacing: 10) {
+                    clearButton
+                    tools
+                }
+            }
+        }
+    }
+
+    private var status: some View {
         HStack(spacing: 10) {
-            Text("Live").font(.system(size: 26, weight: .bold, design: .rounded))
+            Text("Live").font(.system(size: 26, weight: .bold, design: .rounded)).lineLimit(1)
             if let title = service.meetingTitle, !running {
                 chip("\(title) · Paused")
             } else if running {
@@ -80,9 +99,6 @@ struct LiveView: View {
                 if speakerCount > 0 { chip("\(speakerCount) speaker\(speakerCount == 1 ? "" : "s")") }
                 if !recognized.isEmpty { chip("recognized \(recognized.joined(separator: ", "))", color: .green, dot: true) }
             }
-            Spacer()
-            clearButton
-            tools
         }
     }
 
@@ -100,7 +116,7 @@ struct LiveView: View {
 
     @ViewBuilder private var tools: some View {
         if renaming {
-            TextField("Meeting name", text: $titleDraft).textFieldStyle(.roundedBorder).frame(width: 220).onSubmit(commitRename)
+            TextField("Meeting name", text: $titleDraft).textFieldStyle(.roundedBorder).frame(minWidth: 120, idealWidth: 220, maxWidth: 220).onSubmit(commitRename)
             Button("Save", action: commitRename).modifier(PrimaryGlassButton()).disabled(titleDraft.trimmingCharacters(in: .whitespaces).isEmpty)
             Button("Cancel") { renaming = false }.modifier(GlassButton())
         } else if service.meetingTitle != nil {
@@ -112,7 +128,7 @@ struct LiveView: View {
         } else if running {
             Button("Pause") { service.pause() }.modifier(GlassButton()).accessibilityIdentifier("live-stop")
         } else if naming {
-            TextField("Meeting name", text: $titleDraft).textFieldStyle(.roundedBorder).frame(width: 220).onSubmit(startMeeting)
+            TextField("Meeting name", text: $titleDraft).textFieldStyle(.roundedBorder).frame(minWidth: 120, idealWidth: 220, maxWidth: 220).onSubmit(startMeeting)
             Button("Start", action: startMeeting).modifier(PrimaryGlassButton())
                 .disabled(titleDraft.trimmingCharacters(in: .whitespaces).isEmpty || working)
             Button("Cancel") { naming = false; titleDraft = "" }.modifier(GlassButton())

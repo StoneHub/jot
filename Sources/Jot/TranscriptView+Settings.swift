@@ -102,7 +102,7 @@ private struct RowDivider: View {
     var body: some View { Divider().padding(.leading, 14) }
 }
 
-/// A setting's name and (i) on the left and its control on the right. An indented row depends on the one above; a row that cannot change dims its name and disables its control, while its (i) still works.
+/// A setting's name and (i) on the left and its control on the right, or the control under the name when the row is too narrow for both. An indented row depends on the one above; a row that cannot change dims its name and disables its control, while its (i) still works.
 private struct SettingRow<Control: View>: View {
     let title: String
     let info: String
@@ -110,14 +110,25 @@ private struct SettingRow<Control: View>: View {
     var enabled = true
     @ViewBuilder let control: () -> Control
     var body: some View {
-        HStack(spacing: 6) {
-            Text(title).foregroundStyle(enabled ? .primary : .secondary)
-            InfoButton(title: title, detail: info)
-            Spacer(minLength: 12)
-            control().disabled(!enabled)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                label.fixedSize()
+                Spacer(minLength: 12)
+                control().disabled(!enabled).layoutPriority(1)
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                label
+                control().disabled(!enabled)
+            }
         }
         .padding(.leading, indented ? 30 : 14).padding(.trailing, 14).padding(.vertical, 8)
         .frame(minHeight: 40)
+    }
+    private var label: some View {
+        HStack(spacing: 6) {
+            Text(title).foregroundStyle(enabled ? .primary : .secondary)
+            InfoButton(title: title, detail: info)
+        }
     }
 }
 
@@ -278,17 +289,25 @@ extension TranscriptView {
                         .padding(.horizontal, 7).padding(.vertical, 2)
                         .background(.orange.opacity(0.15), in: Capsule())
                 }
-                Picker("Preset", selection: Binding<TuningPreset?>(get: { TuningPreset.matching(service.tuning) }, set: { if let preset = $0 { service.tuning = preset.tuning } })) {
-                    ForEach(TuningPreset.allCases, id: \.self) { Text($0.title).tag(Optional($0)) }
-                }.pickerStyle(.segmented).labelsHidden().fixedSize()
+                // Segments while they fit, a menu when they don't.
+                ViewThatFits(in: .horizontal) {
+                    presetPicker.pickerStyle(.segmented).fixedSize()
+                    presetPicker.pickerStyle(.menu).fixedSize()
+                }
             }
         }
+    }
+
+    private var presetPicker: some View {
+        Picker("Preset", selection: Binding<TuningPreset?>(get: { TuningPreset.matching(service.tuning) }, set: { if let preset = $0 { service.tuning = preset.tuning } })) {
+            ForEach(TuningPreset.allCases, id: \.self) { Text($0.title).tag(Optional($0)) }
+        }.labelsHidden()
     }
 
     private func tuningSlider(_ title: String, info: String, value: Binding<Double>, range: ClosedRange<Double>, step: Double, valueText: String) -> some View {
         SettingRow(title: title, info: info) {
             HStack(spacing: 10) {
-                Slider(value: value, in: range, step: step).frame(width: 200)
+                Slider(value: value, in: range, step: step).frame(minWidth: 120, idealWidth: 200, maxWidth: 200)
                     .accessibilityLabel(title).accessibilityValue(valueText)
                 Text(valueText).monospacedDigit().foregroundStyle(.secondary).frame(width: 44, alignment: .trailing)
             }

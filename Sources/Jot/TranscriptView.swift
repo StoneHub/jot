@@ -71,55 +71,33 @@ struct TranscriptView: View {
         }
     }
 
+    /// Below this window width the sidebar folds into a rail of icons, so the page keeps a readable width.
+    private static let railBelowWidth: CGFloat = 720
+
     var body: some View {
-        HStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 12) {
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 20) {
-                        JotBrand().padding(.horizontal, 8)
-                        ServiceControls(service: service)
-                            .padding(18).modifier(GlassSurface(tint: Color(nsColor: .controlAccentColor).opacity(0.04)))
-                        VStack(alignment: .leading, spacing: 4) {
-                            ForEach(Section.allCases.filter { !$0.isSetting }, id: \.self) { item in navigationRow(item) }
-                            Text("Settings").font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
-                                .padding(.horizontal, 12).padding(.top, 10)
-                            ForEach(Section.allCases.filter(\.isSetting), id: \.self) { item in navigationRow(item) }
-                        }
-                    }.padding(.bottom, 8)
-                }
-                // Glass inside a scroll view still draws above the title bar unless the scroll view clips it.
-                .clipped()
-                ResourceReadoutView(readout: service.resourceReadout) { resources in
-                    HStack(spacing: 14) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("CPU").font(.caption).foregroundStyle(.secondary)
-                            Text(String(format: "%.1f%%", resources.processCPUPercent)).monospacedDigit()
-                        }
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Memory").font(.caption).foregroundStyle(.secondary)
-                            Text(String(format: "%.0f MB", resources.residentMiB)).monospacedDigit()
-                        }
+        GeometryReader { window in
+            let narrow = window.size.width < Self.railBelowWidth
+            HStack(spacing: 14) {
+                if narrow { rail } else { sidebar }
+                VStack(alignment: .leading, spacing: 18) {
+                    // Live draws its own title row so the recording chips sit beside it.
+                    if section != .live { titleRow }
+                    switch section {
+                    case .live: LiveView(service: service)
+                    case .dictations: dictations
+                    case .sessions: SessionsView(service: service, openLive: { section = .live })
+                    case .people: PeopleView(service: service)
+                    case .vocabulary: VocabularyView(service: service)
+                    case .activity: activity
+                    case .general: general
+                    case .models: models
                     }
-                }.padding(.horizontal, 8)
-            }.padding(8).frame(width: 282)
-            VStack(alignment: .leading, spacing: 18) {
-                // Live draws its own title row so the recording chips sit beside it.
-                if section != .live { titleRow }
-                switch section {
-                case .live: LiveView(service: service)
-                case .dictations: dictations
-                case .sessions: SessionsView(service: service, openLive: { section = .live })
-                case .people: PeopleView(service: service)
-                case .vocabulary: VocabularyView(service: service)
-                case .activity: activity
-                case .general: general
-                case .models: models
-                }
-            }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .modifier(GlassSurface())
-                .overlay(alignment: .bottomTrailing) { NoticeToast(notice: service.notice).padding(20) }
+                }.padding(narrow ? 16 : 24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .modifier(GlassSurface())
+                    .overlay(alignment: .bottomTrailing) { NoticeToast(notice: service.notice).padding(20) }
+            }
+            .padding(16)
         }
-        .padding(16)
         .background(JotBackdrop())
         .tint(Color(nsColor: .controlAccentColor))
         .background(WindowAttachment(attach: delegate.attach))
@@ -130,26 +108,81 @@ struct TranscriptView: View {
         .onChange(of: service.ambientEnabled) { _, on in if on { section = .live } }
     }
 
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 20) {
+                    JotBrand().padding(.horizontal, 8)
+                    ServiceControls(service: service)
+                        .padding(18).modifier(GlassSurface(tint: Color(nsColor: .controlAccentColor).opacity(0.04)))
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Section.allCases.filter { !$0.isSetting }, id: \.self) { item in navigationRow(item) }
+                        Text("Settings").font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
+                            .padding(.horizontal, 12).padding(.top, 10)
+                        ForEach(Section.allCases.filter(\.isSetting), id: \.self) { item in navigationRow(item) }
+                    }
+                }.padding(.bottom, 8)
+            }
+            // Glass inside a scroll view still draws above the title bar unless the scroll view clips it.
+            .clipped()
+            ResourceReadoutView(readout: service.resourceReadout) { resources in
+                HStack(spacing: 14) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("CPU").font(.caption).foregroundStyle(.secondary)
+                        Text(String(format: "%.1f%%", resources.processCPUPercent)).monospacedDigit()
+                    }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Memory").font(.caption).foregroundStyle(.secondary)
+                        Text(String(format: "%.0f MB", resources.residentMiB)).monospacedDigit()
+                    }
+                }
+            }.padding(.horizontal, 8)
+        }.padding(8).frame(width: 282)
+    }
+
+    /// The sidebar in a narrow window: Pause or Resume, then one icon per page. The menu bar keeps the full controls.
+    private var rail: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 6) {
+                PauseResumeButton(service: service, iconOnly: true).padding(.bottom, 8)
+                ForEach(Section.allCases.filter { !$0.isSetting }, id: \.self) { item in railRow(item) }
+                Divider().padding(.vertical, 6)
+                ForEach(Section.allCases.filter(\.isSetting), id: \.self) { item in railRow(item) }
+            }.padding(.vertical, 8)
+        }
+        .clipped()
+        .frame(width: 48)
+    }
+
+    /// The title keeps its width first; the Dictations buttons drop their words when the row runs short.
     private var titleRow: some View {
         HStack {
-            Text(section.rawValue).font(.system(size: 26, weight: .bold, design: .rounded))
+            Text(section.rawValue).font(.system(size: 26, weight: .bold, design: .rounded)).lineLimit(1).layoutPriority(2)
             if let info = section.info { InfoButton(title: section.rawValue, detail: info) }
-            Spacer()
+            Spacer(minLength: 8)
             if section == .dictations {
-                Button("Open Dictations in Finder", systemImage: "folder") {
-                    NSWorkspace.shared.activateFileViewerSelecting([JotPaths.directory.appendingPathComponent("transcripts.sqlite3")])
-                }
-                .labelStyle(.iconOnly)
-                .accessibilityLabel("Open Dictations in Finder")
-                .modifier(GlassButton())
-                .help("Shows the transcript database. Quit Jot before moving its files to Trash.")
-                Button("Clear", systemImage: "clear", role: .destructive) {
-                    do { try service.clearHistory(); search = ""; copiedID = nil }
-                    catch { service.notice = error.localizedDescription }
-                }.modifier(GlassButton()).help("Delete every saved dictation. Sessions are deleted from the Sessions tab.")
-                Button(showHistory ? "Hide" : "Show", systemImage: showHistory ? "eye.slash" : "eye") { showHistory.toggle() }
-                    .modifier(GlassButton())
+                ViewThatFits(in: .horizontal) {
+                    dictationTools
+                    dictationTools.labelStyle(.iconOnly)
+                }.layoutPriority(1)
             }
+        }
+    }
+    private var dictationTools: some View {
+        HStack {
+            Button("Open Dictations in Finder", systemImage: "folder") {
+                NSWorkspace.shared.activateFileViewerSelecting([JotPaths.directory.appendingPathComponent("transcripts.sqlite3")])
+            }
+            .labelStyle(.iconOnly)
+            .accessibilityLabel("Open Dictations in Finder")
+            .modifier(GlassButton())
+            .help("Shows the transcript database. Quit Jot before moving its files to Trash.")
+            Button("Clear", systemImage: "clear", role: .destructive) {
+                do { try service.clearHistory(); search = ""; copiedID = nil }
+                catch { service.notice = error.localizedDescription }
+            }.modifier(GlassButton()).help("Delete every saved dictation. Sessions are deleted from the Sessions tab.")
+            Button(showHistory ? "Hide" : "Show", systemImage: showHistory ? "eye.slash" : "eye") { showHistory.toggle() }
+                .modifier(GlassButton())
         }
     }
     private func navigationRow(_ item: Section) -> some View {
@@ -166,6 +199,28 @@ struct TranscriptView: View {
             .contentShape(RoundedRectangle(cornerRadius: 14))
             .modifier(NavigationSurface(selected: section == item))
         }.buttonStyle(.plain)
+    }
+    /// A page's icon alone; its name shows on hover and to VoiceOver.
+    private func railRow(_ item: Section) -> some View {
+        Button { section = item } label: {
+            Image(systemName: item.symbol)
+                .font(.body.weight(section == item ? .semibold : .regular))
+                .foregroundStyle(item.isSetting && section != item ? Color.secondary : Color.primary)
+                .frame(width: 40, height: item.isSetting ? 32 : 38)
+                .overlay(alignment: .topTrailing) {
+                    if item == .live && service.ambientEnabled { Circle().fill(.red).frame(width: 7, height: 7).padding(4) }
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 12))
+                .modifier(NavigationSurface(selected: section == item))
+        }
+        .buttonStyle(.plain)
+        .help(item.rawValue)
+        .accessibilityLabel(item.rawValue)
+        .accessibilityValue(railValue(item))
+    }
+    private func railValue(_ item: Section) -> String {
+        if item == .live && service.ambientEnabled { return "Recording" }
+        return count(item).map { $0.formatted() } ?? ""
     }
     private func count(_ item: Section) -> Int? {
         switch item {

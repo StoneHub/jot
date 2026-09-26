@@ -94,11 +94,30 @@ struct SessionsView: View {
         "\(session.title ?? "Untitled session") · \(session.startedAt.formatted(date: .abbreviated, time: .shortened)) · \(TranscriptExport.clock(session.durationSeconds))"
     }
 
-    /// One row: which session, rename, copy, export. The session menu scales past the few sessions a list column shows well.
+    /// One row: which session, rename, copy, export. The session menu scales past the few sessions a list column shows well. As the page narrows, the actions drop their words, then move under the menu.
     private var header: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                sessionPicker.layoutPriority(1)
+                Spacer(minLength: 0)
+                actions
+            }
+            HStack(spacing: 8) {
+                sessionPicker.layoutPriority(1)
+                Spacer(minLength: 0)
+                actions.labelStyle(.iconOnly)
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                sessionPicker
+                actions
+            }
+        }
+    }
+
+    private var sessionPicker: some View {
         HStack(spacing: 8) {
             if renaming, let session = selected {
-                TextField("Session name", text: $titleDraft).textFieldStyle(.roundedBorder).frame(maxWidth: 360)
+                TextField("Session name", text: $titleDraft).textFieldStyle(.roundedBorder).frame(minWidth: 120, idealWidth: 200, maxWidth: 360)
                     .onSubmit { commitRename(session) }
                 Button("Save") { commitRename(session) }.modifier(PrimaryGlassButton())
                 Button("Cancel") { renaming = false }.modifier(GlassButton())
@@ -108,14 +127,18 @@ struct SessionsView: View {
                         if isRecording(session) { (Text("● ").foregroundStyle(.red) + Text(label(session))).tag(session.sessionID) }
                         else { Text(label(session)).tag(session.sessionID) }
                     }
-                }.labelsHidden().pickerStyle(.menu).frame(maxWidth: 480)
+                }.labelsHidden().pickerStyle(.menu).frame(minWidth: 160, idealWidth: 200, maxWidth: 480)
                 if let session = selected {
                     Button("Rename", systemImage: "pencil") { titleDraft = session.title ?? ""; renaming = true }
                         .labelStyle(.iconOnly).modifier(GlassButton()).help("Rename this session")
                 }
             }
-            Spacer()
-            if let session = selected {
+        }
+    }
+
+    @ViewBuilder private var actions: some View {
+        if let session = selected {
+            HStack(spacing: 8) {
                 Button(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc") { copyAll(session) }.modifier(GlassButton())
                 Button("Regroup", systemImage: "arrow.triangle.2.circlepath") {
                     Task {
