@@ -17,8 +17,9 @@ SUPPORTED_VERSIONS = {1}
 
 OUTCOMES = {'suggest', 'abstain', 'invalidate'}
 INTEGRATIONS = {'native-ax', 'browser-ax', 'shell-bridge'}
-MODES = {'reply', 'continuation', 'shell-command'}
-PURPOSES = {'agent-prompt', 'chat-reply', 'shell-prompt'}
+MODES = {'reply', 'continuation', 'shell-command', 'draft'}
+# text-entry is what the app reports for a multi-line field outside Codex.
+PURPOSES = {'agent-prompt', 'chat-reply', 'shell-prompt', 'text-entry'}
 ROLES_BY_KIND = {
     'dictation': {'user'},
     'meeting-transcript': {'user', 'participant'},
@@ -103,7 +104,7 @@ def id_list(value, path, known, fail, allow_empty=True):
 
 def check_target(target, path, fail):
     required = {'integration', 'app', 'mode', 'purpose', 'inputRevision', 'before', 'after', 'requestedAt'}
-    if not has_keys(target, path, required, {'project', 'conversation', 'cwd'}, fail):
+    if not has_keys(target, path, required, {'project', 'conversation', 'cwd', 'seed'}, fail):
         return None
     for key, allowed in (('integration', INTEGRATIONS), ('mode', MODES), ('purpose', PURPOSES)):
         if target.get(key) not in allowed:
@@ -118,6 +119,12 @@ def check_target(target, path, fail):
     for key in ('project', 'conversation', 'cwd'):
         if not is_optional_text(target.get(key)):
             fail(f'{path}.{key}', 'must be non-empty text or null')
+    # The seed is the user's notes that a draft replaces; before and after are the field text around them.
+    if target.get('mode') == 'draft':
+        if not is_text(target.get('seed')):
+            fail(f'{path}.seed', 'draft mode needs the non-empty notes it rewrites')
+    elif 'seed' in target:
+        fail(f'{path}.seed', 'only draft mode has a seed')
     shell = target.get('integration') == 'shell-bridge'
     if shell != (target.get('mode') == 'shell-command') or shell != (target.get('purpose') == 'shell-prompt'):
         fail(path, 'shell-bridge, shell-command mode and shell-prompt purpose must be used together')
@@ -216,7 +223,8 @@ def check_expected(expected, path, target, sources, fail):
     if not is_text(expected.get('reason')):
         fail(f'{path}.reason', 'must be non-empty text')
     included = set(id_list(expected.get('includedSources'), f'{path}.includedSources', sources, fail))
-    if outcome == 'suggest' and not included:
+    # A draft is grounded in the user's own notes, so it needs no source.
+    if outcome == 'suggest' and not included and target.get('mode') != 'draft':
         fail(f'{path}.includedSources', 'a suggestion must be grounded in at least one included source')
 
     excluded = {}
