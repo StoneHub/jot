@@ -1240,9 +1240,17 @@ struct RecoveryFlowChecks {
         await service.waitForRecoveryVerification()
         let text = probe.delivered.last ?? ""
         precondition(probe.delivered.count == 1 && !text.isEmpty, "Real recognition did not deliver the held fixture")
-        let durations = service.diagnostics.report.jobs.map(\.audioSeconds)
-        precondition(durations.allSatisfy { $0 <= 3.001 }, "Real recognition received a long blocking chunk")
-        print("REAL ASR: \(AudioClock.seconds(samples: samples.count)) audio seconds, \(durations.count) chunks, \(started.duration(to: .now)) elapsed.")
+        // Each released hold also records one dictation timing whose audio is the whole hold. Recognition
+        // chunks are recorded as ambient and carry inference time when they succeed; the timing never does.
+        let jobs = service.diagnostics.report.jobs
+        let isHoldTiming = { (job: PerformanceJob) in job.mode == .dictation && job.inferenceSeconds == nil }
+        let durations = jobs.filter { !isHoldTiming($0) }.map(\.audioSeconds)
+        precondition(!durations.isEmpty && durations.allSatisfy { $0 <= 3.001 }, "Real recognition received a long blocking chunk")
+        let heldSeconds = AudioClock.seconds(samples: samples.count)
+        let holds = jobs.filter(isHoldTiming)
+        precondition(holds.count == 1 && abs(holds[0].audioSeconds - heldSeconds) < 0.01 && holds[0].outcome == .completed,
+            "The released hold did not record one completed timing for the \(heldSeconds) s it held")
+        print("REAL ASR: \(heldSeconds) audio seconds, \(durations.count) chunks, a \(holds[0].audioSeconds) s hold timing, \(started.duration(to: .now)) elapsed.")
         // The source must be a synthetic fixture; never pass private recorded audio
         // when retaining this log or posting it in a PR.
         print("REAL ASR TEXT: \(text)")
