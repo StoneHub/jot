@@ -37,6 +37,25 @@ public struct SuggestionContext: Sendable {
     }
 }
 
+extension SuggestionContext {
+    /// Stored rows a request may use. Recent dictation backs only a blank Codex composer, and the latest meeting
+    /// joins only when the user adds it on the card or makes it the default. Recency alone adds neither.
+    public func requestSources(dictation: Bool, meeting: Bool) -> [Source] {
+        sources.filter { ($0.kind == "dictation" && dictation) || ($0.kind == "meeting-transcript" && meeting) }
+    }
+
+    /// How the card offers the latest meeting, or nil when none was recorded in the window.
+    public var meetingName: String? {
+        guard sources.contains(where: { $0.kind == "meeting-transcript" }) else { return nil }
+        return sessionTitle.map { "meeting ‘\($0)’" } ?? "the latest meeting"
+    }
+}
+
+extension SelectionLimits {
+    /// A meeting the user adds brings many short phrases. Still well inside the on-device context window.
+    public static let withMeeting = SelectionLimits(maximumSources: 12, maximumSourceBytes: 5000)
+}
+
 /// One run of visible text read through Accessibility, in Accessibility screen coordinates (origin top-left, y down).
 public struct ScreenText: Equatable, Sendable {
     public init(_ text: String, frame: CGRect) { self.text = text; self.frame = frame }
@@ -121,7 +140,7 @@ public enum SuggestionAttribution {
         if selected.contains(where: { $0.kind == ScreenContext.kind }) { parts.append("text on screen") }
         if selected.contains(where: { $0.kind == "dictation" }) { parts.append("recent dictation") }
         if selected.contains(where: { $0.kind == "meeting-transcript" }) {
-            parts.append(sessionTitle.map { "meeting ‘\($0)’" } ?? "latest session")
+            parts.append(sessionTitle.map { "meeting ‘\($0)’" } ?? "the latest meeting")
         }
         guard let first = parts.first else { return "" }
         parts[0] = first.prefix(1).uppercased() + String(first.dropFirst())

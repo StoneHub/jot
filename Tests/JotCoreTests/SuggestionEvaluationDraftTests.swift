@@ -161,6 +161,31 @@ final class SuggestionEvaluationDraftTests: XCTestCase {
                        "Text on screen + recent dictation")
     }
 
+    func testLatestMeetingIsOfferedButNeverImportedByRecency() {
+        let now = Date(timeIntervalSince1970: 10_000)
+        func row(_ id: String, _ mode: String, at seconds: Double = 0) -> Transcript {
+            Transcript(id: id, sessionID: mode, startedAt: now, startSeconds: seconds, endSeconds: seconds + 1,
+                       text: "Synthetic " + id, mode: mode)
+        }
+        let rows = [row("d", "dictation"), row("m", "ambient")]
+        let context = SuggestionContext(rows: rows, sessionTitle: "Standup")
+        XCTAssertEqual(context.requestSources(dictation: false, meeting: false), [], "Nothing stored joins by default")
+        XCTAssertEqual(context.requestSources(dictation: false, meeting: true).map(\.id), ["m"])
+        XCTAssertEqual(context.requestSources(dictation: true, meeting: false).map(\.id), ["d"])
+        XCTAssertEqual(context.meetingName, "meeting ‘Standup’")
+        XCTAssertEqual(SuggestionContext(rows: rows, sessionTitle: nil).meetingName, "the latest meeting")
+        XCTAssertNil(SuggestionContext(rows: [rows[0]], sessionTitle: "Standup").meetingName, "No offer without a meeting")
+        XCTAssertEqual(SuggestionAttribution.line(plan: .reply, selected: context.requestSources(dictation: false, meeting: true),
+                                                  sessionTitle: "Standup"), "Meeting ‘Standup’")
+
+        let meeting = SuggestionContext(rows: (0..<10).map { row("m\($0)", "ambient", at: Double($0)) }, sessionTitle: nil)
+        let target = Target(app: "Slack", mode: .reply, purpose: "text-entry", before: "", after: "", requestedAt: "now")
+        let input = meeting.input(target: target)
+        XCTAssertEqual(SourceSelector.select(input).selected.count, 6)
+        XCTAssertEqual(SourceSelector.select(input, limits: .withMeeting).selected.count, 10,
+                       "An added meeting keeps more of its short phrases")
+    }
+
     @MainActor func testPerCallDeadlineOverridesTheGateDeadline() async {
         let gate = ModelCallGate(deadline: .seconds(10))
         let request = ModelRequest(instructions: "test", prompt: "test", maximumResponseTokens: 1)

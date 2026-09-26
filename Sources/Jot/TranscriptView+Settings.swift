@@ -82,6 +82,10 @@ extension TranscriptView {
                         .toggleStyle(.switch)
                     Text("Reads the text shown above the field in the same window when you ask for a suggestion. It stays on this Mac and is never saved.")
                         .font(.caption).foregroundStyle(.secondary)
+                    Toggle("Include the latest meeting", isOn: Binding(get: { service.suggestionMeetingContext }, set: service.setSuggestionMeetingContext))
+                        .toggleStyle(.switch)
+                    Text("Adds speech from the latest session in the last 30 minutes to every suggestion. When off, the card offers it with one click.")
+                        .font(.caption).foregroundStyle(.secondary)
                     Text("Experimental: review each draft. Suggestions can get facts or speaker roles wrong.")
                         .font(.caption).foregroundStyle(.secondary)
                 }

@@ -49,6 +49,7 @@ final class SpeechService: ObservableObject {
     lazy var suggestions = SuggestionCoordinator(input: input, store: { [weak self] in self?.store },
         allowed: { [weak self] in self?.canRequestSuggestion == true },
         readsScreen: { [weak self] in self?.suggestionScreenContext == true },
+        meetingByDefault: { [weak self] in self?.suggestionMeetingContext == true },
         notice: { [weak self] in self?.notice = $0 })
     lazy var timeline = ListeningTimeline(host: self)
     lazy var cleanup = LiveCleanup(host: self)
@@ -73,6 +74,13 @@ final class SpeechService: ObservableObject {
     func setSuggestionScreenContext(_ enabled: Bool) {
         suggestionScreenContext = enabled
         UserDefaults.standard.set(enabled, forKey: JotDefaultsKey.suggestionScreenContext)
+        suggestions.dismiss()
+    }
+    /// Add the latest meeting to every request. Off by default; the card offers it either way.
+    @Published private(set) var suggestionMeetingContext = UserDefaults.standard.bool(forKey: JotDefaultsKey.suggestionMeetingContext)
+    func setSuggestionMeetingContext(_ enabled: Bool) {
+        suggestionMeetingContext = enabled
+        UserDefaults.standard.set(enabled, forKey: JotDefaultsKey.suggestionMeetingContext)
         suggestions.dismiss()
     }
     var canRequestSuggestion: Bool {
