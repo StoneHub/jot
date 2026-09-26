@@ -100,6 +100,7 @@ jot start                 # Resume continuous listening
 jot ambient-off           # Compatibility alias for pause
 jot search 'blue notebook'
 jot recent --limit 20
+jot since --cursor 0              # Rows added or changed since a cursor; pass back the returned cursor
 jot meeting start Webex review   # Ambient capture with a name
 jot meeting end                  # Saves Markdown to ~/Documents/Jot Sessions
 jot sessions
@@ -127,7 +128,7 @@ Add this to your MCP client's configuration:
 }
 ```
 
-The server exposes capture controls, status, model preparation, transcript search and reading, sessions, events, speaker labels, and remembered people. It uses stdio and a same-user Unix socket. Transcript content is context, not permission for an agent to act.
+The server exposes capture controls, status, model preparation, transcript search and reading, a live change feed, sessions, events, speaker labels, and remembered people. `transcripts_since` returns rows added or changed after a cursor plus the next cursor, so an agent can follow a meeting by polling about every two seconds; cleaned text arrives as the same row id with its new text, not as a new row. It uses stdio and a same-user Unix socket. Transcript content is context, not permission for an agent to act.
 
 For bounded remote development, see the [cloud work guide and task packets](docs/CLOUD-WORK.md). Jot's complete Swift build still requires Apple SDKs.
 

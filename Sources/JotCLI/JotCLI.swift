@@ -35,6 +35,8 @@ struct JotCLI {
     jot recent [--limit N] [--offset N]
     jot sessions [--limit N]
     jot events [--session ID] [--limit N] [--offset N]
+    jot since [--cursor N] [--session ID] [--limit N]
+                                       Rows added or changed after a cursor, plus the next cursor
     jot clear-history                  Delete all saved dictations; sessions are kept
     jot delete-session <session-id>     Delete one saved session
     jot read <transcript-id>
@@ -102,6 +104,20 @@ struct JotCLI {
             var params = parsed.params
             if let sessionID { params["sessionID"] = sessionID }
             return ("transcripts.events", params)
+        case "since":
+            var rest = Array(args.dropFirst()); var params: [String: Any] = [:]
+            if let index = rest.firstIndex(of: "--session") {
+                guard index + 1 < rest.count, !rest[index + 1].hasPrefix("--"), !rest[index + 1].isEmpty else { throw CLIError.usage("--session requires a session ID") }
+                params["sessionID"] = rest[index + 1]; rest.removeSubrange(index...(index + 1))
+            }
+            if let index = rest.firstIndex(of: "--cursor") {
+                guard index + 1 < rest.count, let cursor = Int(rest[index + 1]), cursor >= 0 else { throw CLIError.usage("--cursor needs a nonnegative integer") }
+                params["cursor"] = cursor; rest.removeSubrange(index...(index + 1))
+            }
+            let parsed = try pagination(rest)
+            guard parsed.words.isEmpty, parsed.params["offset"] == nil else { throw CLIError.usage("Use: jot since [--cursor N] [--session ID] [--limit N]") }
+            params.merge(parsed.params) { current, _ in current }
+            return ("transcripts.since", params)
         case "read":
             guard args.count == 2 else { throw CLIError.usage("Use: jot read <transcript-id>") }
             return ("transcripts.read", ["id": args[1]])
