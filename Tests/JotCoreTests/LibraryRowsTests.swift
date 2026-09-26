@@ -128,7 +128,7 @@ final class LibraryRowsTests: XCTestCase {
             XCTAssertEqual(found, try store.recent(mode: "dictation", limit: page))
         }
         let cleaned = ["d63": "Cleaned."]
-        try store.setReadableText("Cleaned.", for: found[0])
+        try store.setReadablePhrase(["Cleaned."], for: [found[0]])
         XCTAssertEqual(LibraryRows.replacing(cleaned, in: found), try store.recent(mode: "dictation", limit: page))
     }
 

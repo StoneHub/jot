@@ -60,44 +60,6 @@ final class CaptureRecoveryTests: XCTestCase {
         XCTAssertNil(try reopened.latestRecoverableDictationAttempt())
     }
 
-    func testSchemaSixAttemptsMigrateWithoutInventingAGap() throws {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        var database: OpaquePointer?
-        let path = directory.appendingPathComponent("transcripts.sqlite3").path
-        XCTAssertEqual(sqlite3_open(path, &database), SQLITE_OK)
-        let schemaSix = """
-            CREATE TABLE dictation_attempts (
-                id TEXT PRIMARY KEY, session_id TEXT NOT NULL, started_at REAL NOT NULL,
-                ended_at REAL, text TEXT NOT NULL,
-                state TEXT NOT NULL CHECK(state IN ('capturing','recognizing','ready','deliveryFailed','deliveryUnverified','delivered','discarded')),
-                updated_at REAL NOT NULL
-            );
-            INSERT INTO dictation_attempts VALUES('old','session',100,105,'kept words','deliveryFailed',106);
-            PRAGMA user_version=6;
-            """
-        XCTAssertEqual(sqlite3_exec(database, schemaSix, nil, nil, nil), SQLITE_OK)
-        sqlite3_close(database)
-
-        let store = try TranscriptStore(directory: directory)
-        let migrated = try XCTUnwrap(store.latestRecoverableDictationAttempt())
-        XCTAssertEqual(migrated.id, "old")
-        XCTAssertFalse(migrated.hasGap)
-
-        var reopened: OpaquePointer?
-        var statement: OpaquePointer?
-        XCTAssertEqual(sqlite3_open(path, &reopened), SQLITE_OK)
-        XCTAssertEqual(sqlite3_prepare_v2(reopened, "SELECT has_gap FROM dictation_attempts WHERE id='old'", -1, &statement, nil), SQLITE_OK)
-        XCTAssertEqual(sqlite3_step(statement), SQLITE_ROW)
-        XCTAssertEqual(sqlite3_column_int(statement, 0), 0)
-        sqlite3_finalize(statement)
-        statement = nil
-        XCTAssertEqual(sqlite3_prepare_v2(reopened, "PRAGMA user_version", -1, &statement, nil), SQLITE_OK)
-        XCTAssertEqual(sqlite3_step(statement), SQLITE_ROW)
-        XCTAssertEqual(sqlite3_column_int(statement, 0), 8)
-        sqlite3_finalize(statement)
-        sqlite3_close(reopened)
-    }
-
     func testRecoveryWindowUsesWordEvidenceAtBothEdges() throws {
         let store = try TranscriptStore(directory: directory)
         let row = Transcript(id: "row", sessionID: "session", startedAt: Date(timeIntervalSince1970: 100),

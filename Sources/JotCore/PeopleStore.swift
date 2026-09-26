@@ -11,43 +11,25 @@ public struct Person: Sendable, Equatable, Identifiable {
     public var updatedAt: Date
 }
 
-/// Voices the user asked Jot to remember, kept in the transcripts database on a connection of its own like SpeakerPassStore. Deleting a person forgets the voice; session labels already written stay.
+/// Voices the user asked Jot to remember, kept in the transcripts database on a connection of its own. Deleting a person forgets the voice; session labels already written stay.
 public final class PeopleStore: @unchecked Sendable {
-    private let lock = NSLock()
-    private var db: OpaquePointer?
-    private let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+    private let db: SQLiteConnection
 
-    public init(directory: URL = JotPaths.directory) throws {
-        try preparePrivateDirectory(directory)
-        let databaseURL = directory.appendingPathComponent("transcripts.sqlite3")
-        guard sqlite3_open_v2(databaseURL.path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK else {
-            let message = db.map { String(cString: sqlite3_errmsg($0)) } ?? "Could not open transcript database"
-            if let db { sqlite3_close(db) }; db = nil
-            throw StoreError.database(message)
-        }
-        do {
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: databaseURL.path)
-            sqlite3_busy_timeout(db, 5_000)
-            // The embedding is 256 Float32 little-endian and unit length, the WeSpeaker vector the pass stores per session speaker; sample_count is how many were averaged into it.
-            try execute("PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; CREATE TABLE IF NOT EXISTS people (id TEXT PRIMARY KEY, name TEXT NOT NULL, embedding BLOB NOT NULL, sample_count INTEGER NOT NULL CHECK(sample_count >= 1), created_at REAL NOT NULL, updated_at REAL NOT NULL);")
-        } catch {
-            sqlite3_close(db); db = nil; throw error
-        }
+    /// Opens after `store`, which created the table.
+    public init(sharing store: TranscriptStore) throws {
+        db = try SQLiteConnection(url: store.databaseURL)
     }
 
-    deinit { sqlite3_close(db) }
-
     public func list() throws -> [Person] {
-        try locked {
-            let stmt = try prepare("SELECT id,name,embedding,sample_count,created_at,updated_at FROM people ORDER BY name COLLATE NOCASE, created_at")
+        try db.locked {
+            let stmt = try db.prepare("SELECT id,name,embedding,sample_count,created_at,updated_at FROM people ORDER BY name COLLATE NOCASE, created_at")
             defer { sqlite3_finalize(stmt) }
             var result: [Person] = []
             while true {
                 let status = sqlite3_step(stmt)
                 if status == SQLITE_DONE { break }
-                guard status == SQLITE_ROW else { throw error() }
-                let bytes = sqlite3_column_blob(stmt, 2).map { Data(bytes: $0, count: Int(sqlite3_column_bytes(stmt, 2))) } ?? Data()
-                result.append(Person(id: column(stmt, 0)!, name: column(stmt, 1)!, embedding: SpeakerPassStore.floats(bytes), sampleCount: Int(sqlite3_column_int64(stmt, 3)),
+                guard status == SQLITE_ROW else { throw db.error() }
+                result.append(Person(id: db.column(stmt, 0)!, name: db.column(stmt, 1)!, embedding: SpeakerPassStore.floats(db.blob(stmt, 2)), sampleCount: Int(sqlite3_column_int64(stmt, 3)),
                     createdAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 4)), updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 5))))
             }
             return result
@@ -59,57 +41,55 @@ public final class PeopleStore: @unchecked Sendable {
         let trimmed = try Self.validName(name)
         guard let unit = PeopleMatcher.normalized(embedding) else { throw StoreError.invalid("A voice needs a finite, nonzero embedding") }
         let person = Person(id: UUID().uuidString, name: trimmed, embedding: unit, sampleCount: 1, createdAt: now, updatedAt: now)
-        try locked {
-            let stmt = try prepare("INSERT INTO people(id,name,embedding,sample_count,created_at,updated_at) VALUES(?,?,?,1,?,?)")
+        try db.locked {
+            let stmt = try db.prepare("INSERT INTO people(id,name,embedding,sample_count,created_at,updated_at) VALUES(?,?,?,1,?,?)")
             defer { sqlite3_finalize(stmt) }
-            bind(person.id, to: 1, in: stmt); bind(person.name, to: 2, in: stmt); bind(SpeakerPassStore.blob(unit), to: 3, in: stmt)
+            db.bind(person.id, to: 1, in: stmt); db.bind(person.name, to: 2, in: stmt); db.bind(SpeakerPassStore.blob(unit), to: 3, in: stmt)
             sqlite3_bind_double(stmt, 4, now.timeIntervalSince1970); sqlite3_bind_double(stmt, 5, now.timeIntervalSince1970)
-            try finish(stmt)
+            try db.finish(stmt)
         }
         return person
     }
 
     public func rename(id: String, name: String) throws {
         let trimmed = try Self.validName(name)
-        try locked {
-            let stmt = try prepare("UPDATE people SET name = ? WHERE id = ?")
+        try db.locked {
+            let stmt = try db.prepare("UPDATE people SET name = ? WHERE id = ?")
             defer { sqlite3_finalize(stmt) }
-            bind(trimmed, to: 1, in: stmt); bind(id, to: 2, in: stmt)
-            try finish(stmt)
-            guard sqlite3_changes(db) == 1 else { throw StoreError.invalid("No person with that id") }
+            db.bind(trimmed, to: 1, in: stmt); db.bind(id, to: 2, in: stmt)
+            try db.finish(stmt)
+            guard db.changes == 1 else { throw StoreError.invalid("No person with that id") }
         }
     }
 
     public func delete(id: String) throws {
-        try locked {
-            let stmt = try prepare("DELETE FROM people WHERE id = ?")
+        try db.locked {
+            let stmt = try db.prepare("DELETE FROM people WHERE id = ?")
             defer { sqlite3_finalize(stmt) }
-            bind(id, to: 1, in: stmt)
-            try finish(stmt)
-            guard sqlite3_changes(db) == 1 else { throw StoreError.invalid("No person with that id") }
+            db.bind(id, to: 1, in: stmt)
+            try db.finish(stmt)
+            guard db.changes == 1 else { throw StoreError.invalid("No person with that id") }
         }
     }
 
     /// Folds one more voice sample into the stored average, weighted by how many it already holds, and keeps the result unit length.
     public func updateEmbedding(id: String, with embedding: [Float], now: Date = Date()) throws {
         guard let unit = PeopleMatcher.normalized(embedding) else { throw StoreError.invalid("A voice needs a finite, nonzero embedding") }
-        try locked {
-            try execute("BEGIN IMMEDIATE")
-            do {
-                let find = try prepare("SELECT embedding,sample_count FROM people WHERE id = ?")
+        try db.locked {
+            try db.transaction {
+                let find = try db.prepare("SELECT embedding,sample_count FROM people WHERE id = ?")
                 defer { sqlite3_finalize(find) }
-                bind(id, to: 1, in: find)
+                db.bind(id, to: 1, in: find)
                 guard sqlite3_step(find) == SQLITE_ROW else { throw StoreError.invalid("No person with that id") }
-                let stored = SpeakerPassStore.floats(sqlite3_column_blob(find, 0).map { Data(bytes: $0, count: Int(sqlite3_column_bytes(find, 0))) } ?? Data())
+                let stored = SpeakerPassStore.floats(db.blob(find, 0))
                 let count = Float(sqlite3_column_int64(find, 1))
                 guard stored.count == unit.count else { throw StoreError.invalid("Embedding sizes differ") }
                 guard let averaged = PeopleMatcher.normalized(zip(stored, unit).map { ($0 * count + $1) / (count + 1) }) else { throw StoreError.invalid("Embeddings cancel out") }
-                let update = try prepare("UPDATE people SET embedding = ?, sample_count = sample_count + 1, updated_at = ? WHERE id = ?")
+                let update = try db.prepare("UPDATE people SET embedding = ?, sample_count = sample_count + 1, updated_at = ? WHERE id = ?")
                 defer { sqlite3_finalize(update) }
-                bind(SpeakerPassStore.blob(averaged), to: 1, in: update); sqlite3_bind_double(update, 2, now.timeIntervalSince1970); bind(id, to: 3, in: update)
-                try finish(update)
-                try execute("COMMIT")
-            } catch { try? execute("ROLLBACK"); throw error }
+                db.bind(SpeakerPassStore.blob(averaged), to: 1, in: update); sqlite3_bind_double(update, 2, now.timeIntervalSince1970); db.bind(id, to: 3, in: update)
+                try db.finish(update)
+            }
         }
     }
 
@@ -117,24 +97,6 @@ public final class PeopleStore: @unchecked Sendable {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count <= 200 else { throw StoreError.invalid("A name of at most 200 characters is required") }
         return trimmed
-    }
-
-    private func locked<T>(_ work: () throws -> T) rethrows -> T { lock.lock(); defer { lock.unlock() }; return try work() }
-    private func error() -> StoreError { .database(String(cString: sqlite3_errmsg(db))) }
-    private func prepare(_ sql: String) throws -> OpaquePointer {
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else { throw error() }
-        return stmt
-    }
-    private func execute(_ sql: String) throws { guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else { throw error() } }
-    private func finish(_ stmt: OpaquePointer) throws { guard sqlite3_step(stmt) == SQLITE_DONE else { throw error() } }
-    private func bind(_ value: String, to index: Int32, in stmt: OpaquePointer) { sqlite3_bind_text(stmt, index, value, -1, transient) }
-    private func bind(_ blob: Data, to index: Int32, in stmt: OpaquePointer) {
-        blob.withUnsafeBytes { _ = sqlite3_bind_blob(stmt, index, $0.baseAddress, Int32(blob.count), transient) }
-    }
-    private func column(_ stmt: OpaquePointer, _ index: Int32) -> String? {
-        guard let bytes = sqlite3_column_text(stmt, index) else { return nil }
-        return String(cString: bytes)
     }
 }
 

@@ -13,7 +13,7 @@ enum CaptureEventKind: String {
     case started, paused, stopped, sleep
     case ambientOff = "ambient_off", deviceChange = "device_change", inputStalled = "input_stalled"
     case audioGap = "audio_gap", audioDiscarded = "audio_discarded", processingError = "processing_error"
-    case speakerPass = "speaker_pass", sessionSplit = "session_split"
+    case speakerPass = "speaker_pass", sessionSplit = "session_split", databaseReplaced = "database_replaced"
 }
 
 /// Injectable seams for the agent-runnable recovery harness. Production still uses
@@ -319,11 +319,16 @@ final class SpeechService: ObservableObject {
         do { vocabulary = try vocabularyPreferences.load() }
         catch { vocabularyLoadError = "Could not load vocabulary. Saved entries were preserved. " + error.localizedDescription }
         do {
-            store = try TranscriptStore()
+            let opened = try TranscriptStore()
+            store = opened
+            if opened.replacedDatabase {
+                recordEvent(.databaseReplaced, "Saved history was in a format this version does not read; it was deleted and an empty database created.")
+                notice = "Saved history was in a format this version does not read, so it was replaced with an empty history."
+            }
             // Converts interrupted holds with the vocabulary loaded above.
             try dictation.finalizeInterruptedAttempts()
-            speakerStore = try SpeakerPassStore()
-            peopleStore = try PeopleStore(); refreshPeople()
+            speakerStore = try SpeakerPassStore(sharing: opened)
+            peopleStore = try PeopleStore(sharing: opened); refreshPeople()
             let service = LocalServiceServer { [weak self] data in
                 guard let self else { return Data("{\"ok\":false,\"error\":\"Service unavailable\"}".utf8) }
                 return await self.handle(data)

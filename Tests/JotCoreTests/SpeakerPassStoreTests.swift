@@ -15,7 +15,7 @@ final class SpeakerPassStoreTests: XCTestCase {
     func testRowsRoundTripThroughTheSharedDatabaseAndAReplaceClearsTheEarlierPass() throws {
         let transcripts = try TranscriptStore(directory: directory)
         try transcripts.append(Transcript(id: "t", sessionID: "s", startedAt: Date(), startSeconds: 0, endSeconds: 1, text: "hi", mode: "ambient"))
-        let store = try SpeakerPassStore(directory: directory)
+        let store = try SpeakerPassStore(sharing: transcripts)
         let first = result([("S1", 0, 2.5), ("S2", 2.5, 4), ("S1", 4, 5)], speakers: ["S1": [0.5, -1.25, 3], "S2": [1e-3, 2]])
         try store.replace(sessionID: "s", result: first)
         XCTAssertEqual(try store.speakers(sessionID: "s"), [
@@ -39,7 +39,7 @@ final class SpeakerPassStoreTests: XCTestCase {
     }
 
     func testInvalidTimesAndEmbeddingsAreRejectedWhole() throws {
-        let store = try SpeakerPassStore(directory: directory)
+        let store = try SpeakerPassStore(sharing: TranscriptStore(directory: directory))
         XCTAssertThrowsError(try store.replace(sessionID: "s", result: result([("S1", 3, 2)], speakers: ["S1": [1]])))
         XCTAssertThrowsError(try store.replace(sessionID: "s", result: result([("S1", 0, 1)], speakers: ["S1": []])))
         XCTAssertThrowsError(try store.replace(sessionID: "s", result: result([("S1", 0, 1)], speakers: ["S1": [.nan]])))

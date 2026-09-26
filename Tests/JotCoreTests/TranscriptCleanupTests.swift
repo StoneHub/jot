@@ -20,7 +20,7 @@ final class TranscriptCleanupTests: XCTestCase {
         XCTAssertEqual(raw.map(\.text), ["um hello there"])
         let count = try store.sessions().first?.transcriptCount
 
-        try store.setReadableText("Hello", for: first)
+        try store.setReadablePhrase(["Hello"], for: [first])
         let cleaned = try paragraphs()
         XCTAssertEqual(cleaned.map(\.text), ["Hello there"])
         XCTAssertEqual(cleaned.map(\.id), raw.map(\.id))
@@ -159,17 +159,17 @@ final class TranscriptCleanupTests: XCTestCase {
         do {
             let store = try TranscriptStore(directory: directory)
             try store.append(source)
-            try store.setReadableText("Hello.", for: source)
+            try store.setReadablePhrase(["Hello."], for: [source])
         }
         let store = try TranscriptStore(directory: directory)
         XCTAssertEqual(try store.read(id: source.id)?.text, "Hello.")
         XCTAssertEqual(try store.search("Hello.").count, 1)
         XCTAssertEqual(try store.session(id: "session").first?.text, "Hello.")
-        try store.setReadableText("Hello again.", for: source)
+        try store.setReadablePhrase(["Hello again."], for: [source])
         XCTAssertEqual(try store.read(id: source.id)?.text, "Hello again.",
                        "The original source must still match after storing and reopening derived text")
         try store.deleteTranscripts(ids: [source.id])
-        try store.setReadableText("late output", for: source)
+        try store.setReadablePhrase(["late output"], for: [source])
         XCTAssertNil(try store.read(id: source.id))
         try store.append(source)
         XCTAssertEqual(try store.read(id: source.id)?.text, "um hello", "Derived text must cascade on deletion")

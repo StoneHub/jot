@@ -54,7 +54,7 @@ final class TranscriptChangesTests: XCTestCase {
         XCTAssertEqual(try follower.poll(), 3)
 
         // Cleanup lands after the follower saw the recognized text: the same id comes back with cleaned text.
-        try store.setReadableText("clean a1", for: a1)
+        try store.setReadablePhrase(["clean a1"], for: [a1])
         let a4 = row("a4", session: "A", seconds: 3)
         try store.append(a4)
         XCTAssertEqual(try follower.poll(), 2)
@@ -62,7 +62,7 @@ final class TranscriptChangesTests: XCTestCase {
         // Cleanup that lands before the next poll folds into the row's first delivery.
         let a5 = row("a5", session: "A", seconds: 4)
         try store.append(a5)
-        try store.setReadableText("clean a5", for: a5)
+        try store.setReadablePhrase(["clean a5"], for: [a5])
         XCTAssertEqual(try follower.poll(), 1)
 
         // Quiet ends session A and capture continues in session B; the cursor does not care.
@@ -72,7 +72,7 @@ final class TranscriptChangesTests: XCTestCase {
         try store.append(b2)
         XCTAssertTrue(try store.setReadablePhrase(["clean b1", "clean b2"], for: [b1, b2]))
         // A late cleanup of the old session still arrives after rotation.
-        try store.setReadableText("clean a3", for: a3)
+        try store.setReadablePhrase(["clean a3"], for: [a3])
         XCTAssertEqual(try follower.poll(), 3)
 
         let caughtUp = follower.cursor
@@ -154,6 +154,7 @@ final class TranscriptChangesTests: XCTestCase {
         sqlite3_close(db)
         do {
             let store = try TranscriptStore(directory: directory)
+            XCTAssertFalse(store.replacedDatabase, "Format 7 is kept and upgraded, not rebuilt")
             let page = try store.changes(since: 0)
             XCTAssertEqual(page.rows.map(\.transcript.id), ["earlier", "later"])
             XCTAssertEqual(page.rows.map(\.transcript.text), ["First.", "second"])
