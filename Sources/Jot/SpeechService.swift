@@ -243,6 +243,13 @@ final class SpeechService: ObservableObject {
         diagnostics.mark(kind, at: ProcessInfo.processInfo.systemUptime - diagnosticsBegan)
     }
 
+    /// Records a finished job, stamped with the time it finished.
+    func recordPerformance(_ job: PerformanceJob) {
+        var job = job
+        job.elapsedSeconds = ProcessInfo.processInfo.systemUptime - diagnosticsBegan
+        diagnostics.record(job)
+    }
+
     @Published var fnEnabled = false
     @Published var droppedSeconds = 0.0
     @Published var queuedSeconds = 0.0

@@ -16,6 +16,65 @@ final class PerformanceDiagnosticsTests: XCTestCase {
         XCTAssertEqual(report.current?.footprintMiB, 100)
         XCTAssertEqual(report.samples[1].elapsedSeconds - report.samples[0].elapsedSeconds, 30)
     }
+    /// The CPU seconds of kept samples, each covering the interval since the kept sample before it.
+    private func keptCPUSeconds(_ samples: [PerformanceSample]) -> Double {
+        zip(samples, samples.dropFirst()).reduce(0) { $0 + $1.1.cpuPercent / 100 * ($1.1.elapsedSeconds - $1.0.elapsedSeconds) }
+    }
+    func testKeptSampleCPUCoversTheWholeIntervalSinceThePreviousKeptSample() {
+        var diagnostics = PerformanceDiagnostics()
+        func observe(_ elapsed: Double, cpu: Double) {
+            diagnostics.observe(.init(elapsedSeconds: elapsed, footprintMiB: 100, residentMiB: 200, cpuPercent: cpu))
+        }
+        observe(0, cpu: 0)
+        observe(10, cpu: 50)     // 5 CPU seconds
+        observe(29.5, cpu: 0)
+        observe(30, cpu: 100)    // 0.5 CPU seconds, just after a recognition; kept
+        observe(45, cpu: 20)     // 3 CPU seconds
+        observe(60, cpu: 0)      // kept
+        let samples = diagnostics.report.samples
+        XCTAssertEqual(samples.map(\.elapsedSeconds), [0, 30, 60])
+        XCTAssertEqual(samples[1].cpuPercent, 5.5 / 30 * 100, accuracy: 1e-9)
+        XCTAssertEqual(samples[2].cpuPercent, 3.0 / 30 * 100, accuracy: 1e-9)
+        XCTAssertEqual(keptCPUSeconds(samples), 8.5, accuracy: 1e-9)
+        XCTAssertEqual(diagnostics.report.current?.cpuPercent, 0, "The current sample keeps its own reading")
+    }
+    /// Samples like the app's: a short one after each burst of work between idle stretches. Elapsed time is scaled so the 30-second cadence passes in a fraction of a second; scaling time leaves each percentage unchanged.
+    func testKeptSampleCPUAddsUpToTheKernelCount() throws {
+        func kernelCPUSeconds() -> Double {
+            var usage = rusage()
+            getrusage(RUSAGE_SELF, &usage)
+            return Double(usage.ru_utime.tv_sec) + Double(usage.ru_utime.tv_usec) / 1_000_000
+                + Double(usage.ru_stime.tv_sec) + Double(usage.ru_stime.tv_usec) / 1_000_000
+        }
+        let scale = 200.0
+        var diagnostics = PerformanceDiagnostics()
+        let began = ProcessInfo.processInfo.systemUptime
+        var previous = (time: began, cpu: kernelCPUSeconds())
+        var kernelAt: [Double: Double] = [:]
+        func observe() {
+            let now = ProcessInfo.processInfo.systemUptime, cpu = kernelCPUSeconds()
+            let elapsed = (now - began) * scale
+            kernelAt[elapsed] = cpu
+            diagnostics.observe(.init(elapsedSeconds: elapsed, footprintMiB: 100, residentMiB: 200,
+                cpuPercent: now > previous.time ? (cpu - previous.cpu) / (now - previous.time) * 100 : 0))
+            previous = (now, cpu)
+        }
+        observe()
+        while diagnostics.report.samples.count < 5 {
+            Thread.sleep(forTimeInterval: 0.03)
+            observe()
+            let burst = ProcessInfo.processInfo.systemUptime
+            while ProcessInfo.processInfo.systemUptime - burst < 0.01 {}
+            observe()
+        }
+        let samples = diagnostics.report.samples
+        let first = try XCTUnwrap(samples.first), last = try XCTUnwrap(samples.last)
+        let span = (last.elapsedSeconds - first.elapsedSeconds) / scale
+        let kernel = try XCTUnwrap(kernelAt[last.elapsedSeconds]) - XCTUnwrap(kernelAt[first.elapsedSeconds])
+        let reported = keptCPUSeconds(samples) / scale
+        XCTAssertGreaterThan(kernel / span, 0.05, "The bursts should keep the process measurably busy")
+        XCTAssertEqual(reported, kernel, accuracy: kernel * 0.03, "Kept samples reported \(reported) CPU seconds over \(span) s; the kernel counted \(kernel)")
+    }
     func testInvalidAndOutOfOrderSamplesDoNotCorruptHistory() throws {
         var diagnostics = PerformanceDiagnostics()
         diagnostics.observe(sample(10))
@@ -41,12 +100,63 @@ final class PerformanceDiagnosticsTests: XCTestCase {
         XCTAssertEqual(diagnostics.report.dictationLatency.count, 199)
         XCTAssertEqual(diagnostics.report.dictationLatency.p95Seconds, 290)
     }
+    func testContinuousRecognitionDoesNotPushOutHeldDictations() {
+        var diagnostics = PerformanceDiagnostics()
+        func job(_ mode: PerformanceJob.Mode, _ elapsed: Double) {
+            diagnostics.record(.init(elapsedSeconds: elapsed, mode: mode, outcome: .completed, audioSeconds: 3, queueWaitSeconds: 0,
+                inferenceSeconds: mode == .ambient ? 0.2 : nil, completionSeconds: elapsed))
+        }
+        for index in 0..<10 { job(.dictation, Double(index)) }
+        for index in 0..<1_000 { job(.ambient, Double(10 + index)) }
+        XCTAssertEqual(diagnostics.report.jobs.count, PerformanceDiagnostics.jobCapacity)
+        XCTAssertEqual(diagnostics.report.dictationLatency.count, 10)
+        XCTAssertEqual(diagnostics.report.jobs.last?.elapsedSeconds, 1_009)
+        // Dictations past half the jobs give up their own oldest, so recognition timings stay too.
+        for index in 0..<500 { job(.dictation, Double(2_000 + index)) }
+        XCTAssertEqual(diagnostics.report.jobs.count, PerformanceDiagnostics.jobCapacity)
+        XCTAssertEqual(diagnostics.report.dictationLatency.count, PerformanceDiagnostics.jobCapacity / 2)
+        XCTAssertEqual(diagnostics.report.dictationLatency.medianSeconds ?? 0, 2_449.5, accuracy: 1e-9)
+        XCTAssertEqual(diagnostics.report.inferenceLatency.count, PerformanceDiagnostics.jobCapacity / 2)
+    }
+    func testDictationLatencyIsSplitByWhetherCleanupRan() throws {
+        var diagnostics = PerformanceDiagnostics()
+        func dictation(_ outcome: PerformanceJob.Outcome, completion: Double, cleanup: Double? = nil, cleanupOutcome: String? = nil) {
+            diagnostics.record(.init(elapsedSeconds: 1, mode: .dictation, outcome: outcome, audioSeconds: 2, queueWaitSeconds: 0.1,
+                inferenceSeconds: nil, completionSeconds: completion, cleanupSeconds: cleanup, deliverySeconds: 0.05, cleanupOutcome: cleanupOutcome))
+        }
+        // Ten inserted dictations: five cleaned, five not.
+        for (index, completion) in [1.0, 1.4, 1.2, 3.0, 1.6].enumerated() {
+            dictation(index == 3 ? .deliveryUnverified : .completed, completion: completion, cleanup: completion - 0.2, cleanupOutcome: index == 4 ? "unchanged" : "changed")
+        }
+        for completion in [0.3, 0.2, 0.5, 0.4, 0.9] { dictation(.completed, completion: completion) }
+        // Not inserted: excluded from release-to-insert latency, while the cleanup they ran still counts.
+        dictation(.noSpeech, completion: 0.1)
+        dictation(.failed, completion: 20, cleanup: 12, cleanupOutcome: "timedOut")
+        dictation(.cancelled, completion: 30)
+        diagnostics.record(.init(elapsedSeconds: 1, mode: .ambient, outcome: .completed, audioSeconds: 3, queueWaitSeconds: 0,
+            inferenceSeconds: 0.2, completionSeconds: 50))
+        let report = try JSONDecoder().decode(PerformanceReport.self, from: diagnostics.export())
+        XCTAssertEqual(report.dictationLatency.count, 10)
+        XCTAssertEqual(report.dictationLatency.medianSeconds ?? 0, 0.95, accuracy: 1e-9)
+        XCTAssertEqual(report.dictationLatency.p95Seconds, 3.0)
+        XCTAssertEqual(report.dictationLatencyWithCleanup.count, 5)
+        XCTAssertEqual(report.dictationLatencyWithCleanup.medianSeconds, 1.4)
+        XCTAssertEqual(report.dictationLatencyWithCleanup.p95Seconds, 3.0)
+        XCTAssertEqual(report.dictationLatencyWithoutCleanup.count, 5)
+        XCTAssertEqual(report.dictationLatencyWithoutCleanup.medianSeconds, 0.4)
+        XCTAssertEqual(report.dictationLatencyWithoutCleanup.p95Seconds, 0.9)
+        XCTAssertEqual(report.dictationCleanupLatency.count, 6)
+        XCTAssertEqual(report.dictationCleanupLatency.p95Seconds, 12)
+        let failed = try XCTUnwrap(report.jobs.first { $0.outcome == .failed })
+        XCTAssertEqual(failed.cleanupOutcome, "timedOut")
+        XCTAssertEqual(failed.deliverySeconds, 0.05)
+    }
     func testExportSchemaContainsOnlyApprovedMetrics() throws {
         var diagnostics = PerformanceDiagnostics()
         diagnostics.observe(sample(0))
         diagnostics.mark(.launch, at: 0)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: diagnostics.export()) as? [String: Any])
-        XCTAssertEqual(Set(json.keys), Set(["build", "schemaVersion", "sampleIntervalSeconds", "sampleCapacity", "eventCapacity", "jobCapacity", "startup", "current", "sampledPeakFootprintMiB", "samples", "events", "jobs", "dictationLatency", "inferenceLatency"]))
+        XCTAssertEqual(Set(json.keys), Set(["build", "schemaVersion", "sampleIntervalSeconds", "sampleCapacity", "eventCapacity", "jobCapacity", "startup", "current", "sampledPeakFootprintMiB", "samples", "events", "jobs", "dictationLatency", "dictationLatencyWithCleanup", "dictationLatencyWithoutCleanup", "dictationCleanupLatency", "inferenceLatency"]))
         let current = try XCTUnwrap(json["current"] as? [String: Any])
         XCTAssertEqual(Set(current.keys), Set(["elapsedSeconds", "footprintMiB", "residentMiB", "cpuPercent", "droppedAudioSeconds", "bufferedAudioSeconds", "queuedAudioSeconds", "loadedHistoryRows", "modelsReady", "ambientEnabled", "dictationActive", "inferenceRunning"]))
         XCTAssertNil(LatencySummary([]).medianSeconds)

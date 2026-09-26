@@ -34,6 +34,21 @@ final class MCPToolsTests: XCTestCase {
         XCTAssertNoThrow(try tool("sessions_title").validate(arguments: ["sessionID": "s1", "title": String(repeating: "a", count: 200)]))
     }
 
+    func testSinceTakesAnOptionalCursorSessionAndLimit() throws {
+        let since = try tool("transcripts_since")
+        XCTAssertEqual(since.method, "transcripts.since")
+        XCTAssertTrue(since.readOnly)
+        XCTAssertNoThrow(try since.validate(arguments: [:]))
+        XCTAssertNoThrow(try since.validate(arguments: decode(#"{"cursor": 0}"#)))
+        XCTAssertNoThrow(try since.validate(arguments: decode(#"{"cursor": 9007199254740991, "sessionID": "s1", "limit": 200}"#)))
+        try assertRejects("transcripts_since", #"{"cursor": -1}"#, "cursor must be a nonnegative integer")
+        try assertRejects("transcripts_since", #"{"cursor": "12"}"#, "cursor must be a nonnegative integer")
+        try assertRejects("transcripts_since", #"{"cursor": 1.5}"#, "cursor must be a nonnegative integer")
+        try assertRejects("transcripts_since", #"{"sessionID": ""}"#, "sessionID must be a nonempty string")
+        try assertRejects("transcripts_since", #"{"limit": 201}"#, "limit exceeds its maximum")
+        try assertRejects("transcripts_since", #"{"offset": 5}"#, "Unknown argument: offset")
+    }
+
     func testNamesAndMethodsAreUniqueAndRequiredKeysAreDeclared() {
         let names = MCPTool.catalog.map(\.name), methods = MCPTool.catalog.map(\.method)
         XCTAssertEqual(Set(names).count, names.count)
@@ -43,6 +58,6 @@ final class MCPToolsTests: XCTestCase {
 
     func testOnlyReadingToolsAreReadOnly() {
         XCTAssertEqual(MCPTool.catalog.filter(\.readOnly).map(\.name), ["speech_status", "speech_doctor", "transcripts_search", "transcripts_recent",
-                                                                        "transcripts_read", "transcripts_sessions", "transcripts_export", "transcripts_events", "people_list"])
+                                                                        "transcripts_since", "transcripts_read", "transcripts_sessions", "transcripts_export", "transcripts_events", "people_list"])
     }
 }
