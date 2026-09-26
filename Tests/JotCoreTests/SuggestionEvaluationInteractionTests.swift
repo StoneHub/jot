@@ -2,6 +2,37 @@ import XCTest
 @testable import JotCore
 
 final class SuggestionEvaluationInteractionTests: XCTestCase {
+    // Recorded physical Fn sequence: macOS emits key 179 down/up immediately after release.
+    func testFnReleaseCompanionEventsDoNotBreakDoubleTap() {
+        let trace: [(ShortcutTracker.Event, UInt16, ShortcutModifiers, TimeInterval)] = [
+            (.flagsChanged, 63, [.fn], 0), (.flagsChanged, 63, [], 0.052),
+            (.keyDown, 179, [], 0.0521), (.keyUp, 179, [], 0.0522),
+            (.flagsChanged, 63, [.fn], 0.110), (.flagsChanged, 63, [], 0.157),
+            (.keyDown, 179, [], 0.1571), (.keyUp, 179, [], 0.1572)
+        ]
+        var paused = SuggestionFnGesture(), listening = ShortcutTracker()
+        var requests = 0, recoveries = 0
+        for (event, code, flags, time) in trace {
+            if paused.handle(event, keyCode: code, modifiers: flags, at: time, enabled: true) { requests += 1 }
+            if listening.handle(event, keyCode: code, modifiers: flags, shortcut: .fn, at: time).action == .recover { recoveries += 1 }
+        }
+        XCTAssertEqual(requests, 1, "Paused Fn request must survive release companion events")
+        XCTAssertEqual(recoveries, 1, "Listening uses the same double-tap recognition")
+    }
+
+    func testFnCompanionEventsCannotDismissQueuedOrVisibleSuggestion() {
+        for state: SuggestionKeyTracker.State in [.requesting, .loading, .ready] {
+            var tracker = SuggestionKeyTracker(); tracker.show(state)
+            for code: UInt16 in [63, 179] {
+                for event: ShortcutTracker.Event in [.keyDown, .keyUp] {
+                    XCTAssertEqual(tracker.handle(event, keyCode: code, modifiers: [], shortcut: nil, allowed: true), .init())
+                    XCTAssertEqual(tracker.state, state)
+                }
+            }
+            XCTAssertEqual(tracker.handle(.keyDown, keyCode: 0, modifiers: [], shortcut: nil, allowed: true), .init(.dismiss))
+        }
+    }
+
     func testFnRequestsOnSecondShortReleaseButNeverOnHold() {
         var gesture = SuggestionFnGesture()
         XCTAssertFalse(gesture.handle(.flagsChanged, keyCode: 63, modifiers: [.fn], at: 0, enabled: true))

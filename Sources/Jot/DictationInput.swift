@@ -500,6 +500,9 @@ final class DictationInput {
             ? ProcessInfo.processInfo.systemUptime
             : Double(event.timestamp) / 1_000_000_000
         let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+        // Fn release can emit a second, non-text key pair (179 on this Mac).
+        // Leave it to macOS, but do not invalidate the tap sequence or queued request.
+        if ShortcutTracker.isFnCompanionEvent(kind, keyCode: keyCode) { return false }
         let modifiers = ShortcutModifiers(event.flags).subtracting(.fn)
         let repeating = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
         let allowed = !recording && suggestionAllowed()

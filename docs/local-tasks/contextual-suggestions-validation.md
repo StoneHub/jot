@@ -1,3 +1,13 @@
+# Physical Fn regression: companion release events
+
+The first double-Fn candidate failed with listening paused and active: physical taps were detected, but zero suggestion requests started. A bounded local gesture trace identified the cause: macOS emits key-down/key-up code 179 immediately after Fn release. The existing shortcut tracker treated it as unrelated typing and cleared the first short tap. The suggestion tracker also treated it as input, which could cancel a queued request after the second release.
+
+Two tests replay the recorded, minimized sequence through the paused suggestion recognizer and listening/recovery recognizer, and verify that companion events cannot dismiss requesting/loading/ready cards. They failed before the fix (zero requests/recoveries and dismissed states). The fix passes Fn companion key pairs through to macOS without changing the tap, card or draft-revision state; actual typed input still dismisses. No timing thresholds or system keyboard settings change. Temporary gesture instrumentation has been removed from source.
+
+Physical loop: `bash work/fn-hitl.sh` plus user presses, with metadata before/after. Both pre-fix runs returned `FAIL: physical double Fn did not start a suggestion request`. Automated regression command: `swift test --filter 'SuggestionEvaluationInteractionTests.testFn.*Companion'`. Full Mac gates and corrected installation follow; physical recheck is still required before claiming resolution.
+
+---
+
 # Request-only follow-up: September 26 live feedback
 
 The user saw the automatic card, but it contained the composer placeholder and appeared too often. This confirms a visible preview, not useful output or Tab insertion. The request-only follow-up removes the automatic scheduling task and uses double-tap Fn. Holding Fn keeps dictation; disabling Suggestions restores the former double-tap recovery behavior. Fn suggestions also work when dictation is disabled or bound to another key. Busy/IME/unsafe fields still abstain.

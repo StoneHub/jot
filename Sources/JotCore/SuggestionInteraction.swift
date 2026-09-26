@@ -53,6 +53,7 @@ public struct SuggestionKeyTracker {
     public mutating func handle(_ event: ShortcutTracker.Event, keyCode: UInt16,
                                 modifiers: ShortcutModifiers, repeating: Bool = false,
                                 shortcut: DictationShortcut?, allowed: Bool) -> Decision {
+        if ShortcutTracker.isFnCompanionEvent(event, keyCode: keyCode) { return Decision() }
         if event == .keyUp, consumedUps.remove(keyCode) != nil { return Decision(consume: true) }
         guard event == .keyDown else { return Decision() }
         // Repeats and modified Tab/Escape never invoke an action or get swallowed.
