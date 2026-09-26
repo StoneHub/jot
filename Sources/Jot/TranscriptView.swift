@@ -46,9 +46,9 @@ struct TranscriptView: View {
     @State private var copyReset: Task<Void, Never>?
 
     private enum Section: String, CaseIterable {
-        case live = "Live", dictations = "Dictations", sessions = "Sessions", people = "People", tuning = "Tuning", vocabulary = "Vocabulary", models = "Models & updates", activity = "Activity"
+        case live = "Live", dictations = "Dictations", sessions = "Sessions", people = "People", general = "General", vocabulary = "Vocabulary", models = "Models & updates", activity = "Activity"
         /// The four under the Settings heading, drawn quieter than the places where transcripts live.
-        var isSetting: Bool { self == .tuning || self == .vocabulary || self == .models || self == .activity }
+        var isSetting: Bool { self == .general || self == .vocabulary || self == .models || self == .activity }
         var symbol: String {
             switch self {
             case .live: "dot.radiowaves.left.and.right"
@@ -57,7 +57,7 @@ struct TranscriptView: View {
             case .people: "person.2"
             case .vocabulary: "character.book.closed"
             case .activity: "chart.xyaxis.line"
-            case .tuning: "slider.horizontal.3"
+            case .general: "gearshape"
             case .models: "square.stack.3d.up"
             }
         }
@@ -104,7 +104,7 @@ struct TranscriptView: View {
                 case .people: PeopleView(service: service)
                 case .vocabulary: VocabularyView(service: service)
                 case .activity: activity
-                case .tuning: tuning
+                case .general: general
                 case .models: models
                 }
             }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

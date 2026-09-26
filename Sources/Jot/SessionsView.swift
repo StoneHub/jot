@@ -122,7 +122,7 @@ struct SessionsView: View {
                         do { try await service.regroupSession(session.sessionID) }
                         catch { service.notice = error.localizedDescription }
                     }
-                }.modifier(GlassButton()).help("Relabels this session's speakers from its speaker pass, or from the Tuning sliders when it has none")
+                }.modifier(GlassButton()).help("Relabels this session's speakers from its speaker pass, or from the speaker settings in General when it has none")
                 Button("Export", systemImage: "square.and.arrow.up") {
                     do { NSWorkspace.shared.activateFileViewerSelecting([try service.exportSession(session.sessionID)]) }
                     catch { service.notice = error.localizedDescription }
