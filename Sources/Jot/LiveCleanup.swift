@@ -98,14 +98,14 @@ final class LiveCleanup {
     }
 
     /// One dictation row through the on-device cleanup, counted with the live phrases in the recovery diagnostics.
-    func cleanDictation(_ text: String) async -> String {
+    func cleanDictation(_ text: String) async -> (text: String, outcome: CleanupResult.Outcome) {
         cleanupRequestedCount += 1
         let cleanup = await host.dependencies.cleanup(transcriptCleanup, [text], Self.dictationCleanupTimeout)
         cleanupCompletedCount += 1
         cleanupOutcomeCounts[cleanup.outcome.rawValue, default: 0] += 1
-        if let first = cleanup.texts.first, first != text { cleanupAppliedCount += 1; return first }
+        if let first = cleanup.texts.first, first != text { cleanupAppliedCount += 1; return (first, cleanup.outcome) }
         cleanupBypassedCount += 1
-        return text
+        return (text, cleanup.outcome)
     }
 
     func cancelDictationCleanup() { transcriptCleanup.cancel() }

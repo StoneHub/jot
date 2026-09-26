@@ -147,6 +147,7 @@ struct RecoveryFlowChecks {
         print("PASS: Pause persisted the final half-second before unloading.")
 
         try await checkFailureAndCleanup(directory: directory)
+        try await checkDictationTimings(directory: directory)
         try await checkLiveFollowsEdits(directory: directory)
         try await checkInterruptedHold(directory: directory)
         for failed in [false, true] {
@@ -433,6 +434,81 @@ struct RecoveryFlowChecks {
         precondition(probe.delivered.last == "Segment5", "Dictation inserted raw text instead of waiting for a three-second cleanup")
         slow.shutdown()
         print("PASS: dictation waits for a three-second cleanup and inserts the cleaned text.")
+    }
+
+    /// Ten held dictations, five with cleanup and five without, each record release-to-insert, cleanup, and insertion time with the cleanup outcome, and the diagnostics report splits the latency by whether cleanup ran. Cleanup and insertion take known minimum times, so each cleaned dictation must be slower by at least the cleanup time.
+    @MainActor static func checkDictationTimings(directory: URL) async throws {
+        let probe = Probe()
+        probe.deliveryFails = false
+        let cleanupDelay = 0.3, deliveryDelay = 0.05
+        let store = try TranscriptStore(directory: directory.appendingPathComponent("dictation-timings"))
+        let service = SpeechService(dependencies: .init(
+            infer: { _, job, _ in probe.infer(job) },
+            deliver: { _, text in
+                try await Task.sleep(for: .seconds(deliveryDelay))
+                return try probe.deliver(text)
+            },
+            now: { probe.now }, cleanup: { cleaner, texts, timeout in
+                await cleaner.cleanWithOutcome(texts, timeout: timeout, generator: {
+                    try await Task.sleep(for: .seconds(cleanupDelay))
+                    return $0.map { $0.capitalized }
+                })
+            }))
+        service.highlightTargetField = false; service.muteSpeakersDuringDictation = false
+        service.keepAudioForSpeakerPass = false; service.cleanUpTranscriptions = false
+        service.beginRecoveryVerification(store: store, startedAt: probe.now)
+        defer { service.shutdown() }
+        for index in 1...10 {
+            service.cleanUpDictation = index.isMultiple(of: 2)
+            service.beginDictation()
+            probe.now += 3
+            service.ingestRecoveryVerification(samples: Array(repeating: Float(100 + index), count: 48_000), at: probe.now)
+            await service.waitForRecoveryVerification()
+            service.endDictation()
+            await service.waitForRecoveryVerification()
+        }
+        // A hold with no speech records a timing but no release-to-insert latency.
+        service.cleanUpDictation = true
+        service.beginDictation(); service.endDictation()
+        await service.waitForRecoveryVerification()
+        precondition(probe.delivered.count == 10 && probe.delivered[1] == "Segment102" && probe.delivered[0] == "segment101",
+            "Dictations were not inserted with and without cleanup as set")
+
+        // The same report `jot diagnostics` returns, read back from its JSON.
+        let report = try JSONDecoder().decode(PerformanceReport.self, from: service.diagnostics.export())
+        let dictations = report.jobs.filter { $0.mode == .dictation }
+        precondition(dictations.count == 11, "Each held dictation did not record exactly one timing")
+        precondition(dictations.last?.outcome == .noSpeech && dictations.last?.deliverySeconds == nil && dictations.last?.cleanupOutcome == nil,
+            "A hold with no speech was not recorded as no speech")
+        let inserted = Array(dictations.prefix(10))
+        for (offset, job) in inserted.enumerated() {
+            let cleaned = (offset + 1).isMultiple(of: 2)
+            precondition(job.outcome == .completed, "An inserted dictation was not recorded as completed")
+            precondition(abs(job.audioSeconds - 3) < 0.01, "The hold length was not recorded")
+            precondition((job.deliverySeconds ?? 0) >= deliveryDelay, "Insertion time was not recorded")
+            if cleaned {
+                precondition(job.cleanupOutcome == "changed" && (job.cleanupSeconds ?? 0) >= cleanupDelay,
+                    "A cleaned dictation did not record its cleanup time and outcome")
+            } else {
+                precondition(job.cleanupOutcome == nil && job.cleanupSeconds == nil, "A dictation without cleanup recorded cleanup")
+            }
+            precondition(job.completionSeconds + 0.001 >= job.queueWaitSeconds + (job.cleanupSeconds ?? 0) + (job.deliverySeconds ?? 0),
+                "Release-to-insert latency is shorter than its recognition, cleanup, and insertion time")
+        }
+        let with = report.dictationLatencyWithCleanup, without = report.dictationLatencyWithoutCleanup
+        precondition(report.dictationLatency.count == 10 && with.count == 5 && without.count == 5,
+            "The report did not split ten inserted dictations by whether cleanup ran")
+        guard let withMedian = with.medianSeconds, let withP95 = with.p95Seconds,
+              let withoutMedian = without.medianSeconds, let withoutP95 = without.p95Seconds else {
+            preconditionFailure("The report is missing median or p95 latency")
+        }
+        precondition(withMedian >= cleanupDelay + deliveryDelay && withP95 >= withMedian, "Cleaned latency does not include cleanup")
+        precondition(withoutMedian >= deliveryDelay && withoutP95 >= withoutMedian && withoutMedian < withMedian,
+            "Latency without cleanup is not separated from latency with cleanup")
+        precondition(report.dictationCleanupLatency.count == 5 && (report.dictationCleanupLatency.medianSeconds ?? 0) >= cleanupDelay,
+            "The report does not state what dictation cleanup costs")
+        print(String(format: "PASS: ten dictations report release-to-insert median %.2f s / p95 %.2f s with cleanup, %.2f s / %.2f s without; cleanup median %.2f s.",
+            withMedian, withP95, withoutMedian, withoutP95, report.dictationCleanupLatency.medianSeconds ?? 0))
     }
 
     /// Live reads its session once and then only adds rows and cleaned text, so every other edit must make it read the session again: a speaker name from the sheet or the socket, a new paragraph pause, and a delete.

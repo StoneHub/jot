@@ -130,5 +130,5 @@ extension SpeechService: DictationHost {
     var canHoldDictation: Bool { lifecycle.phase == .ready && modelState == .ready && ambientEnabled && !pauseRequested }
     func closeChunk() { drainAudio(); timeline.flushAmbient(final: true) }
     func cancelDictationCleanup() { cleanup.cancelDictationCleanup() }
-    func cleanDictation(_ text: String) async -> String { await cleanup.cleanDictation(text) }
+    func cleanDictation(_ text: String) async -> (text: String, outcome: CleanupResult.Outcome) { await cleanup.cleanDictation(text) }
 }
