@@ -30,12 +30,14 @@ final class SuggestionCoordinator {
     private var requests = 0
     private var insertions = 0
     private var outcome = "idle"
+    /// Why the last request showed no suggestion, as a code: never field, screen, prompt or output text.
+    private var reason = "none"
     private var lastMode = "none"
     private var usedScreen = false
     private var usedSpeech = false
     private var usedAgent = false
     /// Counts and outcomes only; never field, screen, prompt or output text.
-    var diagnostics: [String: Any] { ["requests": requests, "insertions": insertions, "outcome": outcome, "visible": card.isVisible,
+    var diagnostics: [String: Any] { ["requests": requests, "insertions": insertions, "outcome": outcome, "reason": reason, "visible": card.isVisible,
                                     "automatic": false, "keyboardEligible": keyboardAllowsSuggestions,
                                     "mode": lastMode, "screenContext": usedScreen, "speechContext": usedSpeech,
                                     "agentContext": usedAgent, "agentMessagesHeld": agentContext.count] }
@@ -75,27 +77,33 @@ final class SuggestionCoordinator {
         if ownsTarget { ownsTarget = false; input.discardTarget() }
     }
 
-    /// Notes or a selection in the field become a draft that replaces them; a blank composer gets a reply. Both draw on
-    /// the same window: the conversation visible above the field, what Jot heard, and what agents told it. A blank
-    /// field with nothing in the window asks for notes.
+    /// A selection becomes a rewrite that replaces it; other text is continued at the cursor; a blank composer gets a
+    /// reply. All draw on the same window: the conversation visible above the field, what Jot heard, and what agents
+    /// told it. A blank field with nothing in the window asks for notes.
     func request() {
         dismiss()
         guard allowed(), keyboardAllowsSuggestions else { return }
-        requests += 1; outcome = "loading"; lastMode = "none"; usedScreen = false; usedSpeech = false; usedAgent = false
+        requests += 1; outcome = "loading"; reason = "none"; lastMode = "none"; usedScreen = false; usedSpeech = false; usedAgent = false
         do { try input.captureTarget(wakeRetry: false) }
-        catch { outcome = "unsupported-field"; notice("No suggestion: focus an ordinary editable text field."); return }
+        catch { outcome = "unsupported-field"; reason = "unsupported-field"; notice("No suggestion: focus an ordinary editable text field."); return }
         ownsTarget = true
         guard let field = input.readSuggestionField(), let frame = input.targetFrame(timeout: 0.005) else {
-            dismiss(); notice("No suggestion: this field cannot be read safely."); return
+            dismiss(); reason = "unreadable-field"; notice("No suggestion: this field cannot be read safely."); return
         }
         self.field = field
         let blank = field.draft.isBlank
-        if blank && field.role != kAXTextAreaRole { showNotice(Self.needsNotes); return }
+        if blank && field.role != kAXTextAreaRole { showNotice(Self.needsNotes, reason: "needs-notes"); return }
         let store = self.store()
         let reader = readsScreen() ? input.screenContextReader() : nil
         let window = self.window()
+        let loading: String
+        switch SuggestionPlan.make(draft: field.draft, role: field.role, hasAssociatedContext: true) {
+        case .draft: loading = "Rewriting your selection…"
+        case .continuation: loading = "Writing what comes next…"
+        case .reply, .needsNotes: loading = "Reading the conversation…"
+        }
         input.showSuggestionKeys(.loading)
-        card.show(text: blank ? "Reading the conversation…" : "Drafting from your notes…", loading: true, at: frame)
+        card.show(text: loading, loading: true, at: frame)
         let token = generation
         monitor(field: field, token: token)
         requestTask = Task { [weak self] in
@@ -119,9 +127,11 @@ final class SuggestionCoordinator {
                 var before = field.draft.before, after = field.draft.after
                 switch plan {
                 case .needsNotes:
-                    self.showNotice(Self.needsNotes); return
+                    self.showNotice(Self.needsNotes, reason: "needs-notes"); return
                 case .reply:
                     mode = .reply
+                case .continuation:
+                    mode = .continuation
                 case .draft(let seed):
                     mode = .draft; self.seed = seed
                     (before, after) = field.draft.text(around: seed)
@@ -137,8 +147,16 @@ final class SuggestionCoordinator {
                 self.usedScreen = selection.selected.contains { $0.kind == ScreenContext.kind }
                 self.usedSpeech = selection.selected.contains { $0.kind == "dictation" || $0.kind == "meeting-transcript" }
                 self.usedAgent = selection.selected.contains { $0.kind == AgentContext.kind }
-                self.rows = context?.rows.filter { row in selection.selected.contains { $0.id == row.id } } ?? []
-                if mode == .reply && selection.selected.isEmpty { self.showNotice(Self.needsNotes); return }
+                self.rows = context?.rows(for: selection.selected) ?? []
+                // A reply needs something to answer. A continuation needs something to draw on: with only the user's text,
+                // the on-device model invents what comes next.
+                if selection.selected.isEmpty {
+                    if mode == .reply { self.showNotice(Self.needsNotes, reason: "no-context"); return }
+                    if mode == .continuation {
+                        self.showNotice("No suggestion: Jot has nothing from the last few minutes to continue from.", reason: "no-context")
+                        return
+                    }
+                }
                 let request = SuggestionPrompt.request(for: scenario, sources: selection.selected)
                 let result = await self.gate.call(request, deadline: Self.deadline(for: mode),
                                                   generator: { try await AppleFMGeneration.generate($0) })
@@ -147,20 +165,29 @@ final class SuggestionCoordinator {
                 if !expectedRows.isEmpty, let store {
                     let current = try await Task.detached { try store.suggestionRowsUnchanged(expectedRows) }.value
                     guard self.isCurrent(token, field: field) else { return }
-                    guard current else { self.dismiss(); self.notice("Suggestion dismissed because its sources changed."); return }
+                    guard current else {
+                        self.dismiss(); self.reason = "sources-changed"; self.notice("Suggestion dismissed because its sources changed."); return
+                    }
                 }
                 switch result {
                 case .output(let raw):
                     switch SuggestionOutput.process(raw, mode: mode, singleLine: field.role != kAXTextAreaRole) {
-                    case .suggestion(let text):
-                        switch SuggestionOutput.review(text, draft: field.draft, seed: self.seed?.text,
-                                                       placeholder: field.placeholder, context: excerpt) {
+                    case .suggestion(let output):
+                        let text = mode == .continuation ? SuggestionOutput.continuation(output, before: before) : output
+                        let review = text.isEmpty ? .unchanged : SuggestionOutput.review(text, draft: field.draft, seed: self.seed?.text,
+                                                                                         placeholder: field.placeholder, context: excerpt)
+                        switch review {
                         case .accept: break
-                        case .unchanged: self.showNotice("Your notes already read well. No changes suggested."); return
-                        case .restatesHint:
-                            self.showNotice(field.draft.isBlank ? Self.needsNotes : "No suggestion: the result only repeated the field's hint.")
+                        case .unchanged:
+                            self.showNotice(mode == .continuation ? "No suggestion: the result only repeated your text."
+                                                                  : "Your selection already reads well. No changes suggested.", reason: "unchanged")
                             return
-                        case .copiesContext: self.showNotice("No suggestion: the result only repeated text on screen."); return
+                        case .restatesHint:
+                            self.showNotice(field.draft.isBlank ? Self.needsNotes : "No suggestion: the result only repeated the field's hint.",
+                                            reason: "restates-hint")
+                            return
+                        case .copiesContext:
+                            self.showNotice("No suggestion: the result only repeated text on screen.", reason: "copies-context"); return
                         }
                         self.candidate = text; self.outcome = "ready"
                         self.input.showSuggestionKeys(.ready)
@@ -169,30 +196,38 @@ final class SuggestionCoordinator {
                         if let seed = self.seed {
                             title = seed.isSelection ? "Rewrite of your selection" : "Draft from your notes"
                             action = seed.isSelection ? "Tab to replace the selection" : "Tab to replace your notes"
+                        } else if mode == .continuation {
+                            title = "Suggested continuation"; action = "Tab to insert at the cursor"
                         } else { title = "Suggested reply"; action = "Tab to insert" }
-                        self.card.show(text: text, title: title,
+                        self.card.show(text: text.trimmingCharacters(in: .whitespaces), title: title,
                                        sources: SuggestionAttribution.line(plan: plan, selected: selection.selected,
                                                                            sessionTitle: context?.sessionTitle),
                                        action: action, ready: true, at: frame)
-                    case .abstained, .rejected:
-                        self.showNotice(mode == .draft ? "No suggestion from these notes." : "No suggestion from this context.")
+                    case .abstained(let detail), .rejected(let detail):
+                        let text: String
+                        switch mode {
+                        case .draft: text = "No suggestion for this selection."
+                        case .continuation: text = "No suggestion: nothing to add from your text and this context."
+                        case .reply, .shellCommand: text = "No suggestion from this context."
+                        }
+                        self.showNotice(text, reason: detail)
                     }
-                case .unavailable: self.showNotice("No suggestion: Apple Intelligence is unavailable.")
-                case .timedOut: self.showNotice("No suggestion: the model took too long.")
-                case .blocked: self.showNotice("No suggestion: the previous request is still ending.")
-                case .failed: self.showNotice("No suggestion: the model could not complete the request.")
+                case .unavailable: self.showNotice("No suggestion: Apple Intelligence is unavailable.", reason: "model-unavailable")
+                case .timedOut: self.showNotice("No suggestion: the model took too long.", reason: "timed-out")
+                case .blocked: self.showNotice("No suggestion: the previous request is still ending.", reason: "blocked")
+                case .failed: self.showNotice("No suggestion: the model could not complete the request.", reason: "model-failed")
                 case .cancelled: self.dismiss()
                 }
             } catch {
                 guard token == self.generation else { return }
-                self.showNotice("No suggestion: local context could not be read.")
+                self.showNotice("No suggestion: local context could not be read.", reason: "context-unreadable")
             }
         }
     }
 
 
-    /// A draft can run to several sentences; the on-device model needs longer for it than for a one-line reply.
-    private static func deadline(for mode: SuggestionMode) -> Duration { mode == .draft ? .seconds(8) : .seconds(3) }
+    /// A draft or a continuation can run to several sentences; the on-device model needs longer for them than for a one-line reply.
+    private static func deadline(for mode: SuggestionMode) -> Duration { mode == .draft || mode == .continuation ? .seconds(8) : .seconds(3) }
 
     private static func purpose(of field: DictationInput.SuggestionField) -> String {
         guard field.role == kAXTextAreaRole else { return "single-line" }
@@ -225,15 +260,15 @@ final class SuggestionCoordinator {
     }
 
     /// A request Jot cannot take right now: the reason shows at the field for a moment, or in the window when there is no field.
-    func refuse(_ reason: String) {
+    func refuse(_ text: String) {
         dismiss()
-        do { try input.captureTarget(wakeRetry: false) } catch { notice(reason); return }
+        do { try input.captureTarget(wakeRetry: false) } catch { notice(text); return }
         ownsTarget = true
-        showNotice(reason)
+        showNotice(text, reason: "refused")
     }
 
-    private func showNotice(_ text: String) {
-        outcome = "no-suggestion"; candidate = nil
+    private func showNotice(_ text: String, reason: String) {
+        outcome = "no-suggestion"; self.reason = reason; candidate = nil
         input.showSuggestionKeys(.notice)
         guard let frame = input.targetFrame(timeout: 0.005) else { dismiss(); notice(text); return }
         card.show(text: text, at: frame)

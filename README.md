@@ -65,11 +65,11 @@ When an ambient session or meeting ends, a speaker pass reads the whole session 
 
 Double-tap Fn in a text field and Jot drafts something for it on this Mac, with Apple's on-device model:
 
-- **Rough notes in the field** become finished text. Tab replaces the notes.
-- **A selection** is rewritten, and Tab replaces only the selection. Everything else in the field stays.
-- **An empty chat box** gets a reply to the conversation shown above it.
+- **Text with the cursor after it** is continued: at the end of a sentence Jot writes the next ones, and mid-sentence it finishes the sentence first. Tab inserts at the cursor. It needs something in the context window to draw on.
+- **A selection** is rewritten, and Tab replaces only the selection. Everything else in the field stays. To turn rough notes into finished text, select them first (⌘A for the whole field).
+- **An empty chat box** gets a reply to the conversation shown above it. A reply you just said aloud counts.
 
-Every draft draws on the same **context window**: the last ten minutes of what Jot heard, with the speaker's name when Jot knows it, and the last ten minutes of messages agents handed it. Set the length in **General → Suggestions → Context window**, from one minute to an hour. Older speech stays in Sessions; older agent messages are forgotten, since they are held in memory only and never saved. Typing or Escape dismisses the card. Nothing is sent, and a request never starts capture. Suggestions work while listening is paused.
+Every draft draws on the same **context window**: the last ten minutes of what Jot heard, with the speaker's name when Jot knows it, and the last ten minutes of messages agents handed it. Speech arrives as whole turns rather than three-second pieces. The voice Jot heard while you held Fn to dictate is taken as yours; another voice it cannot name is described to the model as one that may be yours or someone else's, such as a video. Set the length in **General → Suggestions → Context window**, from one minute to an hour. Older speech stays in Sessions; older agent messages are forgotten, since they are held in memory only and never saved. Typing or Escape dismisses the card. Nothing is sent, and a request never starts capture. Suggestions work while listening is paused.
 
 **Give it your agent conversations.** Any agent can hand Jot a message with `jot context add` or the `context_add` MCP tool, in memory for the context window only. For Claude Code, two hooks in `~/.claude/settings.json` send what you type and what the agent answers:
 
