@@ -133,7 +133,7 @@ public final class JotSettings: @unchecked Sendable {
     public func set(_ key: String, _ value: Double) {
         guard let definition = Self.definition(key), case .double(let fallback, let range) = definition.kind else { preconditionFailure("\(key) is not a Double setting") }
         let bounded = value.isFinite ? min(range.upperBound, max(range.lowerBound, value)) : fallback
-        store(key, bounded, isDefault: abs(bounded - fallback) < 0.000_1)
+        store(key, bounded, isDefault: Self.holdsDefault(bounded, fallback))
     }
 
     /// Saves text. Empty text or text over the limit is refused rather than cut, so a prompt is never saved half-written.
@@ -226,6 +226,11 @@ public final class JotSettings: @unchecked Sendable {
         defaults.set(revision, forKey: Self.revisionKey)
     }
 
+    /// Equal to within floating-point noise from a slider or the CLI. An absolute tolerance would swallow real changes to small values such as `silenceLevel`.
+    static func holdsDefault(_ value: Double, _ fallback: Double) -> Bool {
+        abs(value - fallback) <= max(abs(fallback), 1) * 1e-9
+    }
+
     private func removeKeysHoldingDefaults() {
         for definition in Self.definitions {
             guard let stored = defaults.object(forKey: definition.key) else { continue }
@@ -233,7 +238,7 @@ public final class JotSettings: @unchecked Sendable {
             switch definition.kind {
             case .bool(let fallback): holdsDefault = (stored as? Bool) == fallback
             case .int(let fallback, _, _): holdsDefault = (stored as? Int) == fallback
-            case .double(let fallback, _): holdsDefault = (stored as? Double).map { abs($0 - fallback) < 0.000_1 } ?? false
+            case .double(let fallback, _): holdsDefault = (stored as? Double).map { Self.holdsDefault($0, fallback) } ?? false
             case .text(let fallback, _): holdsDefault = (stored as? String) == fallback
             }
             if holdsDefault { defaults.removeObject(forKey: definition.key) }

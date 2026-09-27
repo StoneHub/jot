@@ -1,6 +1,6 @@
 # Contextual suggestions in Jot
 
-Status: product direction agreed September 25, 2026; implementation plan, not a shipped feature. This document supersedes the earlier research-only suggestion of a Codex-only, field-only experiment. It authorizes no capture, shell configuration or integration changes by itself.
+Status: product direction agreed September 25, 2026. The first slice shipped on September 26 (#89, #91: double-tap Fn requests, Tab accepts, drafting from notes); the Terminal bridge and the context contracts below are still plans. This document supersedes the earlier research-only suggestion of a Codex-only, field-only experiment. It authorizes no capture, shell configuration or integration changes by itself.
 
 ## Outcome
 

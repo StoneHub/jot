@@ -143,7 +143,12 @@ public final class TranscriptStore: @unchecked Sendable {
         var connection = try SQLiteConnection(url: databaseURL)
         let version = try connection.integer("PRAGMA user_version")
         let empty = try connection.integer("SELECT COUNT(*) FROM sqlite_master") == 0
-        // Format 7 is the one older format still opened: 0.2.5 and 0.2.6 wrote it, so an installed database may still hold it. Format 8 only added the change feed, which the schema below creates and the backfill fills. Any other format, older or newer, is deleted and recreated empty.
+        // A newer format is refused, never deleted: a reverted or older build must not throw away the history a newer one wrote.
+        if !empty && version > Self.format {
+            connection.close()
+            throw StoreError.invalid("Saved history is in format \(version), newer than this version of Jot reads (\(Self.format)). Update Jot, or move transcripts.sqlite3 aside.")
+        }
+        // Format 7 is the one older format still opened: 0.2.5 and 0.2.6 wrote it, so an installed database may still hold it. Format 8 only added the change feed, which the schema below creates and the backfill fills. Any other older format is deleted and recreated empty.
         replacedDatabase = !empty && version != Self.format && version != 7
         if replacedDatabase {
             connection.close()
@@ -161,9 +166,9 @@ public final class TranscriptStore: @unchecked Sendable {
         try db.execute("PRAGMA user_version=\(Self.format)")
     }
 
-    /// The database file and the WAL and shared-memory files SQLite keeps beside it.
+    /// The WAL and shared-memory files SQLite keeps beside the database, then the database itself: deleting in this order never leaves an old WAL next to a new, empty database.
     static func files(of databaseURL: URL) -> [String] {
-        [databaseURL.path, databaseURL.path + "-wal", databaseURL.path + "-shm"]
+        [databaseURL.path + "-wal", databaseURL.path + "-shm", databaseURL.path]
     }
 
     /// Deletes this store's own files and nothing else: the paths come from its location, never a pattern, and unlink removes one file, never a directory.

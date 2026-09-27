@@ -158,8 +158,18 @@ final class DatabaseFormatTests: XCTestCase {
         XCTAssertEqual(try dump(), try dump(former))
     }
 
-    func testAnyOtherFormatIsReplacedWithAnEmptyDatabaseAndNothingElseIsTouched() throws {
-        for version in [0, 6, 9] {
+    func testANewerFormatIsRefusedAndLeftAsItIs() throws {
+        writeFormerDatabase(version: 9)
+        let before = try dump()
+        XCTAssertThrowsError(try TranscriptStore(directory: directory)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("format 9"), error.localizedDescription)
+        }
+        XCTAssertEqual(try dump(), before, "A database written by a newer Jot is never deleted by an older one")
+        XCTAssertEqual(try dump().first, "9")
+    }
+
+    func testAnOlderFormatIsReplacedWithAnEmptyDatabaseAndNothingElseIsTouched() throws {
+        for version in [0, 6] {
             try FileManager.default.removeItem(at: directory)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let neighbors: [String: Data] = ["audio/s1.f32": Data([1, 2, 3, 4]), "service.sock": Data("socket".utf8),
