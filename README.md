@@ -61,6 +61,31 @@ When an ambient session or meeting ends, a speaker pass reads the whole session 
 
 **Models & updates → Check updates** checks published model revisions. It does not download updates or verify that your cached weights match the latest release.
 
+## Suggestions
+
+Double-tap Fn in a text field and Jot drafts something for it on this Mac, with Apple's on-device model:
+
+- **Rough notes in the field** become finished text. Tab replaces the notes.
+- **A selection** is rewritten, and Tab replaces only the selection. Everything else in the field stays.
+- **An empty chat box** gets a reply to the conversation shown above it.
+
+Every draft draws on the same **context window**: the last ten minutes of what Jot heard, with the speaker's name when Jot knows it, and the last ten minutes of messages agents handed it. Set the length in **General → Suggestions → Context window**, from one minute to an hour. Older speech stays in Sessions; older agent messages are forgotten, since they are held in memory only and never saved. Typing or Escape dismisses the card. Nothing is sent, and a request never starts capture. Suggestions work while listening is paused.
+
+**Give it your agent conversations.** Any agent can hand Jot a message with `jot context add` or the `context_add` MCP tool, in memory for the context window only. For Claude Code, two hooks in `~/.claude/settings.json` send what you type and what the agent answers:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [{"hooks": [{"type": "command",
+      "command": "jq -r .prompt | ~/.local/bin/jot context add --role user --source claude-code -"}]}],
+    "Stop": [{"hooks": [{"type": "command",
+      "command": "tail -n 1 \"$(jq -r .transcript_path)\" | jq -r '.message.content[]? | select(.type==\"text\") | .text' | ~/.local/bin/jot context add --role assistant --source claude-code -"}]}]
+  }
+}
+```
+
+Adjust the Stop command to your transcript format; it takes the last line's text blocks. `jot context clear` forgets everything held. Suggestions can get facts or speaker roles wrong: review each draft before you send it.
+
 ## Personal vocabulary
 
 Open **Vocabulary** to add a preferred spelling such as `SwiftUI`. If Jot mishears it, enter the phrase under **Heard as**, for example `swift you eye`. Leave that field empty to normalize capitalization only.
@@ -98,6 +123,8 @@ jot pause
 jot resume
 jot start                 # Resume continuous listening
 jot search 'blue notebook'
+jot context add --role user --source codex 'make the tests pass'   # or - to read stdin
+jot context clear
 jot recent --limit 20
 jot since --cursor 0              # Rows added or changed since a cursor; pass back the returned cursor
 jot meeting start Webex review   # Ambient capture with a name

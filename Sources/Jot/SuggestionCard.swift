@@ -3,24 +3,18 @@ import SwiftUI
 
 @MainActor
 final class SuggestionCard {
-    /// One clickable choice, such as adding the latest meeting. Keys keep their meaning; this is mouse-only.
-    struct Option {
-        let title: String
-        let action: @MainActor () -> Void
-    }
-
     private var panel: NSPanel?
     private let model = CardModel()
     var isVisible: Bool { panel?.isVisible == true }
 
     func show(text: String, title: String = "Jot suggestion", sources: String = "", action: String = "Tab to insert",
-              option: Option? = nil, loading: Bool = false, ready: Bool = false, at field: CGRect) {
+              loading: Bool = false, ready: Bool = false, at field: CGRect) {
         model.text = text; model.title = title; model.sources = sources; model.action = action
-        model.option = option; model.loading = loading; model.ready = ready
+        model.loading = loading; model.ready = ready
         let panel = self.panel ?? makePanel()
         self.panel = panel
-        // Clicks reach the card only while it has a choice; otherwise they pass through to the app underneath.
-        panel.ignoresMouseEvents = option == nil
+        // Clicks pass through to the app underneath; the card is keys only.
+        panel.ignoresMouseEvents = true
         place(at: field)
         panel.orderFrontRegardless()
     }
@@ -64,7 +58,6 @@ private final class CardModel: ObservableObject {
     @Published var title = "Jot suggestion"
     @Published var sources = ""
     @Published var action = "Tab to insert"
-    @Published var option: SuggestionCard.Option?
     @Published var loading = false
     @Published var ready = false
 }
@@ -79,16 +72,8 @@ private struct SuggestionCardView: View {
                 Text(model.title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             }
             Text(model.text).font(.body).fixedSize(horizontal: false, vertical: true)
-            if !model.sources.isEmpty || model.option != nil {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    if !model.sources.isEmpty {
-                        Text(model.sources).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                    }
-                    Spacer(minLength: 0)
-                    if let option = model.option {
-                        Button(option.title) { option.action() }.buttonStyle(.link).font(.caption)
-                    }
-                }
+            if !model.sources.isEmpty {
+                Text(model.sources).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }
             Text(model.ready ? "\(model.action) · Esc to dismiss" : "Esc to dismiss")
                 .font(.caption2).foregroundStyle(.secondary)

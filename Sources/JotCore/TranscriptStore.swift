@@ -642,18 +642,15 @@ public final class TranscriptStore: @unchecked Sendable {
 
     /// Bounded explicit-request context: recent dictation plus only the latest ambient session.
     /// Time predicates use the existing absolute-time index; the query never returns an entire session.
-    public func suggestionContext(now: Date = Date()) throws -> SuggestionContext {
+    /// Every row spoken in the last `window` seconds, dictation and ambient alike, with the title of the newest session among them.
+    public func suggestionContext(window: TimeInterval = 600, now: Date = Date()) throws -> SuggestionContext {
         try db.locked {
-            let cutoff = now.addingTimeInterval(-30 * 60).timeIntervalSince1970
+            let cutoff = now.addingTimeInterval(-window).timeIntervalSince1970
             let clause = """
                 WHERE (t.started_at + t.start_seconds) >= CAST(? AS REAL)
                   AND (t.started_at + t.start_seconds) <= \(now.timeIntervalSince1970)
-                  AND (t.mode = 'dictation' OR t.session_id = (
-                    SELECT session_id FROM transcripts WHERE mode = 'ambient'
-                      AND (started_at + start_seconds) <= \(now.timeIntervalSince1970)
-                    ORDER BY (started_at + start_seconds) DESC, id DESC LIMIT 1))
                 """
-            let selected = try rows(where: clause, value: String(cutoff), limit: 100, offset: 0)
+            let selected = try rows(where: clause, value: String(cutoff), limit: 200, offset: 0)
             var title: String?
             if let session = selected.first(where: { $0.mode == "ambient" })?.sessionID {
                 let stmt = try db.prepare("SELECT title FROM session_titles WHERE session_id = ?")

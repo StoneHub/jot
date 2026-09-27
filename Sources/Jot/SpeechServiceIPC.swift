@@ -121,6 +121,13 @@ extension SpeechService {
                 let output = try await fileTask.value
                 guard lifecycle.generation == token else { throw CancellationError() }
                 result = ["text": output.text, "transcripts": try object(output.transcripts), "processingSeconds": output.processingSeconds, "persisted": false]
+            case "context.add":
+                guard let role = params["role"] as? String, let source = params["source"] as? String, let text = params["text"] as? String else {
+                    throw JotError.message("context.add needs role, source and text")
+                }
+                let message = try agentContext.add(role: role, source: source, conversation: params["conversation"] as? String, text: text)
+                result = ["id": message.id, "held": agentContext.count, "windowMinutes": suggestionWindowMinutes]
+            case "context.clear": agentContext.clear(); result = ["held": 0]
             case "people.list":
                 let iso = ISO8601DateFormatter()
                 result = try speakers.peopleStore?.list().map { ["id": $0.id, "name": $0.name, "sampleCount": $0.sampleCount, "createdAt": iso.string(from: $0.createdAt), "updatedAt": iso.string(from: $0.updatedAt)] } ?? []

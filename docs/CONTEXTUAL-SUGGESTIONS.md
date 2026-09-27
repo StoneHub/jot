@@ -1,6 +1,6 @@
 # Contextual suggestions in Jot
 
-Status: product direction agreed September 25, 2026. The first slice shipped on September 26 (#89, #91: double-tap Fn requests, Tab accepts, drafting from notes); the Terminal bridge and the context contracts below are still plans. This document supersedes the earlier research-only suggestion of a Codex-only, field-only experiment. It authorizes no capture, shell configuration or integration changes by itself.
+Status: product direction agreed September 25, 2026. The first slice shipped on September 26 (#89, #91: double-tap Fn requests, Tab accepts, drafting from notes and rewriting a selection). Since September 27 every request uses one context window, ten minutes by default: recent speech with speakers, agent messages handed over `context.add`, and the visible conversation. The Terminal bridge and the remaining contracts below are still plans. This document supersedes the earlier research-only suggestion of a Codex-only, field-only experiment. It authorizes no capture, shell configuration or integration changes by itself.
 
 ## Outcome
 
@@ -96,7 +96,7 @@ Do not copy the entire transcript library into a second store. Reference existin
 
 ## Hooks, MCP and browser access
 
-There are two directions: agents reading context from Jot, and integrations contributing context to Jot. Keep them distinct in the API and settings. The current MCP catalog implements the former; no inbound prompt collector exists.
+There are two directions: agents reading context from Jot, and integrations contributing context to Jot. Keep them distinct in the API and settings. The MCP catalog implements the former. The latter shipped as `context.add` (`jot context add`, MCP `context_add`): one message with a role, a source app and an optional conversation id, held in memory for the suggestion window and never saved. The README shows Claude Code hooks that feed it; Codex hooks can call the same command.
 
 Official [Codex hooks documentation](https://learn.chatgpt.com/docs/hooks), checked September 25, documents `UserPromptSubmit` with a prompt and turn ID, alongside common session ID and working-directory fields. This is a promising precise ingress point for submitted intent. Verify firing, payload and identity on the installed desktop version before depending on it. Capture a bounded event through the bundled helper, return promptly, and never block or alter prompt submission. Do not emit captured text on hook stdout, where hook output can affect the agent. Do not parse private conversation databases or rely on unstable transcript-file formats. Completion-event coverage needs its own check.
 

@@ -1,7 +1,8 @@
 import CoreGraphics
 import Foundation
 
-/// Read from the existing store on a background executor. No second transcript database or inferred speaker identity.
+/// Speech from the suggestion window, read from the existing store on a background executor. No second transcript
+/// database or inferred speaker identity; a labeled speaker is named, an unlabeled one is not.
 public struct SuggestionContext: Sendable {
     public let rows: [Transcript]
     public let sources: [Source]
@@ -27,33 +28,12 @@ public struct SuggestionContext: Sendable {
         input.association = association
         return input
     }
-    public func attribution(selected: [Source]) -> String {
-        var parts: [String] = []
-        if selected.contains(where: { $0.kind == "dictation" }) { parts.append("Recent dictation") }
-        if selected.contains(where: { $0.kind == "meeting-transcript" }) {
-            parts.append(sessionTitle.map { "Meeting ‘\($0)’" } ?? "Latest session")
-        }
-        return parts.joined(separator: " + ")
-    }
-}
-
-extension SuggestionContext {
-    /// Stored rows a request may use. Recent dictation backs only a blank Codex composer, and the latest meeting
-    /// joins only when the user adds it on the card or makes it the default. Recency alone adds neither.
-    public func requestSources(dictation: Bool, meeting: Bool) -> [Source] {
-        sources.filter { ($0.kind == "dictation" && dictation) || ($0.kind == "meeting-transcript" && meeting) }
-    }
-
-    /// How the card offers the latest meeting, or nil when none was recorded in the window.
-    public var meetingName: String? {
-        guard sources.contains(where: { $0.kind == "meeting-transcript" }) else { return nil }
-        return sessionTitle.map { "meeting ‘\($0)’" } ?? "the latest meeting"
-    }
 }
 
 extension SelectionLimits {
-    /// A meeting the user adds brings many short phrases. Still well inside the on-device context window.
-    public static let withMeeting = SelectionLimits(maximumSources: 12, maximumSourceBytes: 5000)
+    /// Ten minutes of speech and agent messages come as many short pieces. Still inside the on-device context window;
+    /// the selector keeps the newest when the bound forces a choice.
+    public static let window = SelectionLimits(maximumSources: 12, maximumSourceBytes: 6000)
 }
 
 /// One run of visible text read through Accessibility, in Accessibility screen coordinates (origin top-left, y down).
@@ -138,9 +118,10 @@ public enum SuggestionAttribution {
         var parts: [String] = []
         if case .draft(let seed) = plan { parts.append(seed.isSelection ? "Your selection" : "Your notes") }
         if selected.contains(where: { $0.kind == ScreenContext.kind }) { parts.append("text on screen") }
+        if selected.contains(where: { $0.kind == AgentContext.kind }) { parts.append("your agent conversation") }
         if selected.contains(where: { $0.kind == "dictation" }) { parts.append("recent dictation") }
         if selected.contains(where: { $0.kind == "meeting-transcript" }) {
-            parts.append(sessionTitle.map { "meeting ‘\($0)’" } ?? "the latest meeting")
+            parts.append(sessionTitle.map { "meeting ‘\($0)’" } ?? "recent speech")
         }
         guard let first = parts.first else { return "" }
         parts[0] = first.prefix(1).uppercased() + String(first.dropFirst())

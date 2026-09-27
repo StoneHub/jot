@@ -40,6 +40,9 @@ struct JotCLI {
     jot read <transcript-id>
     jot export <session-id> [--json]    Whole session as Markdown, or folded rows as JSON
     jot label <session-id> <speaker-id> <name>
+    jot context add --role user|assistant --source <app> [--conversation ID] <text | ->
+                                       Hand a suggestion one agent message; - reads stdin. Held in memory for the context window
+    jot context clear                  Forget the agent messages Jot is holding
     jot people                         Voices Jot remembers
     jot forget <person-id>             Forget one remembered voice; session names stay
     jot diagnostics                    Bounded performance report; no captured content
@@ -128,6 +131,21 @@ struct JotCLI {
             if args.count == 4, args[1] == "set" { return ("settings.set", ["key": args[2], "value": args[3]]) }
             if args.count == 3, args[1] == "reset" { return ("settings.reset", ["key": args[2]]) }
             throw CLIError.usage("Use: jot settings, jot settings set <key> <value>, or jot settings reset <key>")
+        case "context":
+            let use = "Use: jot context add --role user|assistant --source <app> [--conversation ID] <text | -> | jot context clear"
+            if args.count == 2, args[1] == "clear" { return ("context.clear", [:]) }
+            guard args.count >= 2, args[1] == "add" else { throw CLIError.usage(use) }
+            var rest = Array(args.dropFirst(2)); var params: [String: Any] = [:]
+            for option in ["--role", "--source", "--conversation"] {
+                guard let index = rest.firstIndex(of: option) else { continue }
+                guard index + 1 < rest.count, !rest[index + 1].hasPrefix("--"), !rest[index + 1].isEmpty else { throw CLIError.usage("\(option) needs a value") }
+                params[String(option.dropFirst(2))] = rest[index + 1]; rest.removeSubrange(index...(index + 1))
+            }
+            guard params["role"] != nil, params["source"] != nil, !rest.isEmpty, !rest.contains(where: { $0.hasPrefix("--") }) else { throw CLIError.usage(use) }
+            if rest == ["-"] {
+                params["text"] = String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self)
+            } else { params["text"] = rest.joined(separator: " ") }
+            return ("context.add", params)
         case "people":
             guard args.count == 1 else { throw CLIError.usage("Use: jot people") }
             return ("people.list", [:])

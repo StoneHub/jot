@@ -51,6 +51,10 @@ No model inference sends microphone content to a remote provider. Model preparat
 
 The SwiftUI app uses a single `Window` scene, disables automatic tabbing, and switches activation policy between regular (Dock visible) and accessory (window closed). The menu-bar popover and window share the same service controls. Published model metadata is separate from installed-cache provenance.
 
+## Suggestions
+
+`SuggestionCoordinator` owns one explicitly requested suggestion at a time: double-tap Fn (or the optional shortcut) captures the focused field through `DictationInput`, reads it, and builds one prompt for Apple's on-device model through `ModelCallGate`. The prompt's sources come from one window, `suggestionWindowMinutes` (ten by default): the text visible above the field in its window, read through Accessibility when that setting is on; every transcript row spoken in the window, from `TranscriptStore.suggestionContext`, with its speaker label; and the messages agents handed Jot through `context.add`, held by `AgentContext`. `AgentContext` is memory only: one message is at most 8 KiB, the whole set at most 64 KiB with the oldest dropped first, and a message older than the window is dropped the next time the window is read. `SourceSelector` keeps at most twelve sources and 6,000 bytes, newest first when the bound forces a choice, and whole sources only. The card shows the result; Tab inserts it at the cursor or replaces the notes or selection it was drafted from, after re-reading the field and the rows it used. Nothing about a suggestion is written to disk or sent over the socket except counts in `speech.status`.
+
 ## Personal vocabulary
 
 `PersonalVocabulary` in JotCore validates entries and performs one pass over the original recognized string. Matches are case-insensitive literal whole phrases, with flexible whitespace and Unicode letter/mark/number boundaries. Overlaps resolve leftmost first, longest at the same start; inserted replacements are never matched again. Duplicate matching phrases are rejected, including disabled entries. Empty “Heard as” uses the preferred spelling as its matching phrase.
