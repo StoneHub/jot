@@ -84,6 +84,14 @@ public struct RecoverySelection: Equatable, Sendable {
 /// Pure decision seam used by both the service and tests. A retained held attempt
 /// always wins over the time-window fallback, including one interrupted by force quit.
 public enum DictationRecovery {
+    /// Seconds of recent speech the recovery gesture can insert: the Recovery window menu's items and the only values `jot settings` accepts.
+    public static let lookbackChoices = [30, 60, 120, 300, 600]
+    public static let defaultLookbackSeconds = 120
+
+    public static func lookbackLabel(_ seconds: Int) -> String {
+        seconds < 60 ? "\(seconds) seconds" : seconds == 60 ? "1 minute" : "\(seconds / 60) minutes"
+    }
+
     public static func select(attempt: DictationAttempt?, recentSpeech: String) -> RecoverySelection? {
         if let attempt, attempt.state.isRecoverable {
             let text = attempt.text.trimmingCharacters(in: .whitespacesAndNewlines)

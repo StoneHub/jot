@@ -42,7 +42,7 @@ public final class JotSettings: @unchecked Sendable {
         .init(key: JotDefaultsKey.cleanUpDictation, kind: .bool(false), summary: "Clean up dictation with Apple Intelligence before inserting it"),
         .init(key: JotDefaultsKey.highlightTargetField, kind: .bool(true), summary: "Outline the field dictation goes into"),
         .init(key: JotDefaultsKey.muteSpeakersDuringDictation, kind: .bool(true), summary: "Mute the built-in speakers while the dictation key is held"),
-        .init(key: JotDefaultsKey.recoveryLookbackSeconds, kind: .int(120, range: 15...600, choices: nil), summary: "Seconds of recent speech the recovery gesture can insert"),
+        .init(key: JotDefaultsKey.recoveryLookbackSeconds, kind: .int(DictationRecovery.defaultLookbackSeconds, range: 15...600, choices: DictationRecovery.lookbackChoices), summary: "Seconds of recent speech the recovery gesture can insert"),
         .init(key: JotDefaultsKey.suggestionsEnabled, kind: .bool(true), summary: "Double-tap Fn for a suggestion"),
         .init(key: JotDefaultsKey.suggestionScreenContext, kind: .bool(true), summary: "Suggestions read the conversation shown above the field"),
         .init(key: JotDefaultsKey.suggestionMeetingContext, kind: .bool(false), summary: "Suggestions include the latest meeting"),

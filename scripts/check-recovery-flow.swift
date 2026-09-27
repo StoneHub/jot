@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import JotCore
 import FluidAudio
@@ -174,6 +175,7 @@ struct RecoveryFlowChecks {
         try await checkIdleRedraws(directory: directory)
         try await checkSpeakerPassKeepsCleanup(directory: directory)
         try await checkRelabelsTakeTurns(directory: directory)
+        try await checkControlsRedrawWhenWorkEnds(directory: directory)
         try await checkSpeakerPassKeepsMainFree(directory: directory)
         try await CaptureFlowChecks.run()
         if CommandLine.arguments.contains("--cleanup-model") { try await checkPhraseCleanupModel() }
@@ -808,6 +810,96 @@ struct RecoveryFlowChecks {
         print("PASS: six paused ticks refresh the resource meters without invalidating the whole window.")
     }
 
+    /// What a screen that observes only the service shows for Install Update and the shortcut button. SwiftUI reads a screen's values on a later turn of the main actor than objectWillChange, so a change that no publish follows stays on screen.
+    @MainActor final class ServiceScreen {
+        private(set) var update: Bool
+        private(set) var shortcut: Bool
+        private let service: SpeechService
+        private var redraws: AnyCancellable?
+        init(_ service: SpeechService) {
+            self.service = service
+            update = service.canInstallUpdate; shortcut = service.canChangeShortcut
+            redraws = service.objectWillChange.sink { [weak self] _ in
+                guard let self else { return }
+                Task { @MainActor in self.draw() }
+            }
+        }
+        private func draw() { update = service.canInstallUpdate; shortcut = service.canChangeShortcut }
+        /// Lets the redraws the publishes so far scheduled run.
+        func settle() async throws { try await Task.sleep(for: .milliseconds(20)) }
+    }
+
+    /// Work that ends with no other change on the service still redraws the controls that wait for it: phrase cleanup that outlasts Pause, a released dictation whose insertion is discarded, and a file diagnostic.
+    @MainActor static func checkControlsRedrawWhenWorkEnds(directory: URL) async throws {
+        let probe = Probe()
+        probe.deliveryFails = false
+        let cleanupGate = CleanupGate(), deliveryGate = CleanupGate()
+        let store = try TranscriptStore(directory: directory.appendingPathComponent("controls"))
+        let service = SpeechService(dependencies: .init(
+            infer: { _, job, _ in probe.infer(job) },
+            deliver: { _, text in
+                try await deliveryGate.pass()
+                return try probe.deliver(text)
+            },
+            now: { probe.now },
+            cleanup: { cleaner, texts, timeout in
+                await cleaner.cleanWithOutcome(texts, timeout: timeout, generator: { texts in
+                    try await cleanupGate.pass()
+                    return texts.map { $0.capitalized }
+                })
+            }))
+        service.highlightTargetField = false; service.muteSpeakersDuringDictation = false
+        service.keepAudioForSpeakerPass = false; service.cleanUpDictation = false
+        service.cleanUpTranscriptions = false
+        service.beginRecoveryVerification(store: store, startedAt: probe.now)
+        defer { service.shutdown() }
+        let screen = ServiceScreen(service)
+
+        // A released hold whose Dictations card is deleted while its text is being inserted.
+        service.dictation.begin()
+        probe.now += 3
+        service.ingestRecoveryVerification(samples: Array(repeating: Float(1), count: 48_000), at: probe.now)
+        await service.waitForRecoveryVerification()
+        deliveryGate.close()
+        service.dictation.end()
+        while !deliveryGate.holding { try await Task.sleep(for: .milliseconds(1)) }
+        try await screen.settle()
+        precondition(!screen.shortcut, "The shortcut button stayed enabled while a released dictation was pending")
+        // Deleting the card discards the attempt's rows first, as here.
+        service.dictation.discard(ids: [service.dictation.currentAttempt!.id])
+        deliveryGate.open()
+        await service.waitForRecoveryVerification()
+        try await screen.settle()
+        precondition(!service.dictation.isPending && screen.shortcut && screen.update, "The shortcut and Update buttons stayed disabled after a dictation discarded during insertion")
+        print("PASS: a released dictation discarded during insertion enables the shortcut and Update buttons again.")
+
+        // What speech.transcribe_file sets and clears around a file diagnostic.
+        service.diagnosticActive = true
+        try await screen.settle()
+        precondition(!screen.update, "The Update button stayed enabled during a file diagnostic")
+        service.diagnosticActive = false
+        try await screen.settle()
+        precondition(screen.update, "The Update button stayed disabled after a file diagnostic")
+        print("PASS: a file diagnostic disables the Update button and enables it again when it ends.")
+
+        // Phrase cleanup still running when Pause finishes.
+        service.cleanUpTranscriptions = true
+        cleanupGate.close()
+        probe.now += 3
+        service.ingestRecoveryVerification(samples: Array(repeating: Float(2), count: 48_000), at: probe.now)
+        service.flushRecoveryVerification()
+        while !cleanupGate.holding { try await Task.sleep(for: .milliseconds(1)) }
+        service.pause()
+        while service.lifecycle.phase != .paused || service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
+        try await screen.settle()
+        precondition(service.cleanup.isRunning && !screen.update, "The Update button was enabled while cleanup was still running after Pause")
+        cleanupGate.open()
+        while service.cleanup.isRunning { try await Task.sleep(for: .milliseconds(5)) }
+        try await screen.settle()
+        precondition(service.canInstallUpdate && screen.update, "The Update button stayed disabled after cleanup that outlasted Pause finished")
+        print("PASS: cleanup that outlasts Pause enables the Update button when it finishes.")
+    }
+
     /// Holds phrase cleanup until opened, and says when a phrase is waiting at it.
     final class CleanupGate: @unchecked Sendable {
         private let lock = NSLock()
@@ -987,6 +1079,7 @@ struct RecoveryFlowChecks {
 
         try seed("turns")
         precondition(service.canInstallUpdate, "Install Update was held off before any relabel")
+        let screen = ServiceScreen(service)
         let gate = DispatchSemaphore(value: 0)
         let log = RelabelLog()
         let held = try await hold("turns", gate: gate, log: log)
@@ -1000,6 +1093,8 @@ struct RecoveryFlowChecks {
         try await Task.sleep(for: .milliseconds(300))
         precondition(!log.entries.contains("next"), "A second relabel of the session ran while the first held its turn: \(log.entries)")
         precondition(!service.canInstallUpdate, "Install Update was offered while a relabel was writing")
+        try await screen.settle()
+        precondition(!screen.update, "The Update button stayed enabled while a relabel was writing")
         gate.signal()
         _ = try await held.value
         _ = try await next.value
@@ -1007,7 +1102,9 @@ struct RecoveryFlowChecks {
         let labels = try store.session(id: "turns").map(\.speakerID)
         precondition(labels == ["speaker-2"], "The later relabel's speakers did not stay: \(labels)")
         precondition(service.canInstallUpdate, "Install Update stayed held off after the relabels finished")
-        print("PASS: a second relabel of a session waits until the first has finished, the later one's speakers stay, and Install Update waits for both.")
+        try await screen.settle()
+        precondition(screen.update, "The Update button stayed disabled after the relabels finished")
+        print("PASS: a second relabel of a session waits until the first has finished, the later one's speakers stay, and Install Update waits for both, on screen too.")
 
         // Regroup waits behind the held relabel; the session is deleted before its turn comes.
         try seed("regroup-deleted")

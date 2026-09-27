@@ -6,7 +6,8 @@ import JotCore
 @MainActor
 final class DictationCoordinator {
     private(set) var isActive = false
-    private(set) var isPending = false
+    /// The shortcut button, the microphone picker and Update read this through the service, and a release can end with no other service change, so a change redraws them. It changes a few times per hold.
+    private(set) var isPending = false { willSet { service.objectWillChange.send() } }
     private var ticket = UUID()
     private var started = Date()
     private(set) var currentAttempt: DictationAttempt?

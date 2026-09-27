@@ -42,6 +42,12 @@ final class CaptureRecoveryTests: XCTestCase {
         XCTAssertNil(DictationRecovery.select(attempt: nil, recentSpeech: "  \n"))
     }
 
+    func testLookbackLabelsReadAsMenuItems() {
+        XCTAssertEqual(DictationRecovery.lookbackChoices.map(DictationRecovery.lookbackLabel),
+            ["30 seconds", "1 minute", "2 minutes", "5 minutes", "10 minutes"])
+        XCTAssertTrue(DictationRecovery.lookbackChoices.contains(DictationRecovery.defaultLookbackSeconds))
+    }
+
     func testAttemptTextAndStateSurviveReopeningAndDeletionClearsThem() throws {
         let attempt = DictationAttempt(id: "attempt", sessionID: "session", startedAt: Date(timeIntervalSince1970: 100),
             endedAt: Date(timeIntervalSince1970: 105), text: "recover me", state: .deliveryUnverified,

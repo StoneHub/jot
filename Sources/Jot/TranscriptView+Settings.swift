@@ -13,7 +13,8 @@ private struct AppUpdateRow: View {
                 Spacer()
                 if case .available(let release) = updater.state {
                     Link("Release notes", destination: release.pageURL)
-                    Button("Update") { updater.install() }
+                    // Checked again on the click, in case work began since the row last drew.
+                    Button("Update") { if service.canInstallUpdate { updater.install() } }
                         .disabled(!service.canInstallUpdate).modifier(GlassButton())
                         .help(service.canInstallUpdate ? "Downloads the release and relaunches Jot." : "Pause capture before updating")
                 } else {
@@ -203,11 +204,7 @@ extension TranscriptView {
             RowDivider()
             SettingRow(title: "Recovery window", info: recoveryInfo) {
                 Picker("Recovery window", selection: $service.recoveryLookbackSeconds) {
-                    Text("30 seconds").tag(30)
-                    Text("1 minute").tag(60)
-                    Text("2 minutes").tag(120)
-                    Text("5 minutes").tag(300)
-                    Text("10 minutes").tag(600)
+                    ForEach(DictationRecovery.lookbackChoices, id: \.self) { Text(DictationRecovery.lookbackLabel($0)).tag($0) }
                 }.labelsHidden().pickerStyle(.menu).fixedSize()
                     .accessibilityIdentifier("recovery-lookback")
             }

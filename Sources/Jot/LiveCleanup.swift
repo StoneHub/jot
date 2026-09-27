@@ -55,7 +55,11 @@ final class LiveCleanup {
         let id = UUID()
         cleanupTasks[id] = Task { [weak self] in
             guard let self else { return }
-            defer { cleanupTasks[id] = nil }
+            defer {
+                cleanupTasks[id] = nil
+                // Install Update waits for this worker, which can outlast Pause, and nothing else publishes when it ends. Only an ending that allows the update redraws, so listening never does; a cancelled worker is quitting.
+                if !Task.isCancelled, service.canInstallUpdate { service.objectWillChange.send() }
+            }
             while !Task.isCancelled, !cleanupQueue.isEmpty {
                 let phrase = cleanupQueue.removeFirst()
                 runningSession = phrase.sources.first?.sessionID
