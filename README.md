@@ -108,6 +108,8 @@ jot title <session-id> <title>
 jot people                       # Voices Jot remembers
 jot forget <person-id>           # Forget one voice; session names stay
 jot diagnostics            # Local performance report, no captured content
+jot settings                     # Every setting, its default, and whether you changed it
+jot settings set paragraphPause 2   # Applies at once; jot settings reset <key> follows the default again
 jot --help
 ```
 
