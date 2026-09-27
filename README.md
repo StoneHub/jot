@@ -71,20 +71,7 @@ Double-tap Fn in a text field and Jot drafts something for it on this Mac, with 
 
 Every draft draws on the same **context window**: the last ten minutes of what Jot heard, with the speaker's name when Jot knows it, and the last ten minutes of messages agents handed it. Set the length in **General → Suggestions → Context window**, from one minute to an hour. Older speech stays in Sessions; older agent messages are forgotten, since they are held in memory only and never saved. Typing or Escape dismisses the card. Nothing is sent, and a request never starts capture. Suggestions work while listening is paused.
 
-**Give it your agent conversations.** Any agent can hand Jot a message with `jot context add` or the `context_add` MCP tool, in memory for the context window only. For Claude Code, two hooks in `~/.claude/settings.json` send what you type and what the agent answers:
-
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [{"hooks": [{"type": "command",
-      "command": "jq -r .prompt | ~/.local/bin/jot context add --role user --source claude-code -"}]}],
-    "Stop": [{"hooks": [{"type": "command",
-      "command": "tail -n 1 \"$(jq -r .transcript_path)\" | jq -r '.message.content[]? | select(.type==\"text\") | .text' | ~/.local/bin/jot context add --role assistant --source claude-code -"}]}]
-  }
-}
-```
-
-Adjust the Stop command to your transcript format; it takes the last line's text blocks. `jot context clear` forgets everything held. Suggestions can get facts or speaker roles wrong: review each draft before you send it.
+**Give it your agent conversations.** `jot context add` and the `context_add` MCP tool hold messages in memory for the context window. For a message to enter a suggestion, its source must be `codex` or `claude-code`, it must carry a conversation ID, and an assistant reply from that conversation must substantially match text visible above the focused field. Unscoped messages remain held but are left out of suggestions. The [Claude Code integration](integrations/claude-code/jot-context/README.md) and [Codex integration](integrations/codex/jot-context/README.md) send submitted prompts and finished replies through quiet local hooks with that identity. The hooks are opt-in and are not installed by building Jot. `jot context clear` forgets everything held. Suggestions can get facts or speaker roles wrong: review each draft before you send it.
 
 ## Personal vocabulary
 
@@ -123,7 +110,7 @@ jot pause
 jot resume
 jot start                 # Resume continuous listening
 jot search 'blue notebook'
-jot context add --role user --source codex 'make the tests pass'   # or - to read stdin
+jot context add --role user --source codex --conversation <session-id> 'make the tests pass'
 jot context clear
 jot recent --limit 20
 jot since --cursor 0              # Rows added or changed since a cursor; pass back the returned cursor
