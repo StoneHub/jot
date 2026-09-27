@@ -27,7 +27,7 @@ Choose the target repository in the hosted runner and use one prompt:
 
 **Jot**
 
-> Implement issue #81. Read CLAUDE.md and docs/cloud-tasks/suggestion-fixtures.md. Run the preflight and portable baseline once, execute only that packet, and return one scoped PR with actual validation evidence and remaining gates.
+> Implement issue #81. Read CLAUDE.md and the issue. Run the preflight and portable baseline once, execute only that packet, and return one scoped PR with actual validation evidence and remaining gates.
 
 **VS Code**
 
