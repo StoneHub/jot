@@ -66,7 +66,7 @@ final class DictationCoordinator {
         do { try service.library.store?.saveDictationAttempt(attempt) }
         catch { service.recoveryNotice = "Dictation ended, but its recovery record could not be updated." }
         service.notice = "Finishing saved dictation…"
-        service.kickWorker()
+        service.transcriber.kick()
         recoveryTask?.cancel()
         recoveryTask = Task { [weak self] in
             await self?.finishAttempt(id: attempt.id, throughOffset: self?.attemptEndOffset ?? 0, releasedAt: released)
@@ -161,7 +161,7 @@ final class DictationCoordinator {
         defer { service.recordPerformance(timing.job) }
         guard let started = currentAttempt, started.id == id else { recoveryTask = nil; return }
         timing.holdSeconds = max(0, (started.endedAt ?? started.startedAt).timeIntervalSince(started.startedAt))
-        await service.waitUntilProcessed(sessionID: started.sessionID, through: throughOffset)
+        await service.transcriber.waitUntilProcessed(sessionID: started.sessionID, through: throughOffset)
         timing.recognitionSeconds = timing.sinceRelease
         guard !Task.isCancelled, !discardedAttemptIDs.contains(id), !service.library.sessionIsDeleted(started.sessionID),
               var attempt = currentAttempt, attempt.id == id else { recoveryTask = nil; return }
@@ -316,17 +316,17 @@ final class DictationCoordinator {
             service.recoveryNotice = "Recovery is already finishing captured speech."
             return
         }
-        let failuresBeforeRecovery = service.recognitionFailures
+        let failuresBeforeRecovery = service.transcriber.recognitionFailures
         service.closeChunk()
         let triggerTime = service.timeline.sessionStarted.addingTimeInterval(service.timeline.ambientOffset)
         let triggerSession = service.timeline.sessionID
         let triggerOffset = service.timeline.ambientOffset
         isPending = true
         service.recoveryNotice = "Finishing speech captured before the recovery gesture…"
-        service.kickWorker()
+        service.transcriber.kick()
         recoveryDeliveryTask = Task { [weak self] in
             guard let self else { return }
-            await service.waitUntilProcessed(sessionID: triggerSession, through: triggerOffset)
+            await service.transcriber.waitUntilProcessed(sessionID: triggerSession, through: triggerOffset)
             guard !Task.isCancelled else { recoveryDeliveryTask = nil; isPending = false; return }
             do {
                 let failed = try service.library.store?.latestRecoverableDictationAttempt()
@@ -343,8 +343,8 @@ final class DictationCoordinator {
                     let start = triggerTime.addingTimeInterval(-Double(service.recoveryLookbackSeconds))
                     attempt = DictationAttempt(sessionID: triggerSession, startedAt: start,
                         endedAt: triggerTime, text: DictationCleanup.applying(to: service.vocabulary.applyingToDictation(selection.text)),
-                        state: service.recognitionFailures == failuresBeforeRecovery ? .ready : .deliveryFailed,
-                        hasGap: service.recognitionFailures != failuresBeforeRecovery, updatedAt: service.dependencies.now())
+                        state: service.transcriber.recognitionFailures == failuresBeforeRecovery ? .ready : .deliveryFailed,
+                        hasGap: service.transcriber.recognitionFailures != failuresBeforeRecovery, updatedAt: service.dependencies.now())
                     try service.library.store?.saveDictationAttempt(attempt)
                 }
                 currentAttempt = attempt

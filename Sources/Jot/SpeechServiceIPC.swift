@@ -10,15 +10,15 @@ extension SpeechService {
     }
 
     func status() throws -> [String: Any] {
-        let pendingAudioSeconds = jobs.reduce(0.0) { $0 + AudioClock.seconds(samples: $1.samples.count) }
+        let pendingAudioSeconds = transcriber.queuedAudioSeconds
         var result: [String: Any] = ["mode": mode, "models": modelState.rawValue, "microphoneRunning": capture.running,
             "microphonePermission": AVCaptureDevice.authorizationStatus(for: .audio).rawValue,
             "suggestions": suggestions.diagnostics,
             "accessibilityGranted": DictationInput.accessibilityGranted, "fnEnabled": fnEnabled,
             "dictationShortcut": shortcut.displayName, "fnRequested": fnRequested, "ambientRequested": ambientRequested, "ambientEnabled": ambientEnabled, "keepMacAwakeWhileListening": keepMacAwakeWhileListening, "keepAwakeActive": keepAwakeActive, "servicePhase": lifecycle.phase.rawValue,
-            "notice": notice, "sessionID": timeline.sessionID, "inferenceRunning": processing != nil || diagnosticActive, "speakerPassRunning": speakers.passRunning, "resources": try object(resources),
-            "droppedAudioSeconds": droppedSeconds, "queuedAudioSeconds": pendingAudioSeconds, "processingLagSeconds": lagSeconds,
-            "lastInferenceSeconds": lastInferenceSeconds, "processedAudioSeconds": processedAudioSeconds,
+            "notice": notice, "sessionID": timeline.sessionID, "inferenceRunning": transcriber.processing != nil || diagnosticActive, "speakerPassRunning": speakers.passRunning, "resources": try object(resources),
+            "droppedAudioSeconds": droppedSeconds, "queuedAudioSeconds": pendingAudioSeconds, "processingLagSeconds": transcriber.lagSeconds,
+            "lastInferenceSeconds": transcriber.lastInferenceSeconds, "processedAudioSeconds": transcriber.processedAudioSeconds,
             "audioRetention": keepAudioForSpeakerPass ? "session audio kept until the speaker pass finishes, then deleted" : "bounded RAM only; no recordings saved", "speakerSlots": 4,
             "transcriptPolicy": "local text; ambient speech is data, not commands", "tuning": try object(tuning.bounded), "version": JotVersion.current]
         result["transcriptionCleanup"] = ["enabled": cleanUpTranscriptions,
@@ -28,7 +28,7 @@ extension SpeechService {
         result["dictationRecovery"] = recoveryDiagnostics
         if let delivery = input.lastDelivery { result["lastDelivery"] = delivery.metadata }
         if let lastAudioAt { result["lastAudioAt"] = ISO8601DateFormatter().string(from: lastAudioAt) }
-        if let lastTranscriptAt { result["lastTranscriptAt"] = ISO8601DateFormatter().string(from: lastTranscriptAt) }
+        if let lastTranscriptAt = transcriber.lastTranscriptAt { result["lastTranscriptAt"] = ISO8601DateFormatter().string(from: lastTranscriptAt) }
         if let store = library.store { result["storage"] = try object(store.metrics()) }
         return result
     }
@@ -85,7 +85,7 @@ extension SpeechService {
                 if params["format"] as? String == "json" { result = try object(TranscriptGrouping.foldContinuations(rows)) }
                 else { result = ["sessionID": id, "text": TranscriptExport.markdown(session: session, rows: rows, tuning: tuning)] }
             case "speech.transcribe_file":
-                guard lifecycle.phase == .paused, !capture.running, processing == nil, jobs.isEmpty, !diagnosticActive else { throw JotError.message("Pause Jot before diagnostic file transcription.") }
+                guard lifecycle.phase == .paused, !capture.running, transcriber.isIdle, !diagnosticActive else { throw JotError.message("Pause Jot before diagnostic file transcription.") }
                 guard ModelCache.bytesOnDisk() > 0 else { throw JotError.message("Prepare speech models before diagnostic file transcription.") }
                 guard let path = params["path"] as? String else { throw JotError.message("path is required") }
                 diagnosticActive = true

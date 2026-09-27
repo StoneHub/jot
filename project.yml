@@ -72,6 +72,7 @@ targets:
       - Sources/Jot/SpeechPipeline.swift
       - Sources/Jot/SpeechService.swift
       - Sources/Jot/SpeechServiceIPC.swift
+      - Sources/Jot/Transcriber.swift
     settings:
       base:
         PRODUCT_NAME: JotRecoveryChecks

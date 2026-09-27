@@ -53,6 +53,7 @@ final class SpeechService: ObservableObject {
         notice: { [weak self] in self?.notice = $0 })
     lazy var timeline = ListeningTimeline(service: self)
     lazy var cleanup = LiveCleanup(service: self)
+    lazy var transcriber = Transcriber(service: self)
 
     init(dependencies: SpeechServiceDependencies = .live) {
         self.dependencies = dependencies
@@ -106,7 +107,7 @@ final class SpeechService: ObservableObject {
     var canChangeShortcut: Bool { !dictation.isActive && !dictation.isPending }
     var canChangeInput: Bool { !capture.running && !dictation.isPending && !diagnosticActive }
     /// Replacing the app must not interrupt capture, a pending dictation, inference, model setup, cleanup, or a session's relabel.
-    var canInstallUpdate: Bool { canChangeInput && processing == nil && !preparing && !cleanup.isRunning && !library.isRelabeling }
+    var canInstallUpdate: Bool { canChangeInput && transcriber.processing == nil && !preparing && !cleanup.isRunning && !library.isRelabeling }
     @Published var highlightTargetField = UserDefaults.standard.object(forKey: JotDefaultsKey.highlightTargetField) as? Bool ?? true {
         didSet {
             UserDefaults.standard.set(highlightTargetField, forKey: JotDefaultsKey.highlightTargetField)
@@ -218,7 +219,6 @@ final class SpeechService: ObservableObject {
     var diagnostics = PerformanceDiagnostics(build: .release)
     #endif
     private let diagnosticsBegan = ProcessInfo.processInfo.systemUptime
-    private var inFlightAudioSeconds = 0.0
 
     /// Records CPU and memory for `jot diagnostics`. The window's readout comes from the tick, with a sampler of its own.
     func samplePerformance() {
@@ -227,10 +227,10 @@ final class SpeechService: ObservableObject {
         let elapsed = ProcessInfo.processInfo.systemUptime - diagnosticsBegan
         diagnostics.observe(.init(elapsedSeconds: elapsed, footprintMiB: sample.physicalFootprintMiB,
             residentMiB: sample.residentMiB, cpuPercent: sample.processCPUPercent,
-            droppedAudioSeconds: droppedSeconds, bufferedAudioSeconds: AudioClock.seconds(samples: capture.bufferedSampleCount + timeline.bufferedSampleCount) + inFlightAudioSeconds,
-            queuedAudioSeconds: jobs.reduce(0) { $0 + AudioClock.seconds(samples: $1.samples.count) }, loadedHistoryRows: library.history.count,
+            droppedAudioSeconds: droppedSeconds, bufferedAudioSeconds: AudioClock.seconds(samples: capture.bufferedSampleCount + timeline.bufferedSampleCount) + transcriber.inFlightAudioSeconds,
+            queuedAudioSeconds: transcriber.queuedAudioSeconds, loadedHistoryRows: library.history.count,
             modelsReady: modelState == .ready, ambientEnabled: ambientEnabled, dictationActive: dictation.isActive,
-            inferenceRunning: processing != nil))
+            inferenceRunning: transcriber.processing != nil))
     }
 
     func markPerformance(_ kind: PerformanceEventKind) {
@@ -247,14 +247,8 @@ final class SpeechService: ObservableObject {
 
     @Published var fnEnabled = false
     @Published var droppedSeconds = 0.0
-    /// No screen shows these, so they are not published: each published assignment tells the window to redraw, and these change on every audio drain or recognition.
-    var processedAudioSeconds = 0.0
+    /// Not published: it changes on every audio drain, and each published assignment tells the window to redraw.
     var lastAudioAt: Date?
-    var lastTranscriptAt: Date?
-    /// The Activity screen shows these and redraws with the CPU readout once a second, so they are not published either: they change after every recognition, including the silent chunk recognized every 0.8 seconds of quiet. Queued audio counts the chunk the same tick has just cut, before the worker takes it, so publishing it told the whole window to redraw whenever the status second landed on a chunk close, about every four seconds of quiet.
-    var lagSeconds = 0.0
-    var lastInferenceSeconds = 0.0
-    var queuedSeconds = 0.0
     private(set) var preparing = false
     let pipeline = SpeechPipeline()
     private let sampler = ResourceSampler()
@@ -269,12 +263,7 @@ final class SpeechService: ObservableObject {
     private var sleepResume = SleepResumePolicy()
     var diagnostic: Task<SpeechOutput, Error>?
     private var tickCount = 0
-    private var completedOffsets: [String: Double] = [:]
-    private(set) var recognitionFailures = 0
     private(set) var pauseRequested = false
-    var jobs: [AudioJob] = []
-    var processing: Task<Void, Never>?
-    private var processingJob: AudioJob?
     private var observers: [NSObjectProtocol] = []
     private var lastStatsTime = Date.distantPast
     lazy var input: DictationInput = {
@@ -578,7 +567,7 @@ final class SpeechService: ObservableObject {
     }
 
     /// The session's last audio block is recognized and its cleanup has landed, so its rows will not change under a relabel.
-    func sessionIsSettled(_ id: String) -> Bool { jobs.allSatisfy { $0.sessionID != id } && processing == nil && !cleanup.isCleaning(session: id) }
+    func sessionIsSettled(_ id: String) -> Bool { transcriber.isDone(session: id) && !cleanup.isCleaning(session: id) }
 
     /// Models loaded, microphone on, no pause under way.
     var canHoldDictation: Bool { lifecycle.phase == .ready && modelState == .ready && ambientEnabled && !pauseRequested }
@@ -643,10 +632,10 @@ final class SpeechService: ObservableObject {
         if ambientEnabled {
             timeline.beginSession(at: dependencies.now())
             recordEvent(.started, "Listening continued in a fresh session after meeting export.")
-            kickWorker()
+            transcriber.kick()
         }
         if lifecycle.acceptsWork(generation) {
-            await waitUntilProcessed(sessionID: id, through: throughOffset)
+            await transcriber.waitUntilProcessed(sessionID: id, through: throughOffset)
             if !lifecycle.acceptsWork(generation) {
                 notice = "Meeting export interrupted. Saved transcripts remain in Sessions; no file was exported."
                 return nil
@@ -704,19 +693,19 @@ final class SpeechService: ObservableObject {
         if dictation.isActive { dictation.end() }
         let loadingTask = preparation, fileTask = diagnostic
         loadingTask?.cancel(); fileTask?.cancel()
-        notice = jobs.isEmpty && processing == nil ? "Releasing models…" : "Saving captured speech before Pause…"
+        notice = transcriber.isIdle ? "Releasing models…" : "Saving captured speech before Pause…"
         pausing = Task {
             await loadingTask?.value
             _ = try? await fileTask?.value
-            while processing != nil || !jobs.isEmpty {
-                kickWorker()
+            while !transcriber.isIdle {
+                transcriber.kick()
                 try? await Task.sleep(for: .milliseconds(20))
             }
             await dictation.waitForRecovery()
             guard let token = lifecycle.beginPause() else {
                 pauseRequested = false; pausing = nil; return
             }
-            ambientEnabled = false; queuedSeconds = 0
+            ambientEnabled = false; transcriber.queuedSeconds = 0
             // Optional text-only cleanup may finish after capture/models stop.
             // Original recognition is already durable; no microphone is retained.
             modelState = .unloading; updateMode(); notice = "Releasing models…"; scheduleTimer()
@@ -740,16 +729,16 @@ final class SpeechService: ObservableObject {
             // A published assignment tells the window to redraw even when the value is the same, so only changes are assigned.
             let availability = TranscriptCleanup.availability
             if cleanupAvailability != availability { cleanupAvailability = availability }
-            queuedSeconds = jobs.reduce(0) { $0 + AudioClock.seconds(samples: $1.samples.count) }
+            transcriber.queuedSeconds = transcriber.queuedAudioSeconds
             if !pauseRequested, ambientEnabled || dictation.isActive, let lastAudioAt, dependencies.now().timeIntervalSince(lastAudioAt) > 4 {
                 recordEvent(.inputStalled, "No microphone samples for more than four seconds."); pause(automatic: true); notice = "Microphone stopped delivering audio. Resume to reconnect; a capture gap occurred."
             }
             if !pauseRequested, ambientEnabled, !dictation.isActive, !dictation.isPending,
                SessionSplit.shouldStart(silenceMinutes: newSessionAfterSilence,
                 silenceSeconds: dependencies.now().timeIntervalSince(timeline.lastAmbientRowAt ?? timeline.sessionStarted),
-                isMeeting: meetingTitle != nil, workPending: !jobs.isEmpty || processing != nil) { timeline.rotateSession() }
+                isMeeting: meetingTitle != nil, workPending: !transcriber.isIdle) { timeline.rotateSession() }
         }
-        kickWorker()
+        transcriber.kick()
     }
 
     func drainAudio() {
@@ -761,7 +750,7 @@ final class SpeechService: ObservableObject {
     /// microphone drains, with inference and delivery supplied through dependencies.
     func ingestRecoveryVerification(samples: [Float], rms: Float = 0.01, at date: Date = Date()) {
         timeline.ingestAudio(samples: samples, dropped: 0, lastAudio: date, rms: rms)
-        kickWorker()
+        transcriber.kick()
     }
 
     func beginRecoveryVerification(store: TranscriptStore, startedAt: Date = Date()) {
@@ -774,7 +763,7 @@ final class SpeechService: ObservableObject {
 
     func flushRecoveryVerification() {
         timeline.flushAmbient(final: true)
-        kickWorker()
+        transcriber.kick()
     }
 
     /// Runs one timer tick on the injected clock, so the harness reaches the quiet split and the stalled-microphone pause without starting the timer.
@@ -786,92 +775,9 @@ final class SpeechService: ObservableObject {
     }
 
     func waitForRecoveryVerification() async {
-        while processing != nil || !jobs.isEmpty || dictation.isBusy || cleanup.isRunning {
-            kickWorker()
+        while !transcriber.isIdle || dictation.isBusy || cleanup.isRunning {
+            transcriber.kick()
             try? await Task.sleep(for: .milliseconds(10))
-        }
-    }
-
-    func kickWorker() {
-        guard lifecycle.phase == .ready, processing == nil, !jobs.isEmpty else { return }
-        let job = jobs.removeFirst()
-        processingJob = job
-        let generation = lifecycle.generation
-        let began = ProcessInfo.processInfo.systemUptime
-        let waitSeconds = max(0, began - job.submittedUptime)
-        inFlightAudioSeconds = AudioClock.seconds(samples: job.samples.count)
-        processing = Task {
-            var outcome = PerformanceJob.Outcome.completed
-            var inferenceSeconds: Double?
-            do {
-                let output = try await dependencies.infer(pipeline, job, tuning)
-                try Task.checkCancellation()
-                guard lifecycle.acceptsWork(generation) else { throw CancellationError() }
-                inferenceSeconds = output.processingSeconds
-                outcome = output.text.isEmpty ? .noSpeech : .completed
-                lastInferenceSeconds = output.processingSeconds
-                processedAudioSeconds += AudioClock.seconds(samples: job.samples.count)
-                lagSeconds = max(0, dependencies.now().timeIntervalSince(job.startedAt) - job.offset - AudioClock.seconds(samples: job.samples.count))
-                // Persist recognition before awaiting optional cleanup. Capture keeps draining while we await.
-                let sources = output.transcripts
-                if !library.sessionIsDeleted(job.sessionID) {
-                    // Live must see recognition before the model's cleanup suspension. It adds each row once it is saved, without re-reading the session, so a row saved before a later one fails still shows.
-                    // Recent rows, Sessions and Dictations take in every saved row when the block ends, even when a later row or the words fail.
-                    var saved: [Transcript] = []
-                    defer { library.didSave(saved) }
-                    for transcript in sources {
-                        try library.store?.append(transcript)
-                        saved.append(transcript)
-                        library.appendLive([transcript])
-                    }
-                    // Word evidence is kept in the session's clock so a saved session can be regrouped later.
-                    let words = sources.flatMap { transcript in
-                        (output.wordsByTranscript[transcript.id] ?? []).enumerated().map { position, word in
-                            StoredWord(transcriptID: transcript.id, position: position, word: word.text, startSeconds: job.offset + word.start, endSeconds: job.offset + word.end, probabilities: word.probabilities)
-                        }
-                    }
-                    try library.store?.appendWords(words)
-                    if !sources.isEmpty {
-                        lastTranscriptAt = dependencies.now()
-                        if job.sessionID == timeline.sessionID { timeline.lastAmbientRowAt = dependencies.now() }
-                    }
-                }
-                cleanup.scheduleCleanup(sources: sources, final: job.isFinal)
-                dictation.updateAttemptText(for: job)
-            } catch {
-                outcome = error is CancellationError ? .cancelled : .failed
-                recognitionFailures += 1
-                dictation.noteRecognitionFailure(for: job)
-                if !(error is CancellationError) { recordEvent(.processingError, error.localizedDescription, session: job.sessionID) }
-                if lifecycle.acceptsWork(generation) {
-                    notice = "Ambient: \(error.localizedDescription). Transcript insertion was not completed."
-                }
-            }
-            diagnostics.record(.init(elapsedSeconds: ProcessInfo.processInfo.systemUptime - diagnosticsBegan,
-                mode: .ambient, outcome: outcome,
-                audioSeconds: AudioClock.seconds(samples: job.samples.count), queueWaitSeconds: waitSeconds,
-                inferenceSeconds: inferenceSeconds, completionSeconds: max(0, ProcessInfo.processInfo.systemUptime - job.submittedUptime),
-                cleanupSeconds: nil, deliverySeconds: nil))
-            completedOffsets[job.sessionID] = max(completedOffsets[job.sessionID] ?? 0,
-                job.offset + AudioClock.seconds(samples: job.samples.count))
-            inFlightAudioSeconds = 0
-            processingJob = nil
-            processing = nil
-            samplePerformance()
-            kickWorker()
-        }
-    }
-
-    func waitUntilProcessed(sessionID: String, through offset: Double) async {
-        let barrierTickets = Set(jobs.filter { $0.sessionID == sessionID && $0.offset <= offset }.map(\.ticket)
-            + (processingJob.map { $0.sessionID == sessionID ? [$0.ticket] : [] } ?? []))
-        while !Task.isCancelled,
-              jobs.contains(where: { barrierTickets.contains($0.ticket) }) ||
-              processingJob.map({ barrierTickets.contains($0.ticket) }) == true {
-            kickWorker()
-            // A sub-minimum tail has no inference job. Everything schedulable is done.
-            if processing == nil && jobs.allSatisfy({ $0.sessionID != sessionID }) { break }
-            try? await Task.sleep(for: .milliseconds(20))
         }
     }
 
@@ -881,7 +787,7 @@ final class SpeechService: ObservableObject {
             "lookbackSeconds": recoveryLookbackSeconds,
             "attemptState": dictation.currentAttempt?.state.rawValue ?? "none",
             "attemptPending": dictation.isActive || dictation.isPending,
-            "pendingAudioJobs": jobs.count + (processing == nil ? 0 : 1),
+            "pendingAudioJobs": transcriber.jobs.count + (transcriber.processing == nil ? 0 : 1),
             "recoveryRunning": dictation.recoveryRunning,
             "cleanupPending": cleanup.pendingCount,
             "cleanupBufferedRows": cleanup.bufferedRowCount,
@@ -929,7 +835,7 @@ final class SpeechService: ObservableObject {
     func shutdown() {
         cleanup.shutdown()
         if ambientEnabled { recordEvent(.stopped, "Application quit; capture ended.") }
-        modelCheck?.cancel(); preparation?.cancel(); processing?.cancel(); diagnostic?.cancel(); pausing?.cancel()
+        modelCheck?.cancel(); preparation?.cancel(); transcriber.cancel(); diagnostic?.cancel(); pausing?.cancel()
         suggestions.dismiss()
         timer?.invalidate(); dictation.releaseFieldEffects(); input.disable(); capture.stop(); updateKeepAwakeAssertion(); server?.stop()
         capture.stopWatching()

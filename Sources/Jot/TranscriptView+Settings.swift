@@ -162,8 +162,8 @@ extension TranscriptView {
                     Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 18) {
                         GridRow { metric("Process CPU", String(format: "%.1f%%", resources.processCPUPercent)); metric("Memory", String(format: "%.0f MB", resources.residentMiB)) }
                         GridRow { metric("Memory footprint", String(format: "%.0f MB", resources.physicalFootprintMiB)); metric("Thermal state", resources.thermalState.capitalized) }
-                        GridRow { metric("Queued audio", String(format: "%.1f s", service.queuedSeconds)); metric("Last inference", String(format: "%.2f s", service.lastInferenceSeconds)) }
-                        GridRow { metric("Transcript lag", String(format: "%.2f s", service.lagSeconds)); metric("Dropped audio", String(format: "%.1f s", service.droppedSeconds)) }
+                        GridRow { metric("Queued audio", String(format: "%.1f s", service.transcriber.queuedSeconds)); metric("Last inference", String(format: "%.2f s", service.transcriber.lastInferenceSeconds)) }
+                        GridRow { metric("Transcript lag", String(format: "%.2f s", service.transcriber.lagSeconds)); metric("Dropped audio", String(format: "%.1f s", service.droppedSeconds)) }
                     }
                 }
                 Divider()
