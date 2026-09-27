@@ -67,6 +67,8 @@ final class DictationInput {
     private var suggestionFn = SuggestionFnGesture()
     var suggestionAllowed: () -> Bool = { false }
     var onSuggestionRequest: (() -> Void)?
+    /// A request the service cannot take right now, so the gesture is not a silent no-op.
+    var onSuggestionRefused: (() -> Void)?
     var onSuggestionAccept: (() -> Void)?
     var onSuggestionDismiss: (() -> Void)?
     private var suggestionKeys = SuggestionKeyTracker()
@@ -625,7 +627,10 @@ final class DictationInput {
         if suggestion.consume { return true }
         if kind == .keyDown && !suggestion.screenshot { suggestionKeyRevision += 1 }
         if let request = suggestionShortcut, request.keyCode == keyCode,
-           request.modifiers == modifiers, !allowed { return false }
+           request.modifiers == modifiers, !allowed {
+            if kind == .keyDown && !repeating { onSuggestionRefused?() }
+            return false
+        }
         // While Fn dictation is held, the suggestion chord's modifiers must not cancel capture.
         if recording, shortcut.keyCode == nil, kind == .flagsChanged, event.flags.contains(.maskSecondaryFn),
            let request = suggestionShortcut, !modifiers.isEmpty,
@@ -633,8 +638,8 @@ final class DictationInput {
         // Fn still requests suggestions when hold dictation is disabled or uses a different key.
         if !dictationEnabled || shortcut.keyCode != nil {
             if suggestionFn.handle(kind, keyCode: keyCode, modifiers: ShortcutModifiers(event.flags),
-                                   at: eventTimestamp, enabled: fnSuggestionsEnabled && allowed) {
-                scheduleSuggestionRequest()
+                                   at: eventTimestamp, enabled: fnSuggestionsEnabled) {
+                if allowed { scheduleSuggestionRequest() } else { onSuggestionRefused?() }
             }
         }
         guard dictationEnabled else { return false }
@@ -699,7 +704,7 @@ final class DictationInput {
             // Reuse the physical double-tap recognizer after cancelling the short capture.
             // Never fall through to speech insertion when suggestions are enabled but busy.
             if shortcut.keyCode == nil && fnSuggestionsEnabled {
-                if suggestionAllowed() { scheduleSuggestionRequest() }
+                if suggestionAllowed() { scheduleSuggestionRequest() } else { onSuggestionRefused?() }
                 break
             }
             guard mayRecover else { break }

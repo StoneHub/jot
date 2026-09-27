@@ -233,6 +233,14 @@ final class SuggestionCoordinator {
         }
     }
 
+    /// A request Jot cannot take right now: the reason shows at the field for a moment, or in the window when there is no field.
+    func refuse(_ reason: String) {
+        dismiss()
+        do { try input.captureTarget(wakeRetry: false) } catch { notice(reason); return }
+        ownsTarget = true
+        showNotice(reason)
+    }
+
     private func showNotice(_ text: String, option: SuggestionCard.Option? = nil) {
         outcome = "no-suggestion"; candidate = nil
         input.showSuggestionKeys(.notice)

@@ -78,8 +78,15 @@ final class SpeechService: ObservableObject {
         settings.set(JotDefaultsKey.suggestionMeetingContext, enabled)
         suggestions.dismiss()
     }
-    var canRequestSuggestion: Bool {
-        suggestionsEnabled && !dictation.isActive && !dictation.isPending && !diagnosticActive && !preparing && !cleanup.isRunning
+    var canRequestSuggestion: Bool { suggestionBlocker == nil }
+    /// Why a suggestion cannot be requested right now, in the words the card shows.
+    var suggestionBlocker: String? {
+        if !suggestionsEnabled { return "Suggestions are off in General." }
+        if dictation.isActive || dictation.isPending { return "No suggestion while a dictation is in progress." }
+        if diagnosticActive { return "No suggestion while diagnostics run." }
+        if preparing { return "No suggestion while Jot is loading models." }
+        if cleanup.isRunning { return "Jot is cleaning up speech; double-tap again in a moment." }
+        return nil
     }
     func setSuggestionsEnabled(_ enabled: Bool) {
         suggestionsEnabled = enabled
@@ -300,6 +307,10 @@ final class SpeechService: ObservableObject {
             return self.canRequestSuggestion && self.suggestions.keyboardAllowsSuggestions
         }
         result.onSuggestionRequest = { [weak self] in self?.suggestions.request() }
+        result.onSuggestionRefused = { [weak self] in
+            guard let self else { return }
+            self.suggestions.refuse(self.suggestionBlocker ?? "Suggestions are not available on this keyboard layout.")
+        }
         result.onSuggestionAccept = { [weak self] in self?.suggestions.accept() }
         result.onSuggestionDismiss = { [weak self] in self?.suggestions.dismiss() }
         result.startBlocker = { [weak self] in

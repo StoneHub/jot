@@ -88,6 +88,17 @@ final class JotSettingsTests: XCTestCase {
         XCTAssertThrowsError(try settings.reset("bogus")) { XCTAssertEqual($0 as? JotSettingsError, .unknown("bogus")) }
     }
 
+    /// silenceLevel defaults to 0.002 over 0.0005...0.02: a change of 5% is a real change, while slider noise is not.
+    func testASmallValueNearItsDefaultStillCounts() throws {
+        let settings = JotSettings(defaults: defaults)
+        settings.set(JotSettings.silenceLevel, 0.00195)
+        XCTAssertTrue(settings.isChanged(JotSettings.silenceLevel))
+        XCTAssertEqual(settings.double(JotSettings.silenceLevel), 0.00195)
+        settings.set(JotSettings.silenceLevel, 0.002 + 1e-12)
+        XCTAssertFalse(settings.isChanged(JotSettings.silenceLevel), "Floating-point noise is the default")
+        XCTAssertNil(defaults.object(forKey: JotSettings.silenceLevel))
+    }
+
     func testTuningWritesOnlyTheValuesThatDiffer() {
         let settings = JotSettings(defaults: defaults)
         var tuning = TranscriptionTuning()

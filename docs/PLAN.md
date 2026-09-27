@@ -65,7 +65,7 @@ Monroe's decisions of September 27, 2026 set the order: finish the refactor chai
 
 The agreed direction is [contextual suggestions in Jot](CONTEXTUAL-SUGGESTIONS.md): one local engine uses relevant transcripts, meetings, summaries and contributed agent context across input surfaces, including blank fields. Codex is the first and primary use case; browser/native fields are part of the design. Move Terminal completion ownership, setup and updates into Jot while retaining a thin shell bridge for native buffer and Tab behavior.
 
-This is a documented feature plan, not implemented behavior. Its delivery sequence and acceptance scenarios preserve the capture, history and responsiveness work above.
+The first slice shipped in #89 and #91: double-tap Fn requests a suggestion or a draft from notes in the field, Tab accepts, and the setting is on by default. Suggestion quality is not yet acceptable, and the Terminal bridge is not built; #79 and #90 track the rest. Its delivery sequence and acceptance scenarios preserve the capture, history and responsiveness work above.
 
 ## Architecture target
 
