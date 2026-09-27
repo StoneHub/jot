@@ -36,4 +36,34 @@ final class SpeakerPassRelabelTests: XCTestCase {
         let words = [word("One", 0, 0.5), word("two", 0.6, 1.0)]
         XCTAssertEqual(SpeakerPassRelabel.speakers(words: words, segments: [], tuning: .init()), [nil, nil])
     }
+
+    /// A word of one row, by row id.
+    private func spoken(in row: String, _ start: Double, _ end: Double) -> StoredWord {
+        StoredWord(transcriptID: row, position: 0, word: "w", startSeconds: start, endSeconds: end, probabilities: [])
+    }
+
+    func testNamesGivenToLiveSpeakersFollowTheirVoicesOntoThePassSpeakers() {
+        // Live numbered the two voices the other way round from the pass.
+        let words = [spoken(in: "a", 0, 0.5), spoken(in: "a", 0.5, 1), spoken(in: "b", 2, 2.5), spoken(in: "b", 2.5, 3)]
+        let before = ["a": "speaker-2", "b": "speaker-1"]
+        let labels = ["speaker-2": "Ada", "speaker-1": "Grace"]
+        let carried = SpeakerPassRelabel.carriedLabels(labels, words: words, before: before, after: ["speaker-1", "speaker-1", "speaker-2", "speaker-2"])
+        XCTAssertEqual(carried, ["speaker-1": "Ada", "speaker-2": "Grace"])
+    }
+
+    func testTwoLiveNamesForOnePassVoiceKeepTheOneThatSpokeLonger() {
+        // Live split one voice in two; the pass heard one. A live speaker with no name moves nothing.
+        let words = [spoken(in: "a", 0, 2), spoken(in: "b", 3, 3.5), spoken(in: "c", 4, 5)]
+        let before = ["a": "speaker-1", "b": "speaker-2", "c": "speaker-3"]
+        let labels = ["speaker-1": "Ada", "speaker-2": "Ada's echo"]
+        let carried = SpeakerPassRelabel.carriedLabels(labels, words: words, before: before, after: ["speaker-1", "speaker-1", "speaker-2"])
+        XCTAssertEqual(carried, ["speaker-1": "Ada"])
+    }
+
+    func testANameWhoseWordsThePassGaveNoOneIsDropped() {
+        let words = [spoken(in: "a", 0, 1), spoken(in: "b", 2, 3)]
+        let carried = SpeakerPassRelabel.carriedLabels(["speaker-1": "Ada", "speaker-2": "Grace"], words: words,
+                                                       before: ["a": "speaker-1", "b": "speaker-2"], after: ["speaker-1", nil])
+        XCTAssertEqual(carried, ["speaker-1": "Ada"])
+    }
 }

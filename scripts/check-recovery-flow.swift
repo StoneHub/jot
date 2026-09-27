@@ -946,7 +946,7 @@ struct RecoveryFlowChecks {
         func append(_ entry: String) { lock.withLock { recorded.append(entry) } }
     }
 
-    /// Relabels of one session take turns and hold off Install Update. A Regroup whose session is deleted while it waits returns quietly, a pass whose session is deleted while it waits leaves nothing behind, a pass whose relabel fails partway and a Regroup both reload Live, Regroup of a session without words says so, and the name sheet offers a pass voice only once the pass has relabeled the rows.
+    /// Relabels of one session take turns and hold off Install Update. A Regroup whose session is deleted while it waits returns quietly, a pass whose session is deleted while it waits leaves nothing behind, a pass whose relabel fails partway and a Regroup both reload Live, Regroup of a session without words says so, the name sheet offers a pass voice only once the pass has relabeled the rows, and names typed before the pass follow their voices and are remembered.
     @MainActor static func checkRelabelsTakeTurns(directory: URL) async throws {
         let folder = directory.appendingPathComponent("relabel-turns")
         let store = try TranscriptStore(directory: folder)
@@ -1108,6 +1108,31 @@ struct RecoveryFlowChecks {
         let relabeled = service.speakers.passEmbedding(session: "voices", speaker: "speaker-1")
         precondition(relabeled != nil, "The name sheet offered no pass voice once the pass relabeled the rows: \(service.notice)")
         print("PASS: the name sheet offers a pass voice only once the pass has relabeled the session's rows.")
+
+        // Names typed in Live, before the pass, follow their voices: Live numbered Ada and Grace the other way round from the pass. The pass remembers both voices, Ada's into the Ada it already knew. Its third voice sounds like Ada, but Ada is named in this session already, so it stays unnamed.
+        let people = try PeopleStore(sharing: store)
+        service.speakers.peopleStore = people
+        _ = try people.add(name: "Ada", embedding: [1, 0])
+        for (speaker, start, text) in [("speaker-2", 0.0, "ada"), ("speaker-1", 2.0, "grace"), ("speaker-3", 4.0, "echo")] {
+            let row = Transcript(sessionID: "names", startedAt: started, startSeconds: start, endSeconds: start + 1, text: "\(text) \(text)", speakerID: speaker, mode: "ambient")
+            try store.append(row)
+            try store.appendWords([
+                StoredWord(transcriptID: row.id, position: 0, word: text, startSeconds: start, endSeconds: start + 0.4, probabilities: []),
+                StoredWord(transcriptID: row.id, position: 1, word: text, startSeconds: start + 0.5, endSeconds: start + 0.9, probabilities: [])])
+        }
+        service.labelSpeaker(session: "names", speaker: "speaker-2", name: "Ada")
+        service.labelSpeaker(session: "names", speaker: "speaker-1", name: "Grace")
+        let beforePass = try people.list().map(\.sampleCount)
+        precondition(beforePass == [1], "Naming before the pass remembered a voice it did not have yet: \(beforePass)")
+        let named = SpeakerPassResult(segments: [("S5", 0, 1.5), ("S2", 1.5, 3.5), ("S9", 3.5, 5)], speakers: ["S5": [1, 0], "S2": [0, 1], "S9": [1, 0.1]], durationSeconds: 5, processingSeconds: 0.1)
+        await service.speakers.apply(named, session: "names", truncated: false)
+        let namedRows = try store.session(id: "names").sorted { $0.startSeconds < $1.startSeconds }
+        precondition(namedRows.map(\.speakerID) == ["speaker-1", "speaker-2", "speaker-3"], "The pass did not relabel the named session: \(namedRows.map(\.speakerID))")
+        precondition(namedRows.map(\.speakerLabel) == ["Ada", "Grace", nil], "Names typed before the pass did not follow their voices: \(namedRows.map(\.speakerLabel)), \(service.notice)")
+        let remembered = try people.list()
+        precondition(remembered.map(\.name) == ["Ada", "Grace"] && remembered.map(\.sampleCount) == [2, 1], "The pass did not remember the voices named before it: \(remembered.map { "\($0.name) \($0.sampleCount)" })")
+        precondition(service.speakers.people.map(\.name) == ["Ada", "Grace"], "People did not show the voices the pass remembered")
+        print("PASS: names typed before the speaker pass follow their voices onto the pass's speakers, the pass remembers those voices, and a remembered voice is not given to a second speaker.")
     }
 
     /// A speaker pass and a Regroup over a long session run while listening continues. The longest main-actor gap stays within 50 ms of the same run's gap with no relabel, and a microphone that holds one second never overflows into an audio gap.

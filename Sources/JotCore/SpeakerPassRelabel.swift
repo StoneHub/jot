@@ -34,4 +34,22 @@ public enum SpeakerPassRelabel {
         }
         return result
     }
+
+    /// Names given while a session's rows carried live speaker ids, moved onto the pass speakers those voices became. Live and pass ids are numbered separately, so the live "speaker-2" can be another voice in the pass. `before` is each row's live speaker by row id, and `after` the pass speaker of each word. A name goes to the pass speaker that took most of its words' time, largest share first, one name per pass speaker; a name whose words the pass gave no one is dropped.
+    public static func carriedLabels(_ labels: [String: String], words: [StoredWord], before: [String: String], after: [String?]) -> [String: String] {
+        var seconds: [String: [String: Double]] = [:]
+        for (word, new) in zip(words, after) {
+            guard let old = before[word.transcriptID], labels[old] != nil, let new else { continue }
+            seconds[old, default: [:]][new, default: 0] += max(word.endSeconds - word.startSeconds, 0.01)
+        }
+        let shares = seconds.flatMap { old, byNew in byNew.map { (old: old, new: $0.key, seconds: $0.value) } }
+            .sorted { $0.seconds != $1.seconds ? $0.seconds > $1.seconds : ($0.old, $0.new) < ($1.old, $1.new) }
+        var result: [String: String] = [:]
+        var carried = Set<String>()
+        for share in shares where result[share.new] == nil && !carried.contains(share.old) {
+            result[share.new] = labels[share.old]
+            carried.insert(share.old)
+        }
+        return result
+    }
 }
