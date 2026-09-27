@@ -279,7 +279,8 @@ final class SpeechService: ObservableObject {
     private let keepAwake = KeepAwakeAssertion()
     private var server: LocalServiceServer?
     private var timer: Timer?
-    var diagnosticActive = false
+    /// A `jot` file diagnostic is running. Published because the microphone picker and Update read it through canChangeInput.
+    @Published var diagnosticActive = false
     /// Screens read `preparing` from this, so a change redraws them the way the stored flag's mode update did.
     private var preparation: Task<Void, Never>? { willSet { objectWillChange.send() } }
     private var pausing: Task<Void, Never>?

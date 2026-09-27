@@ -27,8 +27,8 @@ final class SessionLibrary: ObservableObject {
     /// False until the Dictations read succeeds, and after one fails; the next block then reads the list in full.
     private var historyIsCurrent = false
     private(set) var deletedSessions = Set<String>()
-    /// Relabels waiting for their session to settle or writing.
-    @Published private var relabelsInFlight = 0
+    /// Relabels waiting for their session to settle or writing. Install Update reads this through the service, so a change redraws the screens that observe the service; it changes when a relabel starts and ends.
+    private var relabelsInFlight = 0 { willSet { service.objectWillChange.send() } }
     /// Relabels write here one at a time, so a pass and a Regroup of the same session cannot interleave their writes, and their blocking store work and the pauses between batches never hold a thread of Swift's cooperative pool.
     private static let relabelQueue = DispatchQueue(label: "Jot.relabel", qos: .userInitiated)
     private var historyQuery = ""

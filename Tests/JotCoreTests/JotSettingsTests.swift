@@ -108,12 +108,16 @@ final class JotSettingsTests: XCTestCase {
         XCTAssertEqual(settings.int(JotDefaultsKey.newSessionAfterSilence), 10)
         try settings.set(JotSettings.paragraphPause, raw: "9")
         XCTAssertEqual(settings.double(JotSettings.paragraphPause), 2.5, accuracy: 0.0001, "Numbers are clamped to their range")
-        try settings.set(JotDefaultsKey.recoveryLookbackSeconds, raw: 5)
-        XCTAssertEqual(settings.int(JotDefaultsKey.recoveryLookbackSeconds), 15)
+        try settings.set(JotDefaultsKey.recoveryLookbackSeconds, raw: 300)
+        XCTAssertEqual(settings.int(JotDefaultsKey.recoveryLookbackSeconds), 300)
 
         XCTAssertThrowsError(try settings.set(JotDefaultsKey.newSessionAfterSilence, raw: "12")) {
             XCTAssertEqual($0 as? JotSettingsError, .invalid(JotDefaultsKey.newSessionAfterSilence, "one of 0, 10, 15, 30"))
         }
+        XCTAssertThrowsError(try settings.set(JotDefaultsKey.recoveryLookbackSeconds, raw: 45), "The Recovery window menu could not show it") {
+            XCTAssertEqual($0 as? JotSettingsError, .invalid(JotDefaultsKey.recoveryLookbackSeconds, "one of 30, 60, 120, 300, 600"))
+        }
+        XCTAssertEqual(settings.int(JotDefaultsKey.recoveryLookbackSeconds), 300, "A refused value leaves the saved one")
         XCTAssertThrowsError(try settings.set(JotDefaultsKey.cleanUpDictation, raw: "maybe"))
         XCTAssertThrowsError(try settings.set(JotDefaultsKey.recoveryLookbackSeconds, raw: "1.5"))
         XCTAssertThrowsError(try settings.set(JotDefaultsKey.recoveryLookbackSeconds, raw: NSNumber(value: true)))
@@ -122,11 +126,11 @@ final class JotSettingsTests: XCTestCase {
 
     func testOutOfRangeStoredValuesReadAsBounded() {
         defaults.set(99, forKey: JotDefaultsKey.newSessionAfterSilence)
-        defaults.set(5_000, forKey: JotDefaultsKey.recoveryLookbackSeconds)
+        defaults.set(45, forKey: JotDefaultsKey.recoveryLookbackSeconds)
         defaults.set(5.0, forKey: JotSettings.speakerConfidence)
         let settings = JotSettings(defaults: defaults)
         XCTAssertEqual(settings.int(JotDefaultsKey.newSessionAfterSilence), SessionSplit.defaultMinutes, "Not one of the choices")
-        XCTAssertEqual(settings.int(JotDefaultsKey.recoveryLookbackSeconds), 120, "Outside the range")
+        XCTAssertEqual(settings.int(JotDefaultsKey.recoveryLookbackSeconds), DictationRecovery.defaultLookbackSeconds, "Not one of the choices")
         XCTAssertEqual(settings.double(JotSettings.speakerConfidence), 0.9, accuracy: 0.0001, "Clamped to its range")
     }
 
@@ -176,5 +180,7 @@ final class JotSettingsTests: XCTestCase {
         XCTAssertEqual(Set(keys).count, keys.count)
         let split = report.first { $0["key"] as? String == JotDefaultsKey.newSessionAfterSilence }
         XCTAssertEqual(split?["choices"] as? [Int], SessionSplit.choices)
+        let lookback = report.first { $0["key"] as? String == JotDefaultsKey.recoveryLookbackSeconds }
+        XCTAssertEqual(lookback?["choices"] as? [Int], DictationRecovery.lookbackChoices)
     }
 }

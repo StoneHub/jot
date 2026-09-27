@@ -74,6 +74,10 @@ struct SessionsView: View {
             guard old.first == new.first, let selectedID else { return }
             rows = library.sessionParagraphs(selectedID)
         }
+        // The pause decides where paragraphs break, and `jot settings` can change it while this reader is open.
+        .onChange(of: service.tuning.bounded.paragraphPause) { _, _ in
+            if let selectedID { rows = library.sessionParagraphs(selectedID) }
+        }
         .sheet(item: $labelTarget) { target in
             SpeakerNameSheet(transcript: target, service: service, draft: $labelDraft,
                 onSave: { rows = library.sessionParagraphs(target.sessionID); labelTarget = nil },
