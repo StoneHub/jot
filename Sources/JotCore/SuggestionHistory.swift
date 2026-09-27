@@ -53,7 +53,7 @@ public struct SuggestionHistoryEntry: Codable, Sendable, Equatable {
     }
     public enum Action: String, Codable, Sendable {
         case acceptedVerified, acceptedUnverified, escape, typedOver, focusChanged
-        case expired, sourcesChanged, newRequest, serviceStopped
+        case expired, sourcesChanged, settingsChanged, keyboardSourceChanged, newRequest, serviceStopped
     }
     public enum SourceKind: String, Codable, Sendable {
         case screenText, dictation, meetingTranscript, heardSpeech, agentMessage, pinnedSelection, other

@@ -94,7 +94,7 @@ final class SuggestionCoordinator {
         refreshKeyboard()
         sourceObserver = DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String), object: nil, queue: .main
-        ) { [weak self] _ in MainActor.assumeIsolated { self?.refreshKeyboard(); self?.dismiss() } }
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.refreshKeyboard(); self?.dismiss(action: .keyboardSourceChanged) } }
     }
     deinit {
         requestTask?.cancel(); monitorTask?.cancel()
