@@ -43,6 +43,9 @@ struct JotCLI {
     jot people                         Voices Jot remembers
     jot forget <person-id>             Forget one remembered voice; session names stay
     jot diagnostics                    Bounded performance report; no captured content
+    jot settings                       Every setting: value, default, whether you changed it
+    jot settings set <key> <value>     Change one setting; it applies at once
+    jot settings reset <key>           Back to the default, and follow it in later versions
     jot models prepare                 Download/prepare local speech models
     jot models check                   Check published model revisions (no download)
     jot transcribe-file <path>          Diagnostic file inference; no persistence
@@ -120,6 +123,11 @@ struct JotCLI {
             var params: [String: Any] = ["sessionID": args[1]]
             if args.count == 3 { params["format"] = "json" }
             return ("transcripts.export", params)
+        case "settings":
+            if args.count == 1 { return ("settings.get", [:]) }
+            if args.count == 4, args[1] == "set" { return ("settings.set", ["key": args[2], "value": args[3]]) }
+            if args.count == 3, args[1] == "reset" { return ("settings.reset", ["key": args[2]]) }
+            throw CLIError.usage("Use: jot settings, jot settings set <key> <value>, or jot settings reset <key>")
         case "people":
             guard args.count == 1 else { throw CLIError.usage("Use: jot people") }
             return ("people.list", [:])

@@ -9,6 +9,9 @@ extension SpeechService {
         return try JSONSerialization.jsonObject(with: encoder.encode(value))
     }
 
+    /// One setting as `jot settings` lists it, after a change.
+    private func settingRow(_ key: String) -> [String: Any] { settings.report().first { $0["key"] as? String == key } ?? [:] }
+
     func status() throws -> [String: Any] {
         let pendingAudioSeconds = transcriber.queuedAudioSeconds
         var result: [String: Any] = ["mode": mode, "models": modelState.rawValue, "microphoneRunning": capture.running,
@@ -63,6 +66,15 @@ extension SpeechService {
                 guard let id = params["sessionID"] as? String, let title = params["title"] as? String else { throw JotError.message("sessionID and title are required") }
                 try setSessionTitle(id, title: title)
                 result = ["sessionID": id, "title": title]
+            case "settings.get": result = ["settings": settings.report(), "revision": JotSettings.revision]
+            case "settings.set":
+                guard let key = params["key"] as? String, let value = params["value"] else { throw JotError.message("key and value are required") }
+                try settings.set(key, raw: value); applySettings()
+                result = settingRow(key)
+            case "settings.reset":
+                guard let key = params["key"] as? String else { throw JotError.message("key is required") }
+                try settings.reset(key); applySettings()
+                result = settingRow(key)
             case "transcripts.clear": try clearHistory(); result = ["cleared": true]
             case "transcripts.delete_session":
                 guard let id = params["sessionID"] as? String else { throw JotError.message("sessionID is required") }

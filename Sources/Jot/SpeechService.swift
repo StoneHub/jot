@@ -57,23 +57,25 @@ final class SpeechService: ObservableObject {
         capture = CaptureController(microphone: dependencies.makeMicrophone(), retry: dependencies.microphoneRetry)
         capture.onNotice = { [weak self] in self?.notice = $0 }
     }
+    /// Where every setting below is saved. Each property reads its value at launch and saves it when it changes; `jot settings` writes the same store and calls applySettings().
+    let settings = JotSettings.standard
     @Published var lifecycle = ServiceLifecycle()
     @Published var fnRequested = UserDefaults.standard.bool(forKey: JotDefaultsKey.fnRequested)
     @Published private(set) var shortcut = ShortcutPreferences().load()
     @Published private(set) var suggestionShortcut = SuggestionShortcutPreferences().load()
-    @Published private(set) var suggestionsEnabled = UserDefaults.standard.object(forKey: JotDefaultsKey.suggestionsEnabled) as? Bool ?? true
+    @Published private(set) var suggestionsEnabled = JotSettings.standard.bool(JotDefaultsKey.suggestionsEnabled)
     /// Read the text shown above the field, such as a chat, for a request. Local and never stored.
-    @Published private(set) var suggestionScreenContext = UserDefaults.standard.object(forKey: JotDefaultsKey.suggestionScreenContext) as? Bool ?? true
+    @Published private(set) var suggestionScreenContext = JotSettings.standard.bool(JotDefaultsKey.suggestionScreenContext)
     func setSuggestionScreenContext(_ enabled: Bool) {
         suggestionScreenContext = enabled
-        UserDefaults.standard.set(enabled, forKey: JotDefaultsKey.suggestionScreenContext)
+        settings.set(JotDefaultsKey.suggestionScreenContext, enabled)
         suggestions.dismiss()
     }
     /// Add the latest meeting to every request. Off by default; the card offers it either way.
-    @Published private(set) var suggestionMeetingContext = UserDefaults.standard.bool(forKey: JotDefaultsKey.suggestionMeetingContext)
+    @Published private(set) var suggestionMeetingContext = JotSettings.standard.bool(JotDefaultsKey.suggestionMeetingContext)
     func setSuggestionMeetingContext(_ enabled: Bool) {
         suggestionMeetingContext = enabled
-        UserDefaults.standard.set(enabled, forKey: JotDefaultsKey.suggestionMeetingContext)
+        settings.set(JotDefaultsKey.suggestionMeetingContext, enabled)
         suggestions.dismiss()
     }
     var canRequestSuggestion: Bool {
@@ -81,7 +83,7 @@ final class SpeechService: ObservableObject {
     }
     func setSuggestionsEnabled(_ enabled: Bool) {
         suggestionsEnabled = enabled
-        UserDefaults.standard.set(enabled, forKey: JotDefaultsKey.suggestionsEnabled)
+        settings.set(JotDefaultsKey.suggestionsEnabled, enabled)
         if enabled && !DictationInput.accessibilityGranted { input.requestAccessibility() }
         if !enabled { suggestions.dismiss() }
         updateSuggestionMonitoring()
@@ -105,51 +107,69 @@ final class SpeechService: ObservableObject {
     var canChangeInput: Bool { !capture.running && !dictation.isPending && !diagnosticActive }
     /// Replacing the app must not interrupt capture, a pending dictation, inference, model setup, cleanup, or a session's relabel.
     var canInstallUpdate: Bool { canChangeInput && transcriber.processing == nil && !preparing && !cleanup.isRunning && !library.isRelabeling }
-    @Published var highlightTargetField = UserDefaults.standard.object(forKey: JotDefaultsKey.highlightTargetField) as? Bool ?? true {
+    @Published var highlightTargetField = JotSettings.standard.bool(JotDefaultsKey.highlightTargetField) {
         didSet {
-            UserDefaults.standard.set(highlightTargetField, forKey: JotDefaultsKey.highlightTargetField)
+            settings.set(JotDefaultsKey.highlightTargetField, highlightTargetField)
             if !highlightTargetField { dictation.hideHighlight() }
         }
     }
-    @Published var muteSpeakersDuringDictation = UserDefaults.standard.object(forKey: JotDefaultsKey.muteSpeakersDuringDictation) as? Bool ?? true {
+    @Published var muteSpeakersDuringDictation = JotSettings.standard.bool(JotDefaultsKey.muteSpeakersDuringDictation) {
         didSet {
-            UserDefaults.standard.set(muteSpeakersDuringDictation, forKey: JotDefaultsKey.muteSpeakersDuringDictation)
+            settings.set(JotDefaultsKey.muteSpeakersDuringDictation, muteSpeakersDuringDictation)
             if !muteSpeakersDuringDictation { dictation.endSpeakerMute() }
         }
     }
-    @Published var keepMacAwakeWhileListening = UserDefaults.standard.bool(forKey: JotDefaultsKey.keepMacAwakeWhileListening) {
+    @Published var keepMacAwakeWhileListening = JotSettings.standard.bool(JotDefaultsKey.keepMacAwakeWhileListening) {
         didSet {
-            UserDefaults.standard.set(keepMacAwakeWhileListening, forKey: JotDefaultsKey.keepMacAwakeWhileListening)
+            settings.set(JotDefaultsKey.keepMacAwakeWhileListening, keepMacAwakeWhileListening)
             updateKeepAwakeAssertion()
         }
     }
     /// Minutes of quiet that end an ambient session; 0 keeps one session until capture stops. A named meeting never splits.
-    @Published var newSessionAfterSilence = UserDefaults.standard.object(forKey: JotDefaultsKey.newSessionAfterSilence) as? Int ?? SessionSplit.defaultMinutes {
-        didSet { UserDefaults.standard.set(newSessionAfterSilence, forKey: JotDefaultsKey.newSessionAfterSilence) }
+    @Published var newSessionAfterSilence = JotSettings.standard.int(JotDefaultsKey.newSessionAfterSilence) {
+        didSet { settings.set(JotDefaultsKey.newSessionAfterSilence, newSessionAfterSilence) }
     }
     /// Off means no audio reaches disk and no speaker pass runs. Switching off mid-session deletes that session's file; switching on waits for the next session, since a file that starts mid-session would misplace every segment.
-    @Published var keepAudioForSpeakerPass = UserDefaults.standard.object(forKey: JotDefaultsKey.keepAudioForSpeakerPass) as? Bool ?? true {
+    @Published var keepAudioForSpeakerPass = JotSettings.standard.bool(JotDefaultsKey.keepAudioForSpeakerPass) {
         didSet {
-            UserDefaults.standard.set(keepAudioForSpeakerPass, forKey: JotDefaultsKey.keepAudioForSpeakerPass)
+            settings.set(JotDefaultsKey.keepAudioForSpeakerPass, keepAudioForSpeakerPass)
             if !keepAudioForSpeakerPass { timeline.discardSessionAudio() }
         }
     }
 
-    @Published var cleanUpTranscriptions = UserDefaults.standard.object(forKey: JotDefaultsKey.cleanUpTranscriptions) as? Bool ?? true {
-        didSet { UserDefaults.standard.set(cleanUpTranscriptions, forKey: JotDefaultsKey.cleanUpTranscriptions) }
+    @Published var cleanUpTranscriptions = JotSettings.standard.bool(JotDefaultsKey.cleanUpTranscriptions) {
+        didSet { settings.set(JotDefaultsKey.cleanUpTranscriptions, cleanUpTranscriptions) }
     }
-    @Published var cleanUpDictation = UserDefaults.standard.bool(forKey: JotDefaultsKey.cleanUpDictation) {
-        didSet { UserDefaults.standard.set(cleanUpDictation, forKey: JotDefaultsKey.cleanUpDictation) }
+    @Published var cleanUpDictation = JotSettings.standard.bool(JotDefaultsKey.cleanUpDictation) {
+        didSet { settings.set(JotDefaultsKey.cleanUpDictation, cleanUpDictation) }
     }
-    @Published var recoveryLookbackSeconds = UserDefaults.standard.object(forKey: JotDefaultsKey.recoveryLookbackSeconds) as? Int ?? 120 {
+    @Published var recoveryLookbackSeconds = JotSettings.standard.int(JotDefaultsKey.recoveryLookbackSeconds) {
         didSet {
             let bounded = min(600, max(15, recoveryLookbackSeconds))
             if bounded != recoveryLookbackSeconds { recoveryLookbackSeconds = bounded; return }
-            UserDefaults.standard.set(bounded, forKey: JotDefaultsKey.recoveryLookbackSeconds)
+            settings.set(JotDefaultsKey.recoveryLookbackSeconds, bounded)
         }
     }
     @Published var recoveryNotice = ""
     @Published private(set) var cleanupAvailability = TranscriptCleanup.availability
+
+    /// Brings each setting in line with the store after `jot settings` changed it, with the side effects a change on screen has.
+    func applySettings() {
+        let key = JotDefaultsKey.self
+        if suggestionsEnabled != settings.bool(key.suggestionsEnabled) { setSuggestionsEnabled(settings.bool(key.suggestionsEnabled)) }
+        if suggestionScreenContext != settings.bool(key.suggestionScreenContext) { setSuggestionScreenContext(settings.bool(key.suggestionScreenContext)) }
+        if suggestionMeetingContext != settings.bool(key.suggestionMeetingContext) { setSuggestionMeetingContext(settings.bool(key.suggestionMeetingContext)) }
+        if highlightTargetField != settings.bool(key.highlightTargetField) { highlightTargetField = settings.bool(key.highlightTargetField) }
+        if muteSpeakersDuringDictation != settings.bool(key.muteSpeakersDuringDictation) { muteSpeakersDuringDictation = settings.bool(key.muteSpeakersDuringDictation) }
+        if keepMacAwakeWhileListening != settings.bool(key.keepMacAwakeWhileListening) { keepMacAwakeWhileListening = settings.bool(key.keepMacAwakeWhileListening) }
+        if newSessionAfterSilence != settings.int(key.newSessionAfterSilence) { newSessionAfterSilence = settings.int(key.newSessionAfterSilence) }
+        if keepAudioForSpeakerPass != settings.bool(key.keepAudioForSpeakerPass) { keepAudioForSpeakerPass = settings.bool(key.keepAudioForSpeakerPass) }
+        if cleanUpTranscriptions != settings.bool(key.cleanUpTranscriptions) { cleanUpTranscriptions = settings.bool(key.cleanUpTranscriptions) }
+        if cleanUpDictation != settings.bool(key.cleanUpDictation) { cleanUpDictation = settings.bool(key.cleanUpDictation) }
+        if recoveryLookbackSeconds != settings.int(key.recoveryLookbackSeconds) { recoveryLookbackSeconds = settings.int(key.recoveryLookbackSeconds) }
+        let saved = settings.tuning
+        if tuning != saved { tuning = saved }
+    }
 
     func setShortcutRecording(_ active: Bool) { suggestions.dismiss(); input.isRecordingShortcut = active }
 
@@ -181,9 +201,9 @@ final class SpeechService: ObservableObject {
     @Published var downloadPrompt: Int64?
     /// Title of the meeting being recorded; nil when ambient is off or was started without a name.
     @Published private(set) var meetingTitle: String?
-    @Published var tuning = TranscriptionTuning() {
+    @Published var tuning = JotSettings.standard.tuning {
         didSet {
-            if let data = try? JSONEncoder().encode(tuning.bounded) { UserDefaults.standard.set(data, forKey: JotDefaultsKey.transcriptionTuning) }
+            settings.setTuning(tuning.bounded)
             library.refreshHistory()
             // Live groups by the paragraph pause alone, so a slider drag of any other setting leaves it as it is.
             if tuning.bounded.paragraphPause != oldValue.bounded.paragraphPause {
@@ -320,8 +340,6 @@ final class SpeechService: ObservableObject {
                 return await self.handle(data)
             }
             try service.start(); server = service
-            if let data = UserDefaults.standard.data(forKey: JotDefaultsKey.transcriptionTuning),
-               let saved = try? JSONDecoder().decode(TranscriptionTuning.self, from: data) { tuning = saved.bounded }
             library.refreshRecent(); library.refreshSessions()
             if let attempt = try library.store?.latestRecoverableDictationAttempt() {
                 recoveryNotice = attempt.hasGap

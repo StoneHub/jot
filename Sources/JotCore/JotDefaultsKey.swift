@@ -1,4 +1,4 @@
-/// UserDefaults keys. Existing installs store these names on disk, and the preference migration list in scripts/build-install.py must match.
+/// UserDefaults keys. Existing installs store these names on disk, so they never change. JotSettings defines which of them are user settings.
 public enum JotDefaultsKey {
     public static let cleanUpDictation = "cleanUpDictation"
     public static let cleanUpTranscriptions = "cleanUpTranscriptions"
