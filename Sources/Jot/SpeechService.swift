@@ -46,6 +46,7 @@ final class SpeechService: ObservableObject {
     /// What agents told Jot lately, for suggestions. In memory only; see AgentContext.
     let agentContext = AgentContext()
     lazy var suggestions = SuggestionCoordinator(input: input, store: { [weak self] in self?.library.store },
+        history: { [weak self] in self?.suggestionHistory },
         agentContext: agentContext,
         allowed: { [weak self] in self?.canRequestSuggestion == true },
         readsScreen: { [weak self] in self?.suggestionScreenContext == true },
@@ -325,7 +326,7 @@ final class SpeechService: ObservableObject {
             self.suggestions.refuse(self.suggestionBlocker ?? "Suggestions are not available on this keyboard layout.")
         }
         result.onSuggestionAccept = { [weak self] in self?.suggestions.accept() }
-        result.onSuggestionDismiss = { [weak self] in self?.suggestions.dismiss() }
+        result.onSuggestionDismiss = { [weak self] action in self?.suggestions.dismiss(action: action) }
         result.startBlocker = { [weak self] in
             guard let self else { return "Jot is shutting down." }
             return DictationReadiness.blocker(phase: self.lifecycle.phase, modelsReady: self.modelState == .ready,
@@ -352,7 +353,8 @@ final class SpeechService: ObservableObject {
         do {
             let opened = try TranscriptStore()
             library.store = opened
-            suggestionHistory = try SuggestionHistory(sharing: opened)
+            // Diagnostics are best effort; a telemetry schema failure must not stop capture or history access.
+            suggestionHistory = try? SuggestionHistory(sharing: opened)
             if opened.replacedDatabase {
                 recordEvent(.databaseReplaced, "Saved history was in a format this version does not read; it was deleted and an empty database created.")
                 notice = "Saved history was in a format this version does not read, so it was replaced with an empty history."

@@ -75,6 +75,7 @@
 		826FA796B9F9ADF21CBC9447 /* SpeakerPassStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6426715E1DD091B61B49DB51 /* SpeakerPassStore.swift */; };
 		830BB58D0DE1510B9D99E760 /* AgentHook.swift in Sources */ = {isa = PBXBuildFile; fileRef = C71B328FDD816D1DB35FDED8 /* AgentHook.swift */; };
 		8A1D4112F82882F7B6696C79 /* TranscriptCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95C80CCA8DD0EA57CBD8F177 /* TranscriptCleanup.swift */; };
+		8D158826D0202473AF4A5FE1 /* SuggestionHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BCB88E7AF3431E116F525DD /* SuggestionHistory.swift */; };
 		8EF28A78E5F76B97289D3D9B /* DictationShortcut.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7415694705568E2457081A4F /* DictationShortcut.swift */; };
 		90B3AC7AC03EA1EA4CD1F8D8 /* SuggestionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE957A5843B14B0AFA30FBB3 /* SuggestionCoordinator.swift */; };
 		95FFB72ABC0B6C3B3A3241C9 /* CoreAudioProperties.swift in Sources */ = {isa = PBXBuildFile; fileRef = A175F3EDC540CE511A831EF1 /* CoreAudioProperties.swift */; };
@@ -182,6 +183,7 @@
 /* Begin PBXFileReference section */
 		00B4F5D92D25351C93A3E99B /* MachTimebase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MachTimebase.swift; sourceTree = "<group>"; };
 		0481ADADD05BFA1A6D0E293C /* LiveCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCleanup.swift; sourceTree = "<group>"; };
+		0BCB88E7AF3431E116F525DD /* SuggestionHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionHistory.swift; sourceTree = "<group>"; };
 		0F426834033E58473457EA73 /* SourceSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceSelection.swift; sourceTree = "<group>"; };
 		0FD7554D79D87DF0EC3E65D6 /* SessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsView.swift; sourceTree = "<group>"; };
 		12855DDC22F95E87740F7F47 /* SuggestionContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionContext.swift; sourceTree = "<group>"; };
@@ -451,6 +453,7 @@
 				A0AFCA46E275997764AE8EFC /* SQLiteConnection.swift */,
 				12855DDC22F95E87740F7F47 /* SuggestionContext.swift */,
 				C648CE26613197412F053214 /* SuggestionGeneration.swift */,
+				0BCB88E7AF3431E116F525DD /* SuggestionHistory.swift */,
 				5F1183E2300C944A080346B9 /* SuggestionInteraction.swift */,
 				FD9DA69C44C08A69E9538F78 /* SuggestionPrompt.swift */,
 				A2B69BECD4D5E863B1C60329 /* SuggestionTypes.swift */,
@@ -754,6 +757,7 @@
 				826FA796B9F9ADF21CBC9447 /* SpeakerPassStore.swift in Sources */,
 				E1CDB9B50BB3FC7A318C93FB /* SuggestionContext.swift in Sources */,
 				11F6E0DAD2B030FF76E4E07B /* SuggestionGeneration.swift in Sources */,
+				8D158826D0202473AF4A5FE1 /* SuggestionHistory.swift in Sources */,
 				582F5668DA3F5277CE58F7E0 /* SuggestionInteraction.swift in Sources */,
 				FE004F3E87FE916B6C2DA938 /* SuggestionPrompt.swift in Sources */,
 				44E205E13ECF44756D8156BA /* SuggestionTypes.swift in Sources */,

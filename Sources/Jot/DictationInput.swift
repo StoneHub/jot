@@ -70,7 +70,7 @@ final class DictationInput {
     /// A request the service cannot take right now, so the gesture is not a silent no-op.
     var onSuggestionRefused: (() -> Void)?
     var onSuggestionAccept: (() -> Void)?
-    var onSuggestionDismiss: (() -> Void)?
+    var onSuggestionDismiss: ((SuggestionHistoryEntry.Action) -> Void)?
     private var suggestionKeys = SuggestionKeyTracker()
     private var suggestionKeyRevision = 0
     var suggestionState: SuggestionKeyTracker.State { suggestionKeys.state }
@@ -210,7 +210,7 @@ final class DictationInput {
         tracker.reset()
         suggestionFn.reset()
         suggestionKeys.reset()
-        onSuggestionDismiss?()
+        onSuggestionDismiss?(.serviceStopped)
         gestureAccepted = false
         clearTarget()
         if recording { recording = false; onStop() }
@@ -578,7 +578,7 @@ final class DictationInput {
         guard isEnabled else { return false }
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             suggestionKeys.reset()
-            onSuggestionDismiss?()
+            onSuggestionDismiss?(.serviceStopped)
             cancel(InputError.shortcutCancelled)
             gestureAccepted = false
             tracker.reset()
@@ -620,7 +620,7 @@ final class DictationInput {
             // No AX calls in this branch: acceptance checks this integer before any insertion.
             Task { @MainActor [weak self] in
                 guard let self, self.suggestionKeys.state == .idle else { return }
-                self.onSuggestionDismiss?()
+                self.onSuggestionDismiss?(keyCode == 53 && modifiers.isEmpty ? .escape : .typedOver)
             }
         case .none: break
         }
@@ -648,7 +648,7 @@ final class DictationInput {
             shortcut: shortcut, at: eventTimestamp)
         switch result.action {
         case .start:
-            onSuggestionDismiss?()
+            onSuggestionDismiss?(.typedOver)
             shortcutPresses += 1
             if shortcut.keyCode == nil { fnPresses += 1 }
             if let reason = startBlocker() {
@@ -752,7 +752,7 @@ final class DictationInput {
         guard let target else { return }
         do { try validateCurrent(target) }
         catch {
-            if suggestionKeys.state != .idle { onSuggestionDismiss?() }
+            if suggestionKeys.state != .idle { onSuggestionDismiss?(.focusChanged) }
             else { cancel(error) }
         }
     }

@@ -82,7 +82,19 @@ final class SuggestionHistoryTests: XCTestCase {
                                                selectionCharacters: 0,
                                                selected: [.init(kind: .screenText, count: 13, bytes: 6_001)])
         do { try await history.save(oversized); XCTFail("unbounded counts persisted") } catch { }
-        try await history.save(entry())
+        let source = Source(id: "secret-id", kind: HeardSpeech.kind, role: "unknown", origin: "jot",
+                            scope: .init(conversation: privateText), timestamp: "2026-09-27T00:00:00Z",
+                            revision: 1, status: .current, text: privateText)
+        let usage = SuggestionHistoryEntry.usage(selected: [source], excluded: [])
+        XCTAssertEqual(usage.selected, [.init(kind: .heardSpeech, count: 1, bytes: privateText.utf8.count)])
+        let safe = SuggestionHistoryEntry(id: UUID(), revision: 0, startedAt: Date(),
+                                          appBundleID: "com.openai.codex", fieldRole: .textArea,
+                                          purpose: .agentPrompt, plan: .continuation, mode: .continuation,
+                                          beforeEndsSentence: true, draftCharacters: 20,
+                                          selectionCharacters: 0, selected: usage.selected,
+                                          agentInput: .noVisibleMatch,
+                                          outcome: .noSuggestion, reason: .init(code: privateText), complete: true)
+        try await history.save(safe)
         var db: OpaquePointer?
         XCTAssertEqual(sqlite3_open(transcriptStore.databaseURL.path, &db), SQLITE_OK)
         defer { sqlite3_close(db) }
@@ -92,6 +104,7 @@ final class SuggestionHistoryTests: XCTestCase {
         XCTAssertEqual(sqlite3_step(stmt), SQLITE_ROW)
         let raw = String(decoding: Data(bytes: sqlite3_column_blob(stmt, 0), count: Int(sqlite3_column_bytes(stmt, 0))), as: UTF8.self)
         XCTAssertFalse(raw.contains(privateText))
+        XCTAssertTrue(raw.contains("rejectedOutput"), "Unknown codes become a typed reason")
         XCTAssertFalse(raw.contains("conversation"))
         XCTAssertFalse(raw.contains("cwd"))
         XCTAssertFalse(raw.contains("screenText")) // This row used only agentMessage.

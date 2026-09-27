@@ -8,6 +8,7 @@ import JotCore
 final class SuggestionCoordinator {
     private let input: DictationInput
     private let store: () -> TranscriptStore?
+    private let history: () -> SuggestionHistory?
     private let agentContext: AgentContext
     private let allowed: () -> Bool
     private let readsScreen: () -> Bool
@@ -27,6 +28,41 @@ final class SuggestionCoordinator {
     private var agentSnapshot: [Source] = []
     private var agentLatestID: String?
     private var candidate: String?
+    private struct Receipt {
+        let id = UUID()
+        let startedAt = Date()
+        var revision = 0
+        var appBundleID: String?
+        var fieldRole: SuggestionHistoryEntry.FieldRole = .unknown
+        var purpose: SuggestionHistoryEntry.Purpose = .textEntry
+        var plan: SuggestionHistoryEntry.Plan = .needsNotes
+        var mode: SuggestionHistoryEntry.Mode = .none
+        var beforeEndsSentence = true
+        var draftCharacters = 0
+        var selectionCharacters = 0
+        var selected: [SuggestionHistoryEntry.SourceUsage] = []
+        var excluded: [SuggestionHistoryEntry.ExcludedUsage] = []
+        var agentInput: AgentContext.MatchState = .noMessages
+        var deadlineMilliseconds: Int?
+        var generationMilliseconds: Int?
+        var previewMilliseconds: Int?
+        var generationStartedAt: Date?
+        var outcome: SuggestionHistoryEntry.Outcome = .requested
+        var reason: SuggestionHistoryEntry.Reason?
+        var action: SuggestionHistoryEntry.Action?
+        var complete = false
+
+        func entry() -> SuggestionHistoryEntry {
+            SuggestionHistoryEntry(id: id, revision: revision, startedAt: startedAt,
+                appBundleID: appBundleID, fieldRole: fieldRole, purpose: purpose, plan: plan, mode: mode,
+                beforeEndsSentence: beforeEndsSentence, draftCharacters: draftCharacters,
+                selectionCharacters: selectionCharacters, selected: selected, excluded: excluded,
+                agentInput: agentInput, deadlineMilliseconds: deadlineMilliseconds,
+                generationMilliseconds: generationMilliseconds, previewMilliseconds: previewMilliseconds,
+                outcome: outcome, reason: reason, action: action, complete: complete)
+        }
+    }
+    private var receipt: Receipt?
     /// A draft replaces exactly these notes on Tab; a reply inserts at the cursor.
     private var seed: SuggestionSeed?
     private(set) var keyboardAllowsSuggestions = false
@@ -48,11 +84,12 @@ final class SuggestionCoordinator {
 
     static let needsNotes = "Jot needs a few rough notes. Type or dictate them here, then double-tap Fn."
 
-    init(input: DictationInput, store: @escaping () -> TranscriptStore?, agentContext: AgentContext = AgentContext(),
+    init(input: DictationInput, store: @escaping () -> TranscriptStore?,
+         history: @escaping () -> SuggestionHistory? = { nil }, agentContext: AgentContext = AgentContext(),
          allowed: @escaping () -> Bool, readsScreen: @escaping () -> Bool = { true },
          window: @escaping () -> TimeInterval = { 600 }, matchesHeardSpeech: @escaping () -> Bool = { true },
          notice: @escaping (String) -> Void) {
-        self.input = input; self.store = store; self.agentContext = agentContext; self.allowed = allowed
+        self.input = input; self.store = store; self.history = history; self.agentContext = agentContext; self.allowed = allowed
         self.readsScreen = readsScreen; self.window = window; self.matchesHeardSpeech = matchesHeardSpeech; self.notice = notice
         refreshKeyboard()
         sourceObserver = DistributedNotificationCenter.default().addObserver(
@@ -72,7 +109,28 @@ final class SuggestionCoordinator {
             == (kTISTypeKeyboardLayout as String)
     }
 
-    func dismiss() {
+    private func persistReceipt() {
+        guard let receipt, let history = history() else { return }
+        let entry = receipt.entry()
+        Task { try? await history.save(entry) }
+    }
+
+    private func beginReceipt() {
+        receipt = Receipt()
+        persistReceipt()
+    }
+
+    private func updateReceipt(_ update: (inout Receipt) -> Void) {
+        guard var current = receipt else { return }
+        update(&current)
+        current.revision += 1
+        receipt = current
+        persistReceipt()
+    }
+
+    func dismiss(action: SuggestionHistoryEntry.Action = .focusChanged) {
+        updateReceipt { $0.action = action; $0.complete = true }
+        receipt = nil
         generation += 1
         requestTask?.cancel(); requestTask = nil
         monitorTask?.cancel(); monitorTask = nil
@@ -86,16 +144,42 @@ final class SuggestionCoordinator {
     /// reply. All draw on the same window: the conversation visible above the field, what Jot heard, and what agents
     /// told it. A blank field with nothing in the window asks for notes.
     func request() {
-        dismiss()
-        guard allowed(), keyboardAllowsSuggestions else { return }
+        dismiss(action: .newRequest)
+        beginReceipt()
+        guard allowed(), keyboardAllowsSuggestions else {
+            updateReceipt { $0.outcome = .blocked; $0.reason = .refused }
+            dismiss(action: .serviceStopped)
+            return
+        }
         requests += 1; outcome = "loading"; reason = "none"; lastMode = "none"; usedScreen = false; usedSpeech = false; usedAgent = false; usedHeard = false
+        updateReceipt { $0.outcome = .loading }
         do { try input.captureTarget(wakeRetry: false) }
-        catch { outcome = "unsupported-field"; reason = "unsupported-field"; notice("No suggestion: focus an ordinary editable text field."); return }
+        catch {
+            outcome = "unsupported-field"; reason = "unsupported-field"
+            updateReceipt { $0.outcome = .noSuggestion; $0.reason = .unsupportedField }
+            dismiss(action: .focusChanged)
+            notice("No suggestion: focus an ordinary editable text field."); return
+        }
         ownsTarget = true
         guard let field = input.readSuggestionField(), let frame = input.targetFrame(timeout: 0.005) else {
+            updateReceipt { $0.outcome = .noSuggestion; $0.reason = .unreadableField }
             dismiss(); reason = "unreadable-field"; notice("No suggestion: this field cannot be read safely."); return
         }
         self.field = field
+        updateReceipt { receipt in
+            receipt.appBundleID = SuggestionHistoryEntry.sanitizedBundleID(field.bundleID)
+            switch field.role {
+            case kAXTextAreaRole: receipt.fieldRole = .textArea
+            case kAXTextFieldRole: receipt.fieldRole = .textField
+            case kAXComboBoxRole: receipt.fieldRole = .comboBox
+            default: receipt.fieldRole = .unknown
+            }
+            receipt.purpose = field.role != kAXTextAreaRole ? .singleLine
+                : field.bundleID == "com.openai.codex" ? .agentPrompt : .textEntry
+            receipt.draftCharacters = (field.draft.value as NSString).length
+            receipt.selectionCharacters = field.draft.length
+            receipt.beforeEndsSentence = SuggestionPrompt.endsSentence(field.draft.before)
+        }
         let blank = field.draft.isBlank
         if blank && field.role != kAXTextAreaRole { showNotice(Self.needsNotes, reason: "needs-notes"); return }
         let store = self.store()
@@ -129,18 +213,21 @@ final class SuggestionCoordinator {
                     sources.append(ScreenContext.source(text, at: now))
                 }
                 sources += context?.sources ?? []
-                let agentSources = self.agentContext.sources(within: window, now: now,
+                let agentMatch = self.agentContext.match(within: window, now: now,
                     targetBundleID: field.bundleID, visibleText: excerpt)
+                let agentSources = agentMatch.sources
+                self.updateReceipt { $0.agentInput = agentMatch.state }
                 sources += agentSources
                 guard agentSources.isEmpty || self.agentContext.matchesSnapshot(agentSources, latestID: agentSources.last!.id,
                     within: window, now: now) else {
-                    self.dismiss(); return
+                    self.dismiss(action: .sourcesChanged); return
                 }
                 let plan = SuggestionPlan.make(draft: field.draft, role: field.role, hasAssociatedContext: !sources.isEmpty)
                 let mode: SuggestionMode
                 var before = field.draft.before, after = field.draft.after
                 switch plan {
                 case .needsNotes:
+                    self.updateReceipt { $0.plan = .needsNotes }
                     self.showNotice(Self.needsNotes, reason: "needs-notes"); return
                 case .reply:
                     mode = .reply
@@ -149,6 +236,21 @@ final class SuggestionCoordinator {
                 case .draft(let seed):
                     mode = .draft; self.seed = seed
                     (before, after) = field.draft.text(around: seed)
+                }
+                self.updateReceipt { receipt in
+                    switch plan {
+                    case .reply: receipt.plan = .reply
+                    case .continuation: receipt.plan = .continuation
+                    case .draft: receipt.plan = .draft
+                    case .needsNotes: receipt.plan = .needsNotes
+                    }
+                    switch mode {
+                    case .reply: receipt.mode = .reply
+                    case .continuation: receipt.mode = .continuation
+                    case .draft: receipt.mode = .draft
+                    case .shellCommand: receipt.mode = .none
+                    }
+                    receipt.beforeEndsSentence = SuggestionPrompt.endsSentence(before)
                 }
                 self.lastMode = mode.rawValue
                 let target = JotCore.Target(app: field.appName, mode: mode, purpose: Self.purpose(of: field),
@@ -159,6 +261,8 @@ final class SuggestionCoordinator {
                 scenario.association = .explicitRecentRequest
                 let selection = SourceSelector.select(scenario, limits: .window)
                 let selected = HeardSpeech.adding(heard, to: selection.selected, members: { context?.rows(for: [$0]) ?? [] }, limits: .window)
+                let usage = SuggestionHistoryEntry.usage(selected: selected, excluded: selection.excluded)
+                self.updateReceipt { $0.selected = usage.selected; $0.excluded = usage.excluded }
                 self.usedScreen = selected.contains { $0.kind == ScreenContext.kind }
                 self.usedSpeech = selected.contains { $0.kind == "dictation" || $0.kind == "meeting-transcript" }
                 self.usedHeard = selected.contains { $0.kind == HeardSpeech.kind }
@@ -178,15 +282,26 @@ final class SuggestionCoordinator {
                     }
                 }
                 let request = SuggestionPrompt.request(for: scenario, sources: selected)
-                let result = await self.gate.call(request, deadline: Self.deadline(for: mode),
+                let deadline = Self.deadline(for: mode)
+                self.updateReceipt {
+                    $0.deadlineMilliseconds = mode == .reply ? 3_000 : 8_000
+                    $0.generationStartedAt = Date()
+                }
+                let result = await self.gate.call(request, deadline: deadline,
                                                   generator: { try await AppleFMGeneration.generate($0) })
                 guard self.isCurrent(token, field: field) else { return }
+                self.updateReceipt { receipt in
+                    if let began = receipt.generationStartedAt {
+                        receipt.generationMilliseconds = min(60_000, max(0, Int(Date().timeIntervalSince(began) * 1_000)))
+                    }
+                }
                 let expectedRows = self.rows
                 if !expectedRows.isEmpty, let store {
                     let current = try await Task.detached { try store.suggestionRowsUnchanged(expectedRows) }.value
                     guard self.isCurrent(token, field: field) else { return }
                     guard current else {
-                        self.dismiss(); self.reason = "sources-changed"; self.notice("Suggestion dismissed because its sources changed."); return
+                        self.updateReceipt { $0.reason = .sourcesChanged }
+                        self.dismiss(action: .sourcesChanged); self.reason = "sources-changed"; self.notice("Suggestion dismissed because its sources changed."); return
                     }
                 }
                 switch result {
@@ -210,8 +325,12 @@ final class SuggestionCoordinator {
                             self.showNotice("No suggestion: the result only repeated text on screen.", reason: "copies-context"); return
                         }
                         self.candidate = text; self.outcome = "ready"
+                        self.updateReceipt {
+                            $0.outcome = .ready
+                            $0.previewMilliseconds = min(60_000, max(0, Int(Date().timeIntervalSince($0.startedAt) * 1_000)))
+                        }
                         self.input.showSuggestionKeys(.ready)
-                        guard let frame = self.input.targetFrame(timeout: 0.005) else { self.dismiss(); return }
+                        guard let frame = self.input.targetFrame(timeout: 0.005) else { self.dismiss(action: .focusChanged); return }
                         let title: String, action: String
                         if let seed = self.seed {
                             title = seed.isSelection ? "Rewrite of your selection" : "Draft from your notes"
@@ -236,7 +355,7 @@ final class SuggestionCoordinator {
                 case .timedOut: self.showNotice("No suggestion: the model took too long.", reason: "timed-out")
                 case .blocked: self.showNotice("No suggestion: the previous request is still ending.", reason: "blocked")
                 case .failed: self.showNotice("No suggestion: the model could not complete the request.", reason: "model-failed")
-                case .cancelled: self.dismiss()
+                case .cancelled: self.dismiss(action: .serviceStopped)
                 }
             } catch {
                 guard token == self.generation else { return }
@@ -272,9 +391,10 @@ final class SuggestionCoordinator {
     private func isCurrent(_ token: Int, field: DictationInput.SuggestionField) -> Bool {
         guard token == generation, !Task.isCancelled else { return false }
         if let agentLatestID, !agentContext.matchesSnapshot(agentSnapshot, latestID: agentLatestID, within: window()) {
-            dismiss(); return false
+            updateReceipt { $0.reason = .sourcesChanged }
+            dismiss(action: .sourcesChanged); return false
         }
-        guard allowed(), keyboardAllowsSuggestions, input.suggestionFieldIsCurrent(field) else { dismiss(); return false }
+        guard allowed(), keyboardAllowsSuggestions, input.suggestionFieldIsCurrent(field) else { dismiss(action: .focusChanged); return false }
         return true
     }
 
@@ -285,13 +405,17 @@ final class SuggestionCoordinator {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(250))
                 guard let self, self.isCurrent(token, field: field) else { return }
-                guard ContinuousClock.now < expires, let frame = self.input.targetFrame(timeout: 0.005) else { self.dismiss(); return }
+                guard ContinuousClock.now < expires else { self.dismiss(action: .expired); return }
+                guard let frame = self.input.targetFrame(timeout: 0.005) else { self.dismiss(action: .focusChanged); return }
                 self.card.place(at: frame)
                 let expectedRows = self.rows
                 if !expectedRows.isEmpty, let store = self.store() {
                     let current = await Task.detached { (try? store.suggestionRowsUnchanged(expectedRows)) == true }.value
                     guard token == self.generation else { return }
-                    if !current { self.dismiss(); return }
+                    if !current {
+                        self.updateReceipt { $0.reason = .sourcesChanged }
+                        self.dismiss(action: .sourcesChanged); return
+                    }
                 }
             }
         }
@@ -299,31 +423,38 @@ final class SuggestionCoordinator {
 
     /// A request Jot cannot take right now: the reason shows at the field for a moment, or in the window when there is no field.
     func refuse(_ text: String) {
-        dismiss()
-        do { try input.captureTarget(wakeRetry: false) } catch { notice(text); return }
+        dismiss(action: .newRequest)
+        beginReceipt()
+        updateReceipt { $0.outcome = .blocked; $0.reason = .refused }
+        do { try input.captureTarget(wakeRetry: false) } catch { dismiss(action: .focusChanged); notice(text); return }
         ownsTarget = true
         showNotice(text, reason: "refused")
+        updateReceipt { $0.outcome = .blocked }
     }
 
     private func showNotice(_ text: String, reason: String) {
         outcome = "no-suggestion"; self.reason = reason; candidate = nil
+        updateReceipt { $0.outcome = .noSuggestion; $0.reason = .init(code: reason) }
         input.showSuggestionKeys(.notice)
-        guard let frame = input.targetFrame(timeout: 0.005) else { dismiss(); notice(text); return }
+        guard let frame = input.targetFrame(timeout: 0.005) else { dismiss(action: .focusChanged); notice(text); return }
         card.show(text: text, at: frame)
         let token = generation
         monitorTask?.cancel()
         monitorTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(2))
             guard let self, !Task.isCancelled, token == self.generation else { return }
-            self.dismiss()
+            self.dismiss(action: .expired)
         }
     }
 
     func accept() {
-        guard let field, let text = candidate, input.suggestionState == .accepting else { dismiss(); return }
+        guard let field, let text = candidate, input.suggestionState == .accepting else { dismiss(action: .focusChanged); return }
         let token = generation, expectedRows = rows, seed = self.seed
         let store = expectedRows.isEmpty ? nil : self.store()
-        guard expectedRows.isEmpty || store != nil else { dismiss(); return }
+        guard expectedRows.isEmpty || store != nil else {
+            updateReceipt { $0.reason = .sourcesChanged }
+            dismiss(action: .sourcesChanged); return
+        }
         monitorTask?.cancel(); card.hide()
         requestTask = Task { [weak self] in
             guard let self else { return }
@@ -332,20 +463,34 @@ final class SuggestionCoordinator {
                 return (try? store?.suggestionRowsUnchanged(expectedRows)) == true
             }.value
             guard self.isCurrent(token, field: field), current else {
-                if token == self.generation { self.dismiss() }
+                if token == self.generation { self.dismiss(action: current ? .focusChanged : .sourcesChanged) }
                 self.notice("Nothing inserted: the field or its sources changed."); return
             }
             do {
                 let result: DictationInput.DeliveryResult
                 if let seed { result = try await self.input.replace(seed, with: text, expected: field) }
                 else { result = try await self.input.insert(text, expected: field) }
-                if result.verified { self.insertions += 1; self.outcome = "inserted" }
-                else { self.outcome = "insertion-unverified"; self.notice("Insertion could not be verified. Check the field before retrying.") }
+                if result.verified {
+                    self.insertions += 1; self.outcome = "inserted"
+                    self.updateReceipt { $0.outcome = .inserted }
+                    self.dismiss(action: .acceptedVerified)
+                } else {
+                    self.outcome = "insertion-unverified"
+                    self.updateReceipt { $0.outcome = .insertionUnverified; $0.reason = .insertionUnverified }
+                    self.dismiss(action: .acceptedUnverified)
+                    self.notice("Insertion could not be verified. Check the field before retrying.")
+                }
             } catch DictationInput.InputError.selectionUnavailable {
                 self.outcome = "selection-unavailable"
+                self.updateReceipt { $0.outcome = .insertionCancelled; $0.reason = .selectionUnavailable }
+                self.dismiss(action: .focusChanged)
                 self.notice(DictationInput.InputError.selectionUnavailable.localizedDescription)
-            } catch { self.outcome = "insertion-cancelled"; self.notice("Nothing inserted: the target changed.") }
-            if token == self.generation { self.dismiss() }
+            } catch {
+                self.outcome = "insertion-cancelled"
+                self.updateReceipt { $0.outcome = .insertionCancelled; $0.reason = .insertionCancelled }
+                self.dismiss(action: .focusChanged)
+                self.notice("Nothing inserted: the target changed.")
+            }
         }
     }
 }
