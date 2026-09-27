@@ -623,6 +623,8 @@ struct RecoveryFlowChecks {
         print("PASS: Live keeps a row saved before a failed one, and reads its session again after a speaker name, a failed voice, speakers.label, a new paragraph pause, and a delete, but not after another setting or a second show.")
         print("PASS: after a failed switch Live shows the rows saved next; after a failed reload it keeps its rows; either way the next read retries.")
         print("PASS: recent rows, Sessions and Dictations take in each block's saved rows and cleaned text without a full read, and match one.")
+        // A service reads its tuning from the settings when it is made, so later checks start from the defaults again.
+        service.tuning = TranscriptionTuning()
     }
 
     /// Recent rows, Sessions and Dictations fold in each block's saved rows and each phrase's cleaned text instead of reading the store again; what they hold must be what a full read returns.
