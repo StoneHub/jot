@@ -224,7 +224,7 @@ extension TranscriptView {
                           isOn: Binding(get: { service.suggestionScreenContext }, set: service.setSuggestionScreenContext),
                           indented: true, enabled: service.suggestionsEnabled)
             RowDivider()
-            SettingToggle(title: "Use matching speech", info: "When a draft's notes quote or paraphrase something Jot heard in the past hour, such as a line from a video, the draft uses those few lines to restore the wording. Other speech is never added.",
+            SettingToggle(title: "Use matching speech", info: "When a selection quotes or paraphrases speech Jot heard within the context window, use the matching sentence to restore missing or misheard words in the rewrite.",
                           isOn: Binding(get: { service.suggestionHeardMatches }, set: service.setSuggestionHeardMatches),
                           indented: true, enabled: service.suggestionsEnabled)
             RowDivider()

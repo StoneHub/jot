@@ -75,7 +75,7 @@ final class SpeechService: ObservableObject {
         settings.set(JotDefaultsKey.suggestionScreenContext, enabled)
         suggestions.dismiss()
     }
-    /// A draft uses the few lines Jot heard in the past hour that its notes quote or paraphrase. Other speech never joins.
+    /// A selection rewrite can restore quoted words from matching speech within the context window.
     @Published private(set) var suggestionHeardMatches = JotSettings.standard.bool(JotDefaultsKey.suggestionHeardMatches)
     func setSuggestionHeardMatches(_ enabled: Bool) {
         suggestionHeardMatches = enabled
