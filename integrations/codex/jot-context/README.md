@@ -27,4 +27,6 @@ Use `/hooks` to inspect and trust the exact local definition. Codex records trus
 
 ## Check
 
-Submit a Codex prompt, wait for the answer, then inspect `jot status` for a nonzero agent-context count. Double-tap Fn in the Codex composer to see whether Jot names the agent conversation. Hook firing in the Codex desktop app has not yet been verified in a live session. These hooks need a local execution environment and do not run in ordinary ChatGPT chat.
+Start a fresh Codex session after installing. Submit a prompt, wait for the answer, then inspect `jot status` for a nonzero agent-context count. Double-tap Fn in the Codex composer to see whether Jot names the agent conversation. These hooks need a local execution environment and do not run in ordinary ChatGPT chat.
+
+On September 27, 2026, the installed plugin's two commands were reviewed with `/hooks`; the runtime reported both enabled and trusted. A real Codex CLI turn delivered its prompt and completed reply to the installed Jot app. A subsequent turn through the Codex desktop host delivered its completed reply too. A physical double-Fn request in the native composer is still a separate acceptance check. The local hooks need no API key or account login; generating a real agent reply for an end-to-end test uses that agent's normal authentication.

@@ -19,4 +19,6 @@ The equivalent terminal commands are `claude plugin marketplace add StoneHub/jot
 
 Submit a prompt, wait for Claude Code's reply, then inspect `jot status` for a nonzero agent-context count. Double-tap Fn in Claude's composer to see whether the suggestion names the agent conversation. Hook delivery from the Claude desktop Code tab has not yet been verified in a live session.
 
+On September 27, 2026, the installed plugin's real `UserPromptSubmit` event delivered a prompt to Jot with empty stdout/stderr and a successful exit. The shared helper and both hook payloads also passed synthetic local-socket checks. A completed Claude reply and a physical double-Fn request in the desktop Code tab remain separate acceptance checks. The hooks are entirely local and need no API key or account login; authentication is only needed by Claude itself when generating a real reply for a test.
+
 To uninstall, run `/plugin uninstall jot-context@jot`. Removing the marketplace as well is optional: `/plugin marketplace remove jot`.
