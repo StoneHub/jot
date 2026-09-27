@@ -29,6 +29,15 @@ Where the September 27 Mac session stopped. Usage ran out mid-work; nothing is l
   - Jot keeps the conversation in memory only and uses it as a suggestion source in Claude.
   - Hooks must print nothing and exit 0. The `Stop` input has no reply text, so the CLI reads the tail of `transcript_path`.
   - Each assistant block is its own JSONL line, and `tool_result` user lines are not prompts.
+  - Complete at `afa5599`, and `local-pr-check --all` passes on it.
+  - Not merged, because it conflicts with #132 on `main`.
+    - #132 adds a separate in-memory store for agent messages, `jot context add`, and a Context window setting that replaces the meeting setting.
+    - It also adds hand-written Claude Code hooks to the README.
+    - The conflicts are in SpeechService, SuggestionCoordinator, the Settings view, JotDefaultsKey, JotSettings and ARCHITECTURE.
+  - **Decision for Monroe:**
+    - Keep this conversation store for Claude surfaces (following #132's Context window), or fold it into #132's store.
+    - Either way, replace #132's README hooks with this plugin. Those hooks print `jot context add`'s JSON on prompt submit, and Claude adds that output to its context.
+  - Then merge `origin/main`, rerun the checks, and open the PR. A draft PR body was in the agent's scratch folder.
 - A separate session is fixing recognition errors on final chunks under 300 ms: the speech model rejects them, and the words in them are lost. 9 such events since September 26.
 
 To finish either WIP branch: check it out, get `python3 scripts/local-pr-check.py --current --all` green, open the PR, review, merge, then install with `python3 scripts/build-install.py --configuration Release` (pause Jot first, resume after).
