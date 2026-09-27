@@ -16,7 +16,7 @@ extension SpeechService {
             "suggestions": suggestions.diagnostics,
             "accessibilityGranted": DictationInput.accessibilityGranted, "fnEnabled": fnEnabled,
             "dictationShortcut": shortcut.displayName, "fnRequested": fnRequested, "ambientRequested": ambientRequested, "ambientEnabled": ambientEnabled, "keepMacAwakeWhileListening": keepMacAwakeWhileListening, "keepAwakeActive": keepAwakeActive, "servicePhase": lifecycle.phase.rawValue,
-            "notice": notice, "sessionID": sessionID, "inferenceRunning": processing != nil || diagnosticActive, "speakerPassRunning": speakerPassRunning, "resources": try object(resources),
+            "notice": notice, "sessionID": timeline.sessionID, "inferenceRunning": processing != nil || diagnosticActive, "speakerPassRunning": speakers.passRunning, "resources": try object(resources),
             "droppedAudioSeconds": droppedSeconds, "queuedAudioSeconds": pendingAudioSeconds, "processingLagSeconds": lagSeconds,
             "lastInferenceSeconds": lastInferenceSeconds, "processedAudioSeconds": processedAudioSeconds,
             "audioRetention": keepAudioForSpeakerPass ? "session audio kept until the speaker pass finishes, then deleted" : "bounded RAM only; no recordings saved", "speakerSlots": 4,
@@ -29,7 +29,7 @@ extension SpeechService {
         if let delivery = input.lastDelivery { result["lastDelivery"] = delivery.metadata }
         if let lastAudioAt { result["lastAudioAt"] = ISO8601DateFormatter().string(from: lastAudioAt) }
         if let lastTranscriptAt { result["lastTranscriptAt"] = ISO8601DateFormatter().string(from: lastTranscriptAt) }
-        if let store { result["storage"] = try object(store.metrics()) }
+        if let store = library.store { result["storage"] = try object(store.metrics()) }
         return result
     }
 
@@ -53,9 +53,9 @@ extension SpeechService {
                 guard let title = params["title"] as? String else { throw JotError.message("Meeting needs a title") }
                 await startMeeting(title)
                 guard meetingTitle != nil else { throw JotError.message(notice.isEmpty ? "Meeting did not start" : notice) }
-                result = ["sessionID": sessionID, "title": title]
+                result = ["sessionID": timeline.sessionID, "title": title]
             case "speech.meeting_end":
-                let id = sessionID
+                let id = timeline.sessionID
                 guard meetingTitle != nil || ambientEnabled else { throw JotError.message("No meeting or ambient capture is running") }
                 let file = await endMeeting()
                 result = ["sessionID": id, "file": file?.path ?? ""]
@@ -67,21 +67,21 @@ extension SpeechService {
             case "transcripts.delete_session":
                 guard let id = params["sessionID"] as? String else { throw JotError.message("sessionID is required") }
                 try deleteSession(id); result = ["deleted": true]
-            case "transcripts.search": result = try object(store?.search(params["query"] as? String ?? "", limit: limit, offset: offset) ?? [])
-            case "transcripts.recent": result = try object(store?.recent(limit: limit, offset: offset) ?? [])
-            case "transcripts.events": result = try object(store?.events(sessionID: params["sessionID"] as? String, limit: limit, offset: offset) ?? [])
-            case "transcripts.sessions": result = try object(store?.sessions(limit: limit) ?? [])
+            case "transcripts.search": result = try object(library.store?.search(params["query"] as? String ?? "", limit: limit, offset: offset) ?? [])
+            case "transcripts.recent": result = try object(library.store?.recent(limit: limit, offset: offset) ?? [])
+            case "transcripts.events": result = try object(library.store?.events(sessionID: params["sessionID"] as? String, limit: limit, offset: offset) ?? [])
+            case "transcripts.sessions": result = try object(library.store?.sessions(limit: limit) ?? [])
             case "transcripts.since":
                 guard let cursor = params["cursor"] as? Int ?? (params["cursor"] == nil ? 0 : nil), cursor >= 0 else { throw JotError.message("cursor must be a nonnegative integer") }
                 let sessionID = params["sessionID"] as? String
                 guard params["sessionID"] == nil || sessionID?.isEmpty == false else { throw JotError.message("sessionID must be a nonempty string") }
-                result = try object(store?.changes(since: Int64(cursor), sessionID: sessionID, limit: limit) ?? TranscriptChanges(rows: [], cursor: Int64(cursor), hasMore: false))
+                result = try object(library.store?.changes(since: Int64(cursor), sessionID: sessionID, limit: limit) ?? TranscriptChanges(rows: [], cursor: Int64(cursor), hasMore: false))
             case "transcripts.read":
-                guard let id = params["id"] as? String, let item = try store?.read(id: id) else { throw JotError.message("Transcript not found") }
+                guard let id = params["id"] as? String, let item = try library.store?.read(id: id) else { throw JotError.message("Transcript not found") }
                 result = try object(item)
             case "transcripts.export":
                 guard let id = params["sessionID"] as? String else { throw JotError.message("sessionID is required") }
-                let (session, rows) = try exportable(id)
+                let (session, rows) = try library.exportable(id)
                 if params["format"] as? String == "json" { result = try object(TranscriptGrouping.foldContinuations(rows)) }
                 else { result = ["sessionID": id, "text": TranscriptExport.markdown(session: session, rows: rows, tuning: tuning)] }
             case "speech.transcribe_file":
@@ -111,14 +111,14 @@ extension SpeechService {
                 result = ["text": output.text, "transcripts": try object(output.transcripts), "processingSeconds": output.processingSeconds, "persisted": false]
             case "people.list":
                 let iso = ISO8601DateFormatter()
-                result = try peopleStore?.list().map { ["id": $0.id, "name": $0.name, "sampleCount": $0.sampleCount, "createdAt": iso.string(from: $0.createdAt), "updatedAt": iso.string(from: $0.updatedAt)] } ?? []
+                result = try speakers.peopleStore?.list().map { ["id": $0.id, "name": $0.name, "sampleCount": $0.sampleCount, "createdAt": iso.string(from: $0.createdAt), "updatedAt": iso.string(from: $0.updatedAt)] } ?? []
             case "people.delete":
                 guard let id = params["id"] as? String else { throw JotError.message("id is required") }
-                try peopleStore?.delete(id: id); refreshPeople(); result = ["deleted": true]
+                try speakers.peopleStore?.delete(id: id); speakers.refreshPeople(); result = ["deleted": true]
             case "speakers.label":
                 guard let session = params["sessionID"] as? String, let speaker = params["speakerID"] as? String, let name = params["name"] as? String else { throw JotError.message("sessionID, speakerID and name are required") }
-                try store?.label(sessionID: session, speakerID: speaker, name: name)
-                refreshRecent()
+                try library.store?.label(sessionID: session, speakerID: speaker, name: name)
+                library.refreshRecent()
                 library.reloadLive()
                 result = ["updated": true]
             default: throw JotError.message("Unknown method: \(method)")

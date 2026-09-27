@@ -25,7 +25,6 @@
 		132C26A14258A6D3C8F0920D /* JotDefaultsKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = B02C95F663096FB499C5FD80 /* JotDefaultsKey.swift */; };
 		13899AFFBA889828C7A0DC82 /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */; };
 		14DB46313AE88EC56854704C /* GlassStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6E751674ACDF9A0C12697CF /* GlassStyles.swift */; };
-		161FC2D42209402E92194E17 /* SpeechService+Hosts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38FB0162CA0B3A69BB25757A /* SpeechService+Hosts.swift */; };
 		1B47F4253D363DD041DFC31E /* ModelCallGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EBF5ABC9AB3F8267175FB84 /* ModelCallGate.swift */; };
 		2052BA77D29D43FFCE0A5BCD /* SessionAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = F73AD2F430744CB727A9459D /* SessionAudio.swift */; };
 		21D7E588E14925328343CFBC /* LibraryRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2657AFE914877050FC11631C /* LibraryRows.swift */; };
@@ -48,7 +47,6 @@
 		4E3572709CC582019CA27ACE /* SpeechServiceIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42A30D435B413C60B77D5B35 /* SpeechServiceIPC.swift */; };
 		500C13C61FC088A4654813C5 /* SuggestionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE957A5843B14B0AFA30FBB3 /* SuggestionCoordinator.swift */; };
 		541DD1B47FDFBBCC96250CF7 /* UnicodeTyping.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6D0115D4240AC8B29E7BC2B /* UnicodeTyping.swift */; };
-		54AEE34FE278A305853486CD /* SpeechService+Hosts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38FB0162CA0B3A69BB25757A /* SpeechService+Hosts.swift */; };
 		54F00210B01AD83169A500BE /* DictationReadiness.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9096ACD17598D16FF2D647D3 /* DictationReadiness.swift */; };
 		55B642EC08906D1FD23C693A /* MCPTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA19A72F6D28FCFD5CA7D316 /* MCPTools.swift */; };
 		582F5668DA3F5277CE58F7E0 /* SuggestionInteraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F1183E2300C944A080346B9 /* SuggestionInteraction.swift */; };
@@ -189,7 +187,6 @@
 		2AF537A90CCFD9AEEF273426 /* ThirdPartyNotices.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ThirdPartyNotices.txt; sourceTree = "<group>"; };
 		2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechService.swift; sourceTree = "<group>"; };
 		36EED2B8F9A3A149CE94E3D2 /* SemanticVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticVersion.swift; sourceTree = "<group>"; };
-		38FB0162CA0B3A69BB25757A /* SpeechService+Hosts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SpeechService+Hosts.swift"; sourceTree = "<group>"; };
 		3EEFF7CD54878C9E034B716A /* KeepAwakeAssertion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeepAwakeAssertion.swift; sourceTree = "<group>"; };
 		40F41CDC337859B88E28A38E /* ListeningTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListeningTimeline.swift; sourceTree = "<group>"; };
 		42A30D435B413C60B77D5B35 /* SpeechServiceIPC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechServiceIPC.swift; sourceTree = "<group>"; };
@@ -343,7 +340,6 @@
 				8680759A7B6F51ABC6336028 /* SpeakerRecognizer.swift */,
 				7F1BBAEB2DD84C459697477F /* SpeechPipeline.swift */,
 				2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */,
-				38FB0162CA0B3A69BB25757A /* SpeechService+Hosts.swift */,
 				42A30D435B413C60B77D5B35 /* SpeechServiceIPC.swift */,
 				B84EA74928EFDD284B87A3FE /* SuggestionCard.swift */,
 				DE957A5843B14B0AFA30FBB3 /* SuggestionCoordinator.swift */,
@@ -683,7 +679,6 @@
 				E94231E2378EBD6BF68D1415 /* SpeakerPass.swift in Sources */,
 				782379222F79E6443D2D606C /* SpeakerRecognizer.swift in Sources */,
 				0C1F40871B30A9D4D3645961 /* SpeechPipeline.swift in Sources */,
-				54AEE34FE278A305853486CD /* SpeechService+Hosts.swift in Sources */,
 				987B92C586EF2356FE9B3BBC /* SpeechService.swift in Sources */,
 				4E3572709CC582019CA27ACE /* SpeechServiceIPC.swift in Sources */,
 				A600EFC83E9F8657CE42F209 /* SuggestionCard.swift in Sources */,
@@ -771,7 +766,6 @@
 				F0A303028A7207F0062C5CDD /* SpeakerPass.swift in Sources */,
 				6CA28F1C6538D728C88972BA /* SpeakerRecognizer.swift in Sources */,
 				6CFD58F0EB52A65ECDE9CF7F /* SpeechPipeline.swift in Sources */,
-				161FC2D42209402E92194E17 /* SpeechService+Hosts.swift in Sources */,
 				13899AFFBA889828C7A0DC82 /* SpeechService.swift in Sources */,
 				0716C14AD00BDA6BD9FB35AB /* SpeechServiceIPC.swift in Sources */,
 				B33DD6B2558C8E7D3978BD2F /* SuggestionCard.swift in Sources */,

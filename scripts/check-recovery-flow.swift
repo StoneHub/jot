@@ -95,20 +95,20 @@ struct RecoveryFlowChecks {
         service.cleanUpDictation = false
         service.beginRecoveryVerification(store: store, startedAt: probe.now)
         defer { service.shutdown() }
-        service.showLive(service.activeSessionID)
+        service.library.showLive(service.timeline.activeSessionID)
 
-        service.beginDictation()
+        service.dictation.begin()
         for index in 1...25 {
             probe.now += 3
             service.ingestRecoveryVerification(samples: Array(repeating: Float(index), count: 48_000), at: probe.now)
             await service.waitForRecoveryVerification()
-            let count = try store.session(id: service.activeSessionID!).count
+            let count = try store.session(id: service.timeline.activeSessionID!).count
             precondition(count == index, "Speech was not persisted while the hold was still active")
-            precondition(service.live.paragraphs.last?.text.hasSuffix("segment\(index)") == true, "Live did not add the row when it was saved")
+            precondition(service.library.live.paragraphs.last?.text.hasSuffix("segment\(index)") == true, "Live did not add the row when it was saved")
         }
         precondition(probe.chunks.allSatisfy { $0 <= 3 }, "Recognition still waits for a large audio block")
         try libraryMatchesStore(service, store, "25 dictation blocks")
-        service.endDictation()
+        service.dictation.end()
         await service.waitForRecoveryVerification()
         let expected = (1...25).map { "segment\($0)" }.joined(separator: " ")
         let retained = try store.latestRecoverableDictationAttempt()
@@ -118,17 +118,17 @@ struct RecoveryFlowChecks {
         let reopenedAttempt = try reopened.latestRecoverableDictationAttempt()
         precondition(reopenedAttempt?.text == expected, "Saved dictation did not survive reopening storage")
         print("PASS: 75-second hold persisted all 25 chunks before release; failed delivery retained across store reopen.")
-        let fullRead = service.sessionParagraphs(service.activeSessionID!).map(\.text)
-        precondition(service.live.paragraphs.map(\.text) == fullRead, "Live differs from a full read of the session")
-        precondition(service.live.paragraphs.contains { $0.mode == "dictation" }, "Live did not show the saved dictation")
+        let fullRead = service.library.sessionParagraphs(service.timeline.activeSessionID!).map(\.text)
+        precondition(service.library.live.paragraphs.map(\.text) == fullRead, "Live differs from a full read of the session")
+        precondition(service.library.live.paragraphs.contains { $0.mode == "dictation" }, "Live did not show the saved dictation")
         print("PASS: Live adds each saved row and the held dictation as they are saved, matching a full read.")
 
         // A double-tap creates two short intents before requesting recovery. Neither
         // may replace the earlier failed attempt or erase the listening timeline.
-        service.beginDictation(); service.cancelTapDictation()
-        service.beginDictation(); service.cancelTapDictation()
+        service.dictation.begin(); service.dictation.cancelTap()
+        service.dictation.begin(); service.dictation.cancelTap()
         probe.deliveryFails = false
-        service.recoverRecentDictation()
+        service.dictation.recoverRecent()
         await service.waitForRecoveryVerification()
         precondition(probe.delivered == [expected], "Recovery did not insert the full failed attempt exactly once")
         let pendingAfterDelivery = try store.latestRecoverableDictationAttempt()
@@ -139,7 +139,7 @@ struct RecoveryFlowChecks {
         probe.now += 3
         service.ingestRecoveryVerification(samples: Array(repeating: Float(26), count: 48_000), at: probe.now)
         // Recover without waiting: the command must include queued/in-flight speech.
-        service.recoverRecentDictation()
+        service.dictation.recoverRecent()
         await service.waitForRecoveryVerification()
         let recent = probe.delivered.last ?? ""
         precondition(recent.contains("segment26"), "Recovery omitted the newest pending speech")
@@ -151,7 +151,7 @@ struct RecoveryFlowChecks {
         service.ingestRecoveryVerification(samples: Array(repeating: Float(27), count: 8_000), at: probe.now)
         service.pause()
         while service.lifecycle.phase != .paused { try await Task.sleep(for: .milliseconds(10)) }
-        let finalRows = try store.session(id: service.activeSessionID!)
+        let finalRows = try store.session(id: service.timeline.activeSessionID!)
         precondition(finalRows.contains(where: { $0.text == "segment27" }), "Pause discarded the unfinished tail")
         print("PASS: Pause persisted the final half-second before unloading.")
 
@@ -204,14 +204,14 @@ struct RecoveryFlowChecks {
         for index in 1...3 {
             probe.now += 3
             service.ingestRecoveryVerification(samples: Array(repeating: Float(index), count: 48_000), at: probe.now)
-            while try store.session(id: service.activeSessionID!).count < index {
+            while try store.session(id: service.timeline.activeSessionID!).count < index {
                 try await Task.sleep(for: .milliseconds(5))
             }
         }
-        let before = try store.session(id: service.activeSessionID!).map(\.text)
+        let before = try store.session(id: service.timeline.activeSessionID!).map(\.text)
         precondition(before == fragments, "Recognition did not publish before phrase cleanup")
         await service.waitForRecoveryVerification()
-        let after = try store.session(id: service.activeSessionID!).map(\.text).joined(separator: " ")
+        let after = try store.session(id: service.timeline.activeSessionID!).map(\.text).joined(separator: " ")
         precondition(after == "I think we could get faster output to the live view.", "Real model did not clean the complete phrase: \(after)")
         precondition(service.recoveryDiagnostics["cleanupRequested"] as? Int == 1, "Transport fragments became separate cleanup requests")
         service.shutdown()
@@ -349,13 +349,13 @@ struct RecoveryFlowChecks {
         service.keepAudioForSpeakerPass = false; service.cleanUpTranscriptions = false
         service.cleanUpDictation = false
         service.beginRecoveryVerification(store: store, startedAt: probe.now)
-        service.beginDictation()
+        service.dictation.begin()
         for index in 1...3 {
             probe.now += 3
             service.ingestRecoveryVerification(samples: Array(repeating: Float(index), count: 48_000), at: probe.now)
             await service.waitForRecoveryVerification()
         }
-        service.endDictation()
+        service.dictation.end()
         await service.waitForRecoveryVerification()
         let partial = try store.latestRecoverableDictationAttempt()
         precondition(probe.delivered.isEmpty && partial?.hasGap == true && partial?.text == "segment1 segment3",
@@ -364,19 +364,19 @@ struct RecoveryFlowChecks {
         let afterDisable = try store.latestRecoverableDictationAttempt()
         precondition(afterDisable == partial, "Disabling shortcut deleted retained speech")
 
-        service.beginDictation()
+        service.dictation.begin()
         probe.now += 3
         service.ingestRecoveryVerification(samples: Array(repeating: Float(4), count: 48_000), at: probe.now)
         await service.waitForRecoveryVerification()
         probe.failFinal = true
-        service.endDictation()
+        service.dictation.end()
         await service.waitForRecoveryVerification()
         let finalFailure = try store.latestRecoverableDictationAttempt()
         precondition(probe.delivered.isEmpty && finalFailure?.hasGap == true && finalFailure?.text == "segment4",
             "An empty final barrier failed without retaining a partial attempt")
         try store.deleteDictationAttempt(id: partial!.id)
         try store.deleteDictationAttempt(id: finalFailure!.id)
-        service.recoverRecentDictation()
+        service.dictation.recoverRecent()
         await service.waitForRecoveryVerification()
         let recentFailure = try store.latestRecoverableDictationAttempt()
         precondition(probe.delivered.isEmpty && recentFailure?.hasGap == true,
@@ -396,26 +396,26 @@ struct RecoveryFlowChecks {
         cleaned.highlightTargetField = false; cleaned.muteSpeakersDuringDictation = false
         cleaned.keepAudioForSpeakerPass = false; cleaned.cleanUpTranscriptions = true
         cleaned.beginRecoveryVerification(store: cleanedStore, startedAt: probe.now)
-        cleaned.showLive(cleaned.activeSessionID)
+        cleaned.library.showLive(cleaned.timeline.activeSessionID)
         for index in 1...2 {
             probe.now += 3
             cleaned.ingestRecoveryVerification(samples: Array(repeating: Float(index), count: 48_000), at: probe.now)
             // Each explicit quiet boundary completes a phrase. The next phrase
             // must be queued while cleanup is busy, not discarded as raw forever.
             cleaned.flushRecoveryVerification()
-            while try cleanedStore.session(id: cleaned.activeSessionID!).count < index {
+            while try cleanedStore.session(id: cleaned.timeline.activeSessionID!).count < index {
                 try await Task.sleep(for: .milliseconds(5))
             }
         }
-        let raw = try cleanedStore.session(id: cleaned.activeSessionID!)
+        let raw = try cleanedStore.session(id: cleaned.timeline.activeSessionID!)
         precondition(raw.map(\.text) == ["segment1", "segment2"], "Raw text did not publish before delayed cleanup")
-        precondition(cleaned.live.paragraphs.map(\.text) == ["segment1 segment2"] && cleaned.live.cleanupRevision == 0,
+        precondition(cleaned.library.live.paragraphs.map(\.text) == ["segment1 segment2"] && cleaned.library.live.cleanupRevision == 0,
             "Live did not show raw rows as they were saved")
         await cleaned.waitForRecoveryVerification()
-        let readable = try cleanedStore.session(id: cleaned.activeSessionID!)
+        let readable = try cleanedStore.session(id: cleaned.timeline.activeSessionID!)
         precondition(readable.map(\.text) == ["Segment1", "Segment2"], "Phrase cleanup dropped work while the model was busy")
         precondition(cleaned.recoveryDiagnostics["cleanupApplied"] as? Int == 2, "Cleanup outcome was not reported")
-        precondition(cleaned.live.paragraphs.map(\.text) == ["Segment1 Segment2"] && cleaned.live.cleanupRevision == 2,
+        precondition(cleaned.library.live.paragraphs.map(\.text) == ["Segment1 Segment2"] && cleaned.library.live.cleanupRevision == 2,
             "Live did not put cleaned text in place of the raw text")
         try libraryMatchesStore(cleaned, cleanedStore, "phrase cleanup")
         cleaned.shutdown()
@@ -435,11 +435,11 @@ struct RecoveryFlowChecks {
         slow.keepAudioForSpeakerPass = false; slow.cleanUpTranscriptions = false
         slow.cleanUpDictation = true
         slow.beginRecoveryVerification(store: slowStore, startedAt: probe.now)
-        slow.beginDictation()
+        slow.dictation.begin()
         probe.now += 3
         slow.ingestRecoveryVerification(samples: Array(repeating: Float(5), count: 48_000), at: probe.now)
         await slow.waitForRecoveryVerification()
-        slow.endDictation()
+        slow.dictation.end()
         await slow.waitForRecoveryVerification()
         precondition(probe.delivered.last == "Segment5", "Dictation inserted raw text instead of waiting for a three-second cleanup")
         slow.shutdown()
@@ -470,16 +470,16 @@ struct RecoveryFlowChecks {
         defer { service.shutdown() }
         for index in 1...10 {
             service.cleanUpDictation = index.isMultiple(of: 2)
-            service.beginDictation()
+            service.dictation.begin()
             probe.now += 3
             service.ingestRecoveryVerification(samples: Array(repeating: Float(100 + index), count: 48_000), at: probe.now)
             await service.waitForRecoveryVerification()
-            service.endDictation()
+            service.dictation.end()
             await service.waitForRecoveryVerification()
         }
         // A hold with no speech records a timing but no release-to-insert latency.
         service.cleanUpDictation = true
-        service.beginDictation(); service.endDictation()
+        service.dictation.begin(); service.dictation.end()
         await service.waitForRecoveryVerification()
         precondition(probe.delivered.count == 10 && probe.delivered[1] == "Segment102" && probe.delivered[0] == "segment101",
             "Dictations were not inserted with and without cleanup as set")
@@ -545,21 +545,21 @@ struct RecoveryFlowChecks {
         service.keepAudioForSpeakerPass = false
         service.cleanUpTranscriptions = false
         service.cleanUpDictation = false
-        service.peopleStore = try PeopleStore(sharing: store)
+        service.speakers.peopleStore = try PeopleStore(sharing: store)
         service.beginRecoveryVerification(store: store, startedAt: probe.now)
         defer { service.shutdown() }
-        let id = service.activeSessionID!
-        service.showLive(id)
+        let id = service.timeline.activeSessionID!
+        service.library.showLive(id)
         func speak(_ index: Int) async {
             probe.now += 3
             service.ingestRecoveryVerification(samples: Array(repeating: Float(index), count: 48_000), at: probe.now)
             await service.waitForRecoveryVerification()
         }
         func shown() -> [String] {
-            service.live.paragraphs.map { "\(TranscriptExport.speakerName($0)): \($0.text)" }
+            service.library.live.paragraphs.map { "\(TranscriptExport.speakerName($0)): \($0.text)" }
         }
         func fullRead() -> [String] {
-            service.sessionParagraphs(id).map { "\(TranscriptExport.speakerName($0)): \($0.text)" }
+            service.library.sessionParagraphs(id).map { "\(TranscriptExport.speakerName($0)): \($0.text)" }
         }
 
         for index in 1...4 {
@@ -567,14 +567,14 @@ struct RecoveryFlowChecks {
         }
         precondition(shown().last == "Speaker 2: segment4" && shown() == fullRead(), "Live lost a saved row when the next row of its block could not be saved")
         try libraryMatchesStore(service, store, "a block whose second row could not be saved")
-        let revision = service.live.revision
-        service.showLive(id)
-        precondition(service.live.revision == revision, "Live read its session again when it was shown a second time")
-        service.beginDictation()
+        let revision = service.library.live.revision
+        service.library.showLive(id)
+        precondition(service.library.live.revision == revision, "Live read its session again when it was shown a second time")
+        service.dictation.begin()
         await speak(5)
-        service.endDictation()
+        service.dictation.end()
         await service.waitForRecoveryVerification()
-        precondition(service.live.paragraphs.contains { $0.mode == "dictation" } && shown() == fullRead(), "Live did not show the session as saved")
+        precondition(service.library.live.paragraphs.contains { $0.mode == "dictation" } && shown() == fullRead(), "Live did not show the session as saved")
         try libraryMatchesStore(service, store, "a dictation held while listening")
 
         service.labelSpeaker(session: id, speaker: "speaker-1", name: "Ada")
@@ -591,21 +591,21 @@ struct RecoveryFlowChecks {
 
         service.tuning.paragraphPause = 2.5
         precondition(shown().contains("Ada King: segment1 segment2") && shown() == fullRead(), "Live kept the old paragraphs after a new paragraph pause")
-        let paused = service.live.revision
+        let paused = service.library.live.revision
         service.tuning.speakerConfidence = 0.8
-        precondition(service.live.revision == paused, "Live read its session again after a setting it does not group by")
-        try service.deleteHistoryCard(service.history.first!)
-        precondition(!service.live.paragraphs.contains { $0.mode == "dictation" } && shown() == fullRead(), "Live still showed a deleted row")
+        precondition(service.library.live.revision == paused, "Live read its session again after a setting it does not group by")
+        try service.deleteHistoryCard(service.library.history.first!)
+        precondition(!service.library.live.paragraphs.contains { $0.mode == "dictation" } && shown() == fullRead(), "Live still showed a deleted row")
 
         // Hiding the names table makes the session read fail. Live still moves to the session, so a row saved next shows, and the next reload reads the whole session.
-        service.showLive(nil)
+        service.library.showLive(nil)
         renameTable("speaker_labels", to: "hidden_labels", in: folder)
         service.notice = ""
-        service.showLive(id)
-        precondition(!service.notice.isEmpty && service.live.paragraphs.isEmpty, "Reading the session without its names table did not fail")
+        service.library.showLive(id)
+        precondition(!service.notice.isEmpty && service.library.live.paragraphs.isEmpty, "Reading the session without its names table did not fail")
         renameTable("hidden_labels", to: "speaker_labels", in: folder)
         await speak(6)
-        precondition(service.live.paragraphs.map(\.text) == ["segment6"], "Live dropped a row saved after a failed read")
+        precondition(service.library.live.paragraphs.map(\.text) == ["segment6"], "Live dropped a row saved after a failed read")
         service.labelSpeaker(session: id, speaker: "speaker-2", name: "Grace Hopper")
         precondition(shown().contains("Ada King: segment1 segment2") && shown() == fullRead(), "Live did not read the session again after a failed read")
 
@@ -616,7 +616,7 @@ struct RecoveryFlowChecks {
         service.tuning.paragraphPause = 1.5
         precondition(!service.notice.isEmpty && shown() == kept, "Live dropped its rows when a reload of the shown session failed")
         renameTable("hidden_labels", to: "speaker_labels", in: folder)
-        service.showLive(id)
+        service.library.showLive(id)
         precondition(shown().contains("Ada King: segment1") && shown() == fullRead(), "Live did not read the session again after a failed reload")
         await speak(7)
         try libraryMatchesStore(service, store, "speaker names, a delete and failed reads, then a block")
@@ -628,11 +628,11 @@ struct RecoveryFlowChecks {
     /// Recent rows, Sessions and Dictations fold in each block's saved rows and each phrase's cleaned text instead of reading the store again; what they hold must be what a full read returns.
     @MainActor static func libraryMatchesStore(_ service: SpeechService, _ store: TranscriptStore, _ step: String) throws {
         let recent = try store.recent(limit: 20), sessions = try store.sessions(limit: 200)
-        precondition(service.recent == recent, "Recent rows differ from a full read after \(step)")
-        precondition(service.sessions == sessions, "Sessions differ from a full read after \(step)")
-        let history = service.history, count = service.dictationCount, more = service.hasMoreHistory
+        precondition(service.library.recent == recent, "Recent rows differ from a full read after \(step)")
+        precondition(service.library.sessions == sessions, "Sessions differ from a full read after \(step)")
+        let history = service.library.history, count = service.library.dictationCount, more = service.library.hasMoreHistory
         service.library.refreshHistory()
-        precondition(service.history == history && service.dictationCount == count && service.hasMoreHistory == more,
+        precondition(service.library.history == history && service.library.dictationCount == count && service.library.hasMoreHistory == more,
             "Dictations differ from a full read after \(step)")
     }
 
@@ -671,16 +671,16 @@ struct RecoveryFlowChecks {
         try first.saveVocabularyEntry(VocabularyEntry(preferred: "Dot", heard: "dott"))
         first.beginRecoveryVerification(store: store, startedAt: probe.now)
 
-        first.beginDictation()
+        first.dictation.begin()
         probe.now += 3
         first.ingestRecoveryVerification(samples: Array(repeating: 1, count: 48_000), at: probe.now)
         await first.waitForRecoveryVerification()
-        first.endDictation()
+        first.dictation.end()
         await first.waitForRecoveryVerification()
         let finished = try store.latestRecoverableDictationAttempt()
         precondition(finished?.text == "email Dot", "The finished hold did not save dictation text")
 
-        first.beginDictation()
+        first.dictation.begin()
         probe.now += 3
         first.ingestRecoveryVerification(samples: Array(repeating: 2, count: 48_000), at: probe.now)
         await first.waitForRecoveryVerification()
@@ -699,9 +699,9 @@ struct RecoveryFlowChecks {
         second.beginRecoveryVerification(store: reopened, startedAt: probe.now)
         try second.dictation.finalizeInterruptedAttempts()
         probe.deliveryFails = false
-        second.recoverRecentDictation()
+        second.dictation.recoverRecent()
         await second.waitForRecoveryVerification()
-        second.recoverRecentDictation()
+        second.dictation.recoverRecent()
         await second.waitForRecoveryVerification()
         precondition(probe.delivered.first == "(Dot)", "Recovery inserted an interrupted hold's words without converting them with the saved vocabulary: \(probe.delivered)")
         precondition(probe.delivered.last == "email Dot", "Recovery converted a finished hold's dictation text a second time: \(probe.delivered)")
@@ -737,19 +737,19 @@ struct RecoveryFlowChecks {
         }
 
         await speak()
-        let first = service.activeSessionID
+        let first = service.timeline.activeSessionID
         await quiet(for: 30)
-        precondition(service.activeSessionID == first, "A new session started before a minute of quiet")
+        precondition(service.timeline.activeSessionID == first, "A new session started before a minute of quiet")
         await quiet(for: 31)
-        precondition(service.activeSessionID != first, "A minute of quiet did not start a new session")
+        precondition(service.timeline.activeSessionID != first, "A minute of quiet did not start a new session")
         print("PASS: a minute of quiet after speech starts a new session on the next tick; half a minute does not.")
 
         await service.startMeeting("Standup")
         precondition(service.meetingTitle == "Standup", "The meeting did not start: \(service.notice)")
         await speak()
-        let meeting = service.activeSessionID
+        let meeting = service.timeline.activeSessionID
         await quiet(for: 61)
-        precondition(service.activeSessionID == meeting, "A named meeting started a new session after a minute of quiet")
+        precondition(service.timeline.activeSessionID == meeting, "A named meeting started a new session after a minute of quiet")
         print("PASS: a named meeting keeps its session through the same quiet.")
 
         probe.now += 5
@@ -854,15 +854,15 @@ struct RecoveryFlowChecks {
             }))
         service.keepAudioForSpeakerPass = false
         service.cleanUpTranscriptions = true
-        service.speakerStore = try SpeakerPassStore(sharing: store)
-        service.peopleStore = try PeopleStore(sharing: store)
+        service.speakers.speakerStore = try SpeakerPassStore(sharing: store)
+        service.speakers.peopleStore = try PeopleStore(sharing: store)
         // A remembered voice that matches the pass's first speaker.
-        _ = try service.peopleStore?.add(name: "Ada", embedding: [1])
+        _ = try service.speakers.peopleStore?.add(name: "Ada", embedding: [1])
         service.beginRecoveryVerification(store: store, startedAt: probe.now)
         defer { service.shutdown() }
         /// Speaks both blocks into the running session, then ends it the way quiet does: its last block goes out as a final job, which hands the whole phrase to cleanup.
         func speakAndEndSession() -> String {
-            let id = service.activeSessionID!
+            let id = service.timeline.activeSessionID!
             for index in 1...2 {
                 probe.now += 3
                 service.ingestRecoveryVerification(samples: Array(repeating: Float(index), count: 48_000), at: probe.now)
@@ -872,24 +872,24 @@ struct RecoveryFlowChecks {
             return id
         }
         let id = speakAndEndSession()
-        service.showLive(id)
+        service.library.showLive(id)
         // The first voice gives way to the second inside the first row, between "should" and "ship". Cleanup is still running when the pass arrives.
         let pass = SpeakerPassResult(segments: [("S1", 0, 1.7), ("S2", 1.7, 6)], speakers: ["S1": [1], "S2": [2]], durationSeconds: 6, processingSeconds: 0.1)
         await service.speakers.apply(pass, session: id, truncated: false)
         // Live reloads after the pass names the voice, not only after the relabel.
-        let named = service.live.paragraphs.filter { $0.speakerID == "speaker-1" }.map(\.speakerLabel)
+        let named = service.library.live.paragraphs.filter { $0.speakerID == "speaker-1" }.map(\.speakerLabel)
         precondition(!named.isEmpty && named.allSatisfy { $0 == "Ada" }, "Live did not show the name the pass recognized: \(named), \(service.notice)")
         await service.waitForRecoveryVerification()
         let expected = ["So we should", "ship it on friday then ok."]
         let speakers = ["speaker-1", "speaker-2"]
-        let paragraphs = service.sessionParagraphs(id)
+        let paragraphs = service.library.sessionParagraphs(id)
         precondition(paragraphs.map(\.text) == expected, "The speaker pass lost cleaned text: \(paragraphs.map(\.text))")
         precondition(paragraphs.map(\.speakerID) == speakers, "The speaker pass labels were not applied: \(paragraphs.map(\.speakerID))")
         let events = try store.events(sessionID: id)
         precondition(events.contains { $0.kind == "speaker_pass" }, "The speaker pass recorded no event: \(service.notice)")
         let rows = try store.session(id: id).map(\.id)
         try await service.regroupSession(id)
-        let regrouped = service.sessionParagraphs(id)
+        let regrouped = service.library.sessionParagraphs(id)
         precondition(regrouped.map(\.text) == expected && regrouped.map(\.speakerID) == speakers, "Regroup from the stored pass changed the session: \(regrouped.map(\.text))")
         let regroupedRows = try store.session(id: id).map(\.id)
         precondition(regroupedRows == rows, "Regroup from the stored pass replaced rows it only needed to keep")
@@ -897,13 +897,13 @@ struct RecoveryFlowChecks {
 
         // A second session ends the same way and has the same pass stored. Regroup is pressed while its phrase is still being cleaned.
         let second = speakAndEndSession()
-        try service.speakerStore?.replace(sessionID: second, result: SpeakerPassRelabel.renumbered(pass))
+        try service.speakers.speakerStore?.replace(sessionID: second, result: SpeakerPassRelabel.renumbered(pass))
         while !service.cleanup.isCleaning(session: second) {
             try await Task.sleep(for: .milliseconds(5))
         }
         try await service.regroupSession(second)
         await service.waitForRecoveryVerification()
-        let duringCleanup = service.sessionParagraphs(second)
+        let duringCleanup = service.library.sessionParagraphs(second)
         precondition(duringCleanup.map(\.text) == expected, "Regroup during cleanup lost cleaned text: \(duringCleanup.map(\.text))")
         precondition(duringCleanup.map(\.speakerID) == speakers, "Regroup during cleanup did not apply the pass: \(duringCleanup.map(\.speakerID))")
         print("PASS: Regroup pressed while a session's last phrase is being cleaned waits for it and keeps the cleaned text.")
@@ -914,7 +914,7 @@ struct RecoveryFlowChecks {
         while !gate.holding {
             try await Task.sleep(for: .milliseconds(1))
         }
-        let storedBeforePress = try service.speakerStore?.segments(sessionID: third) ?? []
+        let storedBeforePress = try service.speakers.speakerStore?.segments(sessionID: third) ?? []
         precondition(storedBeforePress.isEmpty, "The pass's segments were stored before Regroup was pressed")
         let early = Task { try await service.regroupSession(third) }
         while !service.library.isRelabeling {
@@ -927,7 +927,7 @@ struct RecoveryFlowChecks {
         await service.speakers.apply(pass, session: third, truncated: false)
         precondition(service.library.isRelabeling, "Regroup finished before the pass relabeled, so it did not write last: \(service.notice)")
         try await early.value
-        let afterEarly = service.sessionParagraphs(third)
+        let afterEarly = service.library.sessionParagraphs(third)
         precondition(afterEarly.map(\.speakerID) == speakers, "Regroup pressed before the pass stored its segments replaced the pass's speakers: \(afterEarly.map(\.speakerID)), \(afterEarly.map(\.text))")
         precondition(afterEarly.map(\.text) == expected, "Regroup pressed before the pass lost cleaned text: \(afterEarly.map(\.text))")
         let earlyNames = afterEarly.map(\.speakerLabel)
@@ -955,7 +955,7 @@ struct RecoveryFlowChecks {
         service.keepAudioForSpeakerPass = false
         service.cleanUpTranscriptions = false
         let passStore = try SpeakerPassStore(sharing: store)
-        service.speakerStore = passStore
+        service.speakers.speakerStore = passStore
         service.beginRecoveryVerification(store: store)
         defer { service.shutdown() }
         let started = Date(timeIntervalSince1970: 1_800_000_000)
@@ -1057,11 +1057,11 @@ struct RecoveryFlowChecks {
         try store.appendWords([
             StoredWord(transcriptID: reply.id, position: 1, word: "two", startSeconds: 0.5, endSeconds: 0.7, probabilities: []),
             StoredWord(transcriptID: reply.id, position: 2, word: "three", startSeconds: 2.0, endSeconds: 2.2, probabilities: [])])
-        service.showLive("fails")
+        service.library.showLive("fails")
         let failing = SpeakerPassResult(segments: [("S1", 0, 1.5), ("S2", 1.5, 3)], speakers: ["S1": [1], "S2": [2]], durationSeconds: 3, processingSeconds: 0.1)
         await service.speakers.apply(failing, session: "fails", truncated: false)
         precondition(service.notice.hasPrefix("Speaker pass failed"), "The relabel did not fail partway: \(service.notice)")
-        let shown = service.live.paragraphs.map(\.speakerID)
+        let shown = service.library.live.paragraphs.map(\.speakerID)
         precondition(shown == ["speaker-1", "speaker-4"], "Live kept showing rows the failed relabel had already changed: \(shown)")
         print("PASS: a speaker pass whose relabel fails partway still reloads Live with the rows it changed.")
 
@@ -1071,9 +1071,9 @@ struct RecoveryFlowChecks {
         try store.appendWords([
             StoredWord(transcriptID: regrouped.id, position: 0, word: "one", startSeconds: 0, endSeconds: 0.4, probabilities: [0.9, 0, 0, 0]),
             StoredWord(transcriptID: regrouped.id, position: 1, word: "two", startSeconds: 0.5, endSeconds: 0.9, probabilities: [0.9, 0, 0, 0])])
-        service.showLive("regroup-reloads")
+        service.library.showLive("regroup-reloads")
         try await service.regroupSession("regroup-reloads")
-        let regroupedLive = service.live.paragraphs.map(\.speakerID)
+        let regroupedLive = service.library.live.paragraphs.map(\.speakerID)
         precondition(regroupedLive == ["speaker-1"], "Live kept showing the speakers from before Regroup: \(regroupedLive)")
         print("PASS: Regroup reloads Live with the speakers it wrote.")
 
@@ -1098,12 +1098,12 @@ struct RecoveryFlowChecks {
         while try passStore.speakers(sessionID: "voices").isEmpty {
             try await Task.sleep(for: .milliseconds(5))
         }
-        let waiting = service.passEmbedding(session: "voices", speaker: "speaker-1")
+        let waiting = service.speakers.passEmbedding(session: "voices", speaker: "speaker-1")
         precondition(waiting == nil, "The name sheet offered a pass voice before the pass relabeled the rows: \(String(describing: waiting))")
         voicesGate.signal()
         _ = try await voicesBlocker.value
         await voicesPass.value
-        let relabeled = service.passEmbedding(session: "voices", speaker: "speaker-1")
+        let relabeled = service.speakers.passEmbedding(session: "voices", speaker: "speaker-1")
         precondition(relabeled != nil, "The name sheet offered no pass voice once the pass relabeled the rows: \(service.notice)")
         print("PASS: the name sheet offers a pass voice only once the pass has relabeled the session's rows.")
     }
@@ -1122,7 +1122,7 @@ struct RecoveryFlowChecks {
         let service = SpeechService(dependencies: dependencies)
         service.keepAudioForSpeakerPass = false
         service.cleanUpTranscriptions = false
-        service.speakerStore = try SpeakerPassStore(sharing: store)
+        service.speakers.speakerStore = try SpeakerPassStore(sharing: store)
         service.beginRecoveryVerification(store: store)
         defer { service.shutdown() }
 
@@ -1156,7 +1156,7 @@ struct RecoveryFlowChecks {
         let pass = SpeakerPassResult(segments: segments, speakers: ["S1": [1], "S2": [2], "S3": [3]], durationSeconds: 9_000, processingSeconds: 1)
 
         // Listening goes on. Every 5 ms the ticker drains the microphone and does what a recognized block does: it saves a row and its word, adds the row to Live, and folds it into the recent rows and the Sessions list. It returns the longest gap between wakes beyond the 5 ms it sleeps.
-        let listening = service.activeSessionID!
+        let listening = service.timeline.activeSessionID!
         func listen() -> Task<Duration, Never> {
             // The clock starts before the ticker's first run, so a stall that keeps it from starting is counted too.
             let tickerStarted = ContinuousClock.now
@@ -1175,7 +1175,7 @@ struct RecoveryFlowChecks {
                     let start = Double(ticks) * 0.01
                     let row = Transcript(sessionID: listening, startedAt: started, startSeconds: start, endSeconds: start + 0.005, text: "tick", mode: "ambient")
                     try? store.append(row)
-                    service.appendLive([row])
+                    service.library.appendLive([row])
                     try? store.appendWords([StoredWord(transcriptID: row.id, position: 0, word: "tick", startSeconds: start, endSeconds: start + 0.005, probabilities: [])])
                     service.library.didSave([row])
                 }
@@ -1236,7 +1236,7 @@ struct RecoveryFlowChecks {
         print("FULL ASR: \(AudioClock.seconds(samples: source.count)) audio seconds, \(fullStarted.duration(to: .now)) elapsed.")
         print("FULL ASR TEXT: \(full.text)")
         service.beginRecoveryVerification(store: store, startedAt: probe.now)
-        service.beginDictation()
+        service.dictation.begin()
         let started = ContinuousClock.now
         for lower in stride(from: 0, to: samples.count, by: 48_000) {
             let chunk = Array(samples[lower..<min(lower + 48_000, samples.count)])
@@ -1244,7 +1244,7 @@ struct RecoveryFlowChecks {
             service.ingestRecoveryVerification(samples: chunk, at: probe.now)
             await service.waitForRecoveryVerification()
         }
-        service.endDictation()
+        service.dictation.end()
         await service.waitForRecoveryVerification()
         let text = probe.delivered.last ?? ""
         precondition(probe.delivered.count == 1 && !text.isEmpty, "Real recognition did not deliver the held fixture")
@@ -1305,7 +1305,7 @@ extension RecoveryFlowChecks {
         let store = try TranscriptStore(directory: directory)
         tally.jobs = 0; tally.noSpeech = 0; tally.speechSeconds = []
         service.beginRecoveryVerification(store: store, startedAt: Date(timeIntervalSince1970: 1_800_000_000))
-        let session = service.activeSessionID!
+        let session = service.timeline.activeSessionID!
         let packet = AudioClock.samples(seconds: 0.2)
         let tapBuffer = 1_365
         let realTime = ProcessInfo.processInfo.environment["JOT_QUIET_CPU_REALTIME"] == "1"

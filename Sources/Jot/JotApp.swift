@@ -7,7 +7,7 @@ struct JotApp: App {
     var body: some Scene {
         Window("Jot", id: "main") {
             // Every page must fit this size: below it nothing lays out, above it nothing may overflow the window.
-            TranscriptView(service: delegate.service, delegate: delegate)
+            TranscriptView(service: delegate.service, library: delegate.service.library, delegate: delegate)
                 .frame(minWidth: 520, minHeight: 420)
         }
         .defaultSize(width: 920, height: 760)

@@ -4,16 +4,16 @@ import JotCore
 
 /// The voices Jot remembers. Deleting one forgets the voice; names already written into sessions stay.
 struct PeopleView: View {
-    @ObservedObject var service: SpeechService
+    @ObservedObject var speakers: SpeakerRecognizer
     @State private var renamingID: String?
     @State private var nameDraft = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if service.people.isEmpty {
+            if speakers.people.isEmpty {
                 Text("No one yet. Name a speaker in Sessions with \"Remember this voice\" on.").foregroundStyle(.secondary)
             }
-            ForEach(service.people) { person in
+            ForEach(speakers.people) { person in
                 HStack(spacing: 10) {
                     if renamingID == person.id {
                         TextField("Name", text: $nameDraft).textFieldStyle(.roundedBorder).frame(maxWidth: 280).onSubmit { commitRename(person) }
@@ -27,17 +27,17 @@ struct PeopleView: View {
                         Spacer()
                         Button("Rename", systemImage: "pencil") { nameDraft = person.name; renamingID = person.id }
                             .labelStyle(.iconOnly).modifier(GlassButton()).help("Rename this person")
-                        Button("Delete", systemImage: "trash", role: .destructive) { service.deletePerson(person.id) }
+                        Button("Delete", systemImage: "trash", role: .destructive) { speakers.deletePerson(person.id) }
                             .labelStyle(.iconOnly).modifier(GlassButton()).help("Forget this voice")
                     }
                 }.padding(14).frame(maxWidth: 820, alignment: .leading)
                     .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
             }
         }.frame(maxWidth: .infinity, alignment: .topLeading)
-        .onAppear { service.refreshPeople() }
+        .onAppear { speakers.refreshPeople() }
     }
 
     private func commitRename(_ person: Person) {
-        service.renamePerson(person.id, name: nameDraft); renamingID = nil
+        speakers.renamePerson(person.id, name: nameDraft); renamingID = nil
     }
 }

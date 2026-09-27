@@ -36,6 +36,7 @@ private struct NoticeToast: View {
 
 struct TranscriptView: View {
     @ObservedObject var service: SpeechService
+    @ObservedObject var library: SessionLibrary
     let delegate: JotDelegate
     @Environment(\.openWindow) private var openWindow
     @State private var copiedID: String?
@@ -83,10 +84,10 @@ struct TranscriptView: View {
                     // Live draws its own title row so the recording chips sit beside it.
                     if section != .live { titleRow }
                     switch section {
-                    case .live: LiveView(service: service)
+                    case .live: LiveView(service: service, library: library, timeline: service.timeline)
                     case .dictations: dictations
-                    case .sessions: SessionsView(service: service, openLive: { section = .live })
-                    case .people: PeopleView(service: service)
+                    case .sessions: SessionsView(service: service, library: library, timeline: service.timeline, openLive: { section = .live })
+                    case .people: PeopleView(speakers: service.speakers)
                     case .vocabulary: VocabularyView(service: service)
                     case .activity: activity
                     case .general: general
@@ -103,7 +104,7 @@ struct TranscriptView: View {
         .background(WindowAttachment(attach: delegate.attach))
         .onAppear { delegate.openAction = { openWindow(id: "main") } }
         .onDisappear { copyReset?.cancel() }
-        .onChange(of: service.historyRevision) { _, _ in copiedID = nil }
+        .onChange(of: library.historyRevision) { _, _ in copiedID = nil }
         // Capture starting is the one moment Live is opened for the user; after that the choice is theirs.
         .onChange(of: service.ambientEnabled) { _, on in if on { section = .live } }
     }
@@ -224,8 +225,8 @@ struct TranscriptView: View {
     }
     private func count(_ item: Section) -> Int? {
         switch item {
-        case .dictations: service.dictationCount
-        case .sessions: service.sessions.count
+        case .dictations: library.dictationCount
+        case .sessions: library.sessions.count
         default: nil
         }
     }
@@ -239,7 +240,7 @@ struct TranscriptView: View {
             TextField("Search dictations", text: $search)
                 .textFieldStyle(.roundedBorder)
                 .fixedSize(horizontal: false, vertical: true)
-                .onChange(of: search) { _, value in service.searchHistory(value) }
+                .onChange(of: search) { _, value in library.searchHistory(value) }
             if showHistory {
                 HStack {
                     Picker("Dictations view", selection: $historyTextView) {
@@ -254,22 +255,22 @@ struct TranscriptView: View {
             }
             if !showHistory {
                 empty("Dictations hidden", symbol: "eye.slash")
-            } else if service.history.isEmpty {
+            } else if library.history.isEmpty {
                 empty(search.isEmpty ? "No dictations yet" : "No matches", symbol: "text.alignleft")
             } else if historyTextView {
-                SelectableHistory(transcripts: service.history, search: search)
-                    .id(service.historyRevision)
+                SelectableHistory(transcripts: library.history, search: search)
+                    .id(library.historyRevision)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                if service.hasMoreHistory {
+                if library.hasMoreHistory {
                     HStack {
                         Spacer()
-                        Button("Load more") { service.loadMoreHistory() }
+                        Button("Load more") { library.loadMoreHistory() }
                     }
                 }
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 10) {
-                        ForEach(service.history) { item in
+                        ForEach(library.history) { item in
                             VStack(alignment: .leading, spacing: 8) {
                                 Button { copy(item) } label: {
                                     VStack(alignment: .leading, spacing: 8) {
@@ -293,8 +294,8 @@ struct TranscriptView: View {
                                 }
                             }.padding(14).background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 14))
                         }
-                        if service.hasMoreHistory {
-                            Button("Load more") { service.loadMoreHistory() }.frame(maxWidth: .infinity)
+                        if library.hasMoreHistory {
+                            Button("Load more") { library.loadMoreHistory() }.frame(maxWidth: .infinity)
                         }
                     }
                 }

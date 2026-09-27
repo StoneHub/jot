@@ -1,15 +1,6 @@
 import Foundation
 import JotCore
 
-/// What the library needs from the service: the tuning that groups rows, whether a finished session is settled, and a place to report.
-@MainActor
-protocol SessionLibraryHost: AnyObject {
-    var tuning: TranscriptionTuning { get }
-    var notice: String { get set }
-    /// The session's last audio block is recognized and its cleanup has landed, so its rows will not change under a relabel.
-    func sessionIsSettled(_ id: String) -> Bool
-}
-
 /// Reads and edits saved sessions and dictations for the screens and the socket API: recent rows, the paged Dictations list, Sessions, export, rename, delete, and regroup. Capture writes rows itself and hands the saved rows and cleaned text here, to Live, the recent rows, Sessions and Dictations.
 @MainActor
 final class SessionLibrary: ObservableObject {
@@ -42,9 +33,12 @@ final class SessionLibrary: ObservableObject {
     private static let relabelQueue = DispatchQueue(label: "Jot.relabel", qos: .userInitiated)
     private var historyQuery = ""
     private var historyLimit = 50
-    private unowned let host: SessionLibraryHost
+    private unowned let service: SpeechService
 
-    init(host: SessionLibraryHost) { self.host = host }
+    init(service: SpeechService) { self.service = service }
+
+    /// A deleted session's late recognition, cleanup and speaker pass must not write rows back.
+    func sessionIsDeleted(_ id: String) -> Bool { deletedSessions.contains(id) }
 
     static var exportDirectory: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Jot Sessions", isDirectory: true)
@@ -56,21 +50,21 @@ final class SessionLibrary: ObservableObject {
             events = try store?.events(limit: 50) ?? []
             refreshHistory()
         }
-        catch { host.notice = error.localizedDescription }
+        catch { service.notice = error.localizedDescription }
     }
 
     func refreshEvents() {
-        do { events = try store?.events(limit: 50) ?? [] } catch { host.notice = "Could not save capture event: \(error.localizedDescription)" }
+        do { events = try store?.events(limit: 50) ?? [] } catch { service.notice = "Could not save capture event: \(error.localizedDescription)" }
     }
 
     func refreshSessions() {
-        do { try rows.readSessions(from: store) } catch { host.notice = error.localizedDescription }
+        do { try rows.readSessions(from: store) } catch { service.notice = error.localizedDescription }
     }
 
     /// Rows a recognition block has just saved. Recent rows, Sessions and Dictations take them in without reading the whole store, so a block's work does not grow with the history.
     func didSave(_ saved: [Transcript]) {
         guard let store, !saved.isEmpty else { return }
-        do { try rows.add(saved, savedTo: store) } catch { host.notice = error.localizedDescription }
+        do { try rows.add(saved, savedTo: store) } catch { service.notice = error.localizedDescription }
         let dictations = saved.filter { $0.mode == "dictation" }
         // A Dictations read that failed is tried again on the next block. A search matches on text the store compares, so a new row is read through it.
         if !historyIsCurrent || (!dictations.isEmpty && !historyQuery.isEmpty) { refreshHistory(); return }
@@ -106,14 +100,14 @@ final class SessionLibrary: ObservableObject {
             }
             showHistory(found, count: try store?.count(mode: "dictation") ?? 0)
             historyIsCurrent = true
-        } catch { host.notice = error.localizedDescription }
+        } catch { service.notice = error.localizedDescription }
     }
 
     private func showHistory(_ found: [Transcript], count: Int) {
         historyRows = found
         hasMoreHistory = found.count > historyLimit
         dictationCount = count
-        let groups = TranscriptGrouping.historyGroups(Array(found.prefix(historyLimit)), tuning: host.tuning)
+        let groups = TranscriptGrouping.historyGroups(Array(found.prefix(historyLimit)), tuning: service.tuning)
         history = groups.map(\.transcript)
         historySources = Dictionary(uniqueKeysWithValues: groups.map { ($0.transcript.id, $0.sourceIDs) })
     }
@@ -127,8 +121,8 @@ final class SessionLibrary: ObservableObject {
     /// Folded and merged rows for reading one session. Stored rows are untouched.
     func sessionParagraphs(_ id: String) -> [Transcript] {
         guard let store else { return [] }
-        do { return TranscriptExport.readingParagraphs(try store.session(id: id), tuning: host.tuning) }
-        catch { host.notice = error.localizedDescription; return [] }
+        do { return TranscriptExport.readingParagraphs(try store.session(id: id), tuning: service.tuning) }
+        catch { service.notice = error.localizedDescription; return [] }
     }
 
     /// Live joins rows up to phrase cleanup's 1.2-second gap even under a shorter paragraph pause, so a cleaned phrase stays one paragraph.
@@ -158,7 +152,7 @@ final class SessionLibrary: ObservableObject {
     }
 
     private func loadLive(_ id: String?) {
-        let gap = max(Self.liveMergeGap, host.tuning.bounded.paragraphPause)
+        let gap = max(Self.liveMergeGap, service.tuning.bounded.paragraphPause)
         guard let id, let store else {
             liveReadFailed = false
             objectWillChange.send()
@@ -172,7 +166,7 @@ final class SessionLibrary: ObservableObject {
             objectWillChange.send()
             live.show(sessionID: id, rows: rows, labels: labels, gap: gap)
         } catch {
-            host.notice = error.localizedDescription
+            service.notice = error.localizedDescription
             liveReadFailed = true
             // A failed reload keeps what Live shows. A failed switch still moves Live to the new session, with no rows, so rows saved from now on show.
             if id != live.sessionID {
@@ -185,12 +179,12 @@ final class SessionLibrary: ObservableObject {
     /// Rows from any ambient session whose text contains the query, newest first, for the Sessions search.
     func searchSessions(_ query: String) -> [Transcript] {
         guard let store, !query.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
-        do { return try store.search(query, mode: "ambient", limit: 50) } catch { host.notice = error.localizedDescription; return [] }
+        do { return try store.search(query, mode: "ambient", limit: 50) } catch { service.notice = error.localizedDescription; return [] }
     }
 
     func renameSession(_ id: String, title: String) {
         do { try store?.setTitle(sessionID: id, title: title); refreshSessions() }
-        catch { host.notice = error.localizedDescription }
+        catch { service.notice = error.localizedDescription }
     }
 
     /// The summary and rows an export is built from; an unknown or dictation-only id has neither.
@@ -207,7 +201,7 @@ final class SessionLibrary: ObservableObject {
     @discardableResult
     func exportSession(_ id: String) throws -> URL {
         let (session, rows) = try exportable(id)
-        let url = try TranscriptExport.write(session: session, rows: rows, directory: Self.exportDirectory, tuning: host.tuning)
+        let url = try TranscriptExport.write(session: session, rows: rows, directory: Self.exportDirectory, tuning: service.tuning)
         lastExport = url
         return url
     }
@@ -220,12 +214,12 @@ final class SessionLibrary: ObservableObject {
         try store.deleteSession(id: id)
         deletedSessions.insert(id)
         didDeleteHistory()
-        host.notice = "Session deleted."
+        service.notice = "Session deleted."
     }
 
     /// Relabels a saved session's rows from its stored words under the current Tuning: from the speaker pass's segments when the session has them, otherwise from the live probabilities. Rows keep their cleaned text; a row whose speaker changes inside it splits there. `segments` is read once the session has settled, so a pass that stores its segments while Regroup waits is used rather than overwritten with the live speakers.
     func regroupSession(_ id: String, segments: () throws -> [(speaker: String, start: Double, end: Double)]) async throws {
-        let tuning = host.tuning
+        let tuning = service.tuning
         var fromPass = false
         // Batches written before a failure stay, so Live and Sessions reload either way.
         defer { didDeleteHistory() }
@@ -240,7 +234,7 @@ final class SessionLibrary: ObservableObject {
         guard changed else {
             throw JotError.message("This session was recorded before Jot kept word timings; it cannot be regrouped.")
         }
-        host.notice = fromPass ? "Session regrouped from the speaker pass." : "Session regrouped with the current tuning."
+        service.notice = fromPass ? "Session regrouped from the speaker pass." : "Session regrouped with the current tuning."
     }
 
     /// A relabel is waiting or writing; Install Update waits for it.
@@ -266,7 +260,7 @@ final class SessionLibrary: ObservableObject {
     }
 
     private func waitUntilSettled(_ id: String) async throws {
-        while !host.sessionIsSettled(id) {
+        while !service.sessionIsSettled(id) {
             try await Task.sleep(for: .milliseconds(250))
         }
     }
@@ -278,7 +272,7 @@ final class SessionLibrary: ObservableObject {
         discard(ids)
         try store.deleteTranscripts(ids: ids)
         didDeleteHistory()
-        host.notice = "Transcript deleted."
+        service.notice = "Transcript deleted."
     }
 
     /// Deletes every saved dictation; sessions are kept. `discardAttempt` drops the live attempt once storage is known to be there.
@@ -289,6 +283,6 @@ final class SessionLibrary: ObservableObject {
         lastExport = nil
         historyLimit = 50
         didDeleteHistory()
-        host.notice = "Dictations cleared. Sessions were kept."
+        service.notice = "Dictations cleared. Sessions were kept."
     }
 }

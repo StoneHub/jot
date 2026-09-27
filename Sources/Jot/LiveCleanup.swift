@@ -1,17 +1,6 @@
 import Foundation
 import JotCore
 
-/// What live cleanup needs from the service: the Live cleanup switch, the injected cleaner, the store it rewrites, and the screens it refreshes.
-@MainActor
-protocol LiveCleanupHost: AnyObject {
-    var dependencies: SpeechServiceDependencies { get }
-    var store: TranscriptStore? { get }
-    var cleanUpTranscriptions: Bool { get }
-    func sessionIsDeleted(_ id: String) -> Bool
-    func replaceLive(texts: [String: String])
-    func didClean(_ sources: [Transcript], texts: [String: String])
-}
-
 /// Rewrites saved recognition into readable text: live rows as whole phrases, one phrase at a time, and a held dictation's text before insertion.
 @MainActor
 final class LiveCleanup {
@@ -32,9 +21,9 @@ final class LiveCleanup {
     private(set) var cleanupAppliedCount = 0
     private(set) var cleanupBypassedCount = 0
     private(set) var cleanupOutcomeCounts: [String: Int] = [:]
-    private unowned let host: LiveCleanupHost
+    private unowned let service: SpeechService
 
-    init(host: LiveCleanupHost) { self.host = host }
+    init(service: SpeechService) { self.service = service }
 
     /// A phrase worker is running; Install Update and the harness wait for it.
     var isRunning: Bool { !cleanupTasks.isEmpty }
@@ -49,7 +38,7 @@ final class LiveCleanup {
     }
 
     func scheduleCleanup(sources: [Transcript], final: Bool) {
-        guard host.cleanUpTranscriptions else { phraseCleanup = PhraseCleanup(); return }
+        guard service.cleanUpTranscriptions else { phraseCleanup = PhraseCleanup(); return }
         for phrase in phraseCleanup.append(sources, final: final) {
             cleanupRequestedCount += 1
             if cleanupQueue.count < 8 { cleanupQueue.append(phrase) }
@@ -67,30 +56,30 @@ final class LiveCleanup {
                 let phrase = cleanupQueue.removeFirst()
                 runningSession = phrase.sources.first?.sessionID
                 defer { runningSession = nil }
-                guard host.cleanUpTranscriptions, let session = phrase.sources.first?.sessionID,
-                      !host.sessionIsDeleted(session) else {
+                guard service.cleanUpTranscriptions, let session = phrase.sources.first?.sessionID,
+                      !service.library.sessionIsDeleted(session) else {
                     cleanupBypassedCount += 1; cleanupCompletedCount += 1; continue
                 }
-                var cleanup = await host.dependencies.cleanup(liveTranscriptCleanup, [phrase.text], Self.livePhraseCleanupTimeout)
+                var cleanup = await service.dependencies.cleanup(liveTranscriptCleanup, [phrase.text], Self.livePhraseCleanupTimeout)
                 // A timed-out generator may still be relinquishing the local model.
                 // Retain the phrase briefly instead of dropping the next request.
                 for _ in 0..<5 where cleanup.outcome == .busy && !Task.isCancelled {
                     try? await Task.sleep(for: .milliseconds(200))
-                    cleanup = await host.dependencies.cleanup(liveTranscriptCleanup, [phrase.text], Self.livePhraseCleanupTimeout)
+                    cleanup = await service.dependencies.cleanup(liveTranscriptCleanup, [phrase.text], Self.livePhraseCleanupTimeout)
                 }
                 cleanupOutcomeCounts[cleanup.outcome.rawValue, default: 0] += 1
                 defer { cleanupCompletedCount += 1 }
-                guard !Task.isCancelled, host.cleanUpTranscriptions, !host.sessionIsDeleted(session),
+                guard !Task.isCancelled, service.cleanUpTranscriptions, !service.library.sessionIsDeleted(session),
                       let text = cleanup.texts.first, text != phrase.text else {
                     cleanupBypassedCount += 1; continue
                 }
                 do {
                     let readable = PhraseCleanup.distribute(text, over: phrase.sources.map(\.text))
-                    if try host.store?.setReadablePhrase(readable, for: phrase.sources) == true {
+                    if try service.library.store?.setReadablePhrase(readable, for: phrase.sources) == true {
                         cleanupAppliedCount += 1
                         let texts = Dictionary(uniqueKeysWithValues: zip(phrase.sources.map(\.id), readable))
-                        host.replaceLive(texts: texts)
-                        host.didClean(phrase.sources, texts: texts)
+                        service.library.replaceLive(texts: texts)
+                        service.library.didClean(phrase.sources, texts: texts)
                     } else { cleanupBypassedCount += 1 }
                 } catch { cleanupBypassedCount += 1 }
             }
@@ -100,7 +89,7 @@ final class LiveCleanup {
     /// One dictation row through the on-device cleanup, counted with the live phrases in the recovery diagnostics.
     func cleanDictation(_ text: String) async -> (text: String, outcome: CleanupResult.Outcome) {
         cleanupRequestedCount += 1
-        let cleanup = await host.dependencies.cleanup(transcriptCleanup, [text], Self.dictationCleanupTimeout)
+        let cleanup = await service.dependencies.cleanup(transcriptCleanup, [text], Self.dictationCleanupTimeout)
         cleanupCompletedCount += 1
         cleanupOutcomeCounts[cleanup.outcome.rawValue, default: 0] += 1
         if let first = cleanup.texts.first, first != text { cleanupAppliedCount += 1; return (first, cleanup.outcome) }

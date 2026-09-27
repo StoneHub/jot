@@ -71,7 +71,6 @@ targets:
       - Sources/Jot/SpeakerRecognizer.swift
       - Sources/Jot/SpeechPipeline.swift
       - Sources/Jot/SpeechService.swift
-      - Sources/Jot/SpeechService+Hosts.swift
       - Sources/Jot/SpeechServiceIPC.swift
     settings:
       base:

@@ -27,13 +27,15 @@ struct SpeakerNameSheet: View {
                 }.disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty).keyboardShortcut(.defaultAction)
             }
         }.padding(20)
-        .onAppear { voice = transcript.speakerID.flatMap { service.passEmbedding(session: transcript.sessionID, speaker: $0) } }
+        .onAppear { voice = transcript.speakerID.flatMap { service.speakers.passEmbedding(session: transcript.sessionID, speaker: $0) } }
     }
 }
 
 /// Every capture session, readable whole at full width; the picker keeps the list out of the reading column.
 struct SessionsView: View {
     @ObservedObject var service: SpeechService
+    @ObservedObject var library: SessionLibrary
+    @ObservedObject var timeline: ListeningTimeline
     /// Picking the recording session opens Live instead of reading it here.
     let openLive: () -> Void
     @State private var selectedID: String?
@@ -48,12 +50,12 @@ struct SessionsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if service.sessions.isEmpty {
+            if library.sessions.isEmpty {
                 Text("No sessions yet. Resume Jot to start listening.").foregroundStyle(.secondary)
             } else {
                 header
                 TextField("Search sessions", text: $search).textFieldStyle(.roundedBorder).frame(maxWidth: 360)
-                    .onChange(of: search) { _, value in hits = service.searchSessions(value) }
+                    .onChange(of: search) { _, value in hits = library.searchSessions(value) }
                 if !search.isEmpty {
                     searchResults
                 } else if let session = selected {
@@ -63,32 +65,32 @@ struct SessionsView: View {
                 }
             }
         }
-        .onAppear { service.refreshSessions(); if selectedID == nil { select(readable.first?.sessionID) } }
-        .onChange(of: service.historyRevision) { _, _ in
+        .onAppear { library.refreshSessions(); if selectedID == nil { select(readable.first?.sessionID) } }
+        .onChange(of: library.historyRevision) { _, _ in
             labelTarget = nil
             select(readable.contains { $0.sessionID == selectedID } ? selectedID : readable.first?.sessionID)
-            if !search.isEmpty { hits = service.searchSessions(search) }
+            if !search.isEmpty { hits = library.searchSessions(search) }
         }
         .onChange(of: revisionAndCounts) { old, new in
             // A pass or Regroup moves the revision and the counts together, and the revision's handler above reads the session. This one reads only for rows saved without a revision.
             guard old.first == new.first, let selectedID else { return }
-            rows = service.sessionParagraphs(selectedID)
+            rows = library.sessionParagraphs(selectedID)
         }
         .sheet(item: $labelTarget) { target in
             SpeakerNameSheet(transcript: target, service: service, draft: $labelDraft,
-                onSave: { rows = service.sessionParagraphs(target.sessionID); labelTarget = nil },
+                onSave: { rows = library.sessionParagraphs(target.sessionID); labelTarget = nil },
                 onCancel: { labelTarget = nil })
         }
     }
 
-    private var selected: TranscriptSession? { service.sessions.first { $0.sessionID == selectedID } }
+    private var selected: TranscriptSession? { library.sessions.first { $0.sessionID == selectedID } }
     /// The history revision, then each session's row count.
-    private var revisionAndCounts: [Int] { [service.historyRevision] + service.sessions.map(\.transcriptCount) }
-    private func isRecording(_ session: TranscriptSession) -> Bool { session.sessionID == service.activeSessionID && service.ambientEnabled }
+    private var revisionAndCounts: [Int] { [library.historyRevision] + library.sessions.map(\.transcriptCount) }
+    private func isRecording(_ session: TranscriptSession) -> Bool { session.sessionID == timeline.activeSessionID && service.ambientEnabled }
     /// Saved sessions this reader can show; the recording one belongs to Live.
-    private var readable: [TranscriptSession] { service.sessions.filter { !isRecording($0) } }
+    private var readable: [TranscriptSession] { library.sessions.filter { !isRecording($0) } }
     /// The recording session first, then the saved ones newest first.
-    private var ordered: [TranscriptSession] { service.sessions.filter(isRecording) + readable }
+    private var ordered: [TranscriptSession] { library.sessions.filter(isRecording) + readable }
 
     private func label(_ session: TranscriptSession) -> String {
         "\(session.title ?? "Untitled session") · \(session.startedAt.formatted(date: .abbreviated, time: .shortened)) · \(TranscriptExport.clock(session.durationSeconds))"
@@ -147,7 +149,7 @@ struct SessionsView: View {
                     }
                 }.modifier(GlassButton()).help("Relabels this session's speakers from its speaker pass, or from the speaker settings in General when it has none")
                 Button("Export", systemImage: "square.and.arrow.up") {
-                    do { NSWorkspace.shared.activateFileViewerSelecting([try service.exportSession(session.sessionID)]) }
+                    do { NSWorkspace.shared.activateFileViewerSelecting([try library.exportSession(session.sessionID)]) }
                     catch { service.notice = error.localizedDescription }
                 }.modifier(PrimaryGlassButton()).help("Saves Markdown to Documents/Jot Sessions and shows it in Finder")
                 Button("Delete session", systemImage: "trash", role: .destructive) {
@@ -189,7 +191,7 @@ struct SessionsView: View {
                 ForEach(hits) { hit in
                     Button { select(hit.sessionID); search = "" } label: {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("\(service.sessions.first { $0.sessionID == hit.sessionID }?.title ?? "Untitled session") · \(hit.startedAt.addingTimeInterval(hit.startSeconds).formatted(date: .abbreviated, time: .shortened))")
+                            Text("\(library.sessions.first { $0.sessionID == hit.sessionID }?.title ?? "Untitled session") · \(hit.startedAt.addingTimeInterval(hit.startSeconds).formatted(date: .abbreviated, time: .shortened))")
                                 .font(.caption.weight(.medium)).foregroundStyle(.secondary)
                             Text(hit.text).lineLimit(3).multilineTextAlignment(.leading).foregroundStyle(.primary)
                         }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
@@ -201,12 +203,12 @@ struct SessionsView: View {
     }
 
     private func select(_ id: String?) {
-        if let id, id == service.activeSessionID, service.ambientEnabled { openLive(); return }
+        if let id, id == timeline.activeSessionID, service.ambientEnabled { openLive(); return }
         selectedID = id; renaming = false
-        rows = id.map { service.sessionParagraphs($0) } ?? []
+        rows = id.map { library.sessionParagraphs($0) } ?? []
     }
     private func commitRename(_ session: TranscriptSession) {
-        service.renameSession(session.sessionID, title: titleDraft); renaming = false
+        library.renameSession(session.sessionID, title: titleDraft); renaming = false
     }
     private func copyAll(_ session: TranscriptSession) {
         let text = rows.map { "[\(TranscriptExport.clock($0.startSeconds))] \(TranscriptExport.speakerName($0)): \($0.text)" }.joined(separator: "\n\n")
