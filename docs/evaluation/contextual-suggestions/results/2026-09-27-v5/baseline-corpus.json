@@ -1,0 +1,185 @@
+{
+  "format": "jot.contextual-suggestion-scenarios",
+  "version": 1,
+  "synthetic": true,
+  "notice": "Baseline for 2026-09-27-v5 only: the reply scenario as main's context builder shaped it. Not part of the committed corpus.",
+  "rubric": [
+    {
+      "id": "outcome",
+      "question": "Does the result match the expected suggest, abstain or invalidate outcome?"
+    },
+    {
+      "id": "source-selection",
+      "question": "Did retrieval select every included source and none of the excluded ones?"
+    },
+    {
+      "id": "user-voice",
+      "question": "Is the text the user's own next input, not the assistant's or another speaker's?"
+    },
+    {
+      "id": "grounded",
+      "question": "Is every command, fact, decision and preference in the text supported by an included source?"
+    },
+    {
+      "id": "faithful-to-notes",
+      "question": "Does a draft keep every name, number, date, constraint and question from the user's notes, and add nothing that neither the notes nor an included source supports?"
+    },
+    {
+      "id": "no-action",
+      "question": "Does showing or accepting the text avoid sending, executing, or following instructions quoted in a source?"
+    },
+    {
+      "id": "freshness",
+      "question": "Is nothing shown or inserted after the input or its sources changed?"
+    },
+    {
+      "id": "useful",
+      "question": "Would the user plausibly accept the text with little or no editing?"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "baseline-reply-spoken-in-fragments-not-the-user",
+      "title": "The spoken reply as main's context builder shaped it: three-second pieces, each 'unlabeled speaker, not the user', under this branch's prompt",
+      "covers": [
+        "multiple-speakers",
+        "role-confusion",
+        "blank-field"
+      ],
+      "target": {
+        "integration": "native-ax",
+        "app": "Claude",
+        "mode": "reply",
+        "purpose": "text-entry",
+        "project": "harbor-app",
+        "conversation": "claude-c13",
+        "inputRevision": 0,
+        "before": "",
+        "after": "",
+        "requestedAt": "2026-09-27T10:20:00Z"
+      },
+      "sources": [
+        {
+          "id": "s1",
+          "kind": "meeting-transcript",
+          "role": "participant",
+          "speaker": "unlabeled speaker",
+          "origin": "jot-meeting",
+          "scope": {
+            "project": "harbor-app",
+            "session": "desk-0927c"
+          },
+          "timestamp": "2026-09-27T10:18:20Z",
+          "revision": 1,
+          "status": "current",
+          "text": "And that's why harbor tides peak around noon. Okay."
+        },
+        {
+          "id": "s2a",
+          "kind": "meeting-transcript",
+          "role": "participant",
+          "speaker": "unlabeled speaker",
+          "origin": "jot-meeting",
+          "scope": {
+            "project": "harbor-app",
+            "session": "desk-0927c"
+          },
+          "timestamp": "2026-09-27T10:18:40Z",
+          "revision": 1,
+          "status": "current",
+          "text": "So my reply"
+        },
+        {
+          "id": "s2b",
+          "kind": "meeting-transcript",
+          "role": "participant",
+          "speaker": "unlabeled speaker",
+          "origin": "jot-meeting",
+          "scope": {
+            "project": "harbor-app",
+            "session": "desk-0927c"
+          },
+          "timestamp": "2026-09-27T10:18:41Z",
+          "revision": 1,
+          "status": "current",
+          "text": "for this conversation would be help me"
+        },
+        {
+          "id": "s2c",
+          "kind": "meeting-transcript",
+          "role": "participant",
+          "speaker": "unlabeled speaker",
+          "origin": "jot-meeting",
+          "scope": {
+            "project": "harbor-app",
+            "session": "desk-0927c"
+          },
+          "timestamp": "2026-09-27T10:18:44Z",
+          "revision": 1,
+          "status": "current",
+          "text": "summarize where we're currently standing with"
+        },
+        {
+          "id": "s2d",
+          "kind": "meeting-transcript",
+          "role": "participant",
+          "speaker": "unlabeled speaker",
+          "origin": "jot-meeting",
+          "scope": {
+            "project": "harbor-app",
+            "session": "desk-0927c"
+          },
+          "timestamp": "2026-09-27T10:18:47Z",
+          "revision": 1,
+          "status": "current",
+          "text": "the harbor repo remotely and locally"
+        },
+        {
+          "id": "s3",
+          "kind": "screen-text",
+          "role": "unknown",
+          "origin": "accessibility",
+          "scope": {
+            "project": "harbor-app"
+          },
+          "timestamp": "2026-09-27T10:20:00Z",
+          "revision": 1,
+          "status": "current",
+          "text": "I merged the export-pause fix and installed the new build. The export pause now keeps the partial file instead of deleting it, and the recovery harness checks a paused export end to end. The full test suite and the signed app build pass. Two older branches are still open: one for the recovery harness and one for the settings screen. To test when you sit down: start an export, pause it halfway, and check the partial file is still there."
+        }
+      ],
+      "expected": {
+        "outcome": "suggest",
+        "includedSources": [
+          "s1",
+          "s2a",
+          "s2b",
+          "s2c",
+          "s2d",
+          "s3"
+        ],
+        "excludedSources": [],
+        "reason": "The user said aloud what their reply is. The long message on screen is what they are replying to, not the reply.",
+        "idealText": {
+          "origin": "authored",
+          "text": "Help me summarize where we're currently standing with the harbor repo, remotely and locally."
+        }
+      },
+      "scoring": {
+        "criteria": [
+          "outcome",
+          "source-selection",
+          "user-voice",
+          "grounded",
+          "useful"
+        ],
+        "pass": "The spoken request as the user's message.",
+        "failIf": [
+          "Returns text from the message on screen",
+          "Returns NO_SUGGESTION because the voice is not identified",
+          "Mentions harbor tides"
+        ]
+      }
+    }
+  ]
+}
