@@ -15,6 +15,14 @@ Where the September 27 Mac session stopped. Usage ran out mid-work; nothing is l
 ## In progress (pushed as WIP branches, not merged)
 
 - `claude/heard-speech-rewrite`: a selection rewrite uses recent speech Jot heard that shares distinctive words with the selection. Setting `suggestionHeardMatches` is on by default, and the card says so. A real-model probe restored a missing word in 4 of 4 runs when the heard sentence was a source.
+  - WIP at `408b7c3`. It builds, and its 13 new tests pass.
+  - The probe results:
+    - Only the matching sentences are sent. Neighbouring rows were being appended to the draft.
+    - The prompt keeps the user's own words.
+  - Left to do:
+    - Run the full `swift test` and `local-pr-check --all`.
+    - Run the fixture check and the draft evaluation after the change; the before run is done.
+    - Add a docs note, merge `origin/main`, then open the PR.
 - `claude/claude-code-context`: the official Claude Code plugin (Monroe's decision; not MCP, not reading ~/.claude files).
   - The plugin is at `integrations/claude-code/jot-context`, with a marketplace at the repo root.
   - The `UserPromptSubmit` and `Stop` hooks run `jot claude-context`, which sends `conversation.update` to Jot.
