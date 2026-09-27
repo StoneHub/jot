@@ -13,6 +13,8 @@ final class SpeakerRecognizer: ObservableObject {
     private var passQueue: Task<Void, Never>?
     /// Sessions whose pass voices are stored while their rows may still carry live speaker ids, which can name another voice in the pass: from storing the pass until its relabel ends.
     private var passesBeingApplied = Set<String>()
+    /// Sessions whose pass relabel failed partway, so some rows still carry live speaker ids. A successful Regroup rewrites them all.
+    private var partlyRelabeled = Set<String>()
     private let pass: SpeakerPass
     private unowned let service: SpeechService
 
@@ -75,26 +77,31 @@ final class SpeakerRecognizer: ObservableObject {
         let segments = result.segments
         let store = service.library.store
         let carried = CarriedNames()
-        var named: [String: String] = [:]
-        let relabeled = try await service.library.relabel(id, makeSpeakers: {
-            // Names given before the pass sit on live speaker ids. They are read once the session has settled, just before its rows change.
-            named = try store?.labels(sessionID: id) ?? [:]
-            let names = named
-            return { words in
+        let relabeled: Bool
+        do {
+            relabeled = try await service.library.relabel(id) { words in
                 let speakers = SpeakerPassRelabel.speakers(words: words, segments: segments, tuning: tuning)
-                if !names.isEmpty, let before = try? store?.speakerIDs(sessionID: id) {
-                    carried.set(SpeakerPassRelabel.carriedLabels(names, words: words, before: before, after: speakers))
+                // Names given before the pass sit on live speaker ids. They are read here, just before the rows change, so a name typed while the relabel waited its turn moves too.
+                if let store, let names = try? store.labels(sessionID: id), !names.isEmpty, let before = try? store.speakerIDs(sessionID: id) {
+                    carried.set(names, moved: SpeakerPassRelabel.carriedLabels(names, words: words, before: before, after: speakers))
                 }
                 return speakers
             }
-        })
+        } catch {
+            partlyRelabeled.insert(id)
+            throw error
+        }
+        partlyRelabeled.remove(id)
         guard relabeled, !service.library.sessionIsDeleted(id) else { return [] }
-        if let moved = carried.value, let store {
-            // A name typed while the rows were being relabeled stays as typed; the sheet had no voice to offer for it.
-            let typed = try store.labels(sessionID: id).filter { named[$0.key] != $0.value }
-            try store.replaceLabels(sessionID: id, moved.merging(typed) { _, typed in typed })
-            for (speaker, name) in moved where typed[speaker] == nil {
-                if let voice = result.speakers[speaker] { try remember(name, voice: voice) }
+        if let names = carried.value, let store {
+            // A name typed while the rows were being written stays as typed; the sheet had no voice to offer for it.
+            let typed = try store.labels(sessionID: id).filter { names.named[$0.key] != $0.value }
+            try store.replaceLabels(sessionID: id, names.moved.merging(typed) { _, typed in typed })
+            for (speaker, name) in names.moved where typed[speaker] == nil {
+                guard let voice = result.speakers[speaker] else { continue }
+                // One voice that cannot be remembered, such as one saved by an older speaker model, leaves the rest of the pass alone.
+                do { try remember(name, voice: voice) }
+                catch { service.recordEvent(.processingError, "Could not remember \(name)'s voice: \(error.localizedDescription)", duration: nil, session: id) }
             }
         }
         return try recognizeSpeakers(result.speakers, session: id)
@@ -109,8 +116,8 @@ final class SpeakerRecognizer: ObservableObject {
     private func recognizeSpeakers(_ speakers: [String: [Float]], session id: String) throws -> [String] {
         guard let store = service.library.store, let peopleStore else { return [] }
         let labels = try store.labels(sessionID: id)
-        let named = Set(labels.values.map { $0.lowercased() })
-        let people = try peopleStore.list().filter { !named.contains($0.name.lowercased()) }
+        let named = Set(labels.values.map(PeopleMatcher.nameKey))
+        let people = try peopleStore.list().filter { !named.contains(PeopleMatcher.nameKey($0.name)) }
         let unnamed = speakers.filter { labels[$0.key] == nil }
         var recognized: [String] = []
         for match in PeopleMatcher.assignments(speakers: unnamed, people: people) {
@@ -122,6 +129,12 @@ final class SpeakerRecognizer: ObservableObject {
         if !recognized.isEmpty { refreshPeople() }
         return recognized
     }
+
+    /// A pass is storing its segments or relabeling the session's rows; Regroup waits for it.
+    func isApplyingPass(_ id: String) -> Bool { passesBeingApplied.contains(id) }
+
+    /// A Regroup rewrote every row of the session, so rows no longer mix live and pass speaker ids.
+    func didRegroup(_ id: String) { partlyRelabeled.remove(id) }
 
     /// The pass's segments for one session, for regrouping its rows; empty when no pass has run.
     func segments(sessionID: String) throws -> [(speaker: String, start: Double, end: Double)] {
@@ -137,15 +150,15 @@ final class SpeakerRecognizer: ObservableObject {
     /// The voice joins the person of that name, or starts a new one.
     private func remember(_ name: String, voice: [Float]) throws {
         guard let peopleStore else { return }
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let person = try peopleStore.list().first(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) { try peopleStore.updateEmbedding(id: person.id, with: voice) }
-        else { try peopleStore.add(name: trimmed, embedding: voice) }
+        let key = PeopleMatcher.nameKey(name)
+        if let person = try peopleStore.list().first(where: { PeopleMatcher.nameKey($0.name) == key }) { try peopleStore.updateEmbedding(id: person.id, with: voice) }
+        else { try peopleStore.add(name: name, embedding: voice) }
         refreshPeople()
     }
 
-    /// The speaker pass's voice embedding for one speaker of one session; nil before the pass, while the pass is relabeling the session's rows, or for a speaker it did not find.
+    /// The speaker pass's voice embedding for one speaker of one session; nil before the pass, while the pass is relabeling the session's rows, after its relabel failed partway, or for a speaker it did not find.
     func passEmbedding(session: String, speaker: String) -> [Float]? {
-        guard !passesBeingApplied.contains(session) else { return nil }
+        guard !passesBeingApplied.contains(session), !partlyRelabeled.contains(session) else { return nil }
         return (try? speakerStore?.speakers(sessionID: session))?.first { $0.speakerID == speaker }?.embedding
     }
 
@@ -163,10 +176,10 @@ final class SpeakerRecognizer: ObservableObject {
     }
 }
 
-/// The names a relabel moved, worked out on the relabel queue and read on the main actor once it finishes.
+/// The names a relabel read and where it moved them, worked out on the relabel queue and read on the main actor once it finishes.
 private final class CarriedNames: @unchecked Sendable {
     private let lock = NSLock()
-    private var stored: [String: String]?
-    var value: [String: String]? { lock.withLock { stored } }
-    func set(_ names: [String: String]) { lock.withLock { stored = names } }
+    private var stored: (named: [String: String], moved: [String: String])?
+    var value: (named: [String: String], moved: [String: String])? { lock.withLock { stored } }
+    func set(_ named: [String: String], moved: [String: String]) { lock.withLock { stored = (named, moved) } }
 }

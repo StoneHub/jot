@@ -35,20 +35,30 @@ public enum SpeakerPassRelabel {
         return result
     }
 
-    /// Names given while a session's rows carried live speaker ids, moved onto the pass speakers those voices became. Live and pass ids are numbered separately, so the live "speaker-2" can be another voice in the pass. `before` is each row's live speaker by row id, and `after` the pass speaker of each word. A name goes to the pass speaker that took most of its words' time, largest share first, one name per pass speaker; a name whose words the pass gave no one is dropped.
+    /// Names given while a session's rows carried live speaker ids, moved onto the pass speakers those voices became. Live and pass ids are numbered separately, so the live "speaker-2" can be another voice in the pass. `before` is each row's live speaker by row id, and `after` the pass speaker of each word. A pass speaker takes a name only when rows under that name gave it more time than any other source: another name, a live speaker nobody named, or rows with no speaker. Live speakers given the same name count as one, and each name goes to one pass speaker, the one it gave the most time.
     public static func carriedLabels(_ labels: [String: String], words: [StoredWord], before: [String: String], after: [String?]) -> [String: String] {
         var seconds: [String: [String: Double]] = [:]
+        var names: [String: String] = [:]
         for (word, new) in zip(words, after) {
-            guard let old = before[word.transcriptID], labels[old] != nil, let new else { continue }
-            seconds[old, default: [:]][new, default: 0] += max(word.endSeconds - word.startSeconds, 0.01)
+            guard let new else { continue }
+            let source: String
+            if let old = before[word.transcriptID], let name = labels[old] {
+                source = "name:" + PeopleMatcher.nameKey(name)
+                if names[source] == nil { names[source] = name }
+            } else {
+                source = "live:" + (before[word.transcriptID] ?? "")
+            }
+            seconds[new, default: [:]][source, default: 0] += max(word.endSeconds - word.startSeconds, 0.01)
         }
-        let shares = seconds.flatMap { old, byNew in byNew.map { (old: old, new: $0.key, seconds: $0.value) } }
-            .sorted { $0.seconds != $1.seconds ? $0.seconds > $1.seconds : ($0.old, $0.new) < ($1.old, $1.new) }
+        let claims = seconds.compactMap { new, bySource -> (new: String, source: String, seconds: Double)? in
+            guard let top = bySource.max(by: { ($0.value, $1.key) < ($1.value, $0.key) }), names[top.key] != nil else { return nil }
+            return (new, top.key, top.value)
+        }.sorted { $0.seconds != $1.seconds ? $0.seconds > $1.seconds : $0.new < $1.new }
         var result: [String: String] = [:]
-        var carried = Set<String>()
-        for share in shares where result[share.new] == nil && !carried.contains(share.old) {
-            result[share.new] = labels[share.old]
-            carried.insert(share.old)
+        var placed = Set<String>()
+        for claim in claims where !placed.contains(claim.source) {
+            result[claim.new] = names[claim.source]
+            placed.insert(claim.source)
         }
         return result
     }

@@ -60,6 +60,28 @@ final class SpeakerPassRelabelTests: XCTestCase {
         XCTAssertEqual(carried, ["speaker-1": "Ada"])
     }
 
+    func testANameDoesNotMoveOntoAVoiceItGaveOnlyABorrowedWord() {
+        // Live split Ada in two and both halves were named Ada. Grace was never named. The pass hands one of Ada's words to Grace's voice, which must not become "Ada".
+        let words = [spoken(in: "a", 0, 10), spoken(in: "b", 11, 15), spoken(in: "b", 15, 15.3), spoken(in: "c", 16, 21)]
+        let before = ["a": "speaker-1", "b": "speaker-2", "c": "speaker-3"]
+        let labels = ["speaker-1": "Ada", "speaker-2": "Ada"]
+        let carried = SpeakerPassRelabel.carriedLabels(labels, words: words, before: before, after: ["speaker-1", "speaker-1", "speaker-2", "speaker-2"])
+        XCTAssertEqual(carried, ["speaker-1": "Ada"])
+    }
+
+    func testLiveSpeakersGivenTheSameNameCountAsOne() {
+        // Each half of Ada gave less time than Grace, but together they gave more. Names compare trimmed and without case.
+        let words = [spoken(in: "a", 0, 1), spoken(in: "b", 2, 3), spoken(in: "c", 4, 5.5)]
+        let before = ["a": "speaker-1", "b": "speaker-2", "c": "speaker-3"]
+        let labels = ["speaker-1": "Ada", "speaker-2": "ada ", "speaker-3": "Grace"]
+        XCTAssertEqual(SpeakerPassRelabel.carriedLabels(labels, words: words, before: before, after: ["speaker-1", "speaker-1", "speaker-1"]), ["speaker-1": "Ada"])
+    }
+
+    func testUnattributedRowsKeepANameOffTheVoiceTheyMostlyFill() {
+        let words = [spoken(in: "a", 0, 1), spoken(in: "x", 2, 4)]
+        XCTAssertEqual(SpeakerPassRelabel.carriedLabels(["speaker-1": "Ada"], words: words, before: ["a": "speaker-1"], after: ["speaker-1", "speaker-1"]), [:])
+    }
+
     func testANameWhoseWordsThePassGaveNoOneIsDropped() {
         let words = [spoken(in: "a", 0, 1), spoken(in: "b", 2, 3)]
         let carried = SpeakerPassRelabel.carriedLabels(["speaker-1": "Ada", "speaker-2": "Grace"], words: words,

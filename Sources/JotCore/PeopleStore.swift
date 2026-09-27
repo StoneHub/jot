@@ -105,6 +105,11 @@ public enum PeopleMatcher {
     /// Same measure and default as FluidAudio's SpeakerManager (Sources/FluidAudio/Diarizer/Clustering/SpeakerManager.swift, speakerThreshold: Float = 0.65; findSpeaker matches when distance <= threshold, where SpeakerUtilities.cosineDistance is 1 - cosine similarity). The WeSpeaker embeddings the pass stores were tuned for that measure, so Jot uses the same one.
     public static let threshold: Float = 0.65
 
+    /// How names compare: trimmed, ignoring case and width, so "Ada " and "ada" are one person.
+    public static func nameKey(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).folding(options: [.caseInsensitive, .widthInsensitive], locale: nil)
+    }
+
     /// The nearest person at or under the threshold, or nil. A person whose embedding has a different length is skipped.
     public static func match(embedding: [Float], people: [Person], threshold: Float = threshold) -> (id: String, distance: Float)? {
         people.compactMap { person in distance(embedding, person.embedding).map { (person.id, $0) } }
