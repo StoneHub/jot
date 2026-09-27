@@ -6,13 +6,19 @@ import XCTest
 final class SuggestionEvaluationDraftTests: XCTestCase {
     private let notes = "reply to alex — can help saturday after 2, ask what tools to bring, keep it casual"
 
-    func testNotesBecomeTheSeedWithoutAnyTranscript() throws {
+    func testTextWithoutASelectionIsContinuedAtTheCursor() throws {
         let caret = try XCTUnwrap(SuggestionDraftSnapshot(value: notes, location: (notes as NSString).length, length: 0))
-        let whole = SuggestionSeed(text: notes, location: 0, length: (notes as NSString).length, isSelection: false)
-        XCTAssertEqual(SuggestionPlan.make(draft: caret, role: "AXTextArea", hasAssociatedContext: false), .draft(whole))
-        XCTAssertEqual(SuggestionPlan.make(draft: caret, role: "AXTextField", hasAssociatedContext: false), .draft(whole),
-                       "Any editable field can turn notes into a draft")
-        XCTAssertEqual(caret.text(around: whole).before, ""); XCTAssertEqual(caret.text(around: whole).after, "")
+        XCTAssertEqual(SuggestionPlan.make(draft: caret, role: "AXTextArea", hasAssociatedContext: false), .continuation,
+                       "A request at the end of the text writes what comes next, with or without context")
+        XCTAssertEqual(SuggestionPlan.make(draft: caret, role: "AXTextField", hasAssociatedContext: false), .continuation,
+                       "Any editable field can be continued")
+        let middle = try XCTUnwrap(SuggestionDraftSnapshot(value: notes, location: 8, length: 0))
+        XCTAssertEqual(SuggestionPlan.make(draft: middle, role: "AXTextArea", hasAssociatedContext: true), .continuation)
+        let all = try XCTUnwrap(SuggestionDraftSnapshot(value: notes, location: 0, length: (notes as NSString).length))
+        let whole = SuggestionSeed(text: notes, location: 0, length: (notes as NSString).length, isSelection: true)
+        XCTAssertEqual(SuggestionPlan.make(draft: all, role: "AXTextArea", hasAssociatedContext: false), .draft(whole),
+                       "Selecting all of the notes turns them into a draft")
+        XCTAssertEqual(all.text(around: whole).before, ""); XCTAssertEqual(all.text(around: whole).after, "")
     }
 
     func testSelectionIsTheSeedAndTheRestOfTheFieldIsKept() throws {
@@ -28,9 +34,8 @@ final class SuggestionEvaluationDraftTests: XCTestCase {
         XCTAssertEqual(draft.text(around: seed).after, "\nThanks")
 
         let spaces = try XCTUnwrap(SuggestionDraftSnapshot(value: "draft this  ", location: 10, length: 2))
-        XCTAssertEqual(SuggestionPlan.make(draft: spaces, role: "AXTextArea", hasAssociatedContext: false),
-                       .draft(SuggestionSeed(text: "draft this  ", location: 0, length: 12, isSelection: false)),
-                       "A whitespace-only selection falls back to the whole draft")
+        XCTAssertEqual(SuggestionPlan.make(draft: spaces, role: "AXTextArea", hasAssociatedContext: false), .continuation,
+                       "A whitespace-only selection is no seed; the text is continued")
     }
 
     func testBlankFieldAsksForNotesUnlessAComposerHasAssociatedContext() throws {
@@ -194,7 +199,8 @@ final class SuggestionEvaluationDraftTests: XCTestCase {
                        "Recent dictation + meeting ‘Standup’")
         XCTAssertEqual(SuggestionAttribution.line(plan: .reply, selected: [context.sources[1]], sessionTitle: nil), "Recent speech")
 
-        let speech = SuggestionContext(rows: (0..<14).map { row("m\($0)", "ambient", at: Double($0)) }, sessionTitle: nil)
+        // Five seconds apart, so each phrase is its own turn.
+        let speech = SuggestionContext(rows: (0..<14).map { row("m\($0)", "ambient", at: Double($0) * 5) }, sessionTitle: nil)
         let target = Target(app: "Slack", mode: .reply, purpose: "text-entry", before: "", after: "", requestedAt: "now")
         let selected = SourceSelector.select(speech.input(target: target), limits: .window).selected
         XCTAssertEqual(selected.count, 12)

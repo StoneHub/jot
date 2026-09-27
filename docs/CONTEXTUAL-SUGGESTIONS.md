@@ -1,6 +1,6 @@
 # Contextual suggestions in Jot
 
-Status: product direction agreed September 25, 2026. The first slice shipped on September 26 (#89, #91: double-tap Fn requests, Tab accepts, drafting from notes and rewriting a selection). Since September 27 every request uses one context window, ten minutes by default: recent speech with speakers, agent messages handed over `context.add`, and the visible conversation. The Terminal bridge and the remaining contracts below are still plans. This document supersedes the earlier research-only suggestion of a Codex-only, field-only experiment. It authorizes no capture, shell configuration or integration changes by itself.
+Status: product direction agreed September 25, 2026. The first slice shipped on September 26 (#89, #91: double-tap Fn requests, Tab accepts, drafting from notes and rewriting a selection). Since September 27 every request uses one context window, ten minutes by default: recent speech with speakers, agent messages handed over `context.add`, and the visible conversation. After live use the same day, text with no selection is continued at the cursor rather than rewritten as a whole-field draft; a selection is still rewritten ([results](evaluation/contextual-suggestions/results/2026-09-27-v5/README.md)). The Terminal bridge and the remaining contracts below are still plans. This document supersedes the earlier research-only suggestion of a Codex-only, field-only experiment. It authorizes no capture, shell configuration or integration changes by itself.
 
 ## Outcome
 

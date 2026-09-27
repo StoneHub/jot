@@ -290,8 +290,8 @@ final class SuggestionEvaluationInteractionTests: XCTestCase {
             Transcript(id: "m", sessionID: "m", startedAt: Date(), startSeconds: 0, endSeconds: 1, text: "I will send it.", mode: "ambient")
         ]
         let context = SuggestionContext(rows: rows, sessionTitle: "Standup")
-        XCTAssertEqual(context.sources.map(\.role), ["user", "participant"])
-        XCTAssertEqual(context.sources[1].speaker, "unlabeled speaker")
+        XCTAssertEqual(context.sources.map(\.role), ["user", "unknown"], "An unnamed voice is not assumed to be someone else")
+        XCTAssertNil(context.sources[1].speaker)
         XCTAssertFalse(context.sources.contains { $0.kind == "pinned-selection" })
         let target = Target(app: "Codex", mode: .reply, purpose: "agent-prompt", before: "", after: "", requestedAt: "now")
         XCTAssertTrue(SourceSelector.select(ScenarioInput(target: target, sources: context.sources)).selected.isEmpty)

@@ -19,7 +19,7 @@ struct EvaluationConfiguration {
     var generatorLabel: String
     var limits = SelectionLimits.experiment
     var deadline: Duration = .seconds(2)
-    /// The app's draft deadline: a draft can run to several sentences.
+    /// The app's deadline for a draft or a continuation: either can run to several sentences.
     var draftDeadline: Duration = .seconds(8)
     var cancellationGrace: Duration = .seconds(2)
 }
@@ -171,7 +171,8 @@ final class SuggestionEvaluation {
         }
         var record = EvaluationRecord(scenarioID: scenario.id, iteration: iteration, configuration: configuration,
                                       selection: selection)
-        // A draft is generated from the user's notes (`Target.seed`), so it needs no source.
+        // A draft is generated from the user's notes (`Target.seed`), so it needs no source. A continuation adds to the
+        // user's text, and with nothing to draw on the model invents what comes next, so it needs one like a reply.
         if selection.selected.isEmpty && input.target.mode != .draft {
             record.detail = "no-selected-source"
         } else {
@@ -198,7 +199,7 @@ final class SuggestionEvaluation {
                           into record: inout EvaluationRecord) async {
         record.request = request
         let callBegan = ContinuousClock.now
-        let result = await gate.call(request, deadline: mode == .draft ? configuration.draftDeadline : nil,
+        let result = await gate.call(request, deadline: mode == .draft || mode == .continuation ? configuration.draftDeadline : nil,
                                      generator: generator)
         record.generationMs = milliseconds(callBegan.duration(to: .now))
         switch result {
