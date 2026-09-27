@@ -168,13 +168,13 @@ extension TranscriptView {
                 }
                 Divider()
                 Text("Capture events").font(.headline)
-                ForEach(service.events) { event in
+                ForEach(library.events) { event in
                     HStack(alignment: .top) {
                         Text(event.timestamp, format: .dateTime.hour().minute()).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                         Text(event.detail).font(.callout)
                     }
                 }
-                if service.events.isEmpty { Text("No events yet").foregroundStyle(.secondary) }
+                if library.events.isEmpty { Text("No events yet").foregroundStyle(.secondary) }
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
     }

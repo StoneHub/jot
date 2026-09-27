@@ -5,6 +5,8 @@ import JotCore
 /// The session being recorded, oldest row at the top and the newest at the bottom. Idle, it shows the tail of the last session with the same start controls.
 struct LiveView: View {
     @ObservedObject var service: SpeechService
+    @ObservedObject var library: SessionLibrary
+    @ObservedObject var timeline: ListeningTimeline
     @State private var rows: [Transcript] = []
     @State private var labelTarget: Transcript?
     @State private var labelDraft = ""
@@ -23,7 +25,7 @@ struct LiveView: View {
 
     private var running: Bool { service.ambientEnabled }
     /// The recording session, or the newest saved one while idle.
-    private var shownID: String? { running || service.meetingTitle != nil ? service.activeSessionID : service.sessions.first?.sessionID }
+    private var shownID: String? { running || service.meetingTitle != nil ? timeline.activeSessionID : library.sessions.first?.sessionID }
     private var speakerCount: Int { Set(rows.compactMap(\.speakerID).filter { $0 != "overlap" }).count }
     private var recognized: [String] {
         var names: [String] = []
@@ -58,9 +60,9 @@ struct LiveView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear(perform: showFeed)
         .onChange(of: shownID) { _, _ in showFeed() }
-        .onChange(of: service.activeSessionID) { _, _ in clearedThrough = nil }
-        .onChange(of: service.live.revision) { _, _ in refresh() }
-        .onChange(of: service.historyRevision) { _, _ in selectedRows.removeAll(); labelTarget = nil; refresh() }
+        .onChange(of: timeline.activeSessionID) { _, _ in clearedThrough = nil }
+        .onChange(of: library.live.revision) { _, _ in refresh() }
+        .onChange(of: library.historyRevision) { _, _ in selectedRows.removeAll(); labelTarget = nil; refresh() }
         .sheet(item: $labelTarget) { target in
             SpeakerNameSheet(transcript: target, service: service, draft: $labelDraft,
                 onSave: { refresh(); labelTarget = nil },
@@ -94,7 +96,7 @@ struct LiveView: View {
                 chip("\(title) · Paused")
             } else if running {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
-                    chip("\(service.meetingTitle ?? "Listening") · \(Self.elapsed(since: service.sessionStarted, at: context.date))", color: .red, dot: true)
+                    chip("\(service.meetingTitle ?? "Listening") · \(Self.elapsed(since: timeline.sessionStarted, at: context.date))", color: .red, dot: true)
                 }
                 if speakerCount > 0 { chip("\(speakerCount) speaker\(speakerCount == 1 ? "" : "s")") }
                 if !recognized.isEmpty { chip("recognized \(recognized.joined(separator: ", "))", color: .green, dot: true) }
@@ -203,16 +205,16 @@ struct LiveView: View {
 
     /// Reads a session only when Live switches to it; after that the feed keeps itself current.
     private func showFeed() {
-        service.showLive(shownID)
+        library.showLive(shownID)
         refresh()
     }
 
     /// Copies the feed unless text is selected, so a selection holds still until it is released.
     private func refresh() {
         guard selectedRows.isEmpty else { return }
-        displayedCleanupRevision = service.live.cleanupRevision
-        displayedRevision = service.live.revision
-        rows = service.live.paragraphs
+        displayedCleanupRevision = library.live.cleanupRevision
+        displayedRevision = library.live.revision
+        rows = library.live.paragraphs
     }
     private func commitRename() {
         service.renameMeeting(titleDraft); renaming = false

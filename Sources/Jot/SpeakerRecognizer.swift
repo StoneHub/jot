@@ -1,19 +1,6 @@
 import Foundation
 import JotCore
 
-/// What the recognizer needs from the service: the transcript store, the current tuning, the relabel it runs after a pass, and a place to report.
-@MainActor
-protocol SpeakerRecognizerHost: AnyObject {
-    var store: TranscriptStore? { get }
-    var tuning: TranscriptionTuning { get }
-    var notice: String { get set }
-    func sessionIsDeleted(_ id: String) -> Bool
-    func relabel(_ id: String, speakers: @escaping @Sendable ([StoredWord]) -> [String?]) async throws -> Bool
-    func recordEvent(_ kind: CaptureEventKind, _ detail: String, duration: Double?, session: String?)
-    func didRelabelSession()
-    func refreshRecent()
-}
-
 /// Runs the speaker pass over a finished session, names the voices Jot remembers, and keeps the People list.
 @MainActor
 final class SpeakerRecognizer: ObservableObject {
@@ -27,11 +14,11 @@ final class SpeakerRecognizer: ObservableObject {
     /// Sessions whose pass voices are stored while their rows may still carry live speaker ids, which can name another voice in the pass: from storing the pass until its relabel ends.
     private var passesBeingApplied = Set<String>()
     private let pass: SpeakerPass
-    private unowned let host: SpeakerRecognizerHost
+    private unowned let service: SpeechService
 
-    init(pass: SpeakerPass, host: SpeakerRecognizerHost) {
+    init(pass: SpeakerPass, service: SpeechService) {
         self.pass = pass
-        self.host = host
+        self.service = service
     }
 
     func enqueuePass(_ file: SessionAudioFile) {
@@ -59,23 +46,23 @@ final class SpeakerRecognizer: ObservableObject {
         defer { passesBeingApplied.remove(id) }
         do {
             let result = SpeakerPassRelabel.renumbered(raw)
-            guard !host.sessionIsDeleted(id) else { return }
+            guard !service.library.sessionIsDeleted(id) else { return }
             let passStore = speakerStore
             try await Task.detached(priority: .userInitiated) { try passStore?.replace(sessionID: id, result: result) }.value
             var recognized: [String] = []
             if !result.segments.isEmpty {
                 recognized = try await relabelAndName(result, session: id)
             }
-            if host.sessionIsDeleted(id) {
+            if service.library.sessionIsDeleted(id) {
                 // Deleted while the pass was being stored or waited to relabel: its segments may have landed after the delete.
-                let store = host.store
+                let store = service.library.store
                 try? await Task.detached(priority: .userInitiated) { try store?.deleteSession(id: id) }.value
                 return
             }
             let count = result.speakers.count
             let scope = truncated ? " (first two hours)" : ""
-            host.recordEvent(.speakerPass, "Speaker pass found \(count) speaker\(count == 1 ? "" : "s") in \(TranscriptExport.clock(result.durationSeconds)) of audio\(scope), \(String(format: "%.1f", result.processingSeconds)) s of processing.", duration: result.durationSeconds, session: id)
-            host.notice = "Speaker pass finished: \(count) speakers" + (recognized.isEmpty ? "." : ", recognized \(recognized.joined(separator: ", ")).")
+            service.recordEvent(.speakerPass, "Speaker pass found \(count) speaker\(count == 1 ? "" : "s") in \(TranscriptExport.clock(result.durationSeconds)) of audio\(scope), \(String(format: "%.1f", result.processingSeconds)) s of processing.", duration: result.durationSeconds, session: id)
+            service.notice = "Speaker pass finished: \(count) speakers" + (recognized.isEmpty ? "." : ", recognized \(recognized.joined(separator: ", ")).")
         } catch {
             reportFailure(error, session: id)
         }
@@ -83,23 +70,23 @@ final class SpeakerRecognizer: ObservableObject {
 
     /// Relabels the session's rows from the pass, then names the voices Jot remembers. Both write to the store, so Live and Sessions reload once they are done, even when one fails partway. Returns the names recognized.
     private func relabelAndName(_ result: SpeakerPassResult, session id: String) async throws -> [String] {
-        defer { host.didRelabelSession() }
-        let tuning = host.tuning
+        defer { service.library.didDeleteHistory() }
+        let tuning = service.tuning
         let segments = result.segments
-        let relabeled = try await host.relabel(id) { SpeakerPassRelabel.speakers(words: $0, segments: segments, tuning: tuning) }
-        guard relabeled, !host.sessionIsDeleted(id) else { return [] }
+        let relabeled = try await service.library.relabel(id) { SpeakerPassRelabel.speakers(words: $0, segments: segments, tuning: tuning) }
+        guard relabeled, !service.library.sessionIsDeleted(id) else { return [] }
         // The pass is authoritative: a name given to "speaker-2" while the live labels were showing stays on that id, which the pass may have given to another voice. Naming normally happens after the pass anyway.
         return try recognizeSpeakers(result.speakers, session: id)
     }
 
     private func reportFailure(_ error: Error, session id: String) {
-        host.recordEvent(.processingError, "Speaker pass: \(error.localizedDescription)", duration: nil, session: id)
-        host.notice = "Speaker pass failed: \(error.localizedDescription)"
+        service.recordEvent(.processingError, "Speaker pass: \(error.localizedDescription)", duration: nil, session: id)
+        service.notice = "Speaker pass failed: \(error.localizedDescription)"
     }
 
     /// Names each session speaker whose voice matches a remembered person, unless the speaker was named already, and folds the session's embedding into that person so the voice improves over time. Returns the names recognized.
     private func recognizeSpeakers(_ speakers: [String: [Float]], session id: String) throws -> [String] {
-        guard let store = host.store, let peopleStore else { return [] }
+        guard let store = service.library.store, let peopleStore else { return [] }
         let people = try peopleStore.list()
         let labels = try store.labels(sessionID: id)
         var recognized: [String] = []
@@ -120,7 +107,7 @@ final class SpeakerRecognizer: ObservableObject {
 
     /// Names one speaker in one session. With a voice, the name is also remembered: the embedding joins the person of that name, or starts a new one.
     func labelSpeaker(session: String, speaker: String, name: String, voice: [Float]?) throws {
-        try host.store?.label(sessionID: session, speakerID: speaker, name: name); host.refreshRecent()
+        try service.library.store?.label(sessionID: session, speakerID: speaker, name: name); service.library.refreshRecent()
         guard let voice, let peopleStore else { return }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if let person = try peopleStore.list().first(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) { try peopleStore.updateEmbedding(id: person.id, with: voice) }
@@ -135,15 +122,15 @@ final class SpeakerRecognizer: ObservableObject {
     }
 
     func refreshPeople() {
-        do { people = try peopleStore?.list() ?? [] } catch { host.notice = error.localizedDescription }
+        do { people = try peopleStore?.list() ?? [] } catch { service.notice = error.localizedDescription }
     }
 
     func renamePerson(_ id: String, name: String) {
-        do { try peopleStore?.rename(id: id, name: name); refreshPeople() } catch { host.notice = error.localizedDescription }
+        do { try peopleStore?.rename(id: id, name: name); refreshPeople() } catch { service.notice = error.localizedDescription }
     }
 
     /// Forgets the voice only; names already written into sessions stay.
     func deletePerson(_ id: String) {
-        do { try peopleStore?.delete(id: id); refreshPeople(); host.notice = "Person deleted. Their voice is forgotten." } catch { host.notice = error.localizedDescription }
+        do { try peopleStore?.delete(id: id); refreshPeople(); service.notice = "Person deleted. Their voice is forgotten." } catch { service.notice = error.localizedDescription }
     }
 }

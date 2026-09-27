@@ -85,7 +85,7 @@ enum CaptureFlowChecks {
 
         // A meeting renamed over the socket keeps the new name, including through an automatic pause.
         await service.startMeeting("Standup")
-        let rename: [String: Any] = ["method": "sessions.title", "params": ["sessionID": service.activeSessionID ?? "", "title": "Weekly sync"]]
+        let rename: [String: Any] = ["method": "sessions.title", "params": ["sessionID": service.timeline.activeSessionID ?? "", "title": "Weekly sync"]]
         _ = await service.handle(try JSONSerialization.data(withJSONObject: rename))
         precondition(service.meetingTitle == "Weekly sync", "The running meeting kept the name \(service.meetingTitle ?? "nil") after a socket rename")
         service.pause(automatic: true)

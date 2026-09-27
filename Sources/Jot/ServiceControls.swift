@@ -43,15 +43,7 @@ struct ServiceControls: View {
             Divider()
             MeetingControls(service: service)
             Divider()
-            ControlRow(symbol: "mic", title: "Microphone") {
-                Picker("Microphone", selection: Binding(get: { service.selectedInputUID }, set: { service.setInput(uid: $0) })) {
-                    Text("System Default (\(service.systemDefaultInputName))").tag("")
-                    ForEach(service.inputRows) { device in Text(device.name).tag(device.id) }
-                }
-                .labelsHidden().pickerStyle(.menu)
-                .disabled(!service.canChangeInput)
-            }
-            .help(service.canChangeInput ? "Choose the microphone Jot uses. This does not change macOS's default input." : "Pause capture before changing the microphone.")
+            MicrophoneRow(service: service, capture: service.capture)
             ControlRow(symbol: "keyboard", title: "Dictation") {
                 Toggle("Dictation", isOn: Binding(get: { service.fnRequested }, set: { enabled in
                     if enabled { Task { await service.enableFn() } } else { service.disableFn() }
@@ -100,6 +92,35 @@ struct PauseResumeButton: View {
         .disabled(service.isPaused && service.isTransitioning)
         .help("Pause stops listening, finishes saving captured speech, and unloads models.")
         .accessibilityIdentifier("service-pause-resume")
+    }
+}
+
+/// Observes only the device list, so a device change redraws this row and not the whole card.
+private struct MicrophoneRow: View {
+    @ObservedObject var service: SpeechService
+    @ObservedObject var capture: CaptureController
+    var body: some View {
+        ControlRow(symbol: "mic", title: "Microphone") {
+            Picker("Microphone", selection: Binding(get: { capture.selectedInputUID }, set: { service.setInput(uid: $0) })) {
+                Text("System Default (\(capture.systemDefaultInputName))").tag("")
+                ForEach(capture.inputRows) { device in Text(device.name).tag(device.id) }
+            }
+            .labelsHidden().pickerStyle(.menu)
+            .disabled(!service.canChangeInput)
+        }
+        .help(service.canChangeInput ? "Choose the microphone Jot uses. This does not change macOS's default input." : "Pause capture before changing the microphone.")
+    }
+}
+
+/// The menu's last line of the recording session. Observes the rows, so each saved row redraws this line and not the menu.
+private struct LastSentence: View {
+    @ObservedObject var library: SessionLibrary
+    @ObservedObject var timeline: ListeningTimeline
+    var body: some View {
+        if let last = library.recent.first(where: { $0.sessionID == timeline.activeSessionID }) {
+            Text(last.text).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
+                .help("Last transcribed sentence")
+        }
     }
 }
 
@@ -222,10 +243,7 @@ struct MenuControls: View {
                 Spacer()
                 Button("Quit") { NSApp.terminate(nil) }.buttonStyle(.plain)
             }
-            if service.ambientEnabled, let last = service.recent.first(where: { $0.sessionID == service.activeSessionID }) {
-                Text(last.text).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
-                    .help("Last transcribed sentence")
-            }
+            if service.ambientEnabled { LastSentence(library: service.library, timeline: service.timeline) }
         }.padding(18).frame(width: 350)
             .modifier(GlassStage()).background(JotBackdrop()).tint(Color(nsColor: .controlAccentColor))
     }
