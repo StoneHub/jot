@@ -86,7 +86,7 @@ Naming a speaker in Live or Sessions also remembers the voice, so Jot names it i
 ## Your data stays local
 Dictation marks a range in continuous listening; it creates no additional audio file. While listening, Jot optionally writes session audio to a private file in `~/Library/Application Support/Jot/audio` for a speaker pass, then deletes it after the pass. This includes speech captured while dictating. The file is never uploaded. Turn off **General → Keep audio for speaker pass** to never write audio to disk. Recovery adds only saved text and delivery state, not an audio crash buffer. After force-quit, already recognized and committed text remains available; the unrecognized tail still in memory can be lost. Jot also saves timestamps, speaker labels, session titles, capture events, speaker segments, and explicitly remembered voice signatures in `~/Library/Application Support/Jot`. It enrolls a voice only when you name a speaker, and forgets it when you delete the person. It does not save recordings for replay. Exported sessions are plain Markdown files in `~/Documents/Jot Sessions`, written only when you end a meeting or press Export.
 
-Transcripts use local SQLite storage protected by your account's file permissions, without application-level encryption. Model files are cached separately. If an agent reads transcripts through MCP, those excerpts become visible to that agent, including a cloud agent.
+Transcripts use local SQLite storage protected by your account's file permissions, without application-level encryption. Model files are cached separately. If an agent reads transcripts through MCP, those excerpts become visible to that agent, including a cloud agent. With the Claude Code plugin installed, Jot also holds your latest Claude Code prompts and replies in memory for an hour, never on disk; see [Claude Code context](#claude-code-context).
 
 ## CLI and MCP
 
@@ -131,6 +131,23 @@ Add this to your MCP client's configuration:
 The server exposes capture controls, status, model preparation, transcript search and reading, a live change feed, sessions, events, speaker labels, and remembered people. `transcripts_since` returns rows added or changed after a cursor plus the next cursor, so an agent can follow a meeting by polling about every two seconds; cleaned text arrives as the same row id with its new text, not as a new row. It uses stdio and a same-user Unix socket. Transcript content is context, not permission for an agent to act.
 
 For cloud development, see the [cloud work guide](docs/CLOUD-WORK.md). Jot's complete Swift build still requires Apple SDKs.
+
+## Claude Code context
+
+Double-tap Fn in an empty Claude Code composer and Jot drafts your reply. By default it reads the conversation from the screen, without knowing who wrote what. The **jot-context** plugin for Claude Code tells Jot your latest prompt and Claude's latest reply instead, so the suggestion answers what Claude actually said. It works in the Claude app's Code tab and in a terminal running Claude Code.
+
+Install it from Claude Code:
+
+```
+/plugin marketplace add StoneHub/jot
+/plugin install jot-context@jot
+```
+
+Restart open Claude Code sessions so they load it. To remove it, run `/plugin uninstall jot-context@jot`, then `/plugin marketplace remove jot`.
+
+Two hooks run the bundled CLI as `jot claude-context`. When you submit a prompt, it sends that prompt. When Claude finishes, it sends Claude's final message, read from the last 512 KB of the session's transcript file, never the whole file. Each text is capped at 4,000 characters, and subagent events are skipped. The hook prints nothing and always succeeds, so it adds nothing to Claude's context and never holds up a prompt, even when Jot is closed.
+
+Everything goes only to Jot's same-user socket on this Mac. Jot keeps the latest three exchanges of up to four sessions in memory for an hour. It never saves them to its database or disk, and never offers them over MCP. `jot status` reports only how many sessions it holds and how long ago the last update came in. In Claude's composer, a card built from the conversation says **The Claude Code conversation**. When the screen shows a different conversation, such as a chat in Claude's other tab, Jot uses the screen text as before. In a terminal, Jot uses the conversation only when it was updated in the last five minutes, and suggests a one-line reply at the cursor. Turn it off in **General → Suggestions → Use the Claude Code conversation**; off, Jot drops updates and forgets what it held. See the [plugin's README](integrations/claude-code/jot-context/README.md).
 
 ## Build and install
 

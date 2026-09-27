@@ -47,6 +47,7 @@ final class SpeechService: ObservableObject {
         allowed: { [weak self] in self?.canRequestSuggestion == true },
         readsScreen: { [weak self] in self?.suggestionScreenContext == true },
         meetingByDefault: { [weak self] in self?.suggestionMeetingContext == true },
+        conversations: { [weak self] in self?.conversationSessions(for: $0) ?? [] },
         notice: { [weak self] in self?.notice = $0 })
     lazy var timeline = ListeningTimeline(service: self)
     lazy var cleanup = LiveCleanup(service: self)
@@ -77,6 +78,27 @@ final class SpeechService: ObservableObject {
         suggestionMeetingContext = enabled
         settings.set(JotDefaultsKey.suggestionMeetingContext, enabled)
         suggestions.dismiss()
+    }
+    /// What the Claude Code plugin's hooks report, for suggestions in Claude's composer. Memory only; `conversation.update` fills it.
+    private(set) var conversations = ConversationContext()
+    @Published private(set) var suggestionClaudeConversation = JotSettings.standard.bool(JotDefaultsKey.suggestionClaudeConversation)
+    func setSuggestionClaudeConversation(_ enabled: Bool) {
+        suggestionClaudeConversation = enabled
+        settings.set(JotDefaultsKey.suggestionClaudeConversation, enabled)
+        // Off keeps nothing, not merely uses nothing.
+        if !enabled { conversations = ConversationContext() }
+        suggestions.dismiss()
+    }
+    /// False when the setting is off: the update is dropped, not stored.
+    func receiveConversation(_ update: ConversationUpdate) -> Bool {
+        guard suggestionClaudeConversation else { return false }
+        conversations.record(update, at: dependencies.now())
+        return true
+    }
+    /// Claude Code sessions a suggestion in this app may reply to, newest first; none for other apps.
+    func conversationSessions(for bundleID: String) -> [ConversationContext.Session] {
+        guard suggestionClaudeConversation, let surface = ConversationContext.Surface(bundleID: bundleID) else { return [] }
+        return conversations.sessions(for: surface, at: dependencies.now())
     }
     var canRequestSuggestion: Bool { suggestionBlocker == nil }
     /// Why a suggestion cannot be requested right now, in the words the card shows.
@@ -166,6 +188,7 @@ final class SpeechService: ObservableObject {
         if suggestionsEnabled != settings.bool(key.suggestionsEnabled) { setSuggestionsEnabled(settings.bool(key.suggestionsEnabled)) }
         if suggestionScreenContext != settings.bool(key.suggestionScreenContext) { setSuggestionScreenContext(settings.bool(key.suggestionScreenContext)) }
         if suggestionMeetingContext != settings.bool(key.suggestionMeetingContext) { setSuggestionMeetingContext(settings.bool(key.suggestionMeetingContext)) }
+        if suggestionClaudeConversation != settings.bool(key.suggestionClaudeConversation) { setSuggestionClaudeConversation(settings.bool(key.suggestionClaudeConversation)) }
         if highlightTargetField != settings.bool(key.highlightTargetField) { highlightTargetField = settings.bool(key.highlightTargetField) }
         if muteSpeakersDuringDictation != settings.bool(key.muteSpeakersDuringDictation) { muteSpeakersDuringDictation = settings.bool(key.muteSpeakersDuringDictation) }
         if keepMacAwakeWhileListening != settings.bool(key.keepMacAwakeWhileListening) { keepMacAwakeWhileListening = settings.bool(key.keepMacAwakeWhileListening) }

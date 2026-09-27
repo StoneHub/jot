@@ -11,6 +11,8 @@ final class SuggestionCoordinator {
     private let allowed: () -> Bool
     private let readsScreen: () -> Bool
     private let meetingByDefault: () -> Bool
+    /// Claude Code sessions a field in the app with this bundle ID may reply to, newest first.
+    private let conversations: (String) -> [ConversationContext.Session]
     private let notice: (String) -> Void
     private let card = SuggestionCard()
     private let gate = ModelCallGate()
@@ -31,18 +33,21 @@ final class SuggestionCoordinator {
     private var lastMode = "none"
     private var usedScreen = false
     private var usedMeeting = false
+    private var usedConversation = false
     /// Counts and outcomes only; never field, screen, prompt or output text.
     var diagnostics: [String: Any] { ["requests": requests, "insertions": insertions, "outcome": outcome, "visible": card.isVisible,
                                     "automatic": false, "keyboardEligible": keyboardAllowsSuggestions,
-                                    "mode": lastMode, "screenContext": usedScreen, "meetingContext": usedMeeting] }
+                                    "mode": lastMode, "screenContext": usedScreen, "meetingContext": usedMeeting,
+                                    "conversationContext": usedConversation] }
 
     static let needsNotes = "Jot needs a few rough notes. Type or dictate them here, then double-tap Fn."
 
     init(input: DictationInput, store: @escaping () -> TranscriptStore?, allowed: @escaping () -> Bool,
          readsScreen: @escaping () -> Bool = { true }, meetingByDefault: @escaping () -> Bool = { false },
+         conversations: @escaping (String) -> [ConversationContext.Session] = { _ in [] },
          notice: @escaping (String) -> Void) {
         self.input = input; self.store = store; self.allowed = allowed; self.readsScreen = readsScreen
-        self.meetingByDefault = meetingByDefault; self.notice = notice
+        self.meetingByDefault = meetingByDefault; self.conversations = conversations; self.notice = notice
         refreshKeyboard()
         sourceObserver = DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String), object: nil, queue: .main
@@ -78,7 +83,7 @@ final class SuggestionCoordinator {
         dismiss()
         guard allowed(), keyboardAllowsSuggestions else { return }
         let includeMeeting = includingMeeting ?? meetingByDefault()
-        requests += 1; outcome = "loading"; lastMode = "none"; usedScreen = false; usedMeeting = false
+        requests += 1; outcome = "loading"; lastMode = "none"; usedScreen = false; usedMeeting = false; usedConversation = false
         do { try input.captureTarget(wakeRetry: false) }
         catch { outcome = "unsupported-field"; notice("No suggestion: focus an ordinary editable text field."); return }
         ownsTarget = true
@@ -86,14 +91,19 @@ final class SuggestionCoordinator {
             dismiss(); notice("No suggestion: this field cannot be read safely."); return
         }
         self.field = field
-        let blank = field.draft.isBlank
+        let sessions = conversations(field.bundleID)
+        // A terminal's field is its whole screen, not the user's notes. With a Claude Code conversation the request is
+        // a one-line reply at the cursor, for Claude's prompt; a line break there would send it.
+        let terminalReply = !sessions.isEmpty && ConversationContext.Surface(bundleID: field.bundleID) == .terminal
+        let draft = terminalReply ? SuggestionDraftSnapshot(value: "", location: 0, length: 0)! : field.draft
+        let blank = draft.isBlank
         if blank && field.role != kAXTextAreaRole { showNotice(Self.needsNotes); return }
         // Recent dictation backs only a blank Codex composer. The store is read for every request so the card can offer
         // the latest meeting, but its rows join only when chosen.
         let codexComposer = blank && field.bundleID == "com.openai.codex"
         let store = self.store()
         let reader = readsScreen() ? input.screenContextReader() : nil
-        if blank && store == nil && reader == nil { showNotice(Self.needsNotes); return }
+        if blank && store == nil && reader == nil && sessions.isEmpty { showNotice(Self.needsNotes); return }
         input.showSuggestionKeys(.loading)
         card.show(text: blank ? "Reading the conversation…" : "Drafting from your notes…", loading: true, at: frame)
         let token = generation
@@ -108,17 +118,23 @@ final class SuggestionCoordinator {
                 let now = Date()
                 var sources: [Source] = []
                 var excerpt: String?
-                if let screen, let text = ScreenContext.excerpt(screen.items, field: screen.field, visible: screen.visible) {
+                // The reported conversation says who wrote what; the screen text stays the fallback.
+                let conversation = Self.conversationSources(sessions, shown: screen?.items)
+                if !conversation.isEmpty {
+                    sources += conversation
+                    // Claude's words are on screen too; a result that only repeats them is not a reply.
+                    excerpt = conversation.map(\.text).joined(separator: "\n\n")
+                } else if let screen, let text = ScreenContext.excerpt(screen.items, field: screen.field, visible: screen.visible) {
                     excerpt = text
                     sources.append(ScreenContext.source(text, at: now))
                 }
                 sources += context?.requestSources(dictation: false, meeting: includeMeeting) ?? []
                 let dictation = codexComposer ? context?.requestSources(dictation: true, meeting: false) ?? [] : []
                 let option = (context?.meetingName).map { self.meetingOption(name: $0, included: includeMeeting) }
-                let plan = SuggestionPlan.make(draft: field.draft, role: field.role,
+                let plan = SuggestionPlan.make(draft: draft, role: field.role,
                                                hasAssociatedContext: !sources.isEmpty || !dictation.isEmpty)
                 let mode: SuggestionMode
-                var before = field.draft.before, after = field.draft.after
+                var before = draft.before, after = draft.after
                 switch plan {
                 case .needsNotes:
                     self.showNotice(Self.needsNotes, option: option); return
@@ -129,7 +145,8 @@ final class SuggestionCoordinator {
                     (before, after) = field.draft.text(around: seed)
                 }
                 self.lastMode = mode.rawValue
-                let target = JotCore.Target(app: field.appName, mode: mode, purpose: Self.purpose(of: field),
+                let target = JotCore.Target(app: field.appName, mode: mode,
+                                            purpose: conversation.isEmpty ? Self.purpose(of: field) : "agent-prompt",
                                             inputRevision: field.draft.revision, before: before, after: after,
                                             requestedAt: ISO8601DateFormatter().string(from: now),
                                             seed: self.seed?.text, window: screen?.window)
@@ -138,6 +155,7 @@ final class SuggestionCoordinator {
                 let selection = SourceSelector.select(scenario, limits: includeMeeting ? .withMeeting : .experiment)
                 self.usedScreen = selection.selected.contains { $0.kind == ScreenContext.kind }
                 self.usedMeeting = selection.selected.contains { $0.kind == "meeting-transcript" }
+                self.usedConversation = selection.selected.contains { $0.kind == ConversationContext.kind }
                 self.rows = context?.rows.filter { row in selection.selected.contains { $0.id == row.id } } ?? []
                 if mode == .reply && selection.selected.isEmpty { self.showNotice(Self.needsNotes, option: option); return }
                 let request = SuggestionPrompt.request(for: scenario, sources: selection.selected)
@@ -152,10 +170,10 @@ final class SuggestionCoordinator {
                 }
                 switch result {
                 case .output(let raw):
-                    switch SuggestionOutput.process(raw, mode: mode, singleLine: field.role != kAXTextAreaRole) {
+                    switch SuggestionOutput.process(raw, mode: mode, singleLine: field.role != kAXTextAreaRole || terminalReply) {
                     case .suggestion(let text):
                         // Like an abstention, a withheld result can come out differently with the meeting added or dropped.
-                        switch SuggestionOutput.review(text, draft: field.draft, seed: self.seed?.text,
+                        switch SuggestionOutput.review(text, draft: draft, seed: self.seed?.text,
                                                        placeholder: field.placeholder, context: excerpt) {
                         case .accept: break
                         case .unchanged: self.showNotice("Your notes already read well. No changes suggested.", option: option); return
@@ -204,6 +222,12 @@ final class SuggestionCoordinator {
 
     /// A draft can run to several sentences; the on-device model needs longer for it than for a one-line reply.
     private static func deadline(for mode: SuggestionMode) -> Duration { mode == .draft ? .seconds(8) : .seconds(3) }
+
+    /// The Claude Code conversation a field replies to, as the plugin's hooks reported it. Text read above the field
+    /// picks the session it shows, or declines when it shows another conversation. See `ConversationContext.session`.
+    static func conversationSources(_ sessions: [ConversationContext.Session], shown: [ScreenText]?) -> [Source] {
+        ConversationContext.session(among: sessions, shown: shown?.map(\.text).joined(separator: "\n"))?.sources() ?? []
+    }
 
     private static func purpose(of field: DictationInput.SuggestionField) -> String {
         guard field.role == kAXTextAreaRole else { return "single-line" }

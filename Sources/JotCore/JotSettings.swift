@@ -46,6 +46,7 @@ public final class JotSettings: @unchecked Sendable {
         .init(key: JotDefaultsKey.suggestionsEnabled, kind: .bool(true), summary: "Double-tap Fn for a suggestion"),
         .init(key: JotDefaultsKey.suggestionScreenContext, kind: .bool(true), summary: "Suggestions read the conversation shown above the field"),
         .init(key: JotDefaultsKey.suggestionMeetingContext, kind: .bool(false), summary: "Suggestions include the latest meeting"),
+        .init(key: JotDefaultsKey.suggestionClaudeConversation, kind: .bool(true), summary: "Suggestions use the Claude Code conversation"),
         .init(key: JotDefaultsKey.newSessionAfterSilence, kind: .int(SessionSplit.defaultMinutes, range: 0...60, choices: SessionSplit.choices), summary: "Minutes of quiet that start a new session; 0 never splits"),
         .init(key: JotDefaultsKey.cleanUpTranscriptions, kind: .bool(true), summary: "Clean up live speech and meetings with Apple Intelligence"),
         .init(key: JotDefaultsKey.keepAudioForSpeakerPass, kind: .bool(true), summary: "Keep session audio until the speaker pass finishes"),

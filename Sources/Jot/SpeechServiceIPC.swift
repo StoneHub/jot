@@ -14,9 +14,12 @@ extension SpeechService {
 
     func status() throws -> [String: Any] {
         let pendingAudioSeconds = transcriber.queuedAudioSeconds
+        var suggestionReport = suggestions.diagnostics
+        suggestionReport["conversation"] = conversations.metadata(at: dependencies.now())
+            .merging(["enabled": suggestionClaudeConversation]) { $1 }
         var result: [String: Any] = ["mode": mode, "models": modelState.rawValue, "microphoneRunning": capture.running,
             "microphonePermission": AVCaptureDevice.authorizationStatus(for: .audio).rawValue,
-            "suggestions": suggestions.diagnostics,
+            "suggestions": suggestionReport,
             "accessibilityGranted": DictationInput.accessibilityGranted, "fnEnabled": fnEnabled,
             "dictationShortcut": shortcut.displayName, "fnRequested": fnRequested, "ambientRequested": ambientRequested, "ambientEnabled": ambientEnabled, "keepMacAwakeWhileListening": keepMacAwakeWhileListening, "keepAwakeActive": keepAwakeActive, "servicePhase": lifecycle.phase.rawValue,
             "notice": notice, "sessionID": timeline.sessionID, "inferenceRunning": transcriber.processing != nil || diagnosticActive, "speakerPassRunning": speakers.passRunning, "resources": try object(resources),
@@ -66,6 +69,10 @@ extension SpeechService {
                 guard let id = params["sessionID"] as? String, let title = params["title"] as? String else { throw JotError.message("sessionID and title are required") }
                 try setSessionTitle(id, title: title)
                 result = ["sessionID": id, "title": title]
+            case "conversation.update":
+                // From the Claude Code plugin's hooks. Kept in memory for suggestions; never stored or offered over MCP.
+                guard let update = ConversationUpdate(params: params) else { throw JotError.message("sessionID, event and a prompt or reply are required") }
+                result = ["stored": receiveConversation(update)]
             case "settings.get": result = ["settings": settings.report(), "revision": JotSettings.revision]
             case "settings.set":
                 guard let key = params["key"] as? String, let value = params["value"] else { throw JotError.message("key and value are required") }

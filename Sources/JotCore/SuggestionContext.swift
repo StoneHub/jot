@@ -137,6 +137,7 @@ public enum SuggestionAttribution {
     public static func line(plan: SuggestionPlan, selected: [Source], sessionTitle: String?) -> String {
         var parts: [String] = []
         if case .draft(let seed) = plan { parts.append(seed.isSelection ? "Your selection" : "Your notes") }
+        if selected.contains(where: { $0.kind == ConversationContext.kind }) { parts.append("the Claude Code conversation") }
         if selected.contains(where: { $0.kind == ScreenContext.kind }) { parts.append("text on screen") }
         if selected.contains(where: { $0.kind == "dictation" }) { parts.append("recent dictation") }
         if selected.contains(where: { $0.kind == "meeting-transcript" }) {

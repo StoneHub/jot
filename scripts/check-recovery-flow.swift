@@ -177,6 +177,7 @@ struct RecoveryFlowChecks {
         try await checkRelabelsTakeTurns(directory: directory)
         try await checkControlsRedrawWhenWorkEnds(directory: directory)
         try await checkSpeakerPassKeepsMainFree(directory: directory)
+        try await checkClaudeConversation()
         try await CaptureFlowChecks.run()
         if CommandLine.arguments.contains("--cleanup-model") { try await checkPhraseCleanupModel() }
 
@@ -184,6 +185,80 @@ struct RecoveryFlowChecks {
             try await checkRealRecognition(URL(fileURLWithPath: CommandLine.arguments[flag + 1]))
         }
         print("Recovery controller checks passed. These checks do not establish physical Fn or cross-app Accessibility behavior.")
+    }
+
+    /// The Claude Code plugin's `conversation.update` reaches memory through the socket handler, `jot status` counts it
+    /// without its words, and a blank reply in Claude's composer takes it as its attributed source ahead of screen text.
+    /// The Accessibility request and the model call are not exercised here.
+    @MainActor static func checkClaudeConversation() async throws {
+        let probe = Probe()
+        let service = SpeechService(dependencies: .init(infer: { _, job, _ in probe.infer(job) },
+                                                        deliver: { _, text in try probe.deliver(text) }, now: { probe.now }))
+        defer { service.shutdown() }
+        func send(_ params: [String: Any]) async throws -> [String: Any] {
+            let request = try JSONSerialization.data(withJSONObject: ["method": "conversation.update", "params": params])
+            return try JSONSerialization.jsonObject(with: await service.handle(request)) as? [String: Any] ?? [:]
+        }
+        func stored(_ reply: [String: Any]) -> Bool? { (reply["result"] as? [String: Any])?["stored"] as? Bool }
+        let claude = "com.anthropic.claudefordesktop"
+        let question = "Export now waits for cleanup to finish before it writes the file. Should I make it stop waiting?"
+        precondition(service.suggestionClaudeConversation, "The Claude Code conversation is not on by default")
+        let submitted = try await send(["sessionID": "harness-session", "event": "UserPromptSubmit", "cwd": "/tmp/project",
+                                        "prompt": "Why does export pause after a meeting?"])
+        precondition(stored(submitted) == true, "conversation.update did not keep a prompt")
+        probe.now += 20
+        let stopped = try await send(["sessionID": "harness-session", "event": "Stop", "reply": question])
+        precondition(stored(stopped) == true, "conversation.update did not keep a reply")
+        let anonymous = try await send(["event": "Stop", "reply": "No session"])
+        precondition(anonymous["ok"] as? Bool == false, "An update without a session was accepted")
+
+        let status = try service.status()
+        let report = (status["suggestions"] as? [String: Any])?["conversation"] as? [String: Any]
+        precondition(report?["sessions"] as? Int == 1 && report?["secondsSinceUpdate"] as? Int == 0 && report?["enabled"] as? Bool == true,
+                     "jot status did not count the conversation")
+        let statusText = String(decoding: try JSONSerialization.data(withJSONObject: status), as: UTF8.self)
+        precondition(!statusText.contains("export pause") && !statusText.contains("waits for cleanup")
+                        && !statusText.contains("harness-session") && !statusText.contains("/tmp/project"),
+                     "jot status exposed the conversation's words, session or folder")
+        precondition(!MCPTool.catalog.contains { $0.method == "conversation.update" }, "The conversation is reachable over MCP")
+
+        // A blank reply in Claude's composer, with the conversation shown above it.
+        let sessions = service.conversationSessions(for: claude)
+        precondition(service.conversationSessions(for: "com.openai.codex").isEmpty, "Another app got the Claude Code conversation")
+        let shown = ["Earlier we looked at how meetings end and why the speaker pass runs afterwards.",
+                     "Why does export pause after a meeting?", question].map { ScreenText($0, frame: .zero) }
+        let sources = SuggestionCoordinator.conversationSources(sessions, shown: shown)
+        precondition(sources.map(\.role) == ["user", "assistant"] && sources.last?.text == question,
+                     "The shown conversation did not become user and assistant sources")
+        let draft = SuggestionDraftSnapshot(value: "", location: 0, length: 0)!
+        let plan = SuggestionPlan.make(draft: draft, role: "AXTextArea", hasAssociatedContext: !sources.isEmpty)
+        precondition(plan == .reply, "A blank Claude composer with a conversation is not a reply")
+        var scenario = ScenarioInput(target: Target(app: "Claude", mode: .reply, purpose: "agent-prompt", before: "", after: "",
+                                                    requestedAt: ISO8601DateFormatter().string(from: probe.now)), sources: sources)
+        scenario.association = .explicitRecentRequest
+        let selection = SourceSelector.select(scenario)
+        precondition(selection.selected.map(\.kind) == [ConversationContext.kind, ConversationContext.kind],
+                     "Selection dropped the conversation")
+        precondition(SuggestionAttribution.line(plan: plan, selected: selection.selected, sessionTitle: nil) == "The Claude Code conversation",
+                     "The card does not say it used the Claude Code conversation")
+        let prompt = SuggestionPrompt.prompt(for: scenario, sources: selection.selected)
+        precondition(prompt.contains("claude code conversation, from the assistant, not the user"), "The prompt does not say Claude wrote the reply")
+        let otherChat = (0..<8).map { ScreenText("Lunch plans for Friday are still open, and nobody has booked a table yet \($0).", frame: .zero) }
+        precondition(SuggestionCoordinator.conversationSources(sessions, shown: otherChat).isEmpty,
+                     "A screen showing another conversation still took the Claude Code one")
+
+        // A terminal takes only a fresh conversation; the app keeps it for an hour.
+        precondition(service.conversationSessions(for: "com.apple.Terminal").count == 1, "A terminal missed a fresh conversation")
+        probe.now += 301
+        precondition(service.conversationSessions(for: "com.apple.Terminal").isEmpty, "A terminal took a stale conversation")
+        precondition(service.conversationSessions(for: claude).count == 1, "Claude's composer lost a recent conversation")
+
+        service.setSuggestionClaudeConversation(false)
+        precondition(service.conversationSessions(for: claude).isEmpty && service.conversations.sessions.isEmpty, "Turning the setting off kept the conversation")
+        let whileOff = try await send(["sessionID": "harness-session", "event": "UserPromptSubmit", "prompt": "Again"])
+        precondition(stored(whileOff) == false && service.conversations.sessions.isEmpty, "An update was kept while the setting is off")
+        service.setSuggestionClaudeConversation(true)
+        print("PASS: conversation.update keeps the Claude Code conversation in memory, status counts it without its words, and a blank Claude reply takes it as its attributed source ahead of screen text; off keeps nothing.")
     }
 
     @MainActor static func checkPhraseCleanupModel() async throws {

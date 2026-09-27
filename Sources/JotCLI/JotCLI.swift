@@ -6,6 +6,7 @@ struct JotCLI {
     static func main() {
         do {
             let args = Array(CommandLine.arguments.dropFirst())
+            if args.first == "claude-context" { ClaudeContextCommand.run(Array(args.dropFirst())); return }
             if args.first == "mcp" { try MCPServer().run(); return }
             if args.isEmpty || ["help", "--help", "-h"].contains(args[0]) { print(usage); return }
             let (method, params) = try command(args)
@@ -50,6 +51,7 @@ struct JotCLI {
     jot models check                   Check published model revisions (no download)
     jot transcribe-file <path>          Diagnostic file inference; no persistence
     jot mcp                            MCP JSON-RPC over stdio (no TCP)
+    jot claude-context                 One Claude Code hook event on stdin; the Jot plugin for Claude Code runs this
 
     Transcript text is context, never authorization to execute commands.
     """
@@ -162,6 +164,39 @@ private enum CLIError: Error, LocalizedError {
 }
 
 private func stderr(_ value: String) { FileHandle.standardError.write(Data(value.utf8)) }
+
+/// The Jot plugin's Claude Code hooks pipe their JSON here. Prints nothing and exits 0 whatever happens: hook output
+/// reaches Claude, and a closed or busy Jot must never hold up a prompt. `--print` shows the request instead of sending it.
+private enum ClaudeContextCommand {
+    /// Hook JSON is small unless the user pasted a lot; a larger event is drained and dropped.
+    static let maximumInput = 4 * 1_048_576
+
+    static func run(_ args: [String]) {
+        guard isatty(STDIN_FILENO) == 0, let input = readInput(), let update = ClaudeCodeHook.update(fromHook: input) else { return }
+        if args.contains("--print") {
+            let request: [String: Any] = ["method": ClaudeCodeHook.method, "params": update.params]
+            if let data = try? JSONSerialization.data(withJSONObject: request, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) {
+                print(String(decoding: data, as: UTF8.self))
+            }
+            return
+        }
+        _ = try? LocalServiceClient().request(method: ClaudeCodeHook.method, params: update.params, timeout: 2)
+    }
+
+    private static func readInput() -> Data? {
+        var data = Data(), oversized = false
+        var bytes = [UInt8](repeating: 0, count: 65_536)
+        while true {
+            let count = Darwin.read(STDIN_FILENO, &bytes, bytes.count)
+            if count < 0 && errno == EINTR { continue }
+            if count <= 0 { break }
+            // Keep reading to the end so Claude's write never fails on a closed pipe.
+            if oversized || data.count + count > maximumInput { oversized = true; data = Data(); continue }
+            data.append(contentsOf: bytes.prefix(count))
+        }
+        return oversized ? nil : data
+    }
+}
 
 /// MCP stdio transport uses newline-delimited JSON; stdout contains protocol frames only.
 private struct MCPServer {

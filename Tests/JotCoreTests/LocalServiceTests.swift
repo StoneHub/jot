@@ -42,6 +42,19 @@ final class LocalServiceTests: XCTestCase {
         XCTAssertThrowsError(try LocalServiceClient(socketURL: socketURL).request(method: "search", params: ["query": String(repeating: "x", count: 1_048_577)]))
     }
 
+    /// A Claude Code hook waits on the CLI, so its short timeout must hold even when the service does not answer.
+    func testShortTimeoutReturnsWhileTheServiceIsBusy() throws {
+        let socketURL = directory.appendingPathComponent("service.sock")
+        let server = LocalServiceServer(socketURL: socketURL) { _ in
+            try? await Task.sleep(for: .seconds(5))
+            return Data(#"{"ok":true}"#.utf8)
+        }
+        try server.start(); defer { server.stop() }
+        let started = Date()
+        XCTAssertThrowsError(try LocalServiceClient(socketURL: socketURL).request(method: "conversation.update", timeout: 1))
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2.5)
+    }
+
     func testLargeResponseIsRejectedWithoutBreakingService() throws {
         let socketURL = directory.appendingPathComponent("service.sock")
         let server = LocalServiceServer(socketURL: socketURL) { _ in Data(repeating: 120, count: 4_194_305) }

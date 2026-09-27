@@ -1,0 +1,27 @@
+{
+  "description": "Send each submitted prompt and each finished reply to Jot's local service",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/send-to-jot.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/send-to-jot.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

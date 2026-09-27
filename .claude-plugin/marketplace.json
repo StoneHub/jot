@@ -1,0 +1,17 @@
+{
+  "name": "jot",
+  "description": "Claude Code plugins that connect Claude Code to Jot, local dictation and transcription for the Mac.",
+  "owner": {
+    "name": "Monroe Stone",
+    "url": "https://github.com/StoneHub"
+  },
+  "plugins": [
+    {
+      "name": "jot-context",
+      "description": "Tells Jot, running on this Mac, your latest Claude Code prompt and Claude's reply, so a Jot suggestion in Claude's composer knows the conversation. Stays in Jot's memory; nothing leaves the Mac.",
+      "source": "./integrations/claude-code/jot-context",
+      "category": "productivity",
+      "homepage": "https://github.com/StoneHub/jot/tree/main/integrations/claude-code/jot-context"
+    }
+  ]
+}

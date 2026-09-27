@@ -67,6 +67,8 @@ The agreed direction is [contextual suggestions in Jot](CONTEXTUAL-SUGGESTIONS.m
 
 The first slice shipped in #89 and #91: double-tap Fn requests a suggestion or a draft from notes in the field, Tab accepts, and the setting is on by default. Suggestion quality is not yet acceptable, and the Terminal bridge is not built; #79 and #90 track the rest. Its delivery sequence and acceptance scenarios preserve the capture, history and responsiveness work above.
 
+Claude Code is the first agent to contribute its conversation. Monroe chose, on September 27, an official Claude Code plugin in this repository whose hooks call the bundled CLI, rather than an MCP server, which sees only what Claude sends it, or Jot reading `~/.claude` on its own. Jot keeps the latest exchanges in memory for suggestions in Claude's composer and in terminals running Claude Code; see [Claude Code context](ARCHITECTURE.md#claude-code-context). A Codex hook could reuse `conversation.update`.
+
 ## Architecture target
 
 ```

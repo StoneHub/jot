@@ -227,6 +227,10 @@ extension TranscriptView {
             SettingToggle(title: "Include latest meeting", info: "Adds speech from the latest session in the past 30 minutes to every suggestion. When off, the card offers it with one click.",
                           isOn: Binding(get: { service.suggestionMeetingContext }, set: service.setSuggestionMeetingContext),
                           indented: true, enabled: service.suggestionsEnabled)
+            RowDivider()
+            SettingToggle(title: "Use the Claude Code conversation", info: "With Jot's plugin installed in Claude Code, suggestions in Claude's composer, or in a terminal running Claude Code, reply to the latest prompt and answer instead of reading the screen. Kept in memory for an hour, never saved. Off keeps nothing.",
+                          isOn: Binding(get: { service.suggestionClaudeConversation }, set: service.setSuggestionClaudeConversation),
+                          indented: true, enabled: service.suggestionsEnabled)
         }
     }
 

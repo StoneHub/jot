@@ -1,0 +1,11 @@
+{
+  "name": "jot-context",
+  "version": "0.1.0",
+  "description": "Tells Jot, running on this Mac, your latest Claude Code prompt and Claude's reply, so a Jot suggestion in Claude's composer knows the conversation. Stays in Jot's memory; nothing leaves the Mac.",
+  "author": {
+    "name": "Monroe Stone"
+  },
+  "homepage": "https://github.com/StoneHub/jot/tree/main/integrations/claude-code/jot-context",
+  "repository": "https://github.com/StoneHub/jot",
+  "license": "MIT"
+}
