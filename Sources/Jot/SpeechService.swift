@@ -307,6 +307,7 @@ final class SpeechService: ObservableObject {
     /// Screens read `preparing` from this, so a change redraws them the way the stored flag's mode update did.
     private var preparation: Task<Void, Never>? { willSet { objectWillChange.send() } }
     private var pausing: Task<Void, Never>?
+    private var unloading: Task<Void, Never>?
     private var sleepResume = SleepResumePolicy()
     var diagnostic: Task<SpeechOutput, Error>?
     private var tickCount = 0
@@ -380,9 +381,9 @@ final class SpeechService: ObservableObject {
             for stale in SessionAudioFile.discardStale(except: timeline.sessionID) { recordEvent(.audioDiscarded, "Session audio left by an earlier run was deleted.", session: stale) }
             if let data = UserDefaults.standard.data(forKey: JotDefaultsKey.modelUpdateChecks),
                let saved = try? JSONDecoder().decode([ModelUpdate].self, from: data) { modelUpdates = saved }
-            if UserDefaults.standard.bool(forKey: JotDefaultsKey.modelsPrepared), !UserDefaults.standard.bool(forKey: JotDefaultsKey.servicePaused) {
-                ambientRequested = true
-                prepare()
+            if UserDefaults.standard.bool(forKey: JotDefaultsKey.modelsPrepared) {
+                // The models load at launch either way, so Resume is immediate; a launch left paused only leaves the microphone off.
+                prepare(listen: !UserDefaults.standard.bool(forKey: JotDefaultsKey.servicePaused))
             }
         } catch { notice = "Service startup: \(error.localizedDescription)" }
         promptForPermissionsAtLaunch()
@@ -413,21 +414,25 @@ final class SpeechService: ObservableObject {
         })
     }
 
-    /// A Pause still saving speech counts as paused and changing, though models stay loaded until it finishes.
-    var isPaused: Bool { pauseRequested || listeningState.isPaused }
-    var isTransitioning: Bool { pauseRequested || listeningState.isChanging }
+    /// Paused means no intake: the microphone is off, whether the models are loaded (the normal case after Pause) or not
+    /// (before the first Resume, or after Unload Models). A Pause still saving speech counts as paused and changing.
+    var isPaused: Bool { pauseRequested || listeningState.isPaused || microphoneOff }
+    var isTransitioning: Bool { pauseRequested || listeningState.isChanging || preparing }
+    /// The speech models are resident, so Resume only starts the microphone.
+    var modelsLoaded: Bool { listeningState.modelsLoaded }
     var keepAwakeActive: Bool { keepAwake.isActive }
 
     private func resumeAfterSleepIfReady() {
-        guard sleepResume.takeResume(phase: lifecycle.phase) else { return }
+        guard sleepResume.takeResume(paused: !ambientEnabled && !pauseRequested && !preparing) else { return }
         guard ambientRequested else { return }
         capture.refreshInputDevices()
         prepare()
     }
 
+    /// Audio drains five times a second while the microphone runs; otherwise the tick only does its once-a-second status work.
     private func scheduleTimer() {
         timer?.invalidate()
-        let interval = lifecycle.phase == .ready ? 0.2 : 5.0
+        let interval = ambientEnabled ? 0.2 : 5.0
         let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
@@ -437,8 +442,10 @@ final class SpeechService: ObservableObject {
         self.timer = timer
     }
 
-    /// Resume. The first resume downloads models, so it asks before spending bandwidth.
-    func prepare(confirmingDownload: Bool = false) {
+    /// Resume. The first resume downloads models, so it asks before spending bandwidth. With the models already loaded, which
+    /// is the normal case after Pause, only the microphone starts. `listen: false` loads the models and leaves the microphone
+    /// off, for a launch that was left paused.
+    func prepare(confirmingDownload: Bool = false, listen: Bool = true) {
         guard !pauseRequested else {
             notice = "Pause is still saving captured speech. Resume when it finishes."
             return
@@ -448,7 +455,11 @@ final class SpeechService: ObservableObject {
             return
         }
         sleepResume.cancel()
-        ambientRequested = true
+        if listen {
+            ambientRequested = true
+            UserDefaults.standard.set(false, forKey: JotDefaultsKey.servicePaused)
+            markPerformance(.resume)
+        }
         cachedModelBytes = ModelCache.bytesOnDisk()
         if cachedModelBytes == 0 && !confirmingDownload {
             downloadPrompt = ModelCache.expectedBytes
@@ -456,11 +467,10 @@ final class SpeechService: ObservableObject {
         }
         downloadPrompt = nil
         guard let token = lifecycle.beginStart() else {
-            if microphoneOff && preparation == nil { restartMicrophone() }
+            if microphoneOff && ambientRequested { restartMicrophone() }
             return
         }
-        UserDefaults.standard.set(false, forKey: JotDefaultsKey.servicePaused)
-        markPerformance(.resume); markPerformance(.modelLoadStarted)
+        markPerformance(.modelLoadStarted)
         notice = "Loading models…"
         preparation = Task {
             do {
@@ -470,8 +480,10 @@ final class SpeechService: ObservableObject {
                 markPerformance(.modelsReady)
                 UserDefaults.standard.set(true, forKey: JotDefaultsKey.modelsPrepared)
                 cachedModelBytes = ModelCache.bytesOnDisk()
-                if fnRequested { await enableFn() }
-                try await activateAmbient(); try continueMeeting()
+                if ambientRequested {
+                    if fnRequested { await enableFn() }
+                    try await activateAmbient(); try continueMeeting()
+                }
                 if lifecycle.acceptsWork(token) { notice = "" }
             } catch {
                 if lifecycle.finishStart(token, succeeded: false) {
@@ -483,13 +495,17 @@ final class SpeechService: ObservableObject {
         }
     }
 
-    /// Models are loaded but the microphone never started, so Resume has nothing to reload and only the capture needs another try.
-    var microphoneOff: Bool { listeningState == .ready && !pauseRequested }
+    /// Models are loaded and the microphone is off: after Pause, or when it never started. Resume has nothing to reload and
+    /// only starts the capture. False while a start is under way.
+    var microphoneOff: Bool { listeningState == .ready && !pauseRequested && !preparing }
 
+    /// Resume with the models loaded: the dictation shortcut if it is on, the microphone, and a continued meeting.
     private func restartMicrophone() {
         preparation = Task {
-            do { try await activateAmbient(); try continueMeeting() }
-            catch { notice = error.localizedDescription }
+            do {
+                if fnRequested { await enableFn() }
+                try await activateAmbient(); try continueMeeting()
+            } catch { notice = error.localizedDescription }
             preparation = nil; scheduleTimer()
         }
     }
@@ -706,23 +722,25 @@ final class SpeechService: ObservableObject {
         if !capture.running { lastAudioAt = dependencies.now() }
         guard try await capture.startRetrying(shouldContinue: { lifecycle.acceptsWork(token) && ambientRequested && !pauseRequested }) else { return }
         timeline.beginSession(at: dependencies.now())
-        ambientEnabled = true; updateKeepAwakeAssertion()
+        ambientEnabled = true; updateKeepAwakeAssertion(); scheduleTimer()
         recordEvent(.started, "Ambient microphone capture started."); notice = ""
     }
 
     func startAmbient() async throws {
         ambientRequested = true
+        UserDefaults.standard.set(false, forKey: JotDefaultsKey.servicePaused)
         if lifecycle.phase == .paused || lifecycle.phase == .failed { prepare() }
         if let preparation { await preparation.value }
         guard lifecycle.phase == .ready else { throw JotError.message("The service is not ready. Wait for Pause to finish, then Resume.") }
         try await activateAmbient()
     }
 
-    /// Stop the microphone immediately, save already captured chunks, then release
-    /// models. Automatic pauses keep listening intent and a running meeting for Resume.
+    /// Stop the microphone immediately and save already captured chunks. The models stay loaded, so Resume only starts the
+    /// microphone again; `unloadModels()` releases them on request. Automatic pauses keep listening intent and a running
+    /// meeting for Resume. Nothing to do when the microphone is already off and no start is under way.
     func pause(automatic: Bool = false) {
         if !automatic { sleepResume.cancel() }
-        guard !pauseRequested, lifecycle.phase != .paused, lifecycle.phase != .pausing else { return }
+        guard !pauseRequested, ambientEnabled || ambientRequested || preparing else { return }
         suggestions.dismiss(action: .serviceStopped)
         pauseRequested = true
         markPerformance(.pause)
@@ -740,7 +758,7 @@ final class SpeechService: ObservableObject {
         if dictation.isActive { dictation.end() }
         let loadingTask = preparation, fileTask = diagnostic
         loadingTask?.cancel(); fileTask?.cancel()
-        notice = transcriber.isIdle ? "Releasing models…" : "Saving captured speech before Pause…"
+        notice = transcriber.isIdle ? "" : "Saving captured speech before Pause…"
         pausing = Task {
             await loadingTask?.value
             _ = try? await fileTask?.value
@@ -749,26 +767,38 @@ final class SpeechService: ObservableObject {
                 try? await Task.sleep(for: .milliseconds(20))
             }
             await dictation.waitForRecovery()
-            guard let token = lifecycle.beginPause() else {
-                pauseRequested = false; pausing = nil; return
-            }
+            // Optional text-only cleanup may finish after capture stops. Original recognition is already durable; no microphone is retained.
             ambientEnabled = false; transcriber.queuedSeconds = 0
-            // Optional text-only cleanup may finish after capture/models stop.
-            // Original recognition is already durable; no microphone is retained.
-            notice = "Releasing models…"; scheduleTimer()
-            await dependencies.unloadModels(pipeline)
-            if lifecycle.finishPause(token) {
-                preparation = nil
-                notice = outcome.endedMeeting ? "Meeting stopped. Its transcript is in Sessions." : ""
-                markPerformance(.modelsUnloaded); scheduleTimer()
-            }
+            notice = outcome.endedMeeting ? "Meeting stopped. Its transcript is in Sessions." : ""
             pauseRequested = false; pausing = nil
+            scheduleTimer()
             resumeAfterSleepIfReady()
         }
     }
 
+    /// Frees the speech models' memory: the Unload Models menu item and `jot models unload`. Listening stops first if it is
+    /// on. Resume afterwards loads the models again before the microphone starts. Nothing else unloads them but Quit.
+    func unloadModels() {
+        guard unloading == nil, lifecycle.phase != .paused, lifecycle.phase != .pausing else { return }
+        if ambientEnabled || ambientRequested || preparing { pause() }
+        unloading = Task {
+            if let pausing { await pausing.value }
+            while pauseRequested { try? await Task.sleep(for: .milliseconds(20)) }
+            // A pause during model loading already failed the start and released the models; the generation still moves on.
+            guard let token = lifecycle.beginPause() else { unloading = nil; return }
+            notice = "Releasing models…"; scheduleTimer()
+            await dependencies.unloadModels(pipeline)
+            if lifecycle.finishPause(token) {
+                preparation = nil; notice = ""
+                markPerformance(.modelsUnloaded); scheduleTimer()
+            }
+            unloading = nil
+        }
+    }
+
     private func tick() {
-        if lifecycle.phase == .ready { drainAudio() }
+        // Paused keeps the phase ready with the microphone stopped; nothing is drained then.
+        if lifecycle.phase == .ready, ambientEnabled { drainAudio() }
         tickCount += 1
         if dependencies.now().timeIntervalSince(lastStatsTime) >= 1 {
             samplePerformance(); lastStatsTime = dependencies.now(); refreshPermissions()
@@ -881,7 +911,7 @@ final class SpeechService: ObservableObject {
     func shutdown() {
         cleanup.shutdown()
         if ambientEnabled { recordEvent(.stopped, "Application quit; capture ended.") }
-        modelCheck?.cancel(); preparation?.cancel(); transcriber.cancel(); diagnostic?.cancel(); pausing?.cancel()
+        modelCheck?.cancel(); preparation?.cancel(); transcriber.cancel(); diagnostic?.cancel(); pausing?.cancel(); unloading?.cancel()
         suggestions.dismiss(action: .serviceStopped)
         timer?.invalidate(); dictation.releaseFieldEffects(); input.disable(); capture.stop(); updateKeepAwakeAssertion(); server?.stop()
         capture.stopWatching()

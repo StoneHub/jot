@@ -21,6 +21,9 @@ extension SpeechService {
         }.value.value
     }
 
+    /// Paused means no intake from any input: the hooks are refused like the microphone is off. The hook CLI stays silent.
+    static let pausedIntake = "Jot is paused, so agent context is not taken. Resume listening to give agents context."
+
     /// One setting as `jot settings` lists it, after a change.
     private func settingRow(_ key: String) -> [String: Any] { settings.report().first { $0["key"] as? String == key } ?? [:] }
 
@@ -58,6 +61,7 @@ extension SpeechService {
             switch method {
             case "speech.status": result = try status()
             case "models.prepare": result = ["state": modelState.rawValue, "downloadBytes": prepareFromCommand()]
+            case "models.unload": unloadModels(); result = try status()
             case "models.check": checkModelUpdates(); if let modelCheck { await modelCheck.value }; result = try object(modelUpdates)
             case "speech.diagnostics":
                 samplePerformance(); result = try object(diagnostics.report)
@@ -150,12 +154,14 @@ extension SpeechService {
                 guard lifecycle.generation == token else { throw CancellationError() }
                 result = ["text": output.text, "transcripts": try object(output.transcripts), "processingSeconds": output.processingSeconds, "persisted": false]
             case "context.add":
+                guard ambientEnabled else { throw JotError.message(Self.pausedIntake) }
                 guard let role = params["role"] as? String, let source = params["source"] as? String, let text = params["text"] as? String else {
                     throw JotError.message("context.add needs role, source and text")
                 }
                 let message = try agentContext.add(role: role, source: source, conversation: params["conversation"] as? String, text: text)
                 result = ["id": message.id, "held": agentContext.count, "windowMinutes": suggestionWindowMinutes]
             case "context.hook":
+                guard ambientEnabled else { throw JotError.message(Self.pausedIntake) }
                 guard let role = params["role"] as? String, let source = params["source"] as? String,
                       ["claude-code", "codex"].contains(source),
                       let conversation = params["conversation"] as? String, !conversation.isEmpty,

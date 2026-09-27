@@ -152,10 +152,11 @@ struct RecoveryFlowChecks {
         probe.now += 0.5
         service.ingestRecoveryVerification(samples: Array(repeating: Float(27), count: 8_000), at: probe.now)
         service.pause()
-        while service.lifecycle.phase != .paused { try await Task.sleep(for: .milliseconds(10)) }
+        while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
         let finalRows = try store.session(id: service.timeline.activeSessionID!)
         precondition(finalRows.contains(where: { $0.text == "segment27" }), "Pause discarded the unfinished tail")
-        print("PASS: Pause persisted the final half-second before unloading.")
+        precondition(service.lifecycle.phase == .ready && service.modelsLoaded && service.isPaused, "Pause did not keep the models loaded")
+        print("PASS: Pause persisted the final half-second and kept the models loaded.")
 
         try await checkFailureAndCleanup(directory: directory)
         try await checkDictationTimings(directory: directory)
@@ -166,7 +167,8 @@ struct RecoveryFlowChecks {
             let token = inactive.lifecycle.beginStart()!
             if failed { _ = inactive.lifecycle.finishStart(token, succeeded: false) }
             inactive.pause()
-            while inactive.lifecycle.phase != .paused { try await Task.sleep(for: .milliseconds(5)) }
+            while inactive.pauseRequested { try await Task.sleep(for: .milliseconds(5)) }
+            precondition(inactive.transcriber.isIdle, "Pause enqueued audio while nothing was captured")
             inactive.shutdown()
         }
         print("PASS: Pause during model preparation or failed preparation does not enqueue unprocessable final audio.")
@@ -781,8 +783,9 @@ struct RecoveryFlowChecks {
         probe.now += 5
         service.tickRecoveryVerification()
         precondition(service.pauseRequested && service.notice.hasPrefix("Microphone stopped delivering audio"), "Five seconds without microphone audio did not pause")
-        while service.lifecycle.phase != .paused { try await Task.sleep(for: .milliseconds(10)) }
-        print("PASS: five seconds without microphone audio pauses automatically.")
+        while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
+        precondition(!service.ambientEnabled && service.modelsLoaded, "An automatic pause unloaded the models")
+        print("PASS: five seconds without microphone audio pauses automatically, with the models kept.")
     }
 
     /// Resource samples must refresh their readouts without invalidating every screen that observes the service.
@@ -818,7 +821,7 @@ struct RecoveryFlowChecks {
         print("PASS: resource-only ticks and six recognitions that find no speech do not invalidate the whole window, even when the status second lands on a chunk close.")
 
         service.pause()
-        while service.lifecycle.phase != .paused { try await Task.sleep(for: .milliseconds(10)) }
+        while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
         changes = 0
         var readouts = 0
         let meters = service.resourceReadout.$snapshot.dropFirst().sink { _ in readouts += 1 }
@@ -913,7 +916,7 @@ struct RecoveryFlowChecks {
         service.flushRecoveryVerification()
         while !cleanupGate.holding { try await Task.sleep(for: .milliseconds(1)) }
         service.pause()
-        while service.lifecycle.phase != .paused || service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
+        while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
         try await screen.settle()
         precondition(service.cleanup.isRunning && !screen.update, "The Update button was enabled while cleanup was still running after Pause")
         cleanupGate.open()
@@ -1424,7 +1427,7 @@ struct RecoveryFlowChecks {
         let shortText = try store.session(id: service.timeline.activeSessionID!).dropFirst(rowsBefore).map(\.text).joined(separator: " ")
         print("REAL SHORT FINAL: a 0.25 s final job completed; text: \(shortText.isEmpty ? "(none)" : shortText)")
         service.pause()
-        while service.lifecycle.phase != .paused { try await Task.sleep(for: .milliseconds(10)) }
+        while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
         service.shutdown()
     }
 }

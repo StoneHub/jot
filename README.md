@@ -13,7 +13,7 @@ Jot listens while resumed and saves a searchable transcript locally. Hold **Fn**
 - **Speak into your apps.** Release Fn to insert your words without sending the message.
 - **Keep the words.** Search local dictations, select text across statements, or copy a single card.
 - **Recover a missed insertion.** Focus a text field and double-tap the shortcut. Undelivered dictation takes priority over the recent speech window.
-- **Stay in control.** Resume listens; Pause stops listening and unloads models. No separate Ambient switch.
+- **Stay in control.** Resume listens; Pause stops listening and keeps the models loaded, so Resume is immediate. Unload Models in the menu frees their memory. No separate Ambient switch.
 - **Give agents context.** Search and read transcripts through the bundled CLI and MCP server.
 - **Feel at home on the Mac.** System accent colors, native Liquid Glass on macOS 26, and material fallbacks on earlier versions.
 
@@ -27,7 +27,7 @@ Build and install Jot using the [instructions below](#build-and-install), then o
 
 Grant microphone and Accessibility access. If Fn triggers a macOS shortcut, set the Fn/Globe action to **Do Nothing** in Keyboard settings.
 
-- **Resume** loads models and starts listening immediately. **Pause** stops new capture and unloads models after saving captured speech; a running meeting ends without exporting, with its transcript in **Sessions**. An explicit Pause stays paused across launch. Jot resumes after sleep if it was listening beforehand.
+- **Resume** starts listening immediately; the first Resume downloads and loads the models. **Pause** stops new capture after saving captured speech and keeps the models loaded; agent hooks are refused while paused; a running meeting ends without exporting, with its transcript in **Sessions**. An explicit Pause stays paused across launch, with the models loaded and the microphone off. **Unload Models** in the menu, or `jot models unload`, frees the models' memory until the next Resume. Jot resumes after sleep if it was listening beforehand.
 - **Dictation** enables the insertion shortcut. Turning it off does not stop listening; use **Pause** for that.
 - Closing the window keeps Jot in the menu bar. **Open** brings the window back; **Quit** stops the app.
 

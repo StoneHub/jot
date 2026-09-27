@@ -10,14 +10,14 @@ final class ServiceLifecycleTests: XCTestCase {
             policy.willSleep(ambientRunning: false)
             if wakeFirst {
                 policy.didWake()
-                XCTAssertFalse(policy.takeResume(phase: .pausing))
+                XCTAssertFalse(policy.takeResume(paused: false))
             } else {
-                XCTAssertFalse(policy.takeResume(phase: .paused))
+                XCTAssertFalse(policy.takeResume(paused: true))
                 policy.didWake()
             }
-            XCTAssertTrue(policy.takeResume(phase: .paused))
+            XCTAssertTrue(policy.takeResume(paused: true))
             policy.didWake()
-            XCTAssertFalse(policy.takeResume(phase: .paused), "Wake must not restart capture twice")
+            XCTAssertFalse(policy.takeResume(paused: true), "Wake must not restart capture twice")
         }
     }
 
@@ -25,11 +25,11 @@ final class ServiceLifecycleTests: XCTestCase {
         var policy = SleepResumePolicy()
         policy.willSleep(ambientRunning: true)
         policy.didWake()
-        XCTAssertTrue(policy.takeResume(phase: .paused))
+        XCTAssertTrue(policy.takeResume(paused: true))
         var idle = SleepResumePolicy()
         idle.willSleep(ambientRunning: false)
         idle.didWake()
-        XCTAssertFalse(idle.takeResume(phase: .paused))
+        XCTAssertFalse(idle.takeResume(paused: true))
     }
 
     func testExplicitCancellationPreventsResumeEvenWhileUnloading() {
@@ -39,10 +39,10 @@ final class ServiceLifecycleTests: XCTestCase {
             if wakeFirst { policy.didWake() }
             policy.cancel() // Explicit Pause/Stop.
             policy.didWake()
-            XCTAssertFalse(policy.takeResume(phase: .paused))
+            XCTAssertFalse(policy.takeResume(paused: true))
             policy.willSleep(ambientRunning: true)
             policy.didWake()
-            XCTAssertTrue(policy.takeResume(phase: .paused), "A later capture can opt in again")
+            XCTAssertTrue(policy.takeResume(paused: true), "A later capture can opt in again")
         }
     }
 
