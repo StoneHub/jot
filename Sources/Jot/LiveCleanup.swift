@@ -39,6 +39,10 @@ final class LiveCleanup {
 
     func scheduleCleanup(sources: [Transcript], final: Bool) {
         guard service.cleanUpTranscriptions else { phraseCleanup = PhraseCleanup(); return }
+        let settings = service.settings
+        phraseCleanup.limits.pauseSeconds = settings.double(JotSettings.phrasePause)
+        phraseCleanup.limits.maximumSeconds = settings.double(JotSettings.phraseMaximumSeconds)
+        phraseCleanup.limits.minimumSentenceWords = settings.int(JotSettings.phraseMinimumWords)
         for phrase in phraseCleanup.append(sources, final: final) {
             cleanupRequestedCount += 1
             if cleanupQueue.count < 8 { cleanupQueue.append(phrase) }

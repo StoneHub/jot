@@ -31,6 +31,16 @@ final class PhraseCleanupTests: XCTestCase {
         _ = buffer.append([long])
         XCTAssertEqual(buffer.append([row(String(repeating: "more ", count: 20), 1)]).count, 1)
     }
+    /// LiveCleanup sets the limits from settings before each append; the buffer uses whatever they are at that moment.
+    func testChangedLimitsApplyAtTheNextAppend() {
+        var buffer = PhraseCleanup()
+        XCTAssertEqual(buffer.limits, PhraseCleanup.Limits(), "Defaults match the former constants")
+        buffer.limits.pauseSeconds = 5
+        XCTAssertTrue(buffer.append([row("unfinished", 0)]).isEmpty)
+        XCTAssertTrue(buffer.append([row("next", 4)]).isEmpty, "A 3-second pause stays in one phrase under a 5-second limit")
+        buffer.limits.minimumSentenceWords = 3
+        XCTAssertEqual(buffer.append([row("ends here.", 5)]).first?.text, "unfinished next ends here.")
+    }
     func testWholePhraseEditCanRemoveFillerRowAndPreserveNumbers() {
         let rows = [row("uh", 0), row("we need 3 boxes", 1), row("not 4", 2)]
         let text = "We need 3 boxes, not 4."

@@ -7,6 +7,16 @@ public struct PhraseCleanup {
         public let sources: [Transcript]
         public var text: String { sources.map(\.text).joined(separator: " ") }
     }
+    /// Where one cleanup request ends. The byte cap keeps a request inside the model's context and stays fixed.
+    public struct Limits: Equatable, Sendable {
+        public var pauseSeconds = 1.2
+        public var maximumSeconds = 12.0
+        public var minimumSentenceWords = 8
+        public let maximumBytes = 2000
+        public init() {}
+    }
+    /// Read at each append, so a changed setting applies to the next row.
+    public var limits = Limits()
     private var pending: [Transcript] = []
     public var pendingCount: Int { pending.count }
     public init() {}
@@ -19,14 +29,14 @@ public struct PhraseCleanup {
         for row in rows where !row.text.isEmpty {
             if let last = pending.last, let first = pending.first,
                row.sessionID != last.sessionID || row.speakerID != last.speakerID ||
-               row.startSeconds - last.endSeconds > 1.2 ||
-               row.endSeconds - first.startSeconds > 12 ||
-               pending.reduce(0, { $0 + $1.text.utf8.count + 1 }) + row.text.utf8.count > 2000 {
+               row.startSeconds - last.endSeconds > limits.pauseSeconds ||
+               row.endSeconds - first.startSeconds > limits.maximumSeconds ||
+               pending.reduce(0, { $0 + $1.text.utf8.count + 1 }) + row.text.utf8.count > limits.maximumBytes {
                 flush()
             }
             pending.append(row)
             let text = pending.map(\.text).joined(separator: " ")
-            if TranscriptGrouping.endsSentence(text) && text.split(whereSeparator: \.isWhitespace).count >= 8 {
+            if TranscriptGrouping.endsSentence(text) && text.split(whereSeparator: \.isWhitespace).count >= limits.minimumSentenceWords {
                 flush()
             }
         }

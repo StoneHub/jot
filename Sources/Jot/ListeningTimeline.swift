@@ -17,8 +17,11 @@ final class ListeningTimeline: ObservableObject {
     private var consecutiveSilentSamples = 0
     /// Shorter audio is dropped: recognition on it is noise.
     private static let minimumJobSamples = AudioClock.samples(seconds: 0.2)
-    private let chunkScheduler = CaptureChunkScheduler(sampleRate: AudioClock.sampleRate,
-        maximumSeconds: 3, minimumSeconds: 0.2, silenceSeconds: 0.7)
+    /// Rebuilt from settings at each use, so a changed chunk length applies at the next drain.
+    private var chunkScheduler: CaptureChunkScheduler {
+        CaptureChunkScheduler(sampleRate: AudioClock.sampleRate, maximumSeconds: service.settings.double(JotSettings.chunkMaximumSeconds),
+            minimumSeconds: 0.2, silenceSeconds: service.settings.double(JotSettings.chunkSilenceSeconds))
+    }
     private unowned let service: SpeechService
 
     init(service: SpeechService) { self.service = service }
@@ -49,7 +52,7 @@ final class ListeningTimeline: ObservableObject {
         if service.ambientEnabled {
             ambient.append(contentsOf: samples)
             sessionAudio?.append(samples)
-            consecutiveSilentSamples = rms < 0.002 ? consecutiveSilentSamples + samples.count : 0
+            consecutiveSilentSamples = rms < Float(service.settings.double(JotSettings.silenceLevel)) ? consecutiveSilentSamples + samples.count : 0
             // Enqueue every complete bounded block, retaining the tail. A silence can
             // close the tail early so sentence delivery usually beats the hard limit.
             while ambient.count >= chunkScheduler.maximumSamples {

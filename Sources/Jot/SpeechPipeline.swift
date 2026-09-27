@@ -90,7 +90,8 @@ actor SpeechPipeline {
         var heardSpeech = false
         if !recognitionSamples.isEmpty {
             do {
-                heardSpeech = try await vad.process(recognitionSamples).contains(where: { $0.probability >= 0.20 })
+                let gate = Float(JotSettings.standard.double(JotSettings.speechGate))
+                heardSpeech = try await vad.process(recognitionSamples).contains(where: { $0.probability >= gate })
             } catch {
                 // Held, not lost: the model's frames stay on the session clock after a failed job.
                 speakerFeed.holdQuiet(job.samples)
