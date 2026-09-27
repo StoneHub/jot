@@ -208,21 +208,40 @@ public enum HeardSpeech {
     /// Add a matched quote without repeating a grouped speech turn or exceeding the prompt source bounds.
     public static func adding(_ match: Match?, to selected: [Source],
                               members: (Source) -> [Transcript] = { _ in [] }, limits: SelectionLimits = .window) -> [Source] {
-        guard let match else { return selected }
+        addition(match, to: selected, members: members, limits: limits).selected
+    }
+
+    public struct Addition: Sendable {
+        public let selected: [Source]
+        /// Selected speech replaced by the matching heard sentence because it shares backing rows.
+        public let duplicateSpeechCount: Int
+        /// Selected speech dropped to keep the final prompt inside its source and byte limits.
+        public let overLimitSpeechCount: Int
+    }
+
+    /// The final prompt inputs and the two reasons an earlier selected speech source stopped being used.
+    public static func addition(_ match: Match?, to selected: [Source],
+                                members: (Source) -> [Transcript] = { _ in [] }, limits: SelectionLimits = .window) -> Addition {
+        guard let match else { return Addition(selected: selected, duplicateSpeechCount: 0, overLimitSpeechCount: 0) }
         let ids = Set(match.rows.map(\.id))
         var sources = selected.filter { source in
             !ids.contains(source.id) && members(source).allSatisfy { !ids.contains($0.id) }
         }
-        guard match.source.text.utf8.count <= limits.maximumSourceBytes else { return selected }
+        let duplicateCount = selected.count - sources.count
+        guard match.source.text.utf8.count <= limits.maximumSourceBytes else {
+            return Addition(selected: selected, duplicateSpeechCount: 0, overLimitSpeechCount: 0)
+        }
+        var evictedCount = 0
         while sources.count + 1 > limits.maximumSources ||
               sources.reduce(match.source.text.utf8.count, { $0 + $1.text.utf8.count }) > limits.maximumSourceBytes {
             guard let oldestSpeech = sources.firstIndex(where: { $0.kind == "meeting-transcript" || $0.kind == "dictation" }) else {
-                return selected
+                return Addition(selected: selected, duplicateSpeechCount: 0, overLimitSpeechCount: 0)
             }
             sources.remove(at: oldestSpeech)
+            evictedCount += 1
         }
         sources.insert(match.source, at: sources.firstIndex { $0.timestamp > match.source.timestamp } ?? sources.count)
-        return sources
+        return Addition(selected: sources, duplicateSpeechCount: duplicateCount, overLimitSpeechCount: evictedCount)
     }
 
     private static func start(_ row: Transcript) -> Date { row.startedAt.addingTimeInterval(row.startSeconds) }

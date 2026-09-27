@@ -133,9 +133,20 @@ final class SuggestionEvaluationHeardSpeechTests: XCTestCase {
         let selected = HeardSpeech.adding(match, to: [grouped, screen], members: { context.rows(for: [$0]) })
         XCTAssertEqual(selected.map(\.kind), [HeardSpeech.kind, ScreenContext.kind],
                        "A match inside a grouped turn must not repeat the rest of that turn")
+        let replacement = HeardSpeech.addition(match, to: [grouped, screen], members: { context.rows(for: [$0]) })
+        XCTAssertEqual(replacement.duplicateSpeechCount, 1)
+        XCTAssertEqual(replacement.overLimitSpeechCount, 0)
+
+        let unrelated = SuggestionContext(rows: [row("other", "A separate speech turn.", at: 0)], sessionTitle: nil).sources[0]
+        let eviction = HeardSpeech.addition(match, to: [unrelated, screen],
+            limits: SelectionLimits(maximumSources: 2, maximumSourceBytes: 6_000))
+        XCTAssertEqual(eviction.selected.map(\.kind), [HeardSpeech.kind, ScreenContext.kind])
+        XCTAssertEqual(eviction.duplicateSpeechCount, 0)
+        XCTAssertEqual(eviction.overLimitSpeechCount, 1)
 
         let limited = HeardSpeech.adding(match, to: [screen], limits: SelectionLimits(maximumSources: 1, maximumSourceBytes: 6000))
         XCTAssertEqual(limited, [screen], "Do not evict the visible conversation to force in a heard match")
+        XCTAssertEqual(HeardSpeech.addition(match, to: [screen], limits: SelectionLimits(maximumSources: 1, maximumSourceBytes: 6000)).overLimitSpeechCount, 0)
         let tooLarge = HeardSpeech.adding(match, to: [screen], limits: SelectionLimits(maximumSources: 2, maximumSourceBytes: 10))
         XCTAssertEqual(tooLarge, [screen], "A heard match cannot exceed the prompt's byte bound")
     }

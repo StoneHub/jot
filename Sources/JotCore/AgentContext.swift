@@ -3,6 +3,13 @@ import Foundation
 /// Messages an agent conversation hands Jot over the socket: what the user typed and what the assistant answered.
 /// They live in memory for the suggestion window and are never written to disk, so Jot's memory of them cannot grow.
 public final class AgentContext: @unchecked Sendable {
+    public enum MatchState: String, Codable, Sendable {
+        case noMessages, noVisibleMatch, ambiguousMatch, matched
+    }
+    public struct Match: Sendable {
+        public let state: MatchState
+        public let sources: [Source]
+    }
     public static let kind = "agent-message"
     public static let roles = ["user", "assistant"]
     /// One message; longer text is refused rather than cut, so a negation or prerequisite is never lost.
@@ -87,7 +94,12 @@ public final class AgentContext: @unchecked Sendable {
     /// A matching app alone is insufficient when several sessions are open.
     public func sources(within window: TimeInterval, now: Date = Date(),
                         targetBundleID: String, visibleText: String?) -> [Source] {
-        guard let visibleText, !visibleText.isEmpty else { return [] }
+        match(within: window, now: now, targetBundleID: targetBundleID, visibleText: visibleText).sources
+    }
+
+    /// Explains an empty agent selection without recording message or visible conversation text.
+    public func match(within window: TimeInterval, now: Date = Date(),
+                      targetBundleID: String, visibleText: String?) -> Match {
         let appSources: Set<String>
         switch targetBundleID {
         case "com.openai.codex": appSources = ["codex"]
@@ -95,22 +107,26 @@ public final class AgentContext: @unchecked Sendable {
         case "com.apple.Terminal", "com.googlecode.iterm2", "com.mitchellh.ghostty",
              "dev.warp.Warp-Stable", "net.kovidgoyal.kitty", "org.alacritty", "com.github.wez.wezterm":
             appSources = ["claude-code", "codex"]
-        default: return []
+        default: return Match(state: .noVisibleMatch, sources: [])
         }
         let candidates = messages(within: window, now: now).filter {
             appSources.contains($0.source) && $0.conversation != nil
         }
+        guard !candidates.isEmpty else { return Match(state: .noMessages, sources: []) }
+        guard let visibleText, !visibleText.isEmpty else { return Match(state: .noVisibleMatch, sources: []) }
         let visibleRuns = Set(Self.wordRuns(visibleText))
-        guard !visibleRuns.isEmpty else { return [] }
+        guard !visibleRuns.isEmpty else { return Match(state: .noVisibleMatch, sources: []) }
         let conversations = Dictionary(grouping: candidates, by: { $0.source + "\u{0}" + $0.conversation! })
         let matches = conversations.filter { _, items in
             guard let reply = items.last(where: { $0.role == "assistant" }) else { return false }
             let runs = Self.wordRuns(reply.text)
             return runs.contains(where: visibleRuns.contains)
         }
-        guard matches.count == 1, let conversation = matches.keys.first else { return [] }
+        guard matches.count == 1, let conversation = matches.keys.first else {
+            return Match(state: matches.isEmpty ? .noVisibleMatch : .ambiguousMatch, sources: [])
+        }
         let allowed = Set(matches[conversation]!.map(\.id))
-        return sources(within: window, now: now).filter { allowed.contains($0.id) }
+        return Match(state: .matched, sources: sources(within: window, now: now).filter { allowed.contains($0.id) })
     }
 
     private static func wordRuns(_ value: String) -> [String] {

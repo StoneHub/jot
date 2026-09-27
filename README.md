@@ -74,6 +74,8 @@ Every draft draws on the same **context window**: the last ten minutes of what J
 
 **Give it your agent conversations.** `jot context add` and the `context_add` MCP tool hold messages in memory for the context window. For a message to enter a suggestion, its source must be `codex` or `claude-code`, it must carry a conversation ID, and an assistant reply from that conversation must substantially match text visible above the focused field. Unscoped messages remain held but are left out of suggestions. The [Claude Code integration](integrations/claude-code/jot-context/README.md) and [Codex integration](integrations/codex/jot-context/README.md) send submitted prompts and finished replies through quiet local hooks with that identity. The hooks are opt-in and are not installed by building Jot. `jot context clear` forgets everything held. Suggestions can get facts or speaker roles wrong: review each draft before you send it.
 
+Run `jot suggestions [--limit N]` to inspect recent request receipts. Each receipt shows source kinds and byte counts, why agent input did not match the visible conversation, the mode and template used, generation timing, outcome, and whether you accepted or dismissed the card. Jot keeps at most 200 receipts for 14 days in its local history. Receipts contain no field, screen, transcript, prompt, or generated text, conversation IDs, or working directories.
+
 ## Personal vocabulary
 
 Open **Vocabulary** to add a preferred spelling such as `SwiftUI`. If Jot mishears it, enter the phrase under **Heard as**, for example `swift you eye`. Leave that field empty to normalize capitalization only.

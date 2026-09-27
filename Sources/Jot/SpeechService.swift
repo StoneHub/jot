@@ -46,6 +46,7 @@ final class SpeechService: ObservableObject {
     /// What agents told Jot lately, for suggestions. In memory only; see AgentContext.
     let agentContext = AgentContext()
     lazy var suggestions = SuggestionCoordinator(input: input, store: { [weak self] in self?.library.store },
+        history: { [weak self] in self?.suggestionHistory },
         agentContext: agentContext,
         allowed: { [weak self] in self?.canRequestSuggestion == true },
         readsScreen: { [weak self] in self?.suggestionScreenContext == true },
@@ -73,21 +74,21 @@ final class SpeechService: ObservableObject {
     func setSuggestionScreenContext(_ enabled: Bool) {
         suggestionScreenContext = enabled
         settings.set(JotDefaultsKey.suggestionScreenContext, enabled)
-        suggestions.dismiss()
+        suggestions.dismiss(action: .settingsChanged)
     }
     /// A selection rewrite can restore quoted words from matching speech within the context window.
     @Published private(set) var suggestionHeardMatches = JotSettings.standard.bool(JotDefaultsKey.suggestionHeardMatches)
     func setSuggestionHeardMatches(_ enabled: Bool) {
         suggestionHeardMatches = enabled
         settings.set(JotDefaultsKey.suggestionHeardMatches, enabled)
-        suggestions.dismiss()
+        suggestions.dismiss(action: .settingsChanged)
     }
     /// How far back a suggestion may read: speech Jot heard and messages agents sent it, in minutes.
     @Published private(set) var suggestionWindowMinutes = JotSettings.standard.int(JotDefaultsKey.suggestionWindowMinutes)
     func setSuggestionWindowMinutes(_ minutes: Int) {
         settings.set(JotDefaultsKey.suggestionWindowMinutes, minutes)
         suggestionWindowMinutes = settings.int(JotDefaultsKey.suggestionWindowMinutes)
-        suggestions.dismiss()
+        suggestions.dismiss(action: .settingsChanged)
     }
     var canRequestSuggestion: Bool { suggestionBlocker == nil }
     /// Why a suggestion cannot be requested right now, in the words the card shows.
@@ -103,7 +104,7 @@ final class SpeechService: ObservableObject {
         suggestionsEnabled = enabled
         settings.set(JotDefaultsKey.suggestionsEnabled, enabled)
         if enabled && !DictationInput.accessibilityGranted { input.requestAccessibility() }
-        if !enabled { suggestions.dismiss() }
+        if !enabled { suggestions.dismiss(action: .settingsChanged) }
         updateSuggestionMonitoring()
     }
     func setSuggestionShortcut(_ value: DictationShortcut) throws {
@@ -114,12 +115,12 @@ final class SpeechService: ObservableObject {
         updateSuggestionMonitoring()
     }
     private func updateSuggestionMonitoring() {
+        suggestions.dismiss(action: .settingsChanged)
         input.dictationEnabled = fnEnabled
         if fnEnabled || (suggestionsEnabled && DictationInput.accessibilityGranted) {
             _ = input.enable()
         } else { input.disable() }
         input.fnSuggestionsEnabled = suggestionsEnabled
-        suggestions.dismiss()
     }
     var canChangeShortcut: Bool { !dictation.isActive && !dictation.isPending }
     var canChangeInput: Bool { !capture.running && !dictation.isPending && !diagnosticActive }
@@ -190,7 +191,7 @@ final class SpeechService: ObservableObject {
         if tuning != saved { tuning = saved }
     }
 
-    func setShortcutRecording(_ active: Bool) { suggestions.dismiss(); input.isRecordingShortcut = active }
+    func setShortcutRecording(_ active: Bool) { suggestions.dismiss(action: .settingsChanged); input.isRecordingShortcut = active }
 
     func setShortcut(_ value: DictationShortcut) throws {
         guard canChangeShortcut else { throw JotError.message("Finish dictation before changing its shortcut.") }
@@ -297,6 +298,7 @@ final class SpeechService: ObservableObject {
     private let readoutSampler = ResourceSampler()
     private let keepAwake = KeepAwakeAssertion()
     private var server: LocalServiceServer?
+    var suggestionHistory: SuggestionHistory?
     private var timer: Timer?
     /// A `jot` file diagnostic is running. Published because the microphone picker and Update read it through canChangeInput.
     @Published var diagnosticActive = false
@@ -324,7 +326,7 @@ final class SpeechService: ObservableObject {
             self.suggestions.refuse(self.suggestionBlocker ?? "Suggestions are not available on this keyboard layout.")
         }
         result.onSuggestionAccept = { [weak self] in self?.suggestions.accept() }
-        result.onSuggestionDismiss = { [weak self] in self?.suggestions.dismiss() }
+        result.onSuggestionDismiss = { [weak self] action in self?.suggestions.dismiss(action: action) }
         result.startBlocker = { [weak self] in
             guard let self else { return "Jot is shutting down." }
             return DictationReadiness.blocker(phase: self.lifecycle.phase, modelsReady: self.modelState == .ready,
@@ -351,6 +353,8 @@ final class SpeechService: ObservableObject {
         do {
             let opened = try TranscriptStore()
             library.store = opened
+            // Diagnostics are best effort; a telemetry schema failure must not stop capture or history access.
+            suggestionHistory = try? SuggestionHistory(sharing: opened)
             if opened.replacedDatabase {
                 recordEvent(.databaseReplaced, "Saved history was in a format this version does not read; it was deleted and an empty database created.")
                 notice = "Saved history was in a format this version does not read, so it was replaced with an empty history."
@@ -563,6 +567,7 @@ final class SpeechService: ObservableObject {
     func disableFn() {
         fnRequested = false; UserDefaults.standard.set(false, forKey: JotDefaultsKey.fnRequested)
         if dictation.isActive { dictation.end() }
+        suggestions.dismiss(action: .settingsChanged)
         input.disable(); fnEnabled = false
         updateSuggestionMonitoring()
     }
@@ -715,6 +720,7 @@ final class SpeechService: ObservableObject {
     func pause(automatic: Bool = false) {
         if !automatic { sleepResume.cancel() }
         guard !pauseRequested, lifecycle.phase != .paused, lifecycle.phase != .pausing else { return }
+        suggestions.dismiss(action: .serviceStopped)
         pauseRequested = true
         markPerformance(.pause)
         UserDefaults.standard.set(true, forKey: JotDefaultsKey.servicePaused)
@@ -873,7 +879,7 @@ final class SpeechService: ObservableObject {
         cleanup.shutdown()
         if ambientEnabled { recordEvent(.stopped, "Application quit; capture ended.") }
         modelCheck?.cancel(); preparation?.cancel(); transcriber.cancel(); diagnostic?.cancel(); pausing?.cancel()
-        suggestions.dismiss()
+        suggestions.dismiss(action: .serviceStopped)
         timer?.invalidate(); dictation.releaseFieldEffects(); input.disable(); capture.stop(); updateKeepAwakeAssertion(); server?.stop()
         capture.stopWatching()
         for observer in observers { NSWorkspace.shared.notificationCenter.removeObserver(observer); NotificationCenter.default.removeObserver(observer) }
