@@ -224,6 +224,10 @@ extension TranscriptView {
                           isOn: Binding(get: { service.suggestionScreenContext }, set: service.setSuggestionScreenContext),
                           indented: true, enabled: service.suggestionsEnabled)
             RowDivider()
+            SettingToggle(title: "Use matching speech", info: "When a draft's notes quote or paraphrase something Jot heard in the past hour, such as a line from a video, the draft uses those few lines to restore the wording. Other speech is never added.",
+                          isOn: Binding(get: { service.suggestionHeardMatches }, set: service.setSuggestionHeardMatches),
+                          indented: true, enabled: service.suggestionsEnabled)
+            RowDivider()
             SettingToggle(title: "Include latest meeting", info: "Adds speech from the latest session in the past 30 minutes to every suggestion. When off, the card offers it with one click.",
                           isOn: Binding(get: { service.suggestionMeetingContext }, set: service.setSuggestionMeetingContext),
                           indented: true, enabled: service.suggestionsEnabled)

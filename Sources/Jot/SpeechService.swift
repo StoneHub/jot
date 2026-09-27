@@ -47,6 +47,7 @@ final class SpeechService: ObservableObject {
         allowed: { [weak self] in self?.canRequestSuggestion == true },
         readsScreen: { [weak self] in self?.suggestionScreenContext == true },
         meetingByDefault: { [weak self] in self?.suggestionMeetingContext == true },
+        matchesHeardSpeech: { [weak self] in self?.suggestionHeardMatches == true },
         notice: { [weak self] in self?.notice = $0 })
     lazy var timeline = ListeningTimeline(service: self)
     lazy var cleanup = LiveCleanup(service: self)
@@ -69,6 +70,13 @@ final class SpeechService: ObservableObject {
     func setSuggestionScreenContext(_ enabled: Bool) {
         suggestionScreenContext = enabled
         settings.set(JotDefaultsKey.suggestionScreenContext, enabled)
+        suggestions.dismiss()
+    }
+    /// A draft uses the few lines Jot heard in the past hour that its notes quote or paraphrase. Other speech never joins.
+    @Published private(set) var suggestionHeardMatches = JotSettings.standard.bool(JotDefaultsKey.suggestionHeardMatches)
+    func setSuggestionHeardMatches(_ enabled: Bool) {
+        suggestionHeardMatches = enabled
+        settings.set(JotDefaultsKey.suggestionHeardMatches, enabled)
         suggestions.dismiss()
     }
     /// Add the latest meeting to every request. Off by default; the card offers it either way.
@@ -166,6 +174,7 @@ final class SpeechService: ObservableObject {
         if suggestionsEnabled != settings.bool(key.suggestionsEnabled) { setSuggestionsEnabled(settings.bool(key.suggestionsEnabled)) }
         if suggestionScreenContext != settings.bool(key.suggestionScreenContext) { setSuggestionScreenContext(settings.bool(key.suggestionScreenContext)) }
         if suggestionMeetingContext != settings.bool(key.suggestionMeetingContext) { setSuggestionMeetingContext(settings.bool(key.suggestionMeetingContext)) }
+        if suggestionHeardMatches != settings.bool(key.suggestionHeardMatches) { setSuggestionHeardMatches(settings.bool(key.suggestionHeardMatches)) }
         if highlightTargetField != settings.bool(key.highlightTargetField) { highlightTargetField = settings.bool(key.highlightTargetField) }
         if muteSpeakersDuringDictation != settings.bool(key.muteSpeakersDuringDictation) { muteSpeakersDuringDictation = settings.bool(key.muteSpeakersDuringDictation) }
         if keepMacAwakeWhileListening != settings.bool(key.keepMacAwakeWhileListening) { keepMacAwakeWhileListening = settings.bool(key.keepMacAwakeWhileListening) }

@@ -665,6 +665,20 @@ public final class TranscriptStore: @unchecked Sendable {
         }
     }
 
+    /// Ambient rows from any session that started in the last `lookback`, newest first, with cleaned text and speaker
+    /// labels, for `HeardSpeech.match`. One bounded query on the absolute-time index.
+    public func heardRows(now: Date = Date(), lookback: TimeInterval = HeardSpeech.lookback,
+                          limit: Int = HeardSpeech.candidateLimit) throws -> [Transcript] {
+        try db.locked {
+            let clause = """
+                WHERE (t.started_at + t.start_seconds) >= CAST(? AS REAL)
+                  AND (t.started_at + t.start_seconds) <= \(now.timeIntervalSince1970) AND t.mode = 'ambient'
+                """
+            return try rows(where: clause, value: String(now.addingTimeInterval(-lookback).timeIntervalSince1970),
+                            limit: max(1, limit), offset: 0)
+        }
+    }
+
     /// Atomic readback of the selected rows only, including current cleaned text and speaker labels.
     public func suggestionRowsUnchanged(_ expected: [Transcript]) throws -> Bool {
         try db.locked {

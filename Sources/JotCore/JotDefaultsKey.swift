@@ -19,6 +19,7 @@ public enum JotDefaultsKey {
     public static let suggestionsEnabled = "suggestionsEnabled"
     public static let suggestionScreenContext = "suggestionScreenContext"
     public static let suggestionMeetingContext = "suggestionMeetingContext"
+    public static let suggestionHeardMatches = "suggestionHeardMatches"
     public static let dictationShortcut = "dictationShortcut"
     public static let personalVocabulary = "personalVocabulary"
     public static let recoveryLookbackSeconds = "recoveryLookbackSeconds"
