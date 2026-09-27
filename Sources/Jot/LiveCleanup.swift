@@ -9,8 +9,8 @@ final class LiveCleanup {
     private var cleanupQueue: [PhraseCleanup.Phrase] = []
     /// The session of the phrase the worker is cleaning now.
     private var runningSession: String?
-    private let liveTranscriptCleanup = TranscriptCleanup()
-    private let transcriptCleanup = TranscriptCleanup()
+    private let liveTranscriptCleanup: TranscriptCleanup
+    private let transcriptCleanup: TranscriptCleanup
     // A live phrase carries up to 2000 bytes; measured on-device cleanup of that
     // length returns in about 9 seconds.
     static let livePhraseCleanupTimeout = Duration.seconds(12)
@@ -23,7 +23,11 @@ final class LiveCleanup {
     private(set) var cleanupOutcomeCounts: [String: Int] = [:]
     private unowned let service: SpeechService
 
-    init(service: SpeechService) { self.service = service }
+    init(service: SpeechService) {
+        self.service = service
+        liveTranscriptCleanup = TranscriptCleanup(settings: service.settings)
+        transcriptCleanup = TranscriptCleanup(settings: service.settings)
+    }
 
     /// A phrase worker is running; Install Update and the harness wait for it.
     var isRunning: Bool { !cleanupTasks.isEmpty }

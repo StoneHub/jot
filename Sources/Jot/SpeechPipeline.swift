@@ -21,6 +21,10 @@ actor SpeechPipeline {
     private var lastSpeaker: String?
     /// Prepared and released with the live models, but run on its own actor so a long pass never blocks live inference.
     nonisolated let speakerPass = SpeakerPass()
+    /// The owner's settings; the speech gate is read from them at each job.
+    private let settings: JotSettings
+
+    init(settings: JotSettings) { self.settings = settings }
 
     func prepare() async throws {
         if asr == nil {
@@ -90,7 +94,7 @@ actor SpeechPipeline {
         var heardSpeech = false
         if !recognitionSamples.isEmpty {
             do {
-                let gate = Float(JotSettings.standard.double(JotSettings.speechGate))
+                let gate = Float(settings.double(JotSettings.speechGate))
                 heardSpeech = try await vad.process(recognitionSamples).contains(where: { $0.probability >= gate })
             } catch {
                 // Held, not lost: the model's frames stay on the session clock after a failed job.

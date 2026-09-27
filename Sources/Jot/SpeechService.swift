@@ -164,9 +164,10 @@ final class SpeechService: ObservableObject {
     }
     @Published var recoveryLookbackSeconds = JotSettings.standard.int(JotDefaultsKey.recoveryLookbackSeconds) {
         didSet {
-            let bounded = min(600, max(15, recoveryLookbackSeconds))
-            if bounded != recoveryLookbackSeconds { recoveryLookbackSeconds = bounded; return }
-            settings.set(JotDefaultsKey.recoveryLookbackSeconds, bounded)
+            // The store keeps the nearest Recovery window choice; the screen shows what was kept.
+            settings.set(JotDefaultsKey.recoveryLookbackSeconds, recoveryLookbackSeconds)
+            let accepted = settings.int(JotDefaultsKey.recoveryLookbackSeconds)
+            if accepted != recoveryLookbackSeconds { recoveryLookbackSeconds = accepted }
         }
     }
     @Published var recoveryNotice = ""
@@ -292,7 +293,7 @@ final class SpeechService: ObservableObject {
     var lastAudioAt: Date?
     /// Resume is loading models or restarting the microphone.
     var preparing: Bool { preparation != nil }
-    let pipeline = SpeechPipeline()
+    lazy var pipeline = SpeechPipeline(settings: settings)
     private let sampler = ResourceSampler()
     /// A sampler measures CPU since its previous sample, and `sampler` also samples when a recognition finishes. Sharing it would leave each recognition's CPU out of the next readout, so the readout has its own, sampled only at launch and by the tick.
     private let readoutSampler = ResourceSampler()
