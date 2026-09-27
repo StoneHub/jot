@@ -23,6 +23,8 @@ final class SuggestionCoordinator {
     private var ownsTarget = false
     private var field: DictationInput.SuggestionField?
     private var rows: [Transcript] = []
+    private var agentSnapshot: [Source] = []
+    private var agentLatestID: String?
     private var candidate: String?
     /// A draft replaces exactly these notes on Tab; a reply inserts at the cursor.
     private var seed: SuggestionSeed?
@@ -71,7 +73,7 @@ final class SuggestionCoordinator {
         monitorTask?.cancel(); monitorTask = nil
         gate.cancel()
         card.hide(); input.dismissSuggestionKeys()
-        candidate = nil; seed = nil; field = nil; rows = []
+        candidate = nil; seed = nil; field = nil; rows = []; agentSnapshot = []; agentLatestID = nil
         if ownsTarget { ownsTarget = false; input.discardTarget() }
     }
 
@@ -113,7 +115,13 @@ final class SuggestionCoordinator {
                     sources.append(ScreenContext.source(text, at: now))
                 }
                 sources += context?.sources ?? []
-                sources += self.agentContext.sources(within: window, now: now)
+                let agentSources = self.agentContext.sources(within: window, now: now,
+                    targetBundleID: field.bundleID, visibleText: excerpt)
+                sources += agentSources
+                guard agentSources.isEmpty || self.agentContext.matchesSnapshot(agentSources, latestID: agentSources.last!.id,
+                    within: window, now: now) else {
+                    self.dismiss(); return
+                }
                 let plan = SuggestionPlan.make(draft: field.draft, role: field.role, hasAssociatedContext: !sources.isEmpty)
                 let mode: SuggestionMode
                 var before = field.draft.before, after = field.draft.after
@@ -137,6 +145,10 @@ final class SuggestionCoordinator {
                 self.usedScreen = selection.selected.contains { $0.kind == ScreenContext.kind }
                 self.usedSpeech = selection.selected.contains { $0.kind == "dictation" || $0.kind == "meeting-transcript" }
                 self.usedAgent = selection.selected.contains { $0.kind == AgentContext.kind }
+                if self.usedAgent {
+                    self.agentSnapshot = selection.selected.filter { $0.kind == AgentContext.kind }
+                    self.agentLatestID = agentSources.last?.id
+                }
                 self.rows = context?.rows.filter { row in selection.selected.contains { $0.id == row.id } } ?? []
                 if mode == .reply && selection.selected.isEmpty { self.showNotice(Self.needsNotes); return }
                 let request = SuggestionPrompt.request(for: scenario, sources: selection.selected)
@@ -201,6 +213,9 @@ final class SuggestionCoordinator {
 
     private func isCurrent(_ token: Int, field: DictationInput.SuggestionField) -> Bool {
         guard token == generation, !Task.isCancelled else { return false }
+        if let agentLatestID, !agentContext.matchesSnapshot(agentSnapshot, latestID: agentLatestID, within: window()) {
+            dismiss(); return false
+        }
         guard allowed(), keyboardAllowsSuggestions, input.suggestionFieldIsCurrent(field) else { dismiss(); return false }
         return true
     }

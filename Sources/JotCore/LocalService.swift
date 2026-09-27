@@ -84,13 +84,13 @@ private func sendLine(_ data: Data, fd: Int32) throws {
 public struct LocalServiceClient: Sendable {
     public let socketURL: URL
     public init(socketURL: URL = JotPaths.socketURL) { self.socketURL = socketURL }
-    public func request(method: String, params: [String: Any] = [:]) throws -> Data {
+    public func request(method: String, params: [String: Any] = [:], timeout: Int? = nil) throws -> Data {
         let request = try JSONSerialization.data(withJSONObject: ["method": method, "params": params], options: [.sortedKeys])
         guard request.count <= maxRequestBytes else { throw LocalServiceError.invalid("IPC request exceeds size limit") }
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw LocalServiceError.unavailable("Could not create local socket") }
         defer { close(fd) }
-        let timeout = ["models.prepare", "speech.transcribe_file", "speech.meeting_end"].contains(method) ? 600 : 30
+        let timeout = timeout ?? (["models.prepare", "speech.transcribe_file", "speech.meeting_end"].contains(method) ? 600 : 30)
         configure(fd, timeout: timeout)
         guard try connectSocket(fd, socketURL) == 0 else { throw LocalServiceError.unavailable("Jot is not running. Open Jot.app, then retry. (\(String(cString: strerror(errno))))") }
         guard ownPeer(fd) else { throw LocalServiceError.invalid("Service peer belongs to a different user") }

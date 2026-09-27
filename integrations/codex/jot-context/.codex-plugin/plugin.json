@@ -1,0 +1,22 @@
+{
+  "name": "jot-context",
+  "version": "0.1.0",
+  "description": "Give Jot recent Codex prompts and replies as local suggestion context.",
+  "author": {
+    "name": "Monroe Stone"
+  },
+  "homepage": "https://github.com/StoneHub/jot/tree/main/integrations/codex/jot-context",
+  "repository": "https://github.com/StoneHub/jot",
+  "license": "MIT",
+  "interface": {
+    "displayName": "Jot Context",
+    "shortDescription": "Local Codex conversation context for Jot suggestions.",
+    "longDescription": "Passes submitted prompts and finished replies to the Jot Mac app through local hooks.",
+    "developerName": "Monroe Stone",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": [
+      "Help me use Jot suggestions in this Codex conversation."
+    ]
+  }
+}

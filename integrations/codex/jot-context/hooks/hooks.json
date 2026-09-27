@@ -1,0 +1,27 @@
+{
+  "description": "Pass submitted prompts and finished replies to Jot on this Mac without changing the agent conversation.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${PLUGIN_ROOT}/hooks/send-to-jot.sh\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${PLUGIN_ROOT}/hooks/send-to-jot.sh\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}

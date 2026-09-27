@@ -4,6 +4,8 @@
 
 Say it once. Jot types it where you are and remembers who said it, all on your Mac.
 
+The current delivery priority is solid context and inputs. Dictation and ambient capture are working well enough to keep using; the old Fn recovery work is not the next feature. Finish shared Claude/Codex hook ingress with conversation association (#134, #139), then observe and improve source selection (#135, #140). The broader refactor chain below does not block this bounded slice. See the [September 27 review](reviews/2026-09-27-context-and-state.md) for the complete open-issue map and ranked recommendations.
+
 Jot is judged by three numbers:
 
 - **Dictation latency:** key release to text in the field, median and p95.

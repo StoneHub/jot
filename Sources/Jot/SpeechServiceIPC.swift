@@ -127,6 +127,18 @@ extension SpeechService {
                 }
                 let message = try agentContext.add(role: role, source: source, conversation: params["conversation"] as? String, text: text)
                 result = ["id": message.id, "held": agentContext.count, "windowMinutes": suggestionWindowMinutes]
+            case "context.hook":
+                guard let role = params["role"] as? String, let source = params["source"] as? String,
+                      ["claude-code", "codex"].contains(source),
+                      let conversation = params["conversation"] as? String, !conversation.isEmpty,
+                      conversation.utf8.count <= 200,
+                      let text = params["text"] as? String,
+                      params["eventID"] == nil || ((params["eventID"] as? String).map { !$0.isEmpty && $0.utf8.count <= 512 } == true)
+                else { throw JotError.message("Invalid agent hook context") }
+                let message = try agentContext.add(role: role, source: source, conversation: conversation,
+                                                   text: text, turn: params["turn"] as? String,
+                                                   cwd: params["cwd"] as? String, eventID: params["eventID"] as? String)
+                result = ["id": message.id, "held": agentContext.count]
             case "context.clear": agentContext.clear(); result = ["held": 0]
             case "people.list":
                 let iso = ISO8601DateFormatter()
