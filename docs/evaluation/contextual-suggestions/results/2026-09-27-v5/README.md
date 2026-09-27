@@ -33,7 +33,7 @@ In development runs that were not committed, main's shape with the screen text l
 
 ## The earlier 18 scenarios
 
-Seventeen of the earlier scenarios send byte-identical prompts to v4. Their outputs match the [September 26 run](../2026-09-26-v4/README.md), including every draft output, so reply, shell-command and draft behavior did not change.
+Seventeen of the earlier scenarios send byte-identical prompts to v4. Their outputs match the September 26 v4 run (its raw dump is no longer kept in the tree; see the git history before #130), including every draft output, so reply, shell-command and draft behavior did not change.
 
 The eighteenth, `agent-same-length-edit-after-preview`, is a continuation. Under v4 the model returned an empty string. Under v5 it returns "and rerun make test-export afterwards.", the authored pending suggestion, and the same-length edit still withdraws it. The v4 outcome mismatches remain in `agent-quoted-hostile-instruction`, `agent-speakers-disagree` and `agent-unknown-preference`.
 

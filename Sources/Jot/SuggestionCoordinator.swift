@@ -78,7 +78,7 @@ final class SuggestionCoordinator {
     private var usedAgent = false
     /// Counts and outcomes only; never field, screen, prompt or output text.
     var diagnostics: [String: Any] { ["requests": requests, "insertions": insertions, "outcome": outcome, "reason": reason, "visible": card.isVisible,
-                                    "automatic": false, "keyboardEligible": keyboardAllowsSuggestions,
+                                    "keyboardEligible": keyboardAllowsSuggestions,
                                     "mode": lastMode, "screenContext": usedScreen, "speechContext": usedSpeech,
                                     "heardContext": usedHeard, "agentContext": usedAgent, "agentMessagesHeld": agentContext.count] }
 
@@ -407,28 +407,44 @@ final class SuggestionCoordinator {
         return field.bundleID == "com.openai.codex" ? "agent-prompt" : "text-entry"
     }
 
+    /// `stillWanted`, then the field itself, read on the main actor. The request and acceptance paths use this once each.
     private func isCurrent(_ token: Int, field: DictationInput.SuggestionField) -> Bool {
+        guard stillWanted(token) else { return false }
+        guard input.suggestionFieldIsCurrent(field) else { dismiss(action: .focusChanged); return false }
+        return true
+    }
+
+    /// The checks that need no Accessibility call: this request is still the latest, its agent sources are unchanged,
+    /// and suggestions are still allowed on this keyboard.
+    private func stillWanted(_ token: Int) -> Bool {
         guard token == generation, !Task.isCancelled else { return false }
         if let agentLatestID, !agentContext.matchesSnapshot(agentSnapshot, latestID: agentLatestID, within: window()) {
             updateReceipt { $0.reason = .sourcesChanged }
             dismiss(action: .sourcesChanged); return false
         }
-        guard allowed(), keyboardAllowsSuggestions, input.suggestionFieldIsCurrent(field) else { dismiss(action: .focusChanged); return false }
+        guard allowed(), keyboardAllowsSuggestions else { dismiss(action: .focusChanged); return false }
         return true
     }
 
+    /// While a card is up: four times a second, the field is read again off the main actor and the card follows it or
+    /// goes away. The rows behind the card are checked once a second, on the store's executor; acceptance checks them
+    /// again before inserting anyway.
     private func monitor(field: DictationInput.SuggestionField, token: Int) {
         monitorTask?.cancel()
         monitorTask = Task { [weak self] in
             let expires = ContinuousClock.now.advanced(by: .seconds(30))
+            var ticks = 0
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(250))
-                guard let self, self.isCurrent(token, field: field) else { return }
+                guard let self, self.stillWanted(token) else { return }
                 guard ContinuousClock.now < expires else { self.dismiss(action: .expired); return }
-                guard let frame = self.input.targetFrame(timeout: 0.005) else { self.dismiss(action: .focusChanged); return }
+                let frame = await self.input.observeSuggestionField(field)
+                guard token == self.generation else { return }
+                guard let frame else { self.dismiss(action: .focusChanged); return }
                 self.card.place(at: frame)
+                ticks += 1
                 let expectedRows = self.rows
-                if !expectedRows.isEmpty, let store = self.store() {
+                if ticks % 4 == 0, !expectedRows.isEmpty, let store = self.store() {
                     let current = await Task.detached { (try? store.suggestionRowsUnchanged(expectedRows)) == true }.value
                     guard token == self.generation else { return }
                     if !current {

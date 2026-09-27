@@ -28,10 +28,6 @@ public struct SuggestionDraftSnapshot: Equatable, Sendable {
         // Full value and selection are still compared at acceptance; this number is only the model's revision label.
         Int(ContentHash.sha256("\(location):\(length):" + value).prefix(12), radix: 16) ?? 0
     }
-    public func mode(bundleID: String, role: String) -> SuggestionMode? {
-        if !value.isEmpty { return .continuation }
-        return bundleID == "com.openai.codex" && role == "AXTextArea" ? .reply : nil
-    }
     public var selectedText: String { (value as NSString).substring(with: NSRange(location: location, length: length)) }
     /// Rich editors leave zero-width and non-breaking spaces in an empty field; none of them is a seed.
     public var isBlank: Bool { SuggestionSeed.isBlank(value) }
@@ -168,8 +164,9 @@ public struct SuggestionKeyTracker {
             consumedUps.insert(keyCode); state = .requesting
             return Decision(.request, consume: true)
         }
-        let cardVisible = state == .loading || state == .ready || state == .notice
-        if cardVisible && modifiers.isEmpty && keyCode == 53 {
+        // Escape is the card's own key only while there is something to cancel: a request in flight or a result to insert.
+        // A "No suggestion" notice is dismissed by any key, and that key still reaches the app.
+        if (state == .loading || state == .ready) && modifiers.isEmpty && keyCode == 53 {
             consumedUps.insert(keyCode); state = .idle
             return Decision(.dismiss, consume: true)
         }
@@ -201,26 +198,6 @@ public final class SuggestionShortcutPreferences {
                           userInfo: [NSLocalizedDescriptionKey: "Choose a modified key different from the dictation shortcut."])
         }
         defaults.set(try JSONEncoder().encode(shortcut), forKey: JotDefaultsKey.suggestionShortcut)
-    }
-}
-
-/// Debounces automatic requests and remembers the last attempted draft, including abstentions and dismissal.
-/// A failed/no-result request is not retried until the target changes; accepted text can be suppressed too.
-public struct SuggestionAutomaticTrigger<Key: Equatable> {
-    private var observed: Key?
-    private var attempted: Key?
-    private var stableSince: TimeInterval = 0
-    private var nextRequest: TimeInterval = 0
-    public init() {}
-    public mutating func observe(_ key: Key?, at now: TimeInterval) -> Bool {
-        guard let key else { observed = nil; return false }
-        if observed != key { observed = key; stableSince = now; return false }
-        guard attempted != key, now - stableSince >= 0.75, now >= nextRequest else { return false }
-        attempted = key; nextRequest = now + 2
-        return true
-    }
-    public mutating func suppress(_ key: Key, at now: TimeInterval) {
-        observed = key; attempted = key; stableSince = now; nextRequest = now + 2
     }
 }
 

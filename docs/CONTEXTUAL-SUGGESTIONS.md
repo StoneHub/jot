@@ -12,16 +12,17 @@ Shared context is a central requirement, not an optional enhancement after ordin
 
 ## September 26 refinement
 
-The product remains a general solution for compatible computer text fields; Codex is the primary test case. After live use, the user chose request-only double-Fn suggestions with Tab acceptance, superseding automatic offers below. The user also proposed typing or dictating a brain dump directly into a field when surrounding context is unavailable, then turning it into a useful draft. The [next-slice plan](local-tasks/field-context-drafting.md) specifies seed-only generation and previewed replacement, independent of app-specific hooks. This behavior is proposed, not installed.
+The product remains a general solution for compatible computer text fields; Codex is the primary test case. After live use, the user chose request-only double-Fn suggestions with Tab acceptance. Automatic offers after focus settles or typing pauses were dropped, and their code was removed in #128. The user also proposed typing or dictating a brain dump directly into a field when surrounding context is unavailable, then turning it into a useful draft; #91 shipped that as the draft mode below, independent of app-specific hooks.
 
 ## Agreed behavior
 
 - Use one shared engine with distinct modes for a user's next reply, text continuation and shell-command completion. Each mode has its own examples and validation.
-- Offer automatic suggestions after focus settles or typing pauses, including on empty inputs when relevant context exists. Keep an explicit request shortcut for repeatable testing and manual use. Start automatic behavior as an opt-in experiment, without redefining the product as manual-only.
-- Use inline ghost text when the integration can place it correctly. Otherwise show a nonactivating card anchored to the field. Keep the target focused.
+- Suggestions are request-only: double-tap Fn, or an optional modified key chosen in Shortcuts. Jot never offers one on its own after focus settles or typing pauses. A blank field gets a reply only when it is a multi-line composer with associated context; otherwise the card asks for rough notes.
+- Use inline ghost text when the integration can place it correctly. Otherwise show a nonactivating card anchored to the field. Keep the target focused. The card follows the field while it is up and goes away after 30 seconds, when focus or the text changes, or when a source it used changes.
+- Tab accepts a ready card and Escape cancels a loading or ready one; both keys are then kept from the app. Any other key dismisses the card and reaches the app. A "No suggestion" notice is dismissed by any key, including Escape, without keeping it from the app.
 - Acceptance inserts into the unchanged field or shell buffer. Sending a message and executing a command remain separate user actions. A grounded “Yes, fix X” is a valid draft; the suggestion itself is not authorization to perform the fix.
 - Keep ordinary Tab behavior when no valid suggestion is being accepted. Native/browser integrations need collision and composition checks before consuming Tab; the shell bridge can use the existing ZLE acceptance behavior.
-- Let the user see why a suggestion appeared, with concise source attribution such as “Recent discussion + current project,” and inspect or exclude the sources.
+- Let the user see why a suggestion appeared, with concise source attribution such as “Recent dictation + meeting ‘Standup’” on the card. Excluding individual sources, apps or sites is not built; the controls that exist are the General toggles for screen context, matching speech and the window length, and `jot context clear` for agent messages.
 
 ## Existing foundation and evidence
 
@@ -86,11 +87,11 @@ Make the user's selected Jot context sources available to the engine. Retrieve a
 
 A context item needs an ID, source kind, origin application/integration, conversation/session/turn where known, timestamp, speaker/author role, project/task association where known, text revision and retention/scope. Derived summaries retain source references. Unknown identities stay unknown. Deduplicate when the same words arrive through dictation and a submitted prompt. Distinguish a shown suggestion, an accepted draft and a submitted user message so a generated guess is not recycled as established user intent.
 
-Start retrieval with the target's explicit context selection and task/conversation/project association, then relevant recent evidence. Recency alone is insufficient. Cross-app reuse is intentional: the same work context can connect a spoken conversation, agent prompt and shell session. Cross-project or personal/work mixing requires a matching association or user-selected source. Respect excluded apps/sites/workspaces before content ingestion, and never perform background repository discovery to infer context.
+Start retrieval with the target's explicit context selection and task/conversation/project association, then relevant recent evidence. Recency alone is insufficient; today's selector still ranks by recency within the window, which [#140](https://github.com/StoneHub/jot/issues/140) and [#139](https://github.com/StoneHub/jot/issues/139) track. Cross-app reuse is intentional: the same work context can connect a spoken conversation, agent prompt and shell session. Cross-project or personal/work mixing requires a matching association or user-selected source. Never perform background repository discovery to infer context.
 
 For a blank field, use the active task/context and recent associated intent as the retrieval query. If the connection is ambiguous, show nothing or offer a context choice through the explicit request path. Lack of typed characters is not itself a reason to abstain. Focus on a search box, URL field, password field or unknown custom widget does not establish that it wants a conversational reply. The integration must establish the field's purpose; generic text continuation can work more broadly than whole-reply generation.
 
-Proposed first experiment bounds: at most six excerpts and 4 KiB total source text, up to 128 generated tokens and one short paragraph. Treat these as tunable parameters, not permanent architecture limits. Prefer intact evidence over truncating away negation or prerequisites. Use a fresh session, a two-second deadline and one latest active request. Cancel stale work and suppress repeat suggestions after dismissal until the input/context changes. Measure cold/warm latency and capture impact before settling defaults.
+Bounds: the app keeps at most twelve whole sources and 6,000 UTF-8 bytes per request (`SelectionLimits.window`); the evaluation harness uses six and 4 KiB (`SelectionLimits.experiment`). Treat these as tunable parameters, not permanent architecture limits. Prefer intact evidence over truncating away negation or prerequisites. Each request uses a fresh model session and one latest active request; the deadline is three seconds for a reply and eight for a draft or continuation, which run to several sentences. Cancel stale work. Measure cold/warm latency and capture impact before settling defaults.
 
 Do not copy the entire transcript library into a second store. Reference existing retained transcripts; keep imported agent context in a bounded local store with source controls. Proposed initial imported-context retention is 24 hours unless the user pins it; clear or unpin in Jot. Source deletion/exclusion invalidates derived summaries, retrieval indexes and pending suggestions. No prompt or output text in operational logs. Keep new suggestion inference on device. Giving context to a cloud agent through MCP is a separate user-enabled data flow, not a side effect of local suggestions.
 
@@ -102,7 +103,7 @@ Official [Codex hooks documentation](https://learn.chatgpt.com/docs/hooks), chec
 
 An explicit context-contribution MCP tool can send a bounded excerpt with provenance when the client supports it. It is not guaranteed to run every turn. As the [MCP tool-call model](https://developers.openai.com/plugins/concepts/mcp-server) describes, the client invokes a server tool with arguments; simply connecting Jot does not give it all typed messages or hidden conversation state. ChatGPT desktop/browser capture is a separate capability check, not inherited from Codex's hooks. Do not expose Jot's socket on the network or add a remote tunnel as an implicit solution.
 
-Start browser support through generic native AX. Add one browser extension if DOM access materially improves field identity, selection, conversation attribution or rendering. Use site rules within that integration where needed; do not require a separate plugin for every site. Source capture and output insertion can have different integrations. Exclude private browsing by default and support per-site/source controls. A browser extension's installation/update rules differ from a bundled shell file; Jot should present setup and health honestly rather than claim it can silently manage browser-store updates.
+Start browser support through generic native AX. Add one browser extension if DOM access materially improves field identity, selection, conversation attribution or rendering. Use site rules within that integration where needed; do not require a separate plugin for every site. Source capture and output insertion can have different integrations. If an extension is added, exclude private browsing by default and give it per-site controls; none exist today. A browser extension's installation/update rules differ from a bundled shell file; Jot should present setup and health honestly rather than claim it can silently manage browser-store updates.
 
 ## Request and acceptance contract
 
@@ -124,7 +125,7 @@ Jot's integration screen should show:
 
 - Terminal setup state: not set up, ready, disabled, Jot unavailable, update pending for existing shells, or conflict needing repair.
 - Enable/disable, test suggestion, repair and remove actions, the detected shell configuration location, installed/active bridge versions and conflicting bindings.
-- Which context sources apply, automatic versus manual suggestions, and the acceptance shortcut.
+- Which context sources apply and the acceptance shortcut.
 
 Ship the bridge and helper in Jot's signed app bundle and version their protocol together. Prefer a small stable loader managed by Jot that resolves the current bundled bridge; it must fail quietly if the app moves or disappears. Determine the supported app location during implementation. New shells load the current version; existing shells report their active version and offer an explicit reload/restart path. On mismatch or an unavailable service, restore normal completion instead of hanging or launching another model process. Use a short asynchronous request path; do not reuse the current CLI's long general-purpose timeout for interactive keystrokes.
 
@@ -139,11 +140,11 @@ Each step should leave inspectable evidence. These are implementation tasks to f
 | Step | Deliverable | Exit evidence |
 | --- | --- | --- |
 | 1. Context and quality experiment | Synthetic cross-app scenarios; bounded retrieval from source-tagged fixtures; role examples or structured draft output | Correct USER voice, relevant source selection, appropriate abstention, no invented preferences; publish actual outputs including failures |
-| 2. Codex vertical slice | Shared coordinator and local generation; current-field and relevant Jot context; explicit request plus opt-in focus-triggered empty-field preview | From actual Jot: context-backed suggestion, accepted exact insertion, no send; focus/draft/source changes cancel; listening remains unaffected |
+| 2. Codex vertical slice (shipped, #89–#91) | Shared coordinator and local generation; current-field and relevant Jot context; double-tap Fn requests only | From actual Jot: context-backed suggestion, accepted exact insertion, no send; focus/draft/source changes cancel; listening remains unaffected |
 | 3. Jot-managed Terminal | Bundled bridge, local IPC, setup/status/repair/remove UX and standalone migration | PTY tests plus actual Terminal shell: new/old shell versions, conflict/rollback, app unavailable, blank-buffer context, Tab acceptance without execution |
 | 4. Browser and broader fields | Validate generic AX; add one browser integration only where needed | A browser chat composer and ordinary native text field use the shared engine; unknown purpose/unsupported fields fail predictably |
 | 5. Submitted conversation context | Verified Codex hook and explicit MCP contribution; browser/ChatGPT ingress where supported | User prompt becomes attributed context for another surface; revocation/deletion and duplicate events work; capture never blocks sending |
-| 6. Dogfood and tune | Default timing, context selection and automatic suggestions tuned against observed use | User judges useful suggestions in Codex and Terminal, can manage all integrations from Jot, and sees no capture regression |
+| 6. Dogfood and tune | Default timing and context selection tuned against observed use, from the `jot suggestions` receipts | User judges useful suggestions in Codex and Terminal, can manage all integrations from Jot, and sees no capture regression |
 
 Steps 1–2 use existing Jot speech context and do not wait for hooks or meeting-note generation. Hook capability checks can inform the contract early. Keep capability-based cross-app support throughout; Codex-first is test priority, not a permanent allowlist.
 

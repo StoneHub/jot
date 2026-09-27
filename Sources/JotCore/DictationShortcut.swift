@@ -95,9 +95,7 @@ public struct ShortcutTracker {
                 return Result()
             }
             if event == .keyDown {
-                // Some keyboards emit a key event as well as the Fn flags event. It is
-                // not a second press and must not cancel or restart the held gesture.
-                if keyCode == 63 { return Result() }
+                // Fn's own key events (63, and 179 after release) were already ignored above.
                 if held {
                     cancelGesture()
                     suppressFnUntilRelease = true
