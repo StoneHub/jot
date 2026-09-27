@@ -90,6 +90,18 @@ final class AgentContextTests: XCTestCase {
             visibleText: "The tests are passing now and everything looks good today").isEmpty)
     }
 
+    func testMatchStateDistinguishesAbsentInvisibleAndAmbiguousAgentInputs() throws {
+        let context = AgentContext()
+        let first = "The export guard now rejects invalid input before any file is written."
+        let second = "The sidebar redraw now follows every relevant state transition cleanly."
+        XCTAssertEqual(context.match(within: 600, now: now, targetBundleID: "com.openai.codex", visibleText: first).state, .noMessages)
+        try context.add(role: "assistant", source: "codex", conversation: "export", text: first, now: now)
+        XCTAssertEqual(context.match(within: 600, now: now, targetBundleID: "com.openai.codex", visibleText: nil).state, .noVisibleMatch)
+        XCTAssertEqual(context.match(within: 600, now: now, targetBundleID: "com.openai.codex", visibleText: first).state, .matched)
+        try context.add(role: "assistant", source: "codex", conversation: "sidebar", text: second, now: now)
+        XCTAssertEqual(context.match(within: 600, now: now, targetBundleID: "com.openai.codex", visibleText: first + " " + second).state, .ambiguousMatch)
+    }
+
     func testTerminalMayMatchEitherProviderButNeverBoth() throws {
         let context = AgentContext()
         let claude = "The migration guard checks the schema before opening any persistent table."

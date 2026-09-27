@@ -82,6 +82,9 @@ extension SpeechService {
             case "transcripts.search": result = try object(library.store?.search(params["query"] as? String ?? "", limit: limit, offset: offset) ?? [])
             case "transcripts.recent": result = try object(library.store?.recent(limit: limit, offset: offset) ?? [])
             case "transcripts.events": result = try object(library.store?.events(sessionID: params["sessionID"] as? String, limit: limit, offset: offset) ?? [])
+            case "suggestions.recent":
+                guard let suggestionHistory else { throw JotError.message("Suggestion history is unavailable") }
+                result = try object(await suggestionHistory.recent(limit: limit))
             case "transcripts.sessions": result = try object(library.store?.sessions(limit: limit) ?? [])
             case "transcripts.since":
                 guard let cursor = params["cursor"] as? Int ?? (params["cursor"] == nil ? 0 : nil), cursor >= 0 else { throw JotError.message("cursor must be a nonnegative integer") }

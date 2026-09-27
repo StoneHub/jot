@@ -34,6 +34,7 @@ struct JotCLI {
     jot recent [--limit N] [--offset N]
     jot sessions [--limit N]
     jot events [--session ID] [--limit N] [--offset N]
+    jot suggestions [--limit N]         Local text-free suggestion request history
     jot since [--cursor N] [--session ID] [--limit N]
                                        Rows added or changed after a cursor, plus the next cursor
     jot clear-history                  Delete all saved dictations; sessions are kept
@@ -107,6 +108,12 @@ struct JotCLI {
             var params = parsed.params
             if let sessionID { params["sessionID"] = sessionID }
             return ("transcripts.events", params)
+        case "suggestions":
+            let parsed = try pagination(Array(args.dropFirst()))
+            guard parsed.words.isEmpty, parsed.params["offset"] == nil else {
+                throw CLIError.usage("Use: jot suggestions [--limit N]")
+            }
+            return ("suggestions.recent", parsed.params)
         case "since":
             var rest = Array(args.dropFirst()); var params: [String: Any] = [:]
             if let index = rest.firstIndex(of: "--session") {

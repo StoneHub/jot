@@ -297,6 +297,7 @@ final class SpeechService: ObservableObject {
     private let readoutSampler = ResourceSampler()
     private let keepAwake = KeepAwakeAssertion()
     private var server: LocalServiceServer?
+    var suggestionHistory: SuggestionHistory?
     private var timer: Timer?
     /// A `jot` file diagnostic is running. Published because the microphone picker and Update read it through canChangeInput.
     @Published var diagnosticActive = false
@@ -351,6 +352,7 @@ final class SpeechService: ObservableObject {
         do {
             let opened = try TranscriptStore()
             library.store = opened
+            suggestionHistory = try SuggestionHistory(sharing: opened)
             if opened.replacedDatabase {
                 recordEvent(.databaseReplaced, "Saved history was in a format this version does not read; it was deleted and an empty database created.")
                 notice = "Saved history was in a format this version does not read, so it was replaced with an empty history."
