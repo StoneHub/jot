@@ -11,6 +11,7 @@ final class SuggestionCoordinator {
     private let agentContext: AgentContext
     private let allowed: () -> Bool
     private let readsScreen: () -> Bool
+    private let matchesHeardSpeech: () -> Bool
     /// Seconds of speech and agent messages a request may use.
     private let window: () -> TimeInterval
     private let notice: (String) -> Void
@@ -36,21 +37,23 @@ final class SuggestionCoordinator {
     private var reason = "none"
     private var lastMode = "none"
     private var usedScreen = false
+    private var usedHeard = false
     private var usedSpeech = false
     private var usedAgent = false
     /// Counts and outcomes only; never field, screen, prompt or output text.
     var diagnostics: [String: Any] { ["requests": requests, "insertions": insertions, "outcome": outcome, "reason": reason, "visible": card.isVisible,
                                     "automatic": false, "keyboardEligible": keyboardAllowsSuggestions,
                                     "mode": lastMode, "screenContext": usedScreen, "speechContext": usedSpeech,
-                                    "agentContext": usedAgent, "agentMessagesHeld": agentContext.count] }
+                                    "heardContext": usedHeard, "agentContext": usedAgent, "agentMessagesHeld": agentContext.count] }
 
     static let needsNotes = "Jot needs a few rough notes. Type or dictate them here, then double-tap Fn."
 
     init(input: DictationInput, store: @escaping () -> TranscriptStore?, agentContext: AgentContext = AgentContext(),
          allowed: @escaping () -> Bool, readsScreen: @escaping () -> Bool = { true },
-         window: @escaping () -> TimeInterval = { 600 }, notice: @escaping (String) -> Void) {
+         window: @escaping () -> TimeInterval = { 600 }, matchesHeardSpeech: @escaping () -> Bool = { true },
+         notice: @escaping (String) -> Void) {
         self.input = input; self.store = store; self.agentContext = agentContext; self.allowed = allowed
-        self.readsScreen = readsScreen; self.window = window; self.notice = notice
+        self.readsScreen = readsScreen; self.window = window; self.matchesHeardSpeech = matchesHeardSpeech; self.notice = notice
         refreshKeyboard()
         sourceObserver = DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String), object: nil, queue: .main
@@ -85,7 +88,7 @@ final class SuggestionCoordinator {
     func request() {
         dismiss()
         guard allowed(), keyboardAllowsSuggestions else { return }
-        requests += 1; outcome = "loading"; reason = "none"; lastMode = "none"; usedScreen = false; usedSpeech = false; usedAgent = false
+        requests += 1; outcome = "loading"; reason = "none"; lastMode = "none"; usedScreen = false; usedSpeech = false; usedAgent = false; usedHeard = false
         do { try input.captureTarget(wakeRetry: false) }
         catch { outcome = "unsupported-field"; reason = "unsupported-field"; notice("No suggestion: focus an ordinary editable text field."); return }
         ownsTarget = true
@@ -97,6 +100,7 @@ final class SuggestionCoordinator {
         if blank && field.role != kAXTextAreaRole { showNotice(Self.needsNotes, reason: "needs-notes"); return }
         let store = self.store()
         let reader = readsScreen() ? input.screenContextReader() : nil
+        let heardNotes = matchesHeardSpeech() ? Self.draftNotes(in: field) : nil
         let window = self.window()
         let loading: String
         switch SuggestionPlan.make(draft: field.draft, role: field.role, hasAssociatedContext: true) {
@@ -113,8 +117,10 @@ final class SuggestionCoordinator {
             do {
                 let now = Date()
                 let screenTask = Task.detached(priority: .userInitiated) { reader?.read() }
+                let heardTask = Task.detached(priority: .userInitiated) { Self.heardSpeech(matching: heardNotes, in: store, now: now, window: window) }
                 let context = try await Task.detached(priority: .userInitiated) { try store?.suggestionContext(window: window, now: now) }.value
                 let screen = await screenTask.value
+                let heard = await heardTask.value
                 guard self.isCurrent(token, field: field) else { return }
                 var sources: [Source] = []
                 var excerpt: String?
@@ -152,24 +158,26 @@ final class SuggestionCoordinator {
                 var scenario = ScenarioInput(target: target, sources: sources)
                 scenario.association = .explicitRecentRequest
                 let selection = SourceSelector.select(scenario, limits: .window)
-                self.usedScreen = selection.selected.contains { $0.kind == ScreenContext.kind }
-                self.usedSpeech = selection.selected.contains { $0.kind == "dictation" || $0.kind == "meeting-transcript" }
-                self.usedAgent = selection.selected.contains { $0.kind == AgentContext.kind }
+                let selected = HeardSpeech.adding(heard, to: selection.selected, members: { context?.rows(for: [$0]) ?? [] }, limits: .window)
+                self.usedScreen = selected.contains { $0.kind == ScreenContext.kind }
+                self.usedSpeech = selected.contains { $0.kind == "dictation" || $0.kind == "meeting-transcript" }
+                self.usedHeard = selected.contains { $0.kind == HeardSpeech.kind }
+                self.usedAgent = selected.contains { $0.kind == AgentContext.kind }
                 if self.usedAgent {
-                    self.agentSnapshot = selection.selected.filter { $0.kind == AgentContext.kind }
+                    self.agentSnapshot = selected.filter { $0.kind == AgentContext.kind }
                     self.agentLatestID = agentSources.last?.id
                 }
-                self.rows = context?.rows(for: selection.selected) ?? []
+                self.rows = Array(Dictionary(uniqueKeysWithValues: ((context?.rows(for: selected) ?? []) + (self.usedHeard ? heard?.rows ?? [] : [])).map { ($0.id, $0) }).values)
                 // A reply needs something to answer. A continuation needs something to draw on: with only the user's text,
                 // the on-device model invents what comes next.
-                if selection.selected.isEmpty {
+                if selected.isEmpty {
                     if mode == .reply { self.showNotice(Self.needsNotes, reason: "no-context"); return }
                     if mode == .continuation {
                         self.showNotice("No suggestion: Jot has nothing from the last few minutes to continue from.", reason: "no-context")
                         return
                     }
                 }
-                let request = SuggestionPrompt.request(for: scenario, sources: selection.selected)
+                let request = SuggestionPrompt.request(for: scenario, sources: selected)
                 let result = await self.gate.call(request, deadline: Self.deadline(for: mode),
                                                   generator: { try await AppleFMGeneration.generate($0) })
                 guard self.isCurrent(token, field: field) else { return }
@@ -212,7 +220,7 @@ final class SuggestionCoordinator {
                             title = "Suggested continuation"; action = "Tab to insert at the cursor"
                         } else { title = "Suggested reply"; action = "Tab to insert" }
                         self.card.show(text: text.trimmingCharacters(in: .whitespaces), title: title,
-                                       sources: SuggestionAttribution.line(plan: plan, selected: selection.selected,
+                                       sources: SuggestionAttribution.line(plan: plan, selected: selected,
                                                                            sessionTitle: context?.sessionTitle),
                                        action: action, ready: true, at: frame)
                     case .abstained(let detail), .rejected(let detail):
@@ -237,6 +245,21 @@ final class SuggestionCoordinator {
         }
     }
 
+
+    /// The notes a draft would rewrite; nil for a blank field, which gets a reply instead.
+    private static func draftNotes(in field: DictationInput.SuggestionField) -> String? {
+        guard case .draft(let seed) = SuggestionPlan.make(draft: field.draft, role: field.role, hasAssociatedContext: false) else {
+            return nil
+        }
+        return seed.text
+    }
+
+    /// Speech Jot heard within the context window that the notes quote or paraphrase. Runs off the main thread; a store that
+    /// cannot be read adds nothing rather than failing the draft.
+    nonisolated private static func heardSpeech(matching notes: String?, in store: TranscriptStore?, now: Date, window: TimeInterval) -> HeardSpeech.Match? {
+        guard let notes, let store, let rows = try? store.heardRows(now: now, lookback: min(window, HeardSpeech.lookback)) else { return nil }
+        return HeardSpeech.match(notes: notes, rows: rows)
+    }
 
     /// A draft or a continuation can run to several sentences; the on-device model needs longer for them than for a one-line reply.
     private static func deadline(for mode: SuggestionMode) -> Duration { mode == .draft || mode == .continuation ? .seconds(8) : .seconds(3) }

@@ -224,6 +224,10 @@ extension TranscriptView {
                           isOn: Binding(get: { service.suggestionScreenContext }, set: service.setSuggestionScreenContext),
                           indented: true, enabled: service.suggestionsEnabled)
             RowDivider()
+            SettingToggle(title: "Use matching speech", info: "When a selection quotes or paraphrases speech Jot heard within the context window, use the matching sentence to restore missing or misheard words in the rewrite.",
+                          isOn: Binding(get: { service.suggestionHeardMatches }, set: service.setSuggestionHeardMatches),
+                          indented: true, enabled: service.suggestionsEnabled)
+            RowDivider()
             SettingRow(title: "Context window", info: "How far back a suggestion may read: speech Jot heard, with the speaker when known, and messages agents sent with `jot context add`. Older speech stays in Sessions; older agent messages are forgotten.",
                        indented: true, enabled: service.suggestionsEnabled) {
                 Picker("Context window", selection: Binding(get: { service.suggestionWindowMinutes }, set: service.setSuggestionWindowMinutes)) {

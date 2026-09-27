@@ -1,0 +1,108 @@
+{
+  "format": "jot.contextual-suggestion-scenarios",
+  "version": 1,
+  "synthetic": true,
+  "scenarios": [
+    {
+      "id": "heard-quote-rewrite",
+      "title": "Rough notes for a casual reply become the message, with no transcript",
+      "covers": [
+        "user-intent"
+      ],
+      "target": {
+        "integration": "native-ax",
+        "app": "Messages",
+        "mode": "draft",
+        "purpose": "text-entry",
+        "inputRevision": 3,
+        "before": "",
+        "after": "",
+        "seed": "Shout out to Hank Green for  out that it's not really a paradox, it's shitty name, but you you get",
+        "requestedAt": "2026-09-27T12:00:00Z",
+        "project": "video-comment"
+      },
+      "sources": [
+        {
+          "id": "heard-quote",
+          "kind": "heard-speech",
+          "role": "unknown",
+          "origin": "jot",
+          "scope": {
+            "project": "video-comment",
+            "session": "video"
+          },
+          "timestamp": "2026-09-27T11:59:00Z",
+          "revision": 1,
+          "status": "current",
+          "text": "Shout out to Hank Green for pointing out that it's not really a paradox, it's a shitty name, but you get the idea."
+        }
+      ],
+      "expected": {
+        "outcome": "suggest",
+        "includedSources": [
+          "heard-quote"
+        ],
+        "excludedSources": [],
+        "reason": "Synthetic matching speech supplies the quote wording.",
+        "idealText": {
+          "origin": "authored",
+          "text": "Shout out to Hank Green for pointing out that it\u2019s not really a paradox; it\u2019s a shitty name, but you get the idea."
+        }
+      },
+      "scoring": {
+        "criteria": [
+          "outcome",
+          "faithful-to-notes",
+          "useful"
+        ],
+        "pass": "Preserves the shout-out and restores pointing from heard speech without adding claims.",
+        "failIf": [
+          "Omits Hank Green",
+          "Adds claims that the notes did not express"
+        ]
+      }
+    },
+    {
+      "id": "without-heard-quote",
+      "title": "Rough notes for a casual reply become the message, with no transcript",
+      "covers": [
+        "user-intent"
+      ],
+      "target": {
+        "integration": "native-ax",
+        "app": "Messages",
+        "mode": "draft",
+        "purpose": "text-entry",
+        "inputRevision": 3,
+        "before": "",
+        "after": "",
+        "seed": "Shout out to Hank Green for  out that it's not really a paradox, it's shitty name, but you you get",
+        "requestedAt": "2026-09-27T12:00:00Z",
+        "project": "video-comment"
+      },
+      "sources": [],
+      "expected": {
+        "outcome": "suggest",
+        "includedSources": [],
+        "excludedSources": [],
+        "reason": "Without the matching source, only the notes ground the rewrite.",
+        "idealText": {
+          "origin": "authored",
+          "text": "Shout out to Hank Green for pointing out that it\u2019s not really a paradox; it\u2019s a shitty name, but you get the idea."
+        }
+      },
+      "scoring": {
+        "criteria": [
+          "outcome",
+          "faithful-to-notes",
+          "useful"
+        ],
+        "pass": "Preserves the shout-out and restores pointing from heard speech without adding claims.",
+        "failIf": [
+          "Omits Hank Green",
+          "Adds claims that the notes did not express"
+        ]
+      }
+    }
+  ]
+}

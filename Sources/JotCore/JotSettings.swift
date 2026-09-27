@@ -45,6 +45,7 @@ public final class JotSettings: @unchecked Sendable {
         .init(key: JotDefaultsKey.recoveryLookbackSeconds, kind: .int(DictationRecovery.defaultLookbackSeconds, range: 15...600, choices: DictationRecovery.lookbackChoices), summary: "Seconds of recent speech the recovery gesture can insert"),
         .init(key: JotDefaultsKey.suggestionsEnabled, kind: .bool(true), summary: "Double-tap Fn for a suggestion"),
         .init(key: JotDefaultsKey.suggestionScreenContext, kind: .bool(true), summary: "Suggestions read the conversation shown above the field"),
+        .init(key: JotDefaultsKey.suggestionHeardMatches, kind: .bool(true), summary: "Drafts use matching speech Jot heard"),
         .init(key: JotDefaultsKey.suggestionWindowMinutes, kind: .int(10, range: 1...60, choices: nil), summary: "Minutes of speech and agent messages a suggestion may use"),
         .init(key: JotDefaultsKey.newSessionAfterSilence, kind: .int(SessionSplit.defaultMinutes, range: 0...60, choices: SessionSplit.choices), summary: "Minutes of quiet that start a new session; 0 never splits"),
         .init(key: JotDefaultsKey.cleanUpTranscriptions, kind: .bool(true), summary: "Clean up live speech and meetings with Apple Intelligence"),

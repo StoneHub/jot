@@ -50,6 +50,7 @@ final class SpeechService: ObservableObject {
         allowed: { [weak self] in self?.canRequestSuggestion == true },
         readsScreen: { [weak self] in self?.suggestionScreenContext == true },
         window: { [weak self] in TimeInterval((self?.suggestionWindowMinutes ?? 10) * 60) },
+        matchesHeardSpeech: { [weak self] in self?.suggestionHeardMatches == true },
         notice: { [weak self] in self?.notice = $0 })
     lazy var timeline = ListeningTimeline(service: self)
     lazy var cleanup = LiveCleanup(service: self)
@@ -72,6 +73,13 @@ final class SpeechService: ObservableObject {
     func setSuggestionScreenContext(_ enabled: Bool) {
         suggestionScreenContext = enabled
         settings.set(JotDefaultsKey.suggestionScreenContext, enabled)
+        suggestions.dismiss()
+    }
+    /// A selection rewrite can restore quoted words from matching speech within the context window.
+    @Published private(set) var suggestionHeardMatches = JotSettings.standard.bool(JotDefaultsKey.suggestionHeardMatches)
+    func setSuggestionHeardMatches(_ enabled: Bool) {
+        suggestionHeardMatches = enabled
+        settings.set(JotDefaultsKey.suggestionHeardMatches, enabled)
         suggestions.dismiss()
     }
     /// How far back a suggestion may read: speech Jot heard and messages agents sent it, in minutes.
@@ -168,6 +176,7 @@ final class SpeechService: ObservableObject {
         let key = JotDefaultsKey.self
         if suggestionsEnabled != settings.bool(key.suggestionsEnabled) { setSuggestionsEnabled(settings.bool(key.suggestionsEnabled)) }
         if suggestionScreenContext != settings.bool(key.suggestionScreenContext) { setSuggestionScreenContext(settings.bool(key.suggestionScreenContext)) }
+        if suggestionHeardMatches != settings.bool(key.suggestionHeardMatches) { setSuggestionHeardMatches(settings.bool(key.suggestionHeardMatches)) }
         if suggestionWindowMinutes != settings.int(key.suggestionWindowMinutes) { setSuggestionWindowMinutes(settings.int(key.suggestionWindowMinutes)) }
         if highlightTargetField != settings.bool(key.highlightTargetField) { highlightTargetField = settings.bool(key.highlightTargetField) }
         if muteSpeakersDuringDictation != settings.bool(key.muteSpeakersDuringDictation) { muteSpeakersDuringDictation = settings.bool(key.muteSpeakersDuringDictation) }
