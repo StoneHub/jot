@@ -178,8 +178,8 @@ public enum HeardSpeech {
     }
 
     /// Each ambient row is read with a close neighbour on each side from its session, so a sentence split across short
-    /// rows still matches. Only the sentences that share words with the notes are kept, with any between them: the
-    /// model appends a neighbouring sentence it is shown, even one the notes never mention. nil when nothing shares
+    /// rows still matches. Only sentences that share distinctive words with the notes are kept: the
+    /// model may append an unrelated sentence if it is shown one. nil when nothing shares
     /// enough. Among equal matches, the row that matches best on its own, then the newer, wins.
     public static func match(notes: String, rows: [Transcript]) -> Match? {
         let wanted = Terms(notes)
@@ -227,8 +227,8 @@ public enum HeardSpeech {
 
     private static func start(_ row: Transcript) -> Date { row.startedAt.addingTimeInterval(row.startSeconds) }
 
-    /// From the first to the last sentence that shares a run or two distinctive words with the notes, and the rows those
-    /// sentences come from. A row that ends without . ! ? or … runs on into the next. Rows by different named speakers
+    /// Each sentence that shares a run or two distinctive words with the notes, and the rows those sentences came from.
+    /// A row that ends without . ! ? or … runs on into the next. Rows by different named speakers
     /// keep their names line by line.
     private static func excerpt(_ rows: [Transcript], notes: Terms) -> (text: String, rows: [Transcript])? {
         var sentences: [[(row: Int, text: String)]] = []
@@ -244,8 +244,8 @@ public enum HeardSpeech {
             let shared = notes.shared(with: Terms(sentence.map(\.text).joined(separator: " ")))
             return shared.words >= 2 || shared.runs >= 1
         }
-        guard let first = shares.firstIndex(of: true), let last = shares.lastIndex(of: true) else { return nil }
-        let parts = sentences[first...last].flatMap { $0 }
+        guard shares.contains(true) else { return nil }
+        let parts = zip(sentences, shares).flatMap { sentence, relevant in relevant ? sentence : [] }
         var kept: [Int] = []
         for part in parts where kept.last != part.row { kept.append(part.row) }
         let text = Set(kept.map { rows[$0].speakerLabel }).count == 1 ? parts.map(\.text).joined(separator: " ")

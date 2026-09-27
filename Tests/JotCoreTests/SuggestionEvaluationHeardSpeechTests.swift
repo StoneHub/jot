@@ -32,6 +32,17 @@ final class SuggestionEvaluationHeardSpeechTests: XCTestCase {
         XCTAssertEqual(long.source.text, sentence, "A long row keeps only the sentence the notes quote")
     }
 
+    func testTwoMatchingSentencesDoNotPullInAnUnrelatedSentenceBetweenThem() throws {
+        let notes = "Hank Green explained the probability paradox and Friday meeting moved"
+        let first = "Hank Green explained the probability paradox."
+        let unrelated = "The kitchen sink is leaking again."
+        let last = "Friday meeting moved to noon."
+        let match = try XCTUnwrap(HeardSpeech.match(notes: notes,
+            rows: [row("mixed", "\(first) \(unrelated) \(last)", at: 5)]))
+        XCTAssertEqual(match.source.text, "\(first) \(last)")
+        XCTAssertEqual(match.rows.map(\.id), ["mixed"], "The backing row remains available for revalidation")
+    }
+
     func testSentenceSplitAcrossShortRowsIsFoundWhole() throws {
         let rows = [
             row("a", "Shout out to Hank Green for pointing out", at: 5, length: 2),
