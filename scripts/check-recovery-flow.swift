@@ -803,7 +803,8 @@ struct RecoveryFlowChecks {
         service.beginRecoveryVerification(store: store, startedAt: probe.now)
         defer { service.shutdown() }
         var changes = 0
-        let counter = service.objectWillChange.sink { changes += 1 }
+        // TranscriptView observes the service, the library and the timeline; a publish from any of them redraws the whole window.
+        let counter = service.objectWillChange.merge(with: service.library.objectWillChange, service.timeline.objectWillChange).sink { changes += 1 }
         defer { counter.cancel() }
         // Five seconds of digital silence, drained and ticked every 0.2 seconds like the timer. Every 0.8 seconds the silence closes a chunk, and recognition finds no speech in it. The status second lands on a chunk close at 3.2 seconds, as it does about every four seconds of quiet in the app.
         for _ in 1...25 {
@@ -1629,7 +1630,7 @@ extension RecoveryFlowChecks {
             service.beginRecoveryVerification(store: store)
             try microphone.start()
             var invalidations = 0
-            let counter = service.objectWillChange.sink { invalidations += 1 }
+            let counter = service.objectWillChange.merge(with: service.library.objectWillChange, service.timeline.objectWillChange).sink { invalidations += 1 }
             var readouts = 0
             let meters = service.resourceReadout.$snapshot.dropFirst().sink { _ in readouts += 1 }
             let ticks = Int(seconds / 0.2)

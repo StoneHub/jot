@@ -9,6 +9,18 @@ extension SpeechService {
         return try JSONSerialization.jsonObject(with: encoder.encode(value))
     }
 
+    /// A JSON object crossing back from a detached task. `@unchecked` because `JSONSerialization` hands back `Any`.
+    private struct JSONValue: @unchecked Sendable { let value: Any }
+
+    /// A store read and its JSON encoding, off the main actor: a follower paging through history must not stall the screens
+    /// or the recognition that shares the store lock with it. The store serializes its own SQLite access.
+    private func readOffMain<T: Encodable>(_ read: @escaping @Sendable () throws -> T) async throws -> Any {
+        try await Task.detached(priority: .userInitiated) {
+            let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+            return JSONValue(value: try JSONSerialization.jsonObject(with: encoder.encode(try read())))
+        }.value.value
+    }
+
     /// One setting as `jot settings` lists it, after a change.
     private func settingRow(_ key: String) -> [String: Any] { settings.report().first { $0["key"] as? String == key } ?? [:] }
 
@@ -79,20 +91,33 @@ extension SpeechService {
             case "transcripts.delete_session":
                 guard let id = params["sessionID"] as? String else { throw JotError.message("sessionID is required") }
                 try deleteSession(id); result = ["deleted": true]
-            case "transcripts.search": result = try object(library.store?.search(params["query"] as? String ?? "", limit: limit, offset: offset) ?? [])
-            case "transcripts.recent": result = try object(library.store?.recent(limit: limit, offset: offset) ?? [])
-            case "transcripts.events": result = try object(library.store?.events(sessionID: params["sessionID"] as? String, limit: limit, offset: offset) ?? [])
+            case "transcripts.search":
+                let store = library.store, query = params["query"] as? String ?? ""
+                result = try await readOffMain { try store?.search(query, limit: limit, offset: offset) ?? [] }
+            case "transcripts.recent":
+                let store = library.store
+                result = try await readOffMain { try store?.recent(limit: limit, offset: offset) ?? [] }
+            case "transcripts.events":
+                let store = library.store, sessionID = params["sessionID"] as? String
+                result = try await readOffMain { try store?.events(sessionID: sessionID, limit: limit, offset: offset) ?? [] }
             case "suggestions.recent":
                 guard let suggestionHistory else { throw JotError.message("Suggestion history is unavailable") }
                 result = try object(await suggestionHistory.recent(limit: limit))
-            case "transcripts.sessions": result = try object(library.store?.sessions(limit: limit) ?? [])
+            case "transcripts.sessions":
+                let store = library.store
+                result = try await readOffMain { try store?.sessions(limit: limit) ?? [] }
             case "transcripts.since":
                 guard let cursor = params["cursor"] as? Int ?? (params["cursor"] == nil ? 0 : nil), cursor >= 0 else { throw JotError.message("cursor must be a nonnegative integer") }
                 let sessionID = params["sessionID"] as? String
                 guard params["sessionID"] == nil || sessionID?.isEmpty == false else { throw JotError.message("sessionID must be a nonempty string") }
-                result = try object(library.store?.changes(since: Int64(cursor), sessionID: sessionID, limit: limit) ?? TranscriptChanges(rows: [], cursor: Int64(cursor), hasMore: false))
+                let store = library.store
+                result = try await readOffMain {
+                    try store?.changes(since: Int64(cursor), sessionID: sessionID, limit: limit) ?? TranscriptChanges(rows: [], cursor: Int64(cursor), hasMore: false)
+                }
             case "transcripts.read":
-                guard let id = params["id"] as? String, let item = try library.store?.read(id: id) else { throw JotError.message("Transcript not found") }
+                guard let id = params["id"] as? String else { throw JotError.message("id is required") }
+                let store = library.store
+                guard let item = try await Task.detached(priority: .userInitiated, operation: { try store?.read(id: id) }).value else { throw JotError.message("Transcript not found") }
                 result = try object(item)
             case "transcripts.export":
                 guard let id = params["sessionID"] as? String else { throw JotError.message("sessionID is required") }

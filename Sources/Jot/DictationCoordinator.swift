@@ -5,7 +5,8 @@ import JotCore
 /// One held dictation at a time: the attempt record it saves while the key is down, the text it gathers from the listening timeline on release, the insertion, and the double-tap recovery of anything undelivered.
 @MainActor
 final class DictationCoordinator {
-    private(set) var isActive = false
+    /// The listening state, and with it the menu icon, reads this through the service; a change redraws it rather than relying on the notice set nearby.
+    private(set) var isActive = false { willSet { service.objectWillChange.send() } }
     /// The shortcut button, the microphone picker and Update read this through the service, and a release can end with no other service change, so a change redraws them. It changes a few times per hold.
     private(set) var isPending = false { willSet { service.objectWillChange.send() } }
     private var ticket = UUID()
@@ -49,10 +50,13 @@ final class DictationCoordinator {
         service.notice = "Listening for dictation… release \(service.shortcut.displayName) to insert."
     }
 
-    func end() {
+    /// `releasedAt` is the key event's own time (system uptime). Latency is measured from it, so a stalled main thread that
+    /// delays this call lengthens the figure instead of hiding in it. A time that is not from this clock falls back to now.
+    func end(releasedAt eventTime: Double = ProcessInfo.processInfo.systemUptime) {
         speakerMute.end()
         guard isActive, var attempt = currentAttempt else { highlight.hide(); return }
-        let released = ProcessInfo.processInfo.systemUptime
+        let now = ProcessInfo.processInfo.systemUptime
+        let released = eventTime <= now && now - eventTime < 5 ? eventTime : now
         service.closeChunk()
         isActive = false
         isPending = true
