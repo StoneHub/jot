@@ -310,11 +310,12 @@ final class SpeechService: ObservableObject {
     private var sleepResume = SleepResumePolicy()
     var diagnostic: Task<SpeechOutput, Error>?
     private var tickCount = 0
-    private(set) var pauseRequested = false
+    /// The Pause button, the menu icon and the shortcut button read this, and a pause can be requested with no other published change until capture stops, so a change redraws them.
+    private(set) var pauseRequested = false { willSet { objectWillChange.send() } }
     private var observers: [NSObjectProtocol] = []
     private var lastStatsTime = Date.distantPast
     lazy var input: DictationInput = {
-        let result = DictationInput(onStart: { [weak self] in self?.dictation.begin() }, onStop: { [weak self] in self?.dictation.end() })
+        let result = DictationInput(onStart: { [weak self] in self?.dictation.begin() }, onStop: { [weak self] released in self?.dictation.end(releasedAt: released) })
         result.shortcut = shortcut
         result.dictationEnabled = false
         result.suggestionShortcut = suggestionShortcut

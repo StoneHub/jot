@@ -51,7 +51,8 @@ final class DictationInput {
     var startBlocker: () -> String? = { nil }
     private(set) var isEnabled = false
     private let onStart: () -> Void
-    private let onStop: () -> Void
+    /// Called with the key event's own timestamp (system uptime), so a stalled main thread does not shorten the measured latency.
+    private let onStop: (TimeInterval) -> Void
     private var eventTap: CFMachPort?
     private var eventSource: CFRunLoopSource?
     private var activationObserver: NSObjectProtocol?
@@ -120,7 +121,7 @@ final class DictationInput {
         let field: AXUIElement
     }
 
-    init(onStart: @escaping () -> Void, onStop: @escaping () -> Void) {
+    init(onStart: @escaping () -> Void, onStop: @escaping (TimeInterval) -> Void) {
         self.onStart = onStart
         self.onStop = onStop
     }
@@ -213,7 +214,7 @@ final class DictationInput {
         onSuggestionDismiss?(.serviceStopped)
         gestureAccepted = false
         clearTarget()
-        if recording { recording = false; onStop() }
+        if recording { recording = false; onStop(ProcessInfo.processInfo.systemUptime) }
         clipboardRestore?()
         clipboardRestore = nil
     }
@@ -677,7 +678,7 @@ final class DictationInput {
             if recording {
                 recording = false
                 checkFocus()
-                onStop()
+                onStop(eventTimestamp)
             }
             gestureAccepted = false
         case .discardTap:
@@ -746,7 +747,7 @@ final class DictationInput {
         let wasRecording = recording
         recording = false
         report(error)
-        if wasRecording { onStop() }
+        if wasRecording { onStop(ProcessInfo.processInfo.systemUptime) }
     }
 
     private func checkFocus() {

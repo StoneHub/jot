@@ -4,11 +4,10 @@ import JotCore
 /// Chunk-to-row recognition: the queue of audio the listening timeline cuts, one recognition at a time, and saving each block's rows and word evidence before cleanup runs.
 @MainActor
 final class Transcriber {
-    /// Cut chunks waiting for recognition, oldest first. The listening timeline appends them.
-    var jobs: [AudioJob] = []
+    /// Cut chunks waiting for recognition, oldest first. The listening timeline hands them to `enqueue`.
+    private(set) var jobs: [AudioJob] = []
     private(set) var processing: Task<Void, Never>?
     private var processingJob: AudioJob?
-    private var completedOffsets: [String: Double] = [:]
     /// Audio in the block being recognized, for the diagnostics' buffered figure.
     private(set) var inFlightAudioSeconds = 0.0
     private(set) var recognitionFailures = 0
@@ -34,6 +33,9 @@ final class Transcriber {
     func isDone(session id: String) -> Bool { jobs.allSatisfy { $0.sessionID != id } && processing == nil }
 
     func cancel() { processing?.cancel() }
+
+    /// Queues a cut chunk. `kick` starts it when models are ready and nothing else is being recognized.
+    func enqueue(_ job: AudioJob) { jobs.append(job) }
 
     /// Starts recognizing the oldest queued block when models are ready and nothing else is being recognized. Each block starts the next when it finishes.
     func kick() {
@@ -98,11 +100,11 @@ final class Transcriber {
                 audioSeconds: AudioClock.seconds(samples: job.samples.count), queueWaitSeconds: waitSeconds,
                 inferenceSeconds: inferenceSeconds, completionSeconds: max(0, ProcessInfo.processInfo.systemUptime - job.submittedUptime),
                 cleanupSeconds: nil, deliverySeconds: nil))
-            completedOffsets[job.sessionID] = max(completedOffsets[job.sessionID] ?? 0,
-                job.offset + AudioClock.seconds(samples: job.samples.count))
             inFlightAudioSeconds = 0
             processingJob = nil
             processing = nil
+            // Install Update waits for this job, and nothing else publishes when it ends. Only an ending that allows the update redraws, so listening never does.
+            if service.canInstallUpdate { service.objectWillChange.send() }
             service.samplePerformance()
             kick()
         }
