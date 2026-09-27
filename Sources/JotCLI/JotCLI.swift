@@ -6,6 +6,7 @@ struct JotCLI {
     static func main() {
         do {
             let args = Array(CommandLine.arguments.dropFirst())
+            if args.first == "agent-context" { AgentContextCommand.run(Array(args.dropFirst())); return }
             if args.first == "mcp" { try MCPServer().run(); return }
             if args.isEmpty || ["help", "--help", "-h"].contains(args[0]) { print(usage); return }
             let (method, params) = try command(args)
@@ -40,6 +41,11 @@ struct JotCLI {
     jot read <transcript-id>
     jot export <session-id> [--json]    Whole session as Markdown, or folded rows as JSON
     jot label <session-id> <speaker-id> <name>
+    jot context add --role user|assistant --source <app> [--conversation ID] <text | ->
+                                       Hold one agent message; - reads stdin. Selection requires a visible matching conversation
+    jot context clear                  Forget the agent messages Jot is holding
+    jot agent-context --source claude-code|codex
+                                       Quiet local hook ingress; reads one JSON event on stdin
     jot people                         Voices Jot remembers
     jot forget <person-id>             Forget one remembered voice; session names stay
     jot diagnostics                    Bounded performance report; no captured content
@@ -128,6 +134,21 @@ struct JotCLI {
             if args.count == 4, args[1] == "set" { return ("settings.set", ["key": args[2], "value": args[3]]) }
             if args.count == 3, args[1] == "reset" { return ("settings.reset", ["key": args[2]]) }
             throw CLIError.usage("Use: jot settings, jot settings set <key> <value>, or jot settings reset <key>")
+        case "context":
+            let use = "Use: jot context add --role user|assistant --source <app> [--conversation ID] <text | -> | jot context clear"
+            if args.count == 2, args[1] == "clear" { return ("context.clear", [:]) }
+            guard args.count >= 2, args[1] == "add" else { throw CLIError.usage(use) }
+            var rest = Array(args.dropFirst(2)); var params: [String: Any] = [:]
+            for option in ["--role", "--source", "--conversation"] {
+                guard let index = rest.firstIndex(of: option) else { continue }
+                guard index + 1 < rest.count, !rest[index + 1].hasPrefix("--"), !rest[index + 1].isEmpty else { throw CLIError.usage("\(option) needs a value") }
+                params[String(option.dropFirst(2))] = rest[index + 1]; rest.removeSubrange(index...(index + 1))
+            }
+            guard params["role"] != nil, params["source"] != nil, !rest.isEmpty, !rest.contains(where: { $0.hasPrefix("--") }) else { throw CLIError.usage(use) }
+            if rest == ["-"] {
+                params["text"] = String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self)
+            } else { params["text"] = rest.joined(separator: " ") }
+            return ("context.add", params)
         case "people":
             guard args.count == 1 else { throw CLIError.usage("Use: jot people") }
             return ("people.list", [:])
@@ -162,6 +183,28 @@ private enum CLIError: Error, LocalizedError {
 }
 
 private func stderr(_ value: String) { FileHandle.standardError.write(Data(value.utf8)) }
+
+/// A hook must never print into an agent's prompt or delay it when Jot is unavailable.
+private enum AgentContextCommand {
+    static func run(_ args: [String]) {
+        guard args.count == 2, args[0] == "--source", isatty(STDIN_FILENO) == 0 else { return }
+        var input = Data()
+        var bytes = [UInt8](repeating: 0, count: 8192)
+        while input.count <= AgentHook.maximumInputBytes {
+            let count = Darwin.read(STDIN_FILENO, &bytes, bytes.count)
+            if count < 0 && errno == EINTR { continue }
+            guard count > 0 else { break }
+            input.append(contentsOf: bytes.prefix(count))
+        }
+        guard let hook = AgentHook(source: args[1], data: input) else { return }
+        var params: [String: Any] = ["role": hook.role, "source": hook.source,
+                                     "conversation": hook.conversation, "text": hook.text]
+        if let eventID = hook.eventID { params["eventID"] = eventID }
+        if let turn = hook.turn { params["turn"] = turn }
+        if let cwd = hook.cwd { params["cwd"] = cwd }
+        _ = try? LocalServiceClient().request(method: "context.hook", params: params, timeout: 2)
+    }
+}
 
 /// MCP stdio transport uses newline-delimited JSON; stdout contains protocol frames only.
 private struct MCPServer {

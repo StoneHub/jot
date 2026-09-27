@@ -22,13 +22,16 @@ MODES = {'reply', 'continuation', 'shell-command', 'draft'}
 PURPOSES = {'agent-prompt', 'chat-reply', 'shell-prompt', 'text-entry'}
 ROLES_BY_KIND = {
     'dictation': {'user'},
-    'meeting-transcript': {'user', 'participant'},
+    # An unidentified voice may be the user's or someone else's.
+    'meeting-transcript': {'user', 'participant', 'unknown'},
     'visible-message': {'user', 'participant', 'assistant'},
     'agent-prompt': {'user'},
     'assistant-response': {'assistant'},
     'summary': {'generated'},
     'pinned-selection': {'user', 'participant', 'assistant', 'generated'},
     'shown-suggestion': {'generated'},
+    # Text read above the field; Accessibility does not say who wrote it.
+    'screen-text': {'unknown'},
 }
 STATUSES = {'current', 'stale', 'deleted'}
 EXCLUSION_REASONS = {'unrelated-scope', 'stale', 'deleted', 'duplicate', 'generated-not-intent', 'not-relevant'}

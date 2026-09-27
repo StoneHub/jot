@@ -111,6 +111,24 @@ final class SuggestionEvaluationHeardSpeechTests: XCTestCase {
         XCTAssertEqual(HeardSpeech.adding(nil, to: [screen]), [screen], "Nothing heard changes nothing")
     }
 
+    func testGroupedTurnOverlapAndSourceBounds() throws {
+        let first = row("first", "Welcome to this video.", at: 1, length: 3)
+        let quote = row("quote", sentence, at: 4.5, length: 5)
+        let context = SuggestionContext(rows: [first, quote], sessionTitle: nil)
+        let grouped = try XCTUnwrap(context.sources.first)
+        XCTAssertEqual(context.rows(for: [grouped]).map(\.id), ["first", "quote"])
+        let match = try XCTUnwrap(HeardSpeech.match(notes: notes, rows: [first, quote]))
+        let screen = ScreenContext.source("What did you think?", at: now)
+        let selected = HeardSpeech.adding(match, to: [grouped, screen], members: { context.rows(for: [$0]) })
+        XCTAssertEqual(selected.map(\.kind), [HeardSpeech.kind, ScreenContext.kind],
+                       "A match inside a grouped turn must not repeat the rest of that turn")
+
+        let limited = HeardSpeech.adding(match, to: [screen], limits: SelectionLimits(maximumSources: 1, maximumSourceBytes: 6000))
+        XCTAssertEqual(limited, [screen], "Do not evict the visible conversation to force in a heard match")
+        let tooLarge = HeardSpeech.adding(match, to: [screen], limits: SelectionLimits(maximumSources: 2, maximumSourceBytes: 10))
+        XCTAssertEqual(tooLarge, [screen], "A heard match cannot exceed the prompt's byte bound")
+    }
+
     func testDraftPromptLabelsHeardSpeechAndKeepsTheNotesLast() throws {
         let target = Target(app: "Claude", mode: .draft, purpose: "text-entry", before: "", after: "",
                             requestedAt: "2026-09-27T12:00:00Z", seed: notes)

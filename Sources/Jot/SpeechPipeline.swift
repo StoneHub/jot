@@ -125,7 +125,7 @@ actor SpeechPipeline {
         }
         try Task.checkCancellation()
         var state = try TdtDecoderState()
-        let result = try await asr.transcribe(recognitionSamples, decoderState: &state)
+        let result = try await asr.transcribe(Self.recognitionAudio(recognitionSamples), decoderState: &state)
         try Task.checkCancellation()
         guard let tokenTimings = result.tokenTimings else {
             throw JotError.message("Streaming recognition did not return word timing data.")
@@ -158,5 +158,13 @@ actor SpeechPipeline {
                 endSeconds: job.offset + Double(job.samples.count) / 16000, text: text, speakerID: nil, mode: "ambient")]
         }
         return SpeechOutput(transcripts: segments, text: text, processingSeconds: Date().timeIntervalSince(begin), wordsByTranscript: wordsByTranscript)
+    }
+
+    /// The recognizer rejects audio under 0.3 seconds, which a final job can be once a boundary has reset the recognition window.
+    /// Trailing silence brings it to length: word times count from the first sample, so real words keep theirs, and a word decoded
+    /// in the silence falls past the plan's commit end. The VAD pads short audio itself, and the session clock uses the job's samples.
+    static func recognitionAudio(_ samples: [Float]) -> [Float] {
+        let minimum = ASRConstants.minimumRequiredSamples(forSampleRate: AudioClock.sampleRate)
+        return samples.count >= minimum ? samples : samples + [Float](repeating: 0, count: minimum - samples.count)
     }
 }

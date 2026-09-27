@@ -1,0 +1,17 @@
+{
+  "name": "jot",
+  "description": "Claude Code integrations for the local Jot Mac app.",
+  "owner": {
+    "name": "Monroe Stone",
+    "url": "https://github.com/StoneHub"
+  },
+  "plugins": [
+    {
+      "name": "jot-context",
+      "description": "Give Jot recent Claude Code prompts and replies as local suggestion context.",
+      "source": "./integrations/claude-code/jot-context",
+      "category": "productivity",
+      "homepage": "https://github.com/StoneHub/jot/tree/main/integrations/claude-code/jot-context"
+    }
+  ]
+}

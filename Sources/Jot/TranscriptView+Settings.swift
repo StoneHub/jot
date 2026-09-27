@@ -228,9 +228,13 @@ extension TranscriptView {
                           isOn: Binding(get: { service.suggestionHeardMatches }, set: service.setSuggestionHeardMatches),
                           indented: true, enabled: service.suggestionsEnabled)
             RowDivider()
-            SettingToggle(title: "Include latest meeting", info: "Adds speech from the latest session in the past 30 minutes to every suggestion. When off, the card offers it with one click.",
-                          isOn: Binding(get: { service.suggestionMeetingContext }, set: service.setSuggestionMeetingContext),
-                          indented: true, enabled: service.suggestionsEnabled)
+            SettingRow(title: "Context window", info: "How far back a suggestion may read: speech Jot heard, with the speaker when known, and messages agents sent with `jot context add`. Older speech stays in Sessions; older agent messages are forgotten.",
+                       indented: true, enabled: service.suggestionsEnabled) {
+                Picker("Context window", selection: Binding(get: { service.suggestionWindowMinutes }, set: service.setSuggestionWindowMinutes)) {
+                    ForEach([1, 2, 5, 10, 15, 30, 60], id: \.self) { Text($0 == 1 ? "1 minute" : "\($0) minutes").tag($0) }
+                }.labelsHidden().pickerStyle(.menu).fixedSize()
+                    .accessibilityIdentifier("suggestion-window")
+            }
         }
     }
 

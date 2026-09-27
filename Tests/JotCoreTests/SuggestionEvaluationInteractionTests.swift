@@ -290,14 +290,15 @@ final class SuggestionEvaluationInteractionTests: XCTestCase {
             Transcript(id: "m", sessionID: "m", startedAt: Date(), startSeconds: 0, endSeconds: 1, text: "I will send it.", mode: "ambient")
         ]
         let context = SuggestionContext(rows: rows, sessionTitle: "Standup")
-        XCTAssertEqual(context.sources.map(\.role), ["user", "participant"])
-        XCTAssertEqual(context.sources[1].speaker, "unlabeled speaker")
+        XCTAssertEqual(context.sources.map(\.role), ["user", "unknown"], "An unnamed voice is not assumed to be someone else")
+        XCTAssertNil(context.sources[1].speaker)
         XCTAssertFalse(context.sources.contains { $0.kind == "pinned-selection" })
         let target = Target(app: "Codex", mode: .reply, purpose: "agent-prompt", before: "", after: "", requestedAt: "now")
         XCTAssertTrue(SourceSelector.select(ScenarioInput(target: target, sources: context.sources)).selected.isEmpty)
         XCTAssertEqual(SourceSelector.select(context.input(target: target)).selected.count, 2)
         XCTAssertEqual(SourceSelector.select(context.input(target: target, association: .automaticRecentContext)).selected, context.sources)
-        XCTAssertEqual(context.attribution(selected: context.sources), "Recent dictation + Meeting ‘Standup’")
+        XCTAssertEqual(SuggestionAttribution.line(plan: .reply, selected: context.sources, sessionTitle: "Standup"),
+                       "Recent dictation + meeting ‘Standup’")
     }
 
     func testStoreContextUsesTimeWindowLatestSessionAndRevalidatesEditsAndDeletion() throws {
@@ -315,8 +316,9 @@ final class SuggestionEvaluationInteractionTests: XCTestCase {
         try store.append(row("dictation", session: "dictation", age: 60, mode: "dictation"))
         try store.setTitle(sessionID: "latest", title: "Standup")
         let context = try store.suggestionContext(now: now)
-        XCTAssertEqual(Set(context.rows.map(\.id)), ["latest", "dictation"])
-        XCTAssertEqual(context.sessionTitle, "Standup")
+        XCTAssertEqual(Set(context.rows.map(\.id)), ["other", "latest", "dictation"], "Everything spoken in the ten-minute window, whatever the session")
+        XCTAssertEqual(context.sessionTitle, "Standup", "The newest session's title")
+        XCTAssertEqual(Set(try store.suggestionContext(window: 45, now: now).rows.map(\.id)), ["latest"], "A shorter window keeps less")
         XCTAssertTrue(try store.suggestionRowsUnchanged(context.rows))
         try store.label(sessionID: "latest", speakerID: "speaker-1", name: "Rowan")
         XCTAssertFalse(try store.suggestionRowsUnchanged(context.rows))
@@ -329,7 +331,7 @@ final class SuggestionEvaluationInteractionTests: XCTestCase {
         XCTAssertTrue(try store.suggestionRowsUnchanged(edited.rows))
         try store.deleteTranscripts(ids: ["dictation"])
         XCTAssertFalse(try store.suggestionRowsUnchanged(edited.rows))
-        XCTAssertEqual(try store.suggestionContext(now: now).rows.map(\.id), ["latest"])
+        XCTAssertEqual(try store.suggestionContext(now: now).rows.map(\.id), ["latest", "other"], "The deleted row is gone; the rest of the window stays")
     }
 
     @MainActor func testDismissalCancelsCallerButKeepsGateClosedUntilGeneratorReturns() async {
