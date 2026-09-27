@@ -49,17 +49,17 @@ Jot is judged by three numbers:
 
 ### 3. Features
 
-In order, each after what it depends on:
+Monroe's decisions of September 27, 2026 set the order: finish the refactor chain first (#61, #62, #58, #63, #65, one at a time), then build the tuning lab, then the features it helps tune. Each issue carries its decisions in a comment.
 
-| Issue | Depends on | Why then |
-| --- | --- | --- |
-| [#39](https://github.com/StoneHub/jot/issues/39) Dictation style per app | #58, #60 | It is a settings table, and timing shows which apps want cleanup |
-| [#41](https://github.com/StoneHub/jot/issues/41) `transcripts.since` for agents | #55, #56 | The cursor must survive cleanup and speaker-pass rewrites |
-| [#37](https://github.com/StoneHub/jot/issues/37) Name speakers in Live | #55, #59 | A repeated pass must not freeze the app, and the lab measures its cost |
-| [#38](https://github.com/StoneHub/jot/issues/38) Meeting notes | #59 | The prompt is tuned on recorded meetings |
-| [#40](https://github.com/StoneHub/jot/issues/40) Meeting names from the calendar | #37 | Attendee suggestions pay off with live naming |
-| [#42](https://github.com/StoneHub/jot/issues/42) Vocabulary suggestions | #55 | Suggestions come from cleanup changes, which must be kept |
-| [#33](https://github.com/StoneHub/jot/issues/33) Microphone proximity | #59 | An experiment in the lab, not a feature yet |
+| Order | Issue | Decided | Depends on |
+| --- | --- | --- | --- |
+| 1 | [#59](https://github.com/StoneHub/jot/issues/59) Tuning lab | Build it, CLI first | #58 |
+| 2 | [#39](https://github.com/StoneHub/jot/issues/39) Dictation style per app | The field's role beats the app; built-in rules plus a short override list in General | #58, #60 |
+| 3 | [#37](https://github.com/StoneHub/jot/issues/37) Name speakers in Live | Pass every ~30 s; remembered voices named automatically; names follow the voice; the final pass still runs | #55, #59 |
+| 4 | [#38](https://github.com/StoneHub/jot/issues/38) Meeting notes | Top of the Markdown at End meeting; summary, decisions, action items with who, open questions; named meetings only | #59 |
+| 5 | [#42](https://github.com/StoneHub/jot/issues/42) Vocabulary suggestions | Learn from cleanup changes only, not edits after insertion | #55 |
+| Deferred | [#40](https://github.com/StoneHub/jot/issues/40) Meeting names from the calendar | Not now; when built, auto-name only when a remembered voice matches an attendee | #37 |
+| Parked | [#33](https://github.com/StoneHub/jot/issues/33) Microphone proximity | Low-priority idea; no work until the rest ships | #59 |
 
 ## Contextual suggestions and managed integrations
 
