@@ -144,6 +144,31 @@ final class JotSettingsTests: XCTestCase {
         XCTAssertTrue(settings.isChanged(JotSettings.paragraphPause), "The same revision does not reset twice")
     }
 
+    func testTextSettingRefusesEmptyAndOverlongText() throws {
+        let settings = JotSettings(defaults: defaults)
+        XCTAssertEqual(settings.text(JotSettings.cleanupInstructions), JotSettings.defaultCleanupInstructions)
+        try settings.set(JotSettings.cleanupInstructions, raw: "Fix punctuation only.")
+        XCTAssertEqual(settings.text(JotSettings.cleanupInstructions), "Fix punctuation only.")
+        XCTAssertThrowsError(try settings.set(JotSettings.cleanupInstructions, raw: "  "))
+        XCTAssertThrowsError(try settings.set(JotSettings.cleanupInstructions, raw: String(repeating: "a", count: 4001)))
+        XCTAssertThrowsError(try settings.set(JotSettings.cleanupInstructions, raw: 5))
+        XCTAssertEqual(settings.text(JotSettings.cleanupInstructions), "Fix punctuation only.", "A refused value leaves the saved one")
+        try settings.set(JotSettings.cleanupInstructions, JotSettings.defaultCleanupInstructions)
+        XCTAssertFalse(settings.isChanged(JotSettings.cleanupInstructions))
+    }
+
+    func testPipelineSettingsDefaultToTheFormerConstants() {
+        let settings = JotSettings(defaults: defaults)
+        XCTAssertEqual(settings.double(JotSettings.chunkMaximumSeconds), 3)
+        XCTAssertEqual(settings.double(JotSettings.chunkSilenceSeconds), 0.7)
+        XCTAssertEqual(settings.double(JotSettings.silenceLevel), 0.002)
+        XCTAssertEqual(settings.double(JotSettings.speechGate), 0.2)
+        XCTAssertEqual(settings.double(JotSettings.phrasePause), PhraseCleanup.Limits().pauseSeconds)
+        XCTAssertEqual(settings.double(JotSettings.phraseMaximumSeconds), PhraseCleanup.Limits().maximumSeconds)
+        XCTAssertEqual(settings.int(JotSettings.phraseMinimumWords), PhraseCleanup.Limits().minimumSentenceWords)
+        XCTAssertEqual(settings.int(JotSettings.cleanupMaximumTokens), 1200)
+    }
+
     func testReportListsEverySettingOnce() {
         let report = JotSettings(defaults: defaults).report()
         let keys = report.compactMap { $0["key"] as? String }
