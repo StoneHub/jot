@@ -103,8 +103,10 @@ final class Transcriber {
             inFlightAudioSeconds = 0
             processingJob = nil
             processing = nil
-            // Install Update waits for this job, and nothing else publishes when it ends. Only an ending that allows the update redraws, so listening never does.
-            if service.canInstallUpdate { service.objectWillChange.send() }
+            // Only an idle app needs a redraw when recognition releases Install Update.
+            // The recovery harness feeds ambient audio without starting a microphone, so
+            // canInstallUpdate alone is true there even while listening is active.
+            if !service.ambientEnabled && service.canInstallUpdate { service.objectWillChange.send() }
             service.samplePerformance()
             kick()
         }

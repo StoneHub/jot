@@ -746,7 +746,7 @@ struct RecoveryFlowChecks {
         dependencies.microphoneAuthorization = { .authorized }
         let service = SpeechService(dependencies: dependencies)
         service.keepAudioForSpeakerPass = false; service.cleanUpTranscriptions = false
-        service.newSessionAfterSilence = 1
+        service.newSessionAfterSilence = 10
         service.beginRecoveryVerification(store: store, startedAt: probe.now)
         defer { service.shutdown() }
         func speak() async {
@@ -764,18 +764,18 @@ struct RecoveryFlowChecks {
 
         await speak()
         let first = service.timeline.activeSessionID
-        await quiet(for: 30)
-        precondition(service.timeline.activeSessionID == first, "A new session started before a minute of quiet")
-        await quiet(for: 31)
-        precondition(service.timeline.activeSessionID != first, "A minute of quiet did not start a new session")
-        print("PASS: a minute of quiet after speech starts a new session on the next tick; half a minute does not.")
+        await quiet(for: 300)
+        precondition(service.timeline.activeSessionID == first, "A new session started before ten minutes of quiet")
+        await quiet(for: 301)
+        precondition(service.timeline.activeSessionID != first, "Ten minutes of quiet did not start a new session")
+        print("PASS: ten minutes of quiet after speech starts a new session on the next tick; five minutes does not.")
 
         await service.startMeeting("Standup")
         precondition(service.meetingTitle == "Standup", "The meeting did not start: \(service.notice)")
         await speak()
         let meeting = service.timeline.activeSessionID
-        await quiet(for: 61)
-        precondition(service.timeline.activeSessionID == meeting, "A named meeting started a new session after a minute of quiet")
+        await quiet(for: 601)
+        precondition(service.timeline.activeSessionID == meeting, "A named meeting started a new session after ten minutes of quiet")
         print("PASS: a named meeting keeps its session through the same quiet.")
 
         probe.now += 5
