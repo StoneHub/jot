@@ -35,19 +35,10 @@ struct ServiceControls: View {
         if service.isPaused { return service.isTransitioning ? "Finishing and unloading…" : "Models unloaded" }
         return service.ambientEnabled ? "Saving speech locally" : (service.microphoneOff ? "Microphone off" : "Starting microphone…")
     }
-    private var resumes: Bool { service.isPaused || service.microphoneOff }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ControlRow(dot: service.isPaused ? Color.secondary : .green, title: statusTitle, caption: statusCaption) {
-                Button {
-                    if resumes { service.prepare() } else { service.pause() }
-                } label: {
-                    Label(resumes ? "Resume" : "Pause", systemImage: resumes ? "play.fill" : "pause.fill")
-                }
-                .modifier(PrimaryGlassButton())
-                .disabled(service.isPaused && service.isTransitioning)
-                .help("Pause stops listening, finishes saving captured speech, and unloads models.")
-                .accessibilityIdentifier("service-pause-resume")
+                PauseResumeButton(service: service)
             }
             Divider()
             MeetingControls(service: service)
@@ -88,6 +79,27 @@ struct ServiceControls: View {
                 PermissionBanner(service: service)
             }
         }
+    }
+}
+
+/// Pause or Resume, shared by the sidebar's status row and the narrow window's rail.
+struct PauseResumeButton: View {
+    @ObservedObject var service: SpeechService
+    var iconOnly = false
+    private var resumes: Bool { service.isPaused || service.microphoneOff }
+    var body: some View {
+        let button = Button {
+            if resumes { service.prepare() } else { service.pause() }
+        } label: {
+            Label(resumes ? "Resume" : "Pause", systemImage: resumes ? "play.fill" : "pause.fill")
+        }
+        Group {
+            if iconOnly { button.labelStyle(.iconOnly) } else { button }
+        }
+        .modifier(PrimaryGlassButton())
+        .disabled(service.isPaused && service.isTransitioning)
+        .help("Pause stops listening, finishes saving captured speech, and unloads models.")
+        .accessibilityIdentifier("service-pause-resume")
     }
 }
 

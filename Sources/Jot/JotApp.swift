@@ -6,8 +6,9 @@ struct JotApp: App {
     @NSApplicationDelegateAdaptor(JotDelegate.self) var delegate
     var body: some Scene {
         Window("Jot", id: "main") {
+            // Every page must fit this size: below it nothing lays out, above it nothing may overflow the window.
             TranscriptView(service: delegate.service, delegate: delegate)
-                .frame(minWidth: 760, minHeight: 620)
+                .frame(minWidth: 520, minHeight: 420)
         }
         .defaultSize(width: 920, height: 760)
         .commands {
