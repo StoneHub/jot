@@ -747,7 +747,7 @@ public final class TranscriptStore: @unchecked Sendable {
         }
     }
 
-    /// Labels are per session. Remembering the voice behind a label is a separate, explicit step through PeopleStore.
+    /// Labels are per session. The app remembers the voice behind a name through PeopleStore once the speaker pass has one.
     public func label(sessionID: String, speakerID: String, name: String) throws {
         guard !sessionID.isEmpty, !speakerID.isEmpty, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, name.count <= 200 else { throw StoreError.invalid("Session, speaker, and a name of at most 200 characters are required") }
         try db.locked {
@@ -762,6 +762,41 @@ public final class TranscriptStore: @unchecked Sendable {
     public func labels(sessionID: String) throws -> [String: String] {
         try db.locked {
             let stmt = try db.prepare("SELECT speaker_id,name FROM speaker_labels WHERE session_id = ?")
+            defer { sqlite3_finalize(stmt) }
+            db.bind(sessionID, to: 1, in: stmt)
+            var result: [String: String] = [:]
+            while true {
+                let status = sqlite3_step(stmt)
+                if status == SQLITE_DONE { break }
+                guard status == SQLITE_ROW else { throw db.error() }
+                result[db.column(stmt, 0)!] = db.column(stmt, 1)!
+            }
+            return result
+        }
+    }
+
+    /// Replaces one session's names with these in one transaction, so a reader never sees a name on two voices.
+    public func replaceLabels(sessionID: String, _ labels: [String: String]) throws {
+        try db.locked {
+            try db.transaction {
+                let clear = try db.prepare("DELETE FROM speaker_labels WHERE session_id = ?")
+                defer { sqlite3_finalize(clear) }
+                db.bind(sessionID, to: 1, in: clear)
+                try db.finish(clear)
+                for (speakerID, name) in labels {
+                    let insert = try db.prepare("INSERT INTO speaker_labels(session_id,speaker_id,name) VALUES(?,?,?)")
+                    defer { sqlite3_finalize(insert) }
+                    db.bind(sessionID, to: 1, in: insert); db.bind(speakerID, to: 2, in: insert); db.bind(name, to: 3, in: insert)
+                    try db.finish(insert)
+                }
+            }
+        }
+    }
+
+    /// The speaker of each of one session's rows that has one, by row id.
+    public func speakerIDs(sessionID: String) throws -> [String: String] {
+        try db.locked {
+            let stmt = try db.prepare("SELECT id,speaker_id FROM transcripts WHERE session_id = ? AND speaker_id IS NOT NULL")
             defer { sqlite3_finalize(stmt) }
             db.bind(sessionID, to: 1, in: stmt)
             var result: [String: String] = [:]

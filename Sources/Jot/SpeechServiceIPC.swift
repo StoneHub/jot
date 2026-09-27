@@ -129,9 +129,9 @@ extension SpeechService {
                 try speakers.peopleStore?.delete(id: id); speakers.refreshPeople(); result = ["deleted": true]
             case "speakers.label":
                 guard let session = params["sessionID"] as? String, let speaker = params["speakerID"] as? String, let name = params["name"] as? String else { throw JotError.message("sessionID, speakerID and name are required") }
-                try library.store?.label(sessionID: session, speakerID: speaker, name: name)
-                library.refreshRecent()
-                library.reloadLive()
+                // The name is saved before the voice is remembered, so Live shows it even when remembering the voice fails.
+                defer { library.reloadLive() }
+                try speakers.labelSpeaker(session: session, speaker: speaker, name: name, voice: speakers.passEmbedding(session: session, speaker: speaker))
                 result = ["updated": true]
             default: throw JotError.message("Unknown method: \(method)")
             }

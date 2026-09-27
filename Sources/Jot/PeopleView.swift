@@ -11,7 +11,7 @@ struct PeopleView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             if speakers.people.isEmpty {
-                Text("No one yet. Name a speaker in Sessions with \"Remember this voice\" on.").foregroundStyle(.secondary)
+                Text("No one yet. Name a speaker in Live or Sessions, and Jot remembers the voice once the session's speaker pass has run.").foregroundStyle(.secondary)
             }
             ForEach(speakers.people) { person in
                 HStack(spacing: 10) {

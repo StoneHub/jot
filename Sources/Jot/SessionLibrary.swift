@@ -217,13 +217,13 @@ final class SessionLibrary: ObservableObject {
         service.notice = "Session deleted."
     }
 
-    /// Relabels a saved session's rows from its stored words under the current Tuning: from the speaker pass's segments when the session has them, otherwise from the live probabilities. Rows keep their cleaned text; a row whose speaker changes inside it splits there. `segments` is read once the session has settled, so a pass that stores its segments while Regroup waits is used rather than overwritten with the live speakers.
+    /// Relabels a saved session's rows from its stored words under the current Tuning: from the speaker pass's segments when the session has them, otherwise from the live probabilities. Rows keep their cleaned text; a row whose speaker changes inside it splits there. `segments` is read once the session has settled, so a pass that stores its segments while Regroup waits is used rather than overwritten with the live speakers. Regroup also waits while a pass is being applied to the session, so the pass moves the session's names before Regroup writes its speakers.
     func regroupSession(_ id: String, segments: () throws -> [(speaker: String, start: Double, end: Double)]) async throws {
         let tuning = service.tuning
         var fromPass = false
         // Batches written before a failure stay, so Live and Sessions reload either way.
         defer { didDeleteHistory() }
-        let changed = try await relabel(id, makeSpeakers: {
+        let changed = try await relabel(id, afterPass: true, makeSpeakers: {
             let segments = try segments()
             fromPass = !segments.isEmpty
             if segments.isEmpty { return { TranscriptGrouping.speakers(words: $0, tuning: tuning) } }
@@ -245,12 +245,12 @@ final class SessionLibrary: ObservableObject {
         try await relabel(id, makeSpeakers: { speakers })
     }
 
-    /// The same relabel, with its speakers made once the session has settled, just before the work joins the relabel queue: what `makeSpeakers` reads then is what a pass stored while this waited, and any relabel that joins the queue later writes after this one.
-    func relabel(_ id: String, makeSpeakers: () throws -> @Sendable ([StoredWord]) -> [String?]) async throws -> Bool {
+    /// The same relabel, with its speakers made once the session has settled, just before the work joins the relabel queue: what `makeSpeakers` reads then is what a pass stored while this waited, and any relabel that joins the queue later writes after this one. With `afterPass`, it also waits while a speaker pass is being applied to the session, so it never writes the pass's speakers ahead of the pass, which moves the session's names as it writes them.
+    func relabel(_ id: String, afterPass: Bool = false, makeSpeakers: () throws -> @Sendable ([StoredWord]) -> [String?]) async throws -> Bool {
         guard let store else { throw JotError.message("Transcript storage is unavailable.") }
         relabelsInFlight += 1
         defer { relabelsInFlight -= 1 }
-        try await waitUntilSettled(id)
+        try await waitUntilSettled(id, afterPass: afterPass)
         let speakers = try makeSpeakers()
         return try await withCheckedThrowingContinuation { continuation in
             Self.relabelQueue.async {
@@ -259,8 +259,8 @@ final class SessionLibrary: ObservableObject {
         }
     }
 
-    private func waitUntilSettled(_ id: String) async throws {
-        while !service.sessionIsSettled(id) {
+    private func waitUntilSettled(_ id: String, afterPass: Bool) async throws {
+        while !service.sessionIsSettled(id) || (afterPass && service.speakers.isApplyingPass(id)) {
             try await Task.sleep(for: .milliseconds(250))
         }
     }
