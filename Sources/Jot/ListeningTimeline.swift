@@ -89,13 +89,13 @@ final class ListeningTimeline: ObservableObject {
         if ambient.isEmpty { consecutiveSilentSamples = 0 }
         let start = ambientOffset; ambientOffset += AudioClock.seconds(samples: samples.count)
         guard final || samples.count >= Self.minimumJobSamples else { return }
-        if service.jobs.count >= 40 && !final {
+        if service.transcriber.jobs.count >= 40 && !final {
             service.droppedSeconds += AudioClock.seconds(samples: samples.count)
             service.recordEvent(.audioGap, "Inference queue full; segment discarded.", duration: AudioClock.seconds(samples: samples.count), session: nil)
             service.notice = "Inference fell behind; bounded audio queue dropped a segment."
             service.dictation.markGap("Dictation is partially saved, but an inference backlog caused an audio gap. Retry only after reviewing it.")
             return
         }
-        service.jobs.append(AudioJob(sessionID: sessionID, startedAt: sessionStarted, offset: start, samples: samples, ticket: UUID(), isFinal: final))
+        service.transcriber.jobs.append(AudioJob(sessionID: sessionID, startedAt: sessionStarted, offset: start, samples: samples, ticket: UUID(), isFinal: final))
     }
 }

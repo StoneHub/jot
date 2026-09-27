@@ -868,7 +868,7 @@ struct RecoveryFlowChecks {
                 service.ingestRecoveryVerification(samples: Array(repeating: Float(index), count: 48_000), at: probe.now)
             }
             service.timeline.rotateSession()
-            service.kickWorker()
+            service.transcriber.kick()
             return id
         }
         let id = speakAndEndSession()
@@ -1170,7 +1170,7 @@ struct RecoveryFlowChecks {
                     longest = max(longest, last.duration(to: now) - .milliseconds(5))
                     last = now
                     service.drainAudio()
-                    service.kickWorker()
+                    service.transcriber.kick()
                     ticks += 1
                     let start = Double(ticks) * 0.01
                     let row = Transcript(sessionID: listening, startedAt: started, startSeconds: start, endSeconds: start + 0.005, text: "tick", mode: "ambient")
@@ -1478,7 +1478,7 @@ extension RecoveryFlowChecks {
             for tick in 1...ticks {
                 microphone.lastAudio = Date()
                 if run.ticks { service.tickRecoveryVerification() }
-                else { service.drainAudio(); service.kickWorker() }
+                else { service.drainAudio(); service.transcriber.kick() }
                 try await Task.sleep(until: began + .milliseconds(200 * tick), clock: .continuous)
             }
             await service.waitForRecoveryVerification()

@@ -24,6 +24,7 @@
 		11F6E0DAD2B030FF76E4E07B /* SuggestionGeneration.swift in Sources */ = {isa = PBXBuildFile; fileRef = C648CE26613197412F053214 /* SuggestionGeneration.swift */; };
 		132C26A14258A6D3C8F0920D /* JotDefaultsKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = B02C95F663096FB499C5FD80 /* JotDefaultsKey.swift */; };
 		13899AFFBA889828C7A0DC82 /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */; };
+		23CCE8F7A9BE99C069E95457 /* Transcriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5942D6522E05B68E6DD032BC /* Transcriber.swift */; };
 		14DB46313AE88EC56854704C /* GlassStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6E751674ACDF9A0C12697CF /* GlassStyles.swift */; };
 		1B47F4253D363DD041DFC31E /* ModelCallGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EBF5ABC9AB3F8267175FB84 /* ModelCallGate.swift */; };
 		2052BA77D29D43FFCE0A5BCD /* SessionAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = F73AD2F430744CB727A9459D /* SessionAudio.swift */; };
@@ -75,6 +76,7 @@
 		95FFB72ABC0B6C3B3A3241C9 /* CoreAudioProperties.swift in Sources */ = {isa = PBXBuildFile; fileRef = A175F3EDC540CE511A831EF1 /* CoreAudioProperties.swift */; };
 		9746908AE8E2351C6FF18B81 /* ModelCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = A66DE823E83854B6AF8688F6 /* ModelCache.swift */; };
 		987B92C586EF2356FE9B3BBC /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */; };
+		10B1AFD4C96FCB39061B8D9F /* Transcriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5942D6522E05B68E6DD032BC /* Transcriber.swift */; };
 		A3267595B1A8F60F403F04CB /* JotCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D0BF24005EE0C2BB76EEAC0 /* JotCLI.swift */; };
 		A42EE66E16E8986D5A58EF34 /* SessionLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A601577DB723625149B12CA /* SessionLibrary.swift */; };
 		A4B98AD49438BD1121F60475 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FF011AF3F4B42BB9B97A069F /* Assets.xcassets */; };
@@ -190,6 +192,7 @@
 		3EEFF7CD54878C9E034B716A /* KeepAwakeAssertion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeepAwakeAssertion.swift; sourceTree = "<group>"; };
 		40F41CDC337859B88E28A38E /* ListeningTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListeningTimeline.swift; sourceTree = "<group>"; };
 		42A30D435B413C60B77D5B35 /* SpeechServiceIPC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechServiceIPC.swift; sourceTree = "<group>"; };
+		5942D6522E05B68E6DD032BC /* Transcriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transcriber.swift; sourceTree = "<group>"; };
 		44E0895E441BAAD4EA6D5DB0 /* RecognitionCommitWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionCommitWindow.swift; sourceTree = "<group>"; };
 		4A6943067E4E73D56E69890D /* DictationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationCoordinator.swift; sourceTree = "<group>"; };
 		4C7CFFD942425F7F2F26AD45 /* TranscriptExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptExport.swift; sourceTree = "<group>"; };
@@ -341,6 +344,7 @@
 				7F1BBAEB2DD84C459697477F /* SpeechPipeline.swift */,
 				2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */,
 				42A30D435B413C60B77D5B35 /* SpeechServiceIPC.swift */,
+				5942D6522E05B68E6DD032BC /* Transcriber.swift */,
 				B84EA74928EFDD284B87A3FE /* SuggestionCard.swift */,
 				DE957A5843B14B0AFA30FBB3 /* SuggestionCoordinator.swift */,
 				FC7DF1EDFB214E0732B5272D /* TranscriptView.swift */,
@@ -681,6 +685,7 @@
 				0C1F40871B30A9D4D3645961 /* SpeechPipeline.swift in Sources */,
 				987B92C586EF2356FE9B3BBC /* SpeechService.swift in Sources */,
 				4E3572709CC582019CA27ACE /* SpeechServiceIPC.swift in Sources */,
+				10B1AFD4C96FCB39061B8D9F /* Transcriber.swift in Sources */,
 				A600EFC83E9F8657CE42F209 /* SuggestionCard.swift in Sources */,
 				500C13C61FC088A4654813C5 /* SuggestionCoordinator.swift in Sources */,
 				7F828FD3D45CF68EC70CC124 /* TranscriptView+Settings.swift in Sources */,
@@ -768,6 +773,7 @@
 				6CFD58F0EB52A65ECDE9CF7F /* SpeechPipeline.swift in Sources */,
 				13899AFFBA889828C7A0DC82 /* SpeechService.swift in Sources */,
 				0716C14AD00BDA6BD9FB35AB /* SpeechServiceIPC.swift in Sources */,
+				23CCE8F7A9BE99C069E95457 /* Transcriber.swift in Sources */,
 				B33DD6B2558C8E7D3978BD2F /* SuggestionCard.swift in Sources */,
 				90B3AC7AC03EA1EA4CD1F8D8 /* SuggestionCoordinator.swift in Sources */,
 				F23046D94524269DD88E6FC4 /* check-capture-flow.swift in Sources */,
