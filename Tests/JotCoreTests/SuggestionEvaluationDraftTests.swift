@@ -126,6 +126,27 @@ final class SuggestionEvaluationDraftTests: XCTestCase {
                                                placeholder: nil, context: screen), .accept)
     }
 
+    /// A selection rewrite in a chat composer, with the conversation above it on screen.
+    func testDraftCopiesTheScreenOnlyWhenItsWordsAreNotFromTheNotes() throws {
+        let notes = "Shout out to Hank Green for  out that it's not really a paradox, it's shitty name, but you you get"
+        let selection = try XCTUnwrap(SuggestionDraftSnapshot(value: notes, location: 0, length: (notes as NSString).length))
+        let conversation = "I rebuilt the export pause and the tests pass.\n\nNext I'll check the recovery harness. "
+            + "Want me to open a PR for the export fix, or keep going on the recovery harness first?"
+        func review(_ text: String, screen: String) -> SuggestionOutput.Review {
+            SuggestionOutput.review(text, draft: selection, seed: notes, placeholder: nil, context: screen)
+        }
+        XCTAssertEqual(review("Shout out to Hank Green for pointing out that it's not really a paradox; it's a bad name, but you get the idea.",
+                              screen: conversation + "\n\n" + notes), .accept, "The notes themselves on screen don't make a rewrite a copy")
+        let restored = "Shout out to Hank Green for pointing out that it's not really a paradox, it's a shitty name, but you get the idea."
+        XCTAssertEqual(review(restored, screen: conversation + "\n\nQuote: " + restored), .accept,
+                       "Restoring a missing word shown on screen is still a rewrite of the notes")
+        XCTAssertEqual(review("Want me to open a PR for the export fix, or keep going on the recovery harness first?", screen: conversation),
+                       .copiesContext)
+        XCTAssertEqual(review("I rebuilt the export pause and the tests pass. Next I will check the recovery harness. Want me to open a PR "
+                              + "for the export fix or keep going on the recovery harness first?", screen: conversation), .copiesContext,
+                       "A lightly edited copy of the conversation is still a copy")
+    }
+
     func testScreenExcerptKeepsTheFieldColumnAboveTheFieldNewestLast() {
         let field = CGRect(x: 300, y: 800, width: 600, height: 60)
         let visible = CGRect(x: 0, y: 0, width: 1000, height: 900)

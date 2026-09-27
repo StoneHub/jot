@@ -154,14 +154,16 @@ final class SuggestionCoordinator {
                 case .output(let raw):
                     switch SuggestionOutput.process(raw, mode: mode, singleLine: field.role != kAXTextAreaRole) {
                     case .suggestion(let text):
+                        // Like an abstention, a withheld result can come out differently with the meeting added or dropped.
                         switch SuggestionOutput.review(text, draft: field.draft, seed: self.seed?.text,
                                                        placeholder: field.placeholder, context: excerpt) {
                         case .accept: break
-                        case .unchanged: self.showNotice("Your notes already read well. No changes suggested."); return
+                        case .unchanged: self.showNotice("Your notes already read well. No changes suggested.", option: option); return
                         case .restatesHint:
-                            self.showNotice(field.draft.isBlank ? Self.needsNotes : "No suggestion: the result only repeated the field's hint.")
+                            self.showNotice(field.draft.isBlank ? Self.needsNotes : "No suggestion: the result only repeated the field's hint.",
+                                            option: option)
                             return
-                        case .copiesContext: self.showNotice("No suggestion: the result only repeated text on screen."); return
+                        case .copiesContext: self.showNotice("No suggestion: the result only repeated text on screen.", option: option); return
                         }
                         self.candidate = text; self.outcome = "ready"
                         self.input.showSuggestionKeys(.ready)

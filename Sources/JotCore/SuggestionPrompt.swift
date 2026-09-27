@@ -231,19 +231,38 @@ public enum SuggestionOutput {
         if isFieldEcho(text, draft: draft, placeholder: placeholder) || restatesHint(text, hint: placeholder) {
             return .restatesHint
         }
-        if let context, candidate.count >= 24, FieldHint.normalized(context).contains(candidate) { return .copiesContext }
+        if let context, copies(text, context: context, seed: seed) { return .copiesContext }
         return .accept
+    }
+
+    /// A reply copies the screen when it is a verbatim run of it. A draft's own notes may be on screen, and a rewrite may
+    /// restore a word shown there, so a draft copies only when its words are mostly not the notes' and its wording is
+    /// on screen, verbatim or lightly edited.
+    static func copies(_ text: String, context: String, seed: String?) -> Bool {
+        let candidate = FieldHint.normalized(text)
+        let verbatim = candidate.count >= 24 && FieldHint.normalized(context).contains(candidate)
+        guard let seed else { return verbatim }
+        let textWords = words(text), textRuns = runs(textWords)
+        let shown = Set(runs(words(context))), notes = Set(words(seed))
+        let mostlyShown = textRuns.count >= 3 && textRuns.filter(shown.contains).count * 2 >= textRuns.count
+        return (verbatim || mostlyShown) && textWords.filter(notes.contains).count * 2 < textWords.count
     }
 
     /// Every word of the hint plus at most a few more reads as the hint reworded ("Ask Codex anything you like").
     static func restatesHint(_ text: String, hint: String?) -> Bool {
-        func words(_ value: String) -> [String] {
-            value.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
-        }
         guard let hint else { return false }
         let hintWords = Set(words(hint)), candidate = words(text)
         guard hintWords.count >= 2 else { return false }
         return hintWords.isSubset(of: Set(candidate)) && candidate.count <= hintWords.count + 4
+    }
+
+    private static func words(_ value: String) -> [String] {
+        value.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+    }
+
+    /// Consecutive four-word runs; punctuation and Markdown between words don't break a run.
+    private static func runs(_ words: [String]) -> [String] {
+        words.count < 4 ? [] : (0...(words.count - 4)).map { words[$0..<$0 + 4].joined(separator: " ") }
     }
 }
 
