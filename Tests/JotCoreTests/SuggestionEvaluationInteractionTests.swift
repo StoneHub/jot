@@ -66,7 +66,7 @@ final class SuggestionEvaluationInteractionTests: XCTestCase {
         let blank = try XCTUnwrap(SuggestionDraftSnapshot.accessibilityDraft(value: "Do anything", placeholder: "Do anything",
             characterCount: 0, location: 0, length: 0))
         XCTAssertEqual(blank.value, "")
-        XCTAssertEqual(blank.mode(bundleID: "com.openai.codex", role: "AXTextArea"), .reply)
+        XCTAssertTrue(blank.isBlank)
         XCTAssertNil(SuggestionDraftSnapshot.accessibilityDraft(value: "Do anything", placeholder: "Do anything",
             characterCount: nil, location: 0, length: 0))
         XCTAssertNil(SuggestionDraftSnapshot.accessibilityDraft(value: "unidentified hint", placeholder: nil,
@@ -77,7 +77,7 @@ final class SuggestionEvaluationInteractionTests: XCTestCase {
         let typed = try XCTUnwrap(SuggestionDraftSnapshot.accessibilityDraft(value: "Do anything", placeholder: "Do anything",
             characterCount: 11, location: 11, length: 0))
         XCTAssertEqual(typed.value, "Do anything")
-        XCTAssertEqual(typed.mode(bundleID: "com.openai.codex", role: "AXTextArea"), .continuation)
+        XCTAssertFalse(typed.isBlank)
         XCTAssertNil(SuggestionDraftSnapshot.accessibilityDraft(value: "changed", placeholder: nil,
             characterCount: 4, location: 4, length: 0))
     }
@@ -88,43 +88,6 @@ final class SuggestionEvaluationInteractionTests: XCTestCase {
         let draft = try XCTUnwrap(SuggestionDraftSnapshot(value: "Explain the failure", location: 19, length: 0))
         XCTAssertTrue(SuggestionOutput.isFieldEcho("Explain the failure", draft: draft, placeholder: nil))
         XCTAssertFalse(SuggestionOutput.isFieldEcho(" without changing files.", draft: draft, placeholder: "Do anything"))
-    }
-
-    func testAutomaticSuggestionsWaitForStableDraftAndDoNotRepeatDismissedDraft() {
-        var trigger = SuggestionAutomaticTrigger<String>()
-        XCTAssertFalse(trigger.observe("draft", at: 0))
-        XCTAssertFalse(trigger.observe("draft", at: 0.5))
-        XCTAssertFalse(trigger.observe("edited draft", at: 0.6))
-        XCTAssertFalse(trigger.observe("edited draft", at: 1))
-        XCTAssertTrue(trigger.observe("edited draft", at: 1.4))
-        XCTAssertFalse(trigger.observe("edited draft", at: 30))
-        XCTAssertFalse(trigger.observe(nil, at: 31))
-        XCTAssertFalse(trigger.observe("edited draft", at: 32))
-        XCTAssertFalse(trigger.observe("edited draft", at: 33))
-    }
-
-    func testNewContextCanSuggestInAnUnchangedDraft() {
-        struct Key: Equatable { let draft: String; let revision: Int }
-        var trigger = SuggestionAutomaticTrigger<Key>()
-        let first = Key(draft: "", revision: 1), newSpeech = Key(draft: "", revision: 2)
-        XCTAssertFalse(trigger.observe(first, at: 0))
-        XCTAssertTrue(trigger.observe(first, at: 1))
-        XCTAssertFalse(trigger.observe(first, at: 10))
-        XCTAssertFalse(trigger.observe(newSpeech, at: 11))
-        XCTAssertTrue(trigger.observe(newSpeech, at: 12))
-    }
-
-    func testAutomaticSuggestionsRespectCooldownAndDoNotCompleteTheirOwnInsertion() {
-        var trigger = SuggestionAutomaticTrigger<String>()
-        XCTAssertFalse(trigger.observe("a", at: 0))
-        XCTAssertTrue(trigger.observe("a", at: 1))
-        XCTAssertFalse(trigger.observe("b", at: 1.1))
-        XCTAssertFalse(trigger.observe("b", at: 2))
-        XCTAssertTrue(trigger.observe("b", at: 3))
-        trigger.suppress("accepted text", at: 3.5)
-        XCTAssertFalse(trigger.observe("accepted text", at: 10))
-        XCTAssertFalse(trigger.observe("user edit", at: 11))
-        XCTAssertTrue(trigger.observe("user edit", at: 12))
     }
 
     private let shortcut = DictationShortcut(keyCode: 38, modifiers: [.control, .option], keyLabel: "J")
@@ -218,17 +181,26 @@ final class SuggestionEvaluationInteractionTests: XCTestCase {
         XCTAssertEqual(key(&tracker, repeating: true), .init(.dismiss))
     }
 
-    func testEscapeConsumesOnlyWithVisibleCard() {
+    func testEscapeIsSwallowedOnlyByALoadingOrReadyCard() {
         var tracker = SuggestionKeyTracker()
         XCTAssertFalse(key(&tracker, 53).consume)
         tracker.show(.requesting)
         XCTAssertEqual(key(&tracker, 53), .init(.dismiss))
-        for state: SuggestionKeyTracker.State in [.loading, .ready, .notice] {
+        for state: SuggestionKeyTracker.State in [.loading, .ready] {
             tracker.show(state)
             XCTAssertEqual(key(&tracker, 53), .init(.dismiss, consume: true))
             XCTAssertTrue(key(&tracker, 53, event: .keyUp).consume)
             XCTAssertFalse(key(&tracker, 53).consume)
         }
+        // A "No suggestion" notice has nothing to cancel: Escape closes it and still reaches the app, as any key does.
+        tracker.show(.notice)
+        XCTAssertEqual(key(&tracker, 53), .init(.dismiss))
+        XCTAssertFalse(key(&tracker, 53, event: .keyUp).consume)
+        XCTAssertEqual(tracker.state, .idle)
+        tracker.show(.notice)
+        XCTAssertEqual(key(&tracker, 0), .init(.dismiss))
+        tracker.show(.notice)
+        XCTAssertEqual(key(&tracker), .init(.dismiss), "Tab is not acceptance while a notice is up")
     }
 
     func testBusyOrIMEPreflightCannotStartOrAcceptAndRequestUpIsPaired() {
@@ -254,13 +226,16 @@ final class SuggestionEvaluationInteractionTests: XCTestCase {
         XCTAssertNil(SuggestionDraftSnapshot(value: "x", location: 0, length: 2))
     }
 
-    func testBlankFieldRequiresCodexComposerAndOtherDraftsUseContinuation() throws {
+    func testPlanRewritesSelectionsContinuesTextAndRepliesOnlyInAComposerWithContext() throws {
         let blank = try XCTUnwrap(SuggestionDraftSnapshot(value: "", location: 0, length: 0))
-        XCTAssertEqual(blank.mode(bundleID: "com.openai.codex", role: "AXTextArea"), .reply)
-        XCTAssertNil(blank.mode(bundleID: "com.openai.codex", role: "AXTextField"))
-        XCTAssertNil(blank.mode(bundleID: "com.apple.Safari", role: "AXTextArea"))
+        XCTAssertEqual(SuggestionPlan.make(draft: blank, role: "AXTextArea", hasAssociatedContext: true), .reply)
+        XCTAssertEqual(SuggestionPlan.make(draft: blank, role: "AXTextArea", hasAssociatedContext: false), .needsNotes)
+        XCTAssertEqual(SuggestionPlan.make(draft: blank, role: "AXTextField", hasAssociatedContext: true), .needsNotes)
         let draft = try XCTUnwrap(SuggestionDraftSnapshot(value: "Please ", location: 7, length: 0))
-        XCTAssertEqual(draft.mode(bundleID: "com.apple.TextEdit", role: "AXTextArea"), .continuation)
+        XCTAssertEqual(SuggestionPlan.make(draft: draft, role: "AXTextArea", hasAssociatedContext: false), .continuation)
+        let selection = try XCTUnwrap(SuggestionDraftSnapshot(value: "fix guard", location: 0, length: 3))
+        XCTAssertEqual(SuggestionPlan.make(draft: selection, role: "AXTextField", hasAssociatedContext: false),
+                       .draft(SuggestionSeed(text: "fix", location: 0, length: 3, isSelection: true)))
     }
 
     func testContinuationKeepsTheSeparatorNeededAtTheCursor() {
@@ -296,7 +271,6 @@ final class SuggestionEvaluationInteractionTests: XCTestCase {
         let target = Target(app: "Codex", mode: .reply, purpose: "agent-prompt", before: "", after: "", requestedAt: "now")
         XCTAssertTrue(SourceSelector.select(ScenarioInput(target: target, sources: context.sources)).selected.isEmpty)
         XCTAssertEqual(SourceSelector.select(context.input(target: target)).selected.count, 2)
-        XCTAssertEqual(SourceSelector.select(context.input(target: target, association: .automaticRecentContext)).selected, context.sources)
         XCTAssertEqual(SuggestionAttribution.line(plan: .reply, selected: context.sources, sessionTitle: "Standup"),
                        "Recent dictation + meeting ‘Standup’")
     }
