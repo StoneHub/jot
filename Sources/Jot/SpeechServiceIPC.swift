@@ -69,11 +69,11 @@ extension SpeechService {
             case "settings.get": result = ["settings": settings.report(), "revision": JotSettings.revision]
             case "settings.set":
                 guard let key = params["key"] as? String, let value = params["value"] else { throw JotError.message("key and value are required") }
-                try settings.set(key, raw: value); applySettings()
+                try settings.set(key, raw: value); settingChanged(key)
                 result = settingRow(key)
             case "settings.reset":
                 guard let key = params["key"] as? String else { throw JotError.message("key is required") }
-                try settings.reset(key); applySettings()
+                try settings.reset(key); settingChanged(key)
                 result = settingRow(key)
             case "transcripts.clear": try clearHistory(); result = ["cleared": true]
             case "transcripts.delete_session":

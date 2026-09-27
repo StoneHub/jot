@@ -214,23 +214,23 @@ extension TranscriptView {
     private var suggestionSettings: some View {
         SettingsGroup(title: "Suggestions", symbol: "sparkles", info: "Experimental. Review each draft: suggestions can get facts or speaker roles wrong.", beta: true) {
             SettingToggle(title: "Suggestions", info: "Write rough notes in any text field, then double-tap Fn. Jot drafts finished text, and Tab replaces your notes or the selected part. In an empty chat box, it drafts a reply to the conversation above. Typing or Escape dismisses. Nothing is sent. Works while listening is paused.",
-                          isOn: Binding(get: { service.suggestionsEnabled }, set: service.setSuggestionsEnabled))
+                          isOn: $service.suggestionsEnabled)
             RowDivider()
             SettingRow(title: "Extra shortcut", info: "Optional. Requests a suggestion, like double-tapping Fn.", indented: true, enabled: service.suggestionsEnabled) {
                 ShortcutSettings(service: service, forSuggestions: true)
             }
             RowDivider()
             SettingToggle(title: "Read visible conversation", info: "When you ask for a suggestion, reads the text shown above the field in the same window. It stays on this Mac and is never saved.",
-                          isOn: Binding(get: { service.suggestionScreenContext }, set: service.setSuggestionScreenContext),
+                          isOn: $service.suggestionScreenContext,
                           indented: true, enabled: service.suggestionsEnabled)
             RowDivider()
             SettingToggle(title: "Use matching speech", info: "When a selection quotes or paraphrases speech Jot heard within the context window, use the matching sentence to restore missing or misheard words in the rewrite.",
-                          isOn: Binding(get: { service.suggestionHeardMatches }, set: service.setSuggestionHeardMatches),
+                          isOn: $service.suggestionHeardMatches,
                           indented: true, enabled: service.suggestionsEnabled)
             RowDivider()
             SettingRow(title: "Context window", info: "How far back a suggestion may read: speech Jot heard, with the speaker when known, and messages agents sent with `jot context add`. Older speech stays in Sessions; older agent messages are forgotten.",
                        indented: true, enabled: service.suggestionsEnabled) {
-                Picker("Context window", selection: Binding(get: { service.suggestionWindowMinutes }, set: service.setSuggestionWindowMinutes)) {
+                Picker("Context window", selection: $service.suggestionWindowMinutes) {
                     ForEach([1, 2, 5, 10, 15, 30, 60], id: \.self) { Text($0 == 1 ? "1 minute" : "\($0) minutes").tag($0) }
                 }.labelsHidden().pickerStyle(.menu).fixedSize()
                     .accessibilityIdentifier("suggestion-window")
