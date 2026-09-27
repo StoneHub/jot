@@ -43,10 +43,13 @@ final class SpeechService: ObservableObject {
     lazy var library = SessionLibrary(service: self)
     lazy var speakers = SpeakerRecognizer(pass: pipeline.speakerPass, service: self)
     lazy var dictation = DictationCoordinator(service: self)
+    /// What agents told Jot lately, for suggestions. In memory only; see AgentContext.
+    let agentContext = AgentContext()
     lazy var suggestions = SuggestionCoordinator(input: input, store: { [weak self] in self?.library.store },
+        agentContext: agentContext,
         allowed: { [weak self] in self?.canRequestSuggestion == true },
         readsScreen: { [weak self] in self?.suggestionScreenContext == true },
-        meetingByDefault: { [weak self] in self?.suggestionMeetingContext == true },
+        window: { [weak self] in TimeInterval((self?.suggestionWindowMinutes ?? 10) * 60) },
         notice: { [weak self] in self?.notice = $0 })
     lazy var timeline = ListeningTimeline(service: self)
     lazy var cleanup = LiveCleanup(service: self)
@@ -71,11 +74,11 @@ final class SpeechService: ObservableObject {
         settings.set(JotDefaultsKey.suggestionScreenContext, enabled)
         suggestions.dismiss()
     }
-    /// Add the latest meeting to every request. Off by default; the card offers it either way.
-    @Published private(set) var suggestionMeetingContext = JotSettings.standard.bool(JotDefaultsKey.suggestionMeetingContext)
-    func setSuggestionMeetingContext(_ enabled: Bool) {
-        suggestionMeetingContext = enabled
-        settings.set(JotDefaultsKey.suggestionMeetingContext, enabled)
+    /// How far back a suggestion may read: speech Jot heard and messages agents sent it, in minutes.
+    @Published private(set) var suggestionWindowMinutes = JotSettings.standard.int(JotDefaultsKey.suggestionWindowMinutes)
+    func setSuggestionWindowMinutes(_ minutes: Int) {
+        settings.set(JotDefaultsKey.suggestionWindowMinutes, minutes)
+        suggestionWindowMinutes = settings.int(JotDefaultsKey.suggestionWindowMinutes)
         suggestions.dismiss()
     }
     var canRequestSuggestion: Bool { suggestionBlocker == nil }
@@ -165,7 +168,7 @@ final class SpeechService: ObservableObject {
         let key = JotDefaultsKey.self
         if suggestionsEnabled != settings.bool(key.suggestionsEnabled) { setSuggestionsEnabled(settings.bool(key.suggestionsEnabled)) }
         if suggestionScreenContext != settings.bool(key.suggestionScreenContext) { setSuggestionScreenContext(settings.bool(key.suggestionScreenContext)) }
-        if suggestionMeetingContext != settings.bool(key.suggestionMeetingContext) { setSuggestionMeetingContext(settings.bool(key.suggestionMeetingContext)) }
+        if suggestionWindowMinutes != settings.int(key.suggestionWindowMinutes) { setSuggestionWindowMinutes(settings.int(key.suggestionWindowMinutes)) }
         if highlightTargetField != settings.bool(key.highlightTargetField) { highlightTargetField = settings.bool(key.highlightTargetField) }
         if muteSpeakersDuringDictation != settings.bool(key.muteSpeakersDuringDictation) { muteSpeakersDuringDictation = settings.bool(key.muteSpeakersDuringDictation) }
         if keepMacAwakeWhileListening != settings.bool(key.keepMacAwakeWhileListening) { keepMacAwakeWhileListening = settings.bool(key.keepMacAwakeWhileListening) }

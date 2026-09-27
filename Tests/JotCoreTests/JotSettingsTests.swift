@@ -33,7 +33,7 @@ final class JotSettingsTests: XCTestCase {
         defaults.set(true, forKey: JotDefaultsKey.cleanUpTranscriptions)      // the default, saved by a toggle back
         defaults.set(true, forKey: JotDefaultsKey.cleanUpDictation)           // changed
         defaults.set(30, forKey: JotDefaultsKey.newSessionAfterSilence)       // changed
-        defaults.set(false, forKey: JotDefaultsKey.suggestionMeetingContext)  // the default
+        defaults.set(true, forKey: JotDefaultsKey.suggestionScreenContext)    // the default
         defaults.set(true, forKey: JotDefaultsKey.fnRequested)                // not a setting; untouched
 
         let settings = JotSettings(defaults: defaults)
@@ -45,7 +45,7 @@ final class JotSettingsTests: XCTestCase {
         }
         XCTAssertTrue(settings.bool(JotDefaultsKey.cleanUpTranscriptions))
         XCTAssertFalse(settings.isChanged(JotDefaultsKey.cleanUpTranscriptions))
-        XCTAssertFalse(settings.isChanged(JotDefaultsKey.suggestionMeetingContext))
+        XCTAssertFalse(settings.isChanged(JotDefaultsKey.suggestionScreenContext))
         XCTAssertTrue(settings.bool(JotDefaultsKey.cleanUpDictation))
         XCTAssertEqual(settings.int(JotDefaultsKey.newSessionAfterSilence), 30)
         XCTAssertTrue(defaults.bool(forKey: JotDefaultsKey.fnRequested))

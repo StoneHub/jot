@@ -145,6 +145,7 @@ public enum SuggestionPrompt {
         default: author = "from an unknown author"
         }
         var parts = [source.kind.replacingOccurrences(of: "-", with: " "), author]
+        if source.kind == AgentContext.kind { parts.append("in \(source.origin)") }
         if let project = source.scope.project, project != target.project { parts.append("project \(project)") }
         return parts.joined(separator: ", ")
     }
