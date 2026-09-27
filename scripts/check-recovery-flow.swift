@@ -80,6 +80,7 @@ struct RecoveryFlowChecks {
         }
         defer { watchdog.cancel() }
         checkRecognitionCommitWindow()
+        checkShortFinalRecognition()
         checkCPUReadout()
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("jot-recovery-checks-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -277,6 +278,27 @@ struct RecoveryFlowChecks {
         precondition(afterError.samples.count == 30 && afterError.bufferOffset == 23,
             "An abandoned recognition plan retained failed audio")
         print("PASS: recognition windows retain bounded context, flush tails, deduplicate seams, preserve repeats, and reset at boundaries.")
+    }
+
+    /// A boundary right after a final job closes a chunk with no context before it. Under the recognizer's 0.3-second minimum,
+    /// it reaches ASR with trailing silence; only words in the real audio are committed, and the plan keeps the real length.
+    static func checkShortFinalRecognition() {
+        let minimum = ASRConstants.minimumRequiredSamples(forSampleRate: AudioClock.sampleRate)
+        var window = RecognitionCommitWindow()
+        let short = [Float](repeating: 0.5, count: AudioClock.samples(seconds: 0.2))
+        let plan = window.plan(sessionID: "a", offset: 10, newSamples: short, isFinal: true)
+        precondition(plan.samples == short && abs(plan.commitEnd - 10.2) < 1e-9, "A short final plan did not cover only its own audio")
+        let audio = SpeechPipeline.recognitionAudio(plan.samples)
+        precondition(audio.count == minimum && Array(audio.prefix(short.count)) == short && audio.dropFirst(short.count).allSatisfy { $0 == 0 },
+            "Short recognition audio was not padded with trailing silence to the recognizer's minimum")
+        let words = window.newWords(from: [
+            WordTiming(word: "Yes", startTime: 0.04, endTime: 0.18),
+            WordTiming(word: "uh", startTime: 0.22, endTime: 0.28)
+        ], for: plan)
+        precondition(words.map(\.word) == ["Yes"] && words[0].startTime == 0.04, "A word decoded in the padding was committed, or a real word moved")
+        let long = [Float](repeating: 0.5, count: minimum)
+        precondition(SpeechPipeline.recognitionAudio(long) == long, "Audio at the recognizer's minimum was changed")
+        print("PASS: a 0.2-second final job reaches recognition padded to 0.3 seconds, and only its real words are committed.")
     }
 
     /// The process's CPU time from getrusage, which ps agrees with.
@@ -1386,6 +1408,20 @@ struct RecoveryFlowChecks {
         // The source must be a synthetic fixture; never pass private recorded audio
         // when retaining this log or posting it in a PR.
         print("REAL ASR TEXT: \(text)")
+        // The hold's final job reset the recognition window, so a boundary now closes a chunk of
+        // only the fixture's loudest quarter second: under the recognizer's 0.3-second minimum.
+        let width = AudioClock.samples(seconds: 0.25)
+        let energy = { (start: Int) in source[start..<min(start + width, source.count)].reduce(0) { $0 + $1 * $1 } }
+        let loudest = stride(from: 0, through: max(0, source.count - width), by: 160).max { energy($0) < energy($1) } ?? 0
+        let failuresBefore = service.transcriber.recognitionFailures
+        let rowsBefore = try store.session(id: service.timeline.activeSessionID!).count
+        probe.now += 0.25
+        service.ingestRecoveryVerification(samples: Array(source[loudest..<min(loudest + width, source.count)]), at: probe.now)
+        service.flushRecoveryVerification()
+        await service.waitForRecoveryVerification()
+        precondition(service.transcriber.recognitionFailures == failuresBefore, "A 0.25-second final job failed recognition: \(service.notice)")
+        let shortText = try store.session(id: service.timeline.activeSessionID!).dropFirst(rowsBefore).map(\.text).joined(separator: " ")
+        print("REAL SHORT FINAL: a 0.25 s final job completed; text: \(shortText.isEmpty ? "(none)" : shortText)")
         service.pause()
         while service.lifecycle.phase != .paused { try await Task.sleep(for: .milliseconds(10)) }
         service.shutdown()
