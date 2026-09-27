@@ -69,14 +69,14 @@ enum CaptureFlowChecks {
         service.pause()
         while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
         precondition(service.lifecycle.phase == .ready && service.modelsLoaded && service.isPaused, "Pause did not keep the models loaded")
-        precondition(service.input.startBlocker() == "The microphone is off. Choose Resume to start it.", "Paused press reason: \(service.input.startBlocker() ?? "nil")")
+        precondition(service.input.startBlocker() == nil, "A hold while paused was blocked: \(service.input.startBlocker() ?? "nil")")
         microphone.startCalls = 0; microphone.failuresBeforeStart = .max
         service.prepare(confirmingDownload: true)
         await service.waitForPreparation()
         precondition(!service.ambientEnabled && service.microphoneOff, "A microphone that never starts should leave the service ready with capture off")
         precondition(microphone.startCalls == 3, "Expected three tries, got \(microphone.startCalls)")
         precondition(service.notice.hasPrefix("The microphone did not start after 3 tries"), "Final notice: \(service.notice)")
-        precondition(service.input.startBlocker() == "The microphone is off. Choose Resume to start it.", "Blocked press reason: \(service.input.startBlocker() ?? "nil")")
+        precondition(service.input.startBlocker() == nil, "With the models loaded, a press starts the microphone for the hold; it was blocked: \(service.input.startBlocker() ?? "nil")")
 
         // Resume with the models already loaded only restarts the microphone.
         microphone.failuresBeforeStart = 0
@@ -99,6 +99,20 @@ enum CaptureFlowChecks {
         while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
         print("PASS: a failed microphone start retries, reports after the last try, explains a blocked shortcut press, and Resume restarts capture.")
         print("PASS: a meeting renamed over the socket keeps the new name through an automatic pause.")
+
+        // A hold while paused turns the microphone on for the hold only, in a session of its own, and off again on release.
+        microphone.startCalls = 0
+        let pausedSession = service.timeline.activeSessionID
+        service.holdBegan()
+        while !service.dictation.isActive { try await Task.sleep(for: .milliseconds(5)) }
+        precondition(microphone.running && service.ambientEnabled && service.holdOnlyCapture && service.timeline.activeSessionID != pausedSession,
+                     "The hold did not start the microphone in a session of its own")
+        service.holdEnded(releasedAt: ProcessInfo.processInfo.systemUptime)
+        await service.dictation.waitForRecovery()
+        precondition(!microphone.running && !service.ambientEnabled && !service.holdOnlyCapture && service.isPaused && service.modelsLoaded,
+                     "The microphone stayed on after the held dictation")
+        precondition(!service.ambientRequested, "A hold while paused turned listening back on")
+        print("PASS: a hold while paused runs the microphone for the hold only and leaves Jot paused with the models loaded.")
 
         // Paused, the hooks are refused and the models are still loaded; Unload Models is the only release, and Resume after it loads them again.
         let hook: [String: Any] = ["method": "context.hook", "params": ["role": "user", "source": "codex", "conversation": "c1", "text": "hello"]]

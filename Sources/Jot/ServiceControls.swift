@@ -30,8 +30,12 @@ private struct ControlRow<Control: View>: View {
 struct ServiceControls: View {
     @ObservedObject var service: SpeechService
     var compact = false
-    private var statusTitle: String { service.isPaused ? "Paused" : (service.isTransitioning ? "Starting" : (service.ambientEnabled ? "Listening" : "Ready")) }
+    private var statusTitle: String {
+        if service.holdOnlyCapture { return "Dictating" }
+        return service.isPaused ? "Paused" : (service.isTransitioning ? "Starting" : (service.ambientEnabled ? "Listening" : "Ready"))
+    }
     private var statusCaption: String {
+        if service.holdOnlyCapture { return "Microphone on for the hold" }
         if service.isPaused {
             if service.pauseRequested { return "Finishing…" }
             if service.isTransitioning { return "Releasing models…" }
@@ -55,7 +59,7 @@ struct ServiceControls: View {
                 })).labelsHidden().toggleStyle(.switch)
             }.help(service.suggestionsEnabled && service.shortcut.keyCode == nil
                 ? "Hold Fn to dictate. Double-tap Fn for a suggestion; Tab accepts."
-                : "Hold \(service.shortcut.displayName) to dictate. Double-tap to retry a saved dictation or insert recent speech.")
+                : "Hold \(service.shortcut.displayName) to dictate, while listening or paused. Double-tap to retry a saved dictation or insert recent speech.")
             ControlRow(title: "Hold to talk", secondary: true) { ShortcutSettings(service: service) }
             ControlRow(title: "Keep Mac awake", caption: "While listening", secondary: true) {
                 Toggle("Keep Mac awake while listening", isOn: $service.keepMacAwakeWhileListening).labelsHidden().toggleStyle(.switch)

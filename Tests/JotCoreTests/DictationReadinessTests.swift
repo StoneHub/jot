@@ -4,18 +4,20 @@ import XCTest
 final class DictationReadinessTests: XCTestCase {
     private func blocker(phase: ServiceLifecycle.Phase = .ready, modelsReady: Bool = true, ambientEnabled: Bool = true,
                          pauseRequested: Bool = false, dictationPending: Bool = false, dictationActive: Bool = false,
-                         diagnosticActive: Bool = false) -> String? {
+                         diagnosticActive: Bool = false, microphoneStarting: Bool = false) -> String? {
         DictationReadiness.blocker(phase: phase, modelsReady: modelsReady, ambientEnabled: ambientEnabled,
             pauseRequested: pauseRequested, dictationPending: dictationPending, dictationActive: dictationActive,
-            diagnosticActive: diagnosticActive)
+            diagnosticActive: diagnosticActive, microphoneStarting: microphoneStarting)
     }
 
     func testReadyServiceHasNoBlocker() {
         XCTAssertNil(blocker())
     }
 
-    func testMicrophoneOffNamesResume() {
-        XCTAssertEqual(blocker(ambientEnabled: false), "The microphone is off. Choose Resume to start it.")
+    func testMicrophoneOffStartsForTheHoldUnlessItIsAlreadyStarting() {
+        XCTAssertNil(blocker(ambientEnabled: false), "With the models loaded, a hold while paused starts the microphone")
+        XCTAssertEqual(blocker(ambientEnabled: false, microphoneStarting: true), "The microphone is starting. Try again in a moment.")
+        XCTAssertNil(blocker(microphoneStarting: true), "A microphone that is already on is not starting")
     }
 
     func testPausedAndLoadingStatesComeBeforeMicrophone() {

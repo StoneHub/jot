@@ -28,7 +28,7 @@ Build and install Jot using the [instructions below](#build-and-install), then o
 Grant microphone and Accessibility access. If Fn triggers a macOS shortcut, set the Fn/Globe action to **Do Nothing** in Keyboard settings.
 
 - **Resume** starts listening immediately; the first Resume downloads and loads the models. **Pause** stops new capture after saving captured speech and keeps the models loaded; agent hooks are refused while paused; a running meeting ends without exporting, with its transcript in **Sessions**. An explicit Pause stays paused across launch, with the models loaded and the microphone off. **Unload Models** in the menu, or `jot models unload`, frees the models' memory until the next Resume. Jot resumes after sleep if it was listening beforehand.
-- **Dictation** enables the insertion shortcut. Turning it off does not stop listening; use **Pause** for that.
+- **Dictation** enables the insertion shortcut. Turning it off does not stop listening; use **Pause** for that. While paused, holding the shortcut turns the microphone on for the hold and off again on release; the dictation is saved as a session of its own.
 - Closing the window keeps Jot in the menu bar. **Open** brings the window back; **Quit** stops the app.
 
 **Change the shortcut:** click the key label beside **Hold to talk**. Press a key with Control, Option, or Command, or choose **Use Fn / Globe** to restore the default. Your choice is saved on this Mac. Custom shortcuts take precedence over the same combination in other apps; choose an unused combination. Release the key or a required modifier to finish.
