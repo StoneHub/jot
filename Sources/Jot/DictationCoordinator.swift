@@ -44,7 +44,6 @@ final class DictationCoordinator {
         do { try service.library.store?.saveDictationAttempt(attempt) }
         catch { service.recoveryNotice = "Dictation started, but its recovery record could not be saved." }
         if service.highlightTargetField { highlight.show(follow: { [weak self] in self?.service.input.targetFrame() }) }
-        service.updateMode()
         service.markPerformance(.dictationStarted)
         service.notice = "Listening for dictation… release \(service.shortcut.displayName) to insert."
     }
@@ -57,7 +56,6 @@ final class DictationCoordinator {
         isActive = false
         isPending = true
         service.markPerformance(.dictationReleased)
-        service.updateMode()
         attempt.endedAt = max(attempt.startedAt, service.timeline.sessionStarted.addingTimeInterval(service.timeline.ambientOffset))
         attempt.state = .recognizing
         attempt.updatedAt = attempt.endedAt!
@@ -88,7 +86,6 @@ final class DictationCoordinator {
         currentAttempt = nil; attemptEndOffset = nil
         attemptHadGap = false
         service.recoveryNotice = "Current dictation discarded. Listening history was kept."
-        service.updateMode()
     }
 
     /// Lost or dropped audio inside a hold marks the attempt partial; outside a hold there is nothing to mark.
