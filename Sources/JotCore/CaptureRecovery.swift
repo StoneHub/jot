@@ -87,6 +87,7 @@ public enum DictationRecovery {
     /// Seconds of recent speech the recovery gesture can insert: the Recovery window menu's items and the only values `jot settings` accepts.
     public static let lookbackChoices = [30, 60, 120, 300, 600]
     public static let defaultLookbackSeconds = 120
+    public static let lookbackRange = 15...600
 
     public static func lookbackLabel(_ seconds: Int) -> String {
         seconds < 60 ? "\(seconds) seconds" : seconds == 60 ? "1 minute" : "\(seconds / 60) minutes"
@@ -105,12 +106,16 @@ public enum DictationRecovery {
 /// Bounded recognition chunks keep capture latency independent of how long Jot has
 /// been listening. A sufficiently long silence may close a shorter chunk.
 public struct CaptureChunkScheduler: Equatable, Sendable {
+    /// The code defaults; `JotSettings` reads the two the user can change from here.
+    public static let defaultMaximumSeconds = 3.0
+    public static let defaultMinimumSeconds = 0.2
+    public static let defaultSilenceSeconds = 0.7
     public let maximumSamples: Int
     public let minimumSamples: Int
     public let silenceSamples: Int
 
-    public init(sampleRate: Int = 16_000, maximumSeconds: Double = 3,
-                minimumSeconds: Double = 0.2, silenceSeconds: Double = 0.7) {
+    public init(sampleRate: Int = 16_000, maximumSeconds: Double = Self.defaultMaximumSeconds,
+                minimumSeconds: Double = Self.defaultMinimumSeconds, silenceSeconds: Double = Self.defaultSilenceSeconds) {
         maximumSamples = max(1, Int((Double(sampleRate) * maximumSeconds).rounded()))
         minimumSamples = max(1, Int((Double(sampleRate) * minimumSeconds).rounded()))
         silenceSamples = max(1, Int((Double(sampleRate) * silenceSeconds).rounded()))

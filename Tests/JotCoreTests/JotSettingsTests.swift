@@ -172,10 +172,48 @@ final class JotSettingsTests: XCTestCase {
         XCTAssertFalse(settings.isChanged(JotSettings.cleanupInstructions))
     }
 
+    /// A choice setting saved through the typed setter keeps a value the menu can show and `int()` reads back.
+    func testChoiceSettingTakesTheNearestChoice() {
+        let settings = JotSettings(defaults: defaults)
+        settings.set(JotDefaultsKey.recoveryLookbackSeconds, 100)
+        XCTAssertEqual(settings.int(JotDefaultsKey.recoveryLookbackSeconds), 120)
+        XCTAssertFalse(settings.isChanged(JotDefaultsKey.recoveryLookbackSeconds), "The nearest choice is the default, so the setting follows it")
+        settings.set(JotDefaultsKey.recoveryLookbackSeconds, 45)
+        XCTAssertEqual(settings.int(JotDefaultsKey.recoveryLookbackSeconds), 30, "Ties go to the lower choice")
+        settings.set(JotDefaultsKey.recoveryLookbackSeconds, 5_000)
+        XCTAssertEqual(settings.int(JotDefaultsKey.recoveryLookbackSeconds), 600)
+        settings.set(JotDefaultsKey.newSessionAfterSilence, 0)
+        XCTAssertEqual(settings.int(JotDefaultsKey.newSessionAfterSilence), 0)
+        XCTAssertTrue(settings.isChanged(JotDefaultsKey.newSessionAfterSilence))
+    }
+
+    /// The ranges and defaults the settings report are the ones the code clamps with, so changing one changes both.
+    func testTuningDefaultsAndRangesExistOnce() throws {
+        func range(_ key: String) throws -> ClosedRange<Double> {
+            guard case .double(_, let range)? = JotSettings.definition(key)?.kind else { throw JotSettingsError.unknown(key) }
+            return range
+        }
+        XCTAssertEqual(try range(JotSettings.speakerConfidence), TranscriptionTuning.speakerConfidenceRange)
+        XCTAssertEqual(try range(JotSettings.minimumSpeakerTurn), TranscriptionTuning.minimumSpeakerTurnRange)
+        XCTAssertEqual(try range(JotSettings.paragraphPause), TranscriptionTuning.paragraphPauseRange)
+        var broken = TranscriptionTuning()
+        broken.speakerConfidence = .nan; broken.minimumSpeakerTurn = .infinity; broken.paragraphPause = 100
+        let bounded = broken.bounded
+        XCTAssertEqual(bounded.speakerConfidence, TranscriptionTuning().speakerConfidence)
+        XCTAssertEqual(bounded.minimumSpeakerTurn, TranscriptionTuning().minimumSpeakerTurn)
+        XCTAssertEqual(bounded.paragraphPause, TranscriptionTuning.paragraphPauseRange.upperBound)
+        XCTAssertEqual(TranscriptionTuning.detailed.bounded, TranscriptionTuning.detailed, "The presets sit inside the ranges")
+        XCTAssertEqual(TranscriptionTuning.steady.bounded, TranscriptionTuning.steady)
+        guard case .int(_, let lookback, _)? = JotSettings.definition(JotDefaultsKey.recoveryLookbackSeconds)?.kind else { return XCTFail() }
+        XCTAssertEqual(lookback, DictationRecovery.lookbackRange)
+        XCTAssertTrue(DictationRecovery.lookbackChoices.allSatisfy(lookback.contains))
+    }
+
     func testPipelineSettingsDefaultToTheFormerConstants() {
         let settings = JotSettings(defaults: defaults)
-        XCTAssertEqual(settings.double(JotSettings.chunkMaximumSeconds), 3)
-        XCTAssertEqual(settings.double(JotSettings.chunkSilenceSeconds), 0.7)
+        XCTAssertEqual(settings.double(JotSettings.chunkMaximumSeconds), CaptureChunkScheduler.defaultMaximumSeconds)
+        XCTAssertEqual(settings.double(JotSettings.chunkSilenceSeconds), CaptureChunkScheduler.defaultSilenceSeconds)
+        XCTAssertEqual(CaptureChunkScheduler(), CaptureChunkScheduler(maximumSeconds: 3, minimumSeconds: 0.2, silenceSeconds: 0.7))
         XCTAssertEqual(settings.double(JotSettings.silenceLevel), 0.002)
         XCTAssertEqual(settings.double(JotSettings.speechGate), 0.2)
         XCTAssertEqual(settings.double(JotSettings.phrasePause), PhraseCleanup.Limits().pauseSeconds)

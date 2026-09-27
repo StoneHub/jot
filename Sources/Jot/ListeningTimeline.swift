@@ -20,7 +20,7 @@ final class ListeningTimeline: ObservableObject {
     /// Rebuilt from settings at each use, so a changed chunk length applies at the next drain.
     private var chunkScheduler: CaptureChunkScheduler {
         CaptureChunkScheduler(sampleRate: AudioClock.sampleRate, maximumSeconds: service.settings.double(JotSettings.chunkMaximumSeconds),
-            minimumSeconds: 0.2, silenceSeconds: service.settings.double(JotSettings.chunkSilenceSeconds))
+            minimumSeconds: CaptureChunkScheduler.defaultMinimumSeconds, silenceSeconds: service.settings.double(JotSettings.chunkSilenceSeconds))
     }
     private unowned let service: SpeechService
 

@@ -107,7 +107,7 @@ extension SpeechService {
                 defer { diagnosticActive = false }
                 let token = lifecycle.generation
                 // File diagnostics use an isolated pipeline while paused, so they never reset the live speaker timeline.
-                let filePipeline = SpeechPipeline()
+                let filePipeline = SpeechPipeline(settings: settings)
                 let fileTask = Task {
                     do {
                         try await filePipeline.prepare()

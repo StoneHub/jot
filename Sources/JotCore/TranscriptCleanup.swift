@@ -54,7 +54,9 @@ public final class TranscriptCleanup {
     public typealias Generator = @Sendable ([String]) async throws -> [String]
     private var busy = false
     private var interrupt: (() -> Void)?
-    public init() {}
+    /// Where the instructions and the token limit come from. Live phrases and dictation share both.
+    private let settings: JotSettings
+    public init(settings: JotSettings = .standard) { self.settings = settings }
 
     /// Release a waiting speech worker immediately when dictation takes priority.
     public func cancel() { interrupt?() }
@@ -88,7 +90,7 @@ public final class TranscriptCleanup {
                 do {
                     let result: [String]
                     if let generator { result = try await generator(texts) }
-                    else { result = try await Self.generate(texts) }
+                    else { result = try await generate(texts) }
                     if Task.isCancelled {
                         completion.finish(.init(texts: texts, outcome: .cancelled))
                     } else if result.count != texts.count {
@@ -118,10 +120,9 @@ public final class TranscriptCleanup {
         }
     }
 
-    private static func generate(_ texts: [String]) async throws -> [String] {
+    private func generate(_ texts: [String]) async throws -> [String] {
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
-            let settings = JotSettings.standard
             let instructions = settings.text(JotSettings.cleanupInstructions)
             let input = String(decoding: try JSONEncoder().encode(texts), as: UTF8.self)
             return try await AppleFMClient().generate(instructions: instructions, prompt: input,
