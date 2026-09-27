@@ -67,7 +67,9 @@ enum CaptureFlowChecks {
 
         // The device never comes back: the retries stop, the notice says so, and a shortcut press explains itself.
         service.pause()
-        while service.lifecycle.phase != .paused { try await Task.sleep(for: .milliseconds(10)) }
+        while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
+        precondition(service.lifecycle.phase == .ready && service.modelsLoaded && service.isPaused, "Pause did not keep the models loaded")
+        precondition(service.input.startBlocker() == "The microphone is off. Choose Resume to start it.", "Paused press reason: \(service.input.startBlocker() ?? "nil")")
         microphone.startCalls = 0; microphone.failuresBeforeStart = .max
         service.prepare(confirmingDownload: true)
         await service.waitForPreparation()
@@ -89,13 +91,28 @@ enum CaptureFlowChecks {
         _ = await service.handle(try JSONSerialization.data(withJSONObject: rename))
         precondition(service.meetingTitle == "Weekly sync", "The running meeting kept the name \(service.meetingTitle ?? "nil") after a socket rename")
         service.pause(automatic: true)
-        while service.lifecycle.phase != .paused { try await Task.sleep(for: .milliseconds(10)) }
+        while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
         service.prepare(confirmingDownload: true)
         await service.waitForPreparation()
         precondition(service.ambientEnabled && service.meetingTitle == "Weekly sync", "The meeting continued as \(service.meetingTitle ?? "nil") after an automatic pause")
         service.pause()
-        while service.lifecycle.phase != .paused { try await Task.sleep(for: .milliseconds(10)) }
+        while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
         print("PASS: a failed microphone start retries, reports after the last try, explains a blocked shortcut press, and Resume restarts capture.")
         print("PASS: a meeting renamed over the socket keeps the new name through an automatic pause.")
+
+        // Paused, the hooks are refused and the models are still loaded; Unload Models is the only release, and Resume after it loads them again.
+        let hook: [String: Any] = ["method": "context.hook", "params": ["role": "user", "source": "codex", "conversation": "c1", "text": "hello"]]
+        let refusedData = await service.handle(try JSONSerialization.data(withJSONObject: hook))
+        let refused = try JSONSerialization.jsonObject(with: refusedData) as? [String: Any]
+        precondition(refused?["ok"] as? Bool == false && service.agentContext.count == 0, "A hook message was taken while paused")
+        service.unloadModels()
+        while service.lifecycle.phase != .paused { try await Task.sleep(for: .milliseconds(10)) }
+        precondition(!service.modelsLoaded && !service.ambientEnabled && service.isPaused, "Unload Models left the models loaded")
+        service.prepare(confirmingDownload: true)
+        await service.waitForPreparation()
+        precondition(service.ambientEnabled && service.modelsLoaded, "Resume after Unload Models did not reload the models and listen")
+        service.pause()
+        while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
+        print("PASS: Pause keeps the models loaded and refuses hook context; Unload Models releases them and Resume reloads.")
     }
 }

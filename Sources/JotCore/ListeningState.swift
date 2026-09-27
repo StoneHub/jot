@@ -6,13 +6,13 @@ public enum ListeningState: Equatable, Sendable {
     case paused(neverLoaded: Bool)
     /// Resume is loading models.
     case starting
-    /// Models are loaded and the microphone is off.
+    /// Models are loaded and the microphone is off: the normal state after Pause, and before a start finishes.
     case ready
     /// The microphone is on and speech is being saved.
     case listening
     /// A held dictation is being captured while listening.
     case dictating
-    /// Pause is unloading models.
+    /// Unload Models is releasing them.
     case unloading
     /// Resume could not load models.
     case failed
@@ -31,12 +31,11 @@ public enum ListeningState: Equatable, Sendable {
         }
     }
 
-    /// `jot status` reports this under "mode".
+    /// `jot status` reports this under "mode". Paused means the microphone is off; "models" says whether they are loaded.
     public var mode: String {
         switch self {
-        case .paused: "paused"
+        case .paused, .ready: "paused"
         case .starting: "starting"
-        case .ready: "ready"
         case .listening: "ambient"
         case .dictating: "dictation"
         case .unloading: "pausing"

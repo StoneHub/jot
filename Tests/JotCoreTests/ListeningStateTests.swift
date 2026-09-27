@@ -20,8 +20,8 @@ final class ListeningStateTests: XCTestCase {
         Row(phase: .paused, generation: 2, microphoneOn: false, dictationActive: false, state: .paused(neverLoaded: false), mode: "paused", models: "unloaded"),
         // Resume loading models.
         Row(phase: .starting, generation: 1, microphoneOn: false, dictationActive: false, state: .starting, mode: "starting", models: "preparing"),
-        // Models loaded, microphone not started or failed to start.
-        Row(phase: .ready, generation: 1, microphoneOn: false, dictationActive: false, state: .ready, mode: "ready", models: "ready"),
+        // Models loaded, microphone off: after Pause, or a microphone that never started. Agents see "paused" with the models ready.
+        Row(phase: .ready, generation: 1, microphoneOn: false, dictationActive: false, state: .ready, mode: "paused", models: "ready"),
         // Listening.
         Row(phase: .ready, generation: 1, microphoneOn: true, dictationActive: false, state: .listening, mode: "ambient", models: "ready"),
         // A held dictation wins over listening, as updateMode() checked it first.

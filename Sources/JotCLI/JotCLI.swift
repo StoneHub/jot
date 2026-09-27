@@ -25,8 +25,8 @@ struct JotCLI {
 
     jot status                         Listening state, permissions, models, and system impact
     jot start                          Resume continuous listening
-    jot pause                          Pause all speech work, unload models, and end any meeting
-    jot resume                         Reload models and start listening
+    jot pause                          Stop listening and end any meeting; the models stay loaded
+    jot resume                         Start listening; loads the models only if they are not loaded
     jot meeting start <title>          Ambient capture with a name; exports when it ends
     jot meeting end                    Stop, wait for the last audio, save Markdown to ~/Documents/Jot Sessions
     jot title <session-id> <title>     Name or rename a session
@@ -55,6 +55,7 @@ struct JotCLI {
     jot settings reset <key>           Back to the default, and follow it in later versions
     jot models prepare                 Download/prepare local speech models
     jot models check                   Check published model revisions (no download)
+    jot models unload                  Free the speech models' memory; listening stops first
     jot transcribe-file <path>          Diagnostic file inference; no persistence
     jot mcp                            MCP JSON-RPC over stdio (no TCP)
 
@@ -81,7 +82,7 @@ struct JotCLI {
             guard args.count >= 3 else { throw CLIError.usage("Use: jot title <session-id> <title>") }
             return ("sessions.title", ["sessionID": args[1], "title": args.dropFirst(2).joined(separator: " ")])
         case "models":
-            guard args.count == 2, ["prepare", "check"].contains(args[1]) else { throw CLIError.usage("Use: jot models prepare|check") }
+            guard args.count == 2, ["prepare", "check", "unload"].contains(args[1]) else { throw CLIError.usage("Use: jot models prepare|check|unload") }
             return ("models." + args[1], [:])
         case "transcribe-file":
             guard args.count == 2 else { throw CLIError.usage("Use: jot transcribe-file <path>") }

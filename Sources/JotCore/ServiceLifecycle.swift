@@ -12,8 +12,9 @@ public struct SleepResumePolicy: Sendable {
     }
     public mutating func didWake() { sleeping = false }
     public mutating func cancel() { pending = false }
-    public mutating func takeResume(phase: ServiceLifecycle.Phase) -> Bool {
-        guard pending, !sleeping, phase == .paused else { return false }
+    /// `paused`: the microphone is off and neither a pause nor a start is under way. The models may still be loaded.
+    public mutating func takeResume(paused: Bool) -> Bool {
+        guard pending, !sleeping, paused else { return false }
         pending = false
         return true
     }

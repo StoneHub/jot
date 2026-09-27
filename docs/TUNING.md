@@ -26,7 +26,7 @@ Jot keeps each ambient row's words with their timings and speaker probabilities.
 2. Enable the player's English captions and note its playback time. Resume Jot for that passage, then Pause to stop listening and finish saving it.
 3. Separately judge missed/wrong words, unnecessary speaker changes, and annoying paragraph breaks. Do not count every caption omission of a filler as an ASR mistake.
 4. Change one control and replay the same passage. If genuine short replies merge into the preceding speaker, lower Minimum speaker turn. If rows are merely too short, increase Paragraph pause.
-5. Pause the service when done to unload models. No automatic tuning or reference-text injection is performed.
+5. Pause the service when done. Unload Models in the menu frees the models' memory if you need it back. No automatic tuning or reference-text injection is performed.
 
 ## Heretic reference
 

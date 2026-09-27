@@ -32,8 +32,13 @@ struct ServiceControls: View {
     var compact = false
     private var statusTitle: String { service.isPaused ? "Paused" : (service.isTransitioning ? "Starting" : (service.ambientEnabled ? "Listening" : "Ready")) }
     private var statusCaption: String {
-        if service.isPaused { return service.isTransitioning ? "Finishing and unloading…" : "Models unloaded" }
-        return service.ambientEnabled ? "Saving speech locally" : (service.microphoneOff ? "Microphone off" : "Starting microphone…")
+        if service.isPaused {
+            if service.pauseRequested { return "Finishing…" }
+            if service.isTransitioning { return "Releasing models…" }
+            return service.modelsLoaded ? "Microphone off · models loaded" : "Models unloaded"
+        }
+        if service.modelState == .preparing { return "Loading models…" }
+        return service.ambientEnabled ? "Saving speech locally" : "Starting microphone…"
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -90,7 +95,7 @@ struct PauseResumeButton: View {
         }
         .modifier(PrimaryGlassButton())
         .disabled(service.isPaused && service.isTransitioning)
-        .help("Pause stops listening, finishes saving captured speech, and unloads models.")
+        .help("Pause stops listening and finishes saving captured speech. The models stay loaded, so Resume is immediate.")
         .accessibilityIdentifier("service-pause-resume")
     }
 }
@@ -241,6 +246,10 @@ struct MenuControls: View {
                         .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                 }
                 Spacer()
+                if service.modelsLoaded && !service.isTransitioning {
+                    Button("Unload Models") { service.unloadModels() }.buttonStyle(.plain)
+                        .help("Frees the speech models' memory. Listening stops first; Resume loads them again.")
+                }
                 Button("Quit") { NSApp.terminate(nil) }.buttonStyle(.plain)
             }
             if service.ambientEnabled { LastSentence(library: service.library, timeline: service.timeline) }
