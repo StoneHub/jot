@@ -308,6 +308,10 @@ final class SpeechService: ObservableObject {
     private var preparation: Task<Void, Never>? { willSet { objectWillChange.send() } }
     private var pausing: Task<Void, Never>?
     private var unloading: Task<Void, Never>?
+    /// A hold while paused: the microphone starts for this hold alone. See `holdBegan`.
+    private var holdCapture: Task<Void, Never>?
+    /// The microphone is on for a held dictation only; release stops it and Jot is paused again.
+    private(set) var holdOnlyCapture = false
     private var sleepResume = SleepResumePolicy()
     var diagnostic: Task<SpeechOutput, Error>?
     private var tickCount = 0
@@ -316,7 +320,7 @@ final class SpeechService: ObservableObject {
     private var observers: [NSObjectProtocol] = []
     private var lastStatsTime = Date.distantPast
     lazy var input: DictationInput = {
-        let result = DictationInput(onStart: { [weak self] in self?.dictation.begin() }, onStop: { [weak self] released in self?.dictation.end(releasedAt: released) })
+        let result = DictationInput(onStart: { [weak self] in self?.holdBegan() }, onStop: { [weak self] released in self?.holdEnded(releasedAt: released) })
         result.shortcut = shortcut
         result.dictationEnabled = false
         result.suggestionShortcut = suggestionShortcut
@@ -335,7 +339,8 @@ final class SpeechService: ObservableObject {
             guard let self else { return "Jot is shutting down." }
             return DictationReadiness.blocker(phase: self.lifecycle.phase, modelsReady: self.modelState == .ready,
                 ambientEnabled: self.ambientEnabled, pauseRequested: self.pauseRequested, dictationPending: self.dictation.isPending,
-                dictationActive: self.dictation.isActive, diagnosticActive: self.diagnosticActive)
+                dictationActive: self.dictation.isActive, diagnosticActive: self.diagnosticActive,
+                microphoneStarting: self.preparing || self.holdCapture != nil)
         }
         result.onError = { [weak self] error in
             self?.notice = error.localizedDescription
@@ -344,7 +349,7 @@ final class SpeechService: ObservableObject {
             }
         }
         result.onRecover = { [weak self] in self?.dictation.recoverRecent() }
-        result.onDiscardTap = { [weak self] in self?.dictation.cancelTap() }
+        result.onDiscardTap = { [weak self] in self?.holdDiscarded() }
         return result
     }()
 
@@ -480,10 +485,8 @@ final class SpeechService: ObservableObject {
                 markPerformance(.modelsReady)
                 UserDefaults.standard.set(true, forKey: JotDefaultsKey.modelsPrepared)
                 cachedModelBytes = ModelCache.bytesOnDisk()
-                if ambientRequested {
-                    if fnRequested { await enableFn() }
-                    try await activateAmbient(); try continueMeeting()
-                }
+                if fnRequested { await enableFn() }
+                if ambientRequested { try await activateAmbient(); try continueMeeting() }
                 if lifecycle.acceptsWork(token) { notice = "" }
             } catch {
                 if lifecycle.finishStart(token, succeeded: false) {
@@ -753,7 +756,8 @@ final class SpeechService: ObservableObject {
         timeline.endSessionAudio(runPass: automatic)
         let outcome = PauseOutcome(automatic: automatic, ambientRequested: ambientRequested, meetingTitle: meetingTitle)
         ambientRequested = outcome.ambientRequested; meetingTitle = outcome.meetingTitle
-        input.disable(); fnEnabled = false
+        holdCapture?.cancel(); holdOnlyCapture = false
+        // The dictation tap stays on: with the models loaded, a hold while paused runs the microphone for the hold.
         updateSuggestionMonitoring()
         if dictation.isActive { dictation.end() }
         let loadingTask = preparation, fileTask = diagnostic
@@ -790,10 +794,75 @@ final class SpeechService: ObservableObject {
             await dependencies.unloadModels(pipeline)
             if lifecycle.finishPause(token) {
                 preparation = nil; notice = ""
+                // No models, no dictation: the tap stays on only for suggestions.
+                fnEnabled = false; updateSuggestionMonitoring()
                 markPerformance(.modelsUnloaded); scheduleTimer()
             }
             unloading = nil
         }
+    }
+
+    // MARK: A hold while paused
+
+    /// The dictation shortcut went down. Listening: the hold begins at once. Paused with the models loaded: the microphone
+    /// starts for this hold, in a session of its own, and the hold begins when it is up. A release before then stops it again.
+    func holdBegan() {
+        if canHoldDictation { dictation.begin(); return }
+        guard microphoneOff, holdCapture == nil else { return }
+        holdOnlyCapture = true
+        holdCapture = Task {
+            defer { holdCapture = nil }
+            do {
+                try await startHoldCapture()
+                guard !Task.isCancelled, holdOnlyCapture, ambientEnabled else { stopHoldCapture(); return }
+                dictation.begin()
+            } catch {
+                holdOnlyCapture = false
+                notice = error.localizedDescription
+            }
+        }
+    }
+
+    /// The shortcut came up: the hold ends as always, and a hold-only microphone stops.
+    func holdEnded(releasedAt released: Double) {
+        dictation.end(releasedAt: released)
+        if holdOnlyCapture { stopHoldCapture() }
+    }
+
+    /// A short tap discards the held intent, and a hold-only microphone stops.
+    func holdDiscarded() {
+        dictation.cancelTap()
+        if holdOnlyCapture { stopHoldCapture() }
+    }
+
+    private func startHoldCapture() async throws {
+        let token = lifecycle.generation
+        guard lifecycle.acceptsWork(token), !diagnosticActive, !pauseRequested, !ambientEnabled else {
+            throw JotError.message("The microphone cannot start for dictation right now.")
+        }
+        guard await requestMic() else { throw JotError.message("Microphone permission is required.") }
+        guard lifecycle.acceptsWork(token), !pauseRequested, !ambientEnabled, !Task.isCancelled else { return }
+        lastAudioAt = dependencies.now()
+        guard try await capture.startRetrying(shouldContinue: { lifecycle.acceptsWork(token) && !pauseRequested && !Task.isCancelled }) else { return }
+        guard !Task.isCancelled else { capture.stop(); return }
+        // No audio file: a dictation of one voice needs no speaker pass.
+        timeline.beginSession(at: dependencies.now(), withAudio: false)
+        ambientEnabled = true; updateKeepAwakeAssertion(); scheduleTimer()
+        recordEvent(.started, "Microphone started for a held dictation while paused.")
+    }
+
+    /// Ends a hold-only capture: the microphone stops, the hold's session closes, and Jot is paused again. If listening was
+    /// requested meanwhile, the microphone stays on and the session simply continues.
+    private func stopHoldCapture() {
+        holdOnlyCapture = false
+        holdCapture?.cancel()
+        guard !ambientRequested, ambientEnabled || capture.running else { return }
+        capture.stop(); drainAudio()
+        timeline.flushAmbient(final: true)
+        timeline.endSessionAudio(runPass: false)
+        ambientEnabled = false; updateKeepAwakeAssertion(); scheduleTimer()
+        recordEvent(.paused, "Microphone stopped after the held dictation.")
+        transcriber.kick()
     }
 
     private func tick() {
@@ -911,7 +980,7 @@ final class SpeechService: ObservableObject {
     func shutdown() {
         cleanup.shutdown()
         if ambientEnabled { recordEvent(.stopped, "Application quit; capture ended.") }
-        modelCheck?.cancel(); preparation?.cancel(); transcriber.cancel(); diagnostic?.cancel(); pausing?.cancel(); unloading?.cancel()
+        modelCheck?.cancel(); preparation?.cancel(); transcriber.cancel(); diagnostic?.cancel(); pausing?.cancel(); unloading?.cancel(); holdCapture?.cancel()
         suggestions.dismiss(action: .serviceStopped)
         timer?.invalidate(); dictation.releaseFieldEffects(); input.disable(); capture.stop(); updateKeepAwakeAssertion(); server?.stop()
         capture.stopWatching()
