@@ -260,9 +260,28 @@ final class SuggestionCoordinator {
                 var scenario = ScenarioInput(target: target, sources: sources)
                 scenario.association = .explicitRecentRequest
                 let selection = SourceSelector.select(scenario, limits: .window)
-                let selected = HeardSpeech.adding(heard, to: selection.selected, members: { context?.rows(for: [$0]) ?? [] }, limits: .window)
+                let addition = HeardSpeech.addition(heard, to: selection.selected, members: { context?.rows(for: [$0]) ?? [] }, limits: .window)
+                let selected = addition.selected
                 let usage = SuggestionHistoryEntry.usage(selected: selected, excluded: selection.excluded)
-                self.updateReceipt { $0.selected = usage.selected; $0.excluded = usage.excluded }
+                self.updateReceipt { receipt in
+                    receipt.selected = usage.selected
+                    receipt.excluded = usage.excluded
+                    if addition.duplicateSpeechCount > 0 {
+                        let existing = receipt.excluded.firstIndex { $0.reason == .duplicate }
+                        if let existing {
+                            let prior = receipt.excluded.remove(at: existing)
+                            receipt.excluded.append(.init(reason: .duplicate, count: prior.count + addition.duplicateSpeechCount))
+                        } else { receipt.excluded.append(.init(reason: .duplicate, count: addition.duplicateSpeechCount)) }
+                    }
+                    if addition.overLimitSpeechCount > 0 {
+                        let existing = receipt.excluded.firstIndex { $0.reason == .overLimit }
+                        if let existing {
+                            let prior = receipt.excluded.remove(at: existing)
+                            receipt.excluded.append(.init(reason: .overLimit, count: prior.count + addition.overLimitSpeechCount))
+                        } else { receipt.excluded.append(.init(reason: .overLimit, count: addition.overLimitSpeechCount)) }
+                    }
+                    receipt.excluded.sort { $0.reason.rawValue < $1.reason.rawValue }
+                }
                 self.usedScreen = selected.contains { $0.kind == ScreenContext.kind }
                 self.usedSpeech = selected.contains { $0.kind == "dictation" || $0.kind == "meeting-transcript" }
                 self.usedHeard = selected.contains { $0.kind == HeardSpeech.kind }
