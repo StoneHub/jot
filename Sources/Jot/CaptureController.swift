@@ -71,7 +71,8 @@ final class CaptureController: ObservableObject {
 
     func refreshInputDevices() {
         let devices = availableDevices()
-        if devices != inputDevices { resetInputSearch() }
+        // Core Audio creates temporary aggregate devices during a restart; they are not search candidates.
+        if devices.filter(\.automaticCandidate) != inputDevices.filter(\.automaticCandidate) { resetInputSearch() }
         inputDevices = devices
         systemDefaultInputName = defaultDeviceName() ?? "System Default"
         if let saved = inputDevices.first(where: { $0.id == selectedInputUID }), saved.name != selectedInputName {

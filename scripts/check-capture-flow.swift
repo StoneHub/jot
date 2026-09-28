@@ -45,7 +45,8 @@ enum CaptureFlowChecks {
             deliver: { _, _ in throw DictationInput.InputError.targetChanged },
             now: Date.init)
         dependencies.makeMicrophone = { microphone }
-        dependencies.availableInputs = { [.init(id: "built-in", name: "Built-in"), .init(id: "verification-hub", name: "Hub")] }
+        var connectedInputs: [AudioInputDevice] = [.init(id: "built-in", name: "Built-in"), .init(id: "verification-hub", name: "Hub")]
+        dependencies.availableInputs = { connectedInputs }
         dependencies.defaultInputUID = { "built-in" }
         dependencies.microphoneRetry = MicrophoneStartRetry(delays: [0.01, 0.01])
         dependencies.prepareModels = { _ in }
@@ -93,6 +94,9 @@ enum CaptureFlowChecks {
         await service.waitForInputChange()
         precondition(service.capture.selectedInputUID == "verification-hub" && service.capture.findingInput,
                      "Silent default input did not try the connected hub")
+        connectedInputs.append(.init(id: "temporary-aggregate", name: "Aggregate", automaticCandidate: false))
+        service.capture.refreshInputDevices()
+        precondition(service.capture.findingInput, "A temporary aggregate device reset the microphone search")
         microphone.pendingSamples = [Float](repeating: 0.01, count: 48_000)
         service.tickRecoveryVerification()
         await service.waitForRecoveryVerification()
