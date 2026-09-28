@@ -80,6 +80,24 @@ public final class ModelCallGate {
     }
 }
 
+extension ModelCallGate {
+    /// A task's value, or nil once `limit` passes; a late value is dropped and the task cancelled. For optional context,
+    /// such as a window image, that a request goes on without.
+    public static func value<Value: Sendable>(of task: Task<Value, Never>, within limit: Duration) async -> Value? {
+        await withCheckedContinuation { continuation in
+            let completion = Completion<Value?>(continuation)
+            Task {
+                let value = await task.value
+                completion.finish(value)
+            }
+            Task {
+                try? await Task.sleep(for: limit)
+                if completion.finish(nil) { task.cancel() }
+            }
+        }
+    }
+}
+
 @MainActor
 final class Completion<Value: Sendable> {
     private var continuation: CheckedContinuation<Value, Never>?

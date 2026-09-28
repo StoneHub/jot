@@ -220,6 +220,18 @@ extension TranscriptView {
                           isOn: $service.suggestionScreenContext,
                           indented: true, enabled: service.suggestionsEnabled && service.cleanupAvailability == .available)
             RowDivider()
+            SettingToggle(title: "Include window image", info: "Optional. When you ask for a suggestion, also gives the on-device model one image of the window around the field: the part above the field, in its column. It can show messages, an error or a chart that the text misses. It stays in memory for that request and is never saved. Needs Screen Recording permission, asked for when you turn this on, and macOS 27 with a model that takes images.",
+                          isOn: $service.suggestionWindowImage,
+                          indented: true, enabled: service.suggestionsEnabled && service.cleanupAvailability == .available,
+                          unavailable: !service.windowImageSupported)
+            if service.suggestionWindowImage && !service.screenRecordingAllowed {
+                RowDivider()
+                SettingRow(title: "Screen Recording", info: "Allow Jot in System Settings → Privacy & Security → Screen & System Audio Recording. macOS may ask you to reopen Jot. Until then, suggestions use text alone.",
+                           indented: true) {
+                    Button("Open System Settings") { service.openScreenRecordingSettings() }
+                }
+            }
+            RowDivider()
             SettingToggle(title: "Use matching speech", info: "When a selection quotes or paraphrases speech Jot heard within the context window, use the matching sentence to restore missing or misheard words in the rewrite.",
                           isOn: $service.suggestionHeardMatches,
                           indented: true, enabled: service.suggestionsEnabled && service.cleanupAvailability == .available)

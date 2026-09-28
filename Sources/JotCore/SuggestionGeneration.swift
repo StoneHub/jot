@@ -1,4 +1,5 @@
 import AppleFM
+import CoreGraphics
 import Foundation
 #if canImport(FoundationModels)
 import FoundationModels
@@ -8,10 +9,21 @@ import FoundationModels
 /// `complete` API is not used: it rejects blank input and serves a different purpose.
 public enum AppleFMGeneration {
     /// Keep equal to the Package.swift pin; a test checks it.
-    public static let revision = "737fac9e7147403f2777e0901f02452e8fc25ae7"
+    public static let revision = "bb7d0e84ef0e7aa04e3f521c61fe20e6dacb7f72"
     public static let sampling = "greedy"
 
     public static var availability: String { AppleFMClient().modelAvailability.rawValue }
+
+    /// "available" when the model is ready and takes an image with the prompt; otherwise why not, as an AppleFM value.
+    /// Checked before a window is captured, so an unsupported Mac never takes a screenshot.
+    public static var imageAvailability: String {
+        let client = AppleFMClient()
+        guard client.modelAvailability == .available else { return client.modelAvailability.rawValue }
+        let support = client.imageSupport
+        return support == .supported ? AppleFMAvailability.available.rawValue : support.rawValue
+    }
+
+    public static var acceptsImages: Bool { imageAvailability == AppleFMAvailability.available.rawValue }
 
     /// Each call is a fresh AppleFM session with no retained conversation state.
     public static func generate(_ request: ModelRequest) async throws -> String {
@@ -19,7 +31,7 @@ public enum AppleFMGeneration {
         if #available(macOS 26.0, *) {
             do {
                 return try await AppleFMClient().generate(instructions: request.instructions, prompt: request.prompt,
-                    options: GenerationOptions(sampling: .greedy, maximumResponseTokens: request.maximumResponseTokens))
+                    options: options(for: request))
             } catch AppleFMError.unavailable(let availability) {
                 throw ModelUnavailable(reason: availability.rawValue)
             }
@@ -27,4 +39,29 @@ public enum AppleFMGeneration {
         #endif
         throw ModelUnavailable(reason: AppleFMAvailability.unsupportedOS.rawValue)
     }
+
+    /// The same request with one image of the window around the field. The image is used for this call only. When the
+    /// model turns the image down after all, `textOnly` runs instead, within the same deadline.
+    public static func generate(_ request: ModelRequest, image: CGImage, textOnly: ModelRequest) async throws -> String {
+        #if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            do {
+                return try await AppleFMClient().generate(instructions: request.instructions, prompt: request.prompt,
+                    image: .cgImage(image), options: options(for: request))
+            } catch AppleFMError.unavailable(let availability) {
+                throw ModelUnavailable(reason: availability.rawValue)
+            } catch AppleFMError.imageUnsupported, AppleFMError.unreadableImage {
+                return try await generate(textOnly)
+            }
+        }
+        #endif
+        throw ModelUnavailable(reason: AppleFMAvailability.unsupportedOS.rawValue)
+    }
+
+    #if canImport(FoundationModels)
+    @available(macOS 26.0, *)
+    private static func options(for request: ModelRequest) -> GenerationOptions {
+        GenerationOptions(sampling: .greedy, maximumResponseTokens: request.maximumResponseTokens)
+    }
+    #endif
 }

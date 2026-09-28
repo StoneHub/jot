@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import Carbon
 import JotCore
+import ScreenCaptureKit
 
 /// Owns explicitly requested suggestion lifetimes. It never starts capture or speech models.
 @MainActor
@@ -12,6 +13,8 @@ final class SuggestionCoordinator {
     private let agentContext: AgentContext
     private let allowed: () -> Bool
     private let readsScreen: () -> Bool
+    /// Add one image of the window around the field, when Screen Recording is allowed and the model takes images.
+    private let includesWindowImage: () -> Bool
     private let matchesHeardSpeech: () -> Bool
     /// The learned user voice, so speech in the user's voice takes the user role even with no hold in that session.
     private let userVoice: () -> UserVoice?
@@ -48,6 +51,8 @@ final class SuggestionCoordinator {
         var deadlineMilliseconds: Int?
         var generationMilliseconds: Int?
         var previewMilliseconds: Int?
+        var windowImage: SuggestionHistoryEntry.WindowImageOutcome?
+        var windowImageMilliseconds: Int?
         var generationStartedAt: Date?
         var outcome: SuggestionHistoryEntry.Outcome = .requested
         var reason: SuggestionHistoryEntry.Reason?
@@ -61,6 +66,7 @@ final class SuggestionCoordinator {
                 selectionCharacters: selectionCharacters, selected: selected, excluded: excluded,
                 agentInput: agentInput, deadlineMilliseconds: deadlineMilliseconds,
                 generationMilliseconds: generationMilliseconds, previewMilliseconds: previewMilliseconds,
+                windowImage: windowImage, windowImageMilliseconds: windowImageMilliseconds,
                 outcome: outcome, reason: reason, action: action, complete: complete)
         }
     }
@@ -78,21 +84,26 @@ final class SuggestionCoordinator {
     private var usedHeard = false
     private var usedSpeech = false
     private var usedAgent = false
+    /// "off", "attached", or why no image went with the last request. Never the image.
+    private var windowImage = "off"
     /// Counts and outcomes only; never field, screen, prompt or output text.
     var diagnostics: [String: Any] { ["requests": requests, "insertions": insertions, "outcome": outcome, "reason": reason, "visible": card.isVisible,
                                     "keyboardEligible": keyboardAllowsSuggestions,
                                     "mode": lastMode, "screenContext": usedScreen, "speechContext": usedSpeech,
-                                    "heardContext": usedHeard, "agentContext": usedAgent, "agentMessagesHeld": agentContext.count] }
+                                    "heardContext": usedHeard, "agentContext": usedAgent, "agentMessagesHeld": agentContext.count,
+                                    "windowImage": windowImage] }
 
     static let needsNotes = "Jot needs a few rough notes. Type or dictate them here, then double-tap Fn."
 
     init(input: DictationInput, store: @escaping () -> TranscriptStore?,
          history: @escaping () -> SuggestionHistory? = { nil }, agentContext: AgentContext = AgentContext(),
          allowed: @escaping () -> Bool, readsScreen: @escaping () -> Bool = { true },
+         includesWindowImage: @escaping () -> Bool = { false },
          window: @escaping () -> TimeInterval = { 600 }, matchesHeardSpeech: @escaping () -> Bool = { true },
          userVoice: @escaping () -> UserVoice? = { nil }, notice: @escaping (String) -> Void) {
         self.input = input; self.store = store; self.history = history; self.agentContext = agentContext; self.allowed = allowed
-        self.readsScreen = readsScreen; self.window = window; self.matchesHeardSpeech = matchesHeardSpeech; self.notice = notice
+        self.readsScreen = readsScreen; self.includesWindowImage = includesWindowImage
+        self.window = window; self.matchesHeardSpeech = matchesHeardSpeech; self.notice = notice
         self.userVoice = userVoice
         refreshKeyboard()
         sourceObserver = DistributedNotificationCenter.default().addObserver(
@@ -155,6 +166,7 @@ final class SuggestionCoordinator {
             return
         }
         requests += 1; outcome = "loading"; reason = "none"; lastMode = "none"; usedScreen = false; usedSpeech = false; usedAgent = false; usedHeard = false
+        windowImage = "off"
         updateReceipt { $0.outcome = .loading }
         do { try input.captureTarget(wakeRetry: false) }
         catch {
@@ -187,6 +199,7 @@ final class SuggestionCoordinator {
         if blank && field.role != kAXTextAreaRole { showNotice(Self.needsNotes, reason: "needs-notes"); return }
         let store = self.store()
         let reader = readsScreen() ? input.screenContextReader() : nil
+        let imageCapture = includesWindowImage() ? windowImageCapture() : nil
         let heardNotes = matchesHeardSpeech() ? Self.draftNotes(in: field) : nil
         let window = self.window()
         let voice = userVoice()
@@ -205,11 +218,21 @@ final class SuggestionCoordinator {
             do {
                 let now = Date()
                 let screenTask = Task.detached(priority: .userInitiated) { reader?.read() }
+                let imageTask = imageCapture.map { capture in Task { await capture.capture(within: Self.windowImageBudget) } }
                 let heardTask = Task.detached(priority: .userInitiated) { Self.heardSpeech(matching: heardNotes, in: store, now: now, window: window) }
                 let context = try await Task.detached(priority: .userInitiated) { try store?.suggestionContext(window: window, now: now, userVoice: voice) }.value
                 let screen = await screenTask.value
                 let heard = await heardTask.value
+                let captured = await imageTask?.value
                 guard self.isCurrent(token, field: field) else { return }
+                // Taken for this field and this request only; a later request or a focus change never sees it.
+                let image = captured?.image
+                if let captured {
+                    let outcome: SuggestionHistoryEntry.WindowImageOutcome = captured.timedOut ? .captureTimedOut
+                        : image == nil ? .captureFailed : .attached
+                    self.windowImage = outcome.rawValue
+                    self.updateReceipt { $0.windowImage = outcome; $0.windowImageMilliseconds = captured.milliseconds }
+                }
                 var sources: [Source] = []
                 var excerpt: String?
                 if let screen, let text = ScreenContext.excerpt(screen.items, field: screen.field, visible: screen.visible) {
@@ -226,7 +249,7 @@ final class SuggestionCoordinator {
                     within: window, now: now) else {
                     self.dismiss(action: .sourcesChanged); return
                 }
-                let plan = SuggestionPlan.make(draft: field.draft, role: field.role, hasAssociatedContext: !sources.isEmpty)
+                let plan = SuggestionPlan.make(draft: field.draft, role: field.role, hasAssociatedContext: !sources.isEmpty || image != nil)
                 let mode: SuggestionMode
                 var before = field.draft.before, after = field.draft.after
                 switch plan {
@@ -299,8 +322,8 @@ final class SuggestionCoordinator {
                 }
                 self.rows = Array(Dictionary(uniqueKeysWithValues: ((context?.rows(for: selected) ?? []) + (self.usedHeard ? heard?.rows ?? [] : [])).map { ($0.id, $0) }).values)
                 // A reply needs something to answer. A continuation needs something to draw on: with only the user's text,
-                // the on-device model invents what comes next.
-                if selected.isEmpty {
+                // the on-device model invents what comes next. The window image counts: it may show what Accessibility missed.
+                if selected.isEmpty && image == nil {
                     if mode == .reply { self.showNotice(Self.needsNotes, reason: "no-context"); return }
                     if mode == .continuation {
                         self.showNotice("No suggestion: Jot has nothing from the last few minutes to continue from.", reason: "no-context")
@@ -309,14 +332,20 @@ final class SuggestionCoordinator {
                 }
                 // The conversation id ranked the sources; it is an opaque session id and says nothing to the model.
                 var prompted = scenario; prompted.target.conversation = nil
-                let request = SuggestionPrompt.request(for: prompted, sources: selected)
+                let textRequest = SuggestionPrompt.request(for: prompted, sources: selected)
+                let request = image == nil ? textRequest : SuggestionPrompt.addingWindowImage(to: textRequest)
                 let deadline = Self.deadline(for: mode)
                 self.updateReceipt {
                     $0.deadlineMilliseconds = mode == .reply ? 3_000 : 8_000
                     $0.generationStartedAt = Date()
                 }
-                let result = await self.gate.call(request, deadline: deadline,
-                                                  generator: { try await AppleFMGeneration.generate($0) })
+                let generator: ModelCallGate.Generator
+                if let image {
+                    generator = { try await AppleFMGeneration.generate($0, image: image, textOnly: textRequest) }
+                } else {
+                    generator = { try await AppleFMGeneration.generate($0) }
+                }
+                let result = await self.gate.call(request, deadline: deadline, generator: generator)
                 guard self.isCurrent(token, field: field) else { return }
                 self.updateReceipt { receipt in
                     if let began = receipt.generationStartedAt {
@@ -368,7 +397,8 @@ final class SuggestionCoordinator {
                         } else { title = "Suggested reply"; action = "Tab to insert" }
                         self.card.show(text: text.trimmingCharacters(in: .whitespaces), title: title,
                                        sources: SuggestionAttribution.line(plan: plan, selected: selected,
-                                                                           sessionTitle: context?.sessionTitle),
+                                                                           sessionTitle: context?.sessionTitle,
+                                                                           windowImage: image != nil),
                                        action: action, ready: true, at: frame)
                     case .abstained(let detail), .rejected(let detail):
                         let text: String
@@ -393,6 +423,20 @@ final class SuggestionCoordinator {
     }
 
 
+    /// Where to take this request's window image, or nil with the reason recorded. The image is optional: without
+    /// permission, image support or the field's window, the request goes on with text alone. Screen Recording is asked
+    /// for only when the setting is turned on, never here.
+    private func windowImageCapture() -> WindowImageCapture? {
+        let skipped: SuggestionHistoryEntry.WindowImageOutcome
+        if !WindowImageCapture.permitted { skipped = .noPermission }
+        else if !AppleFMGeneration.acceptsImages { skipped = .unsupported }
+        else if let capture = input.windowImageCapture() { return capture }
+        else { skipped = .noWindow }
+        windowImage = skipped.rawValue
+        updateReceipt { $0.windowImage = skipped }
+        return nil
+    }
+
     /// The notes a draft would rewrite; nil for a blank field, which gets a reply instead.
     private static func draftNotes(in field: DictationInput.SuggestionField) -> String? {
         guard case .draft(let seed) = SuggestionPlan.make(draft: field.draft, role: field.role, hasAssociatedContext: false) else {
@@ -407,6 +451,9 @@ final class SuggestionCoordinator {
         guard let notes, let store, let rows = try? store.heardRows(now: now, lookback: min(window, HeardSpeech.lookback)) else { return nil }
         return HeardSpeech.match(notes: notes, rows: rows)
     }
+
+    /// The longest a request waits for its window image. A later image is dropped and the request goes on with text alone.
+    private static let windowImageBudget: Duration = .seconds(1)
 
     /// A draft or a continuation can run to several sentences; the on-device model needs longer for them than for a one-line reply.
     private static func deadline(for mode: SuggestionMode) -> Duration { mode == .draft || mode == .continuation ? .seconds(8) : .seconds(3) }
@@ -541,6 +588,61 @@ final class SuggestionCoordinator {
                 self.notice("Nothing inserted: the target changed.")
             }
         }
+    }
+}
+
+/// One image of the window around the field, for a suggestion that asked for it. The image stays in memory for that
+/// request and is never saved; only an outcome and a duration reach diagnostics. The window must match the field's own
+/// window, as Accessibility reports it, or no image is taken.
+struct WindowImageCapture: Sendable {
+    let pid: pid_t
+    /// Accessibility's frame for the field's window, when it reports one.
+    let window: CGRect?
+    let field: CGRect
+
+    struct Result: Sendable {
+        let image: CGImage?
+        let timedOut: Bool
+        let milliseconds: Int
+    }
+
+    static var permitted: Bool { CGPreflightScreenCaptureAccess() }
+    /// Shows the system prompt the first time. After that, only System Settings can allow it.
+    @discardableResult static func requestPermission() -> Bool { CGRequestScreenCaptureAccess() }
+
+    /// `capture()`, timed, given up once `limit` passes.
+    @MainActor
+    func capture(within limit: Duration) async -> Result {
+        let began = Date()
+        let task = Task.detached(priority: .userInitiated) { await self.capture() }
+        let finished = await ModelCallGate.value(of: task, within: limit)
+        let milliseconds = min(60_000, max(0, Int(Date().timeIntervalSince(began) * 1_000)))
+        guard let finished else { return Result(image: nil, timedOut: true, milliseconds: milliseconds) }
+        return Result(image: finished, timedOut: false, milliseconds: milliseconds)
+    }
+
+    /// The field's window from its top to the bottom of the field, in the field's column. Nil when the window cannot
+    /// be told apart from the app's others or cannot be captured.
+    func capture() async -> CGImage? {
+        guard let content = try? await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true) else { return nil }
+        let windows = content.windows.map {
+            WindowImageGeometry.Window(id: $0.windowID, pid: $0.owningApplication?.processID ?? 0, frame: $0.frame, layer: $0.windowLayer)
+        }
+        guard let match = WindowImageGeometry.window(among: windows, pid: pid, windowFrame: window, field: field),
+              let target = content.windows.first(where: { $0.windowID == match.id }),
+              let region = WindowImageGeometry.region(window: match.frame, field: field) else { return nil }
+        let filter = SCContentFilter(desktopIndependentWindow: target)
+        guard let size = WindowImageGeometry.pixelSize(of: match.frame.size, scale: CGFloat(filter.pointPixelScale)) else { return nil }
+        let configuration = SCStreamConfiguration()
+        configuration.width = size.width
+        configuration.height = size.height
+        configuration.showsCursor = false
+        // Without the shadow, the image's edges are the window's frame, which the region is measured from.
+        configuration.ignoreShadowsSingleWindow = true
+        guard let image = try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration),
+              let pixels = WindowImageGeometry.pixelRegion(region, window: match.frame.size, image: (width: image.width, height: image.height))
+        else { return nil }
+        return image.cropping(to: pixels)
     }
 }
 

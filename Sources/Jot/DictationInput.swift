@@ -448,6 +448,30 @@ final class DictationInput {
         return ScreenContextReader(field: target.field, fieldFrame: frame, parent: parentValue as! AXUIElement, window: window)
     }
 
+    /// Where the captured field and its window are, for a suggestion's window image. Only frames are read, each with a
+    /// short timeout; the image itself is taken later, off the main actor.
+    func windowImageCapture() -> WindowImageCapture? {
+        guard let target, NSWorkspace.shared.frontmostApplication?.processIdentifier == target.pid else { return nil }
+        AXUIElementSetMessagingTimeout(target.field, 0.005)
+        defer { AXUIElementSetMessagingTimeout(target.field, 0) }
+        var positionValue: CFTypeRef?, sizeValue: CFTypeRef?, windowValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(target.field, kAXPositionAttribute as CFString, &positionValue) == .success,
+              AXUIElementCopyAttributeValue(target.field, kAXSizeAttribute as CFString, &sizeValue) == .success,
+              let field = ScreenContextReader.frame(position: positionValue, size: sizeValue) else { return nil }
+        var windowFrame: CGRect?
+        if AXUIElementCopyAttributeValue(target.field, kAXWindowAttribute as CFString, &windowValue) == .success,
+           let windowValue, CFGetTypeID(windowValue) == AXUIElementGetTypeID() {
+            let window = windowValue as! AXUIElement
+            AXUIElementSetMessagingTimeout(window, 0.005)
+            var windowPosition: CFTypeRef?, windowSize: CFTypeRef?
+            if AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &windowPosition) == .success,
+               AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &windowSize) == .success {
+                windowFrame = ScreenContextReader.frame(position: windowPosition, size: windowSize)
+            }
+        }
+        return WindowImageCapture(pid: target.pid, window: windowFrame, field: field)
+    }
+
     func suggestionFieldIsCurrent(_ expected: SuggestionField) -> Bool {
         guard expected.generation == targetGeneration, expected.keyRevision == suggestionKeyRevision,
               let current = readSuggestionField() else { return false }
