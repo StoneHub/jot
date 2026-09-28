@@ -6,6 +6,9 @@ import JotCore
 final class SpeakerRecognizer: ObservableObject {
     var speakerStore: SpeakerPassStore?
     var peopleStore: PeopleStore?
+    /// The user's own voice, learned from dictation holds and kept outside the database. See UserVoice.
+    var userVoiceStore: UserVoiceStore?
+    @Published private(set) var userVoice: UserVoice?
     /// Voices Jot remembers, for the People screen and for naming matching speakers after a pass.
     @Published private(set) var people: [Person] = []
     @Published private(set) var passRunning = false
@@ -104,7 +107,34 @@ final class SpeakerRecognizer: ObservableObject {
                 catch { service.recordEvent(.processingError, "Could not remember \(name)'s voice: \(error.localizedDescription)", duration: nil, session: id) }
             }
         }
+        learnUserVoice(session: id, speakers: result.speakers)
         return try recognizeSpeakers(result.speakers, session: id)
+    }
+
+    /// The pass speaker heard most during the session's dictation holds is the user. Its voice joins the learned user
+    /// voice, and the speaker is labeled You unless someone already named it. A session with no hold teaches nothing.
+    private func learnUserVoice(session id: String, speakers: [String: [Float]]) {
+        guard let store = service.library.store, let userVoiceStore else { return }
+        do {
+            guard let held = SuggestionContext.heldVoices(rows: try store.session(id: id))[id], held.heldSeconds >= 1,
+                  let embedding = speakers[held.speakerID] else { return }
+            userVoice = try userVoiceStore.learn(embedding, heldSeconds: held.heldSeconds)
+            if try store.labels(sessionID: id)[held.speakerID] == nil {
+                try store.label(sessionID: id, speakerID: held.speakerID, name: UserVoice.label)
+            }
+        } catch {
+            service.recordEvent(.processingError, "Could not learn your voice: \(error.localizedDescription)", duration: nil, session: id)
+        }
+    }
+
+    func loadUserVoice() { userVoice = userVoiceStore?.load() }
+
+    /// Forgets the learned voice. Sessions already labeled You keep the label; the next dictations teach it again.
+    func forgetUserVoice() {
+        do {
+            try userVoiceStore?.forget(); userVoice = nil
+            service.notice = "Your voice is forgotten. Jot learns it again from your next dictations."
+        } catch { service.notice = error.localizedDescription }
     }
 
     private func reportFailure(_ error: Error, session id: String) {
@@ -118,8 +148,17 @@ final class SpeakerRecognizer: ObservableObject {
         let labels = try store.labels(sessionID: id)
         let named = Set(labels.values.map(PeopleMatcher.nameKey))
         let people = try peopleStore.list().filter { !named.contains(PeopleMatcher.nameKey($0.name)) }
-        let unnamed = speakers.filter { labels[$0.key] == nil }
+        var unnamed = speakers.filter { labels[$0.key] == nil }
         var recognized: [String] = []
+        // The user's own voice first: the nearest unnamed speaker within the threshold, one per session, unless the session
+        // already has a You. Learned from holds only, so a match here does not feed the average.
+        if let you = userVoice, you.trusted, !named.contains(PeopleMatcher.nameKey(UserVoice.label)),
+           let nearest = unnamed.compactMap({ speaker, embedding in you.distance(to: embedding).map { (speaker, $0) } })
+                .min(by: { ($0.1, $0.0) < ($1.1, $1.0) }), nearest.1 <= PeopleMatcher.threshold {
+            try store.label(sessionID: id, speakerID: nearest.0, name: UserVoice.label)
+            unnamed[nearest.0] = nil
+            recognized.append(UserVoice.label)
+        }
         for match in PeopleMatcher.assignments(speakers: unnamed, people: people) {
             guard let person = people.first(where: { $0.id == match.id }), let embedding = unnamed[match.speaker] else { continue }
             try store.label(sessionID: id, speakerID: match.speaker, name: person.name)
@@ -147,10 +186,11 @@ final class SpeakerRecognizer: ObservableObject {
         if let voice { try remember(name, voice: voice) }
     }
 
-    /// The voice joins the person of that name, or starts a new one.
+    /// The voice joins the person of that name, or starts a new one. You is not a person: that voice is learned from holds.
     private func remember(_ name: String, voice: [Float]) throws {
         guard let peopleStore else { return }
         let key = PeopleMatcher.nameKey(name)
+        guard key != PeopleMatcher.nameKey(UserVoice.label) else { return }
         if let person = try peopleStore.list().first(where: { PeopleMatcher.nameKey($0.name) == key }) { try peopleStore.updateEmbedding(id: person.id, with: voice) }
         else { try peopleStore.add(name: name, embedding: voice) }
         refreshPeople()

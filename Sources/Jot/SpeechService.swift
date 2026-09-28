@@ -52,6 +52,7 @@ final class SpeechService: ObservableObject {
         readsScreen: { [weak self] in self?.suggestionScreenContext == true },
         window: { [weak self] in TimeInterval((self?.suggestionWindowMinutes ?? 10) * 60) },
         matchesHeardSpeech: { [weak self] in self?.suggestionHeardMatches == true },
+        userVoice: { [weak self] in self?.speakers.userVoice },
         notice: { [weak self] in self?.notice = $0 })
     lazy var timeline = ListeningTimeline(service: self)
     lazy var cleanup = LiveCleanup(service: self)
@@ -376,6 +377,8 @@ final class SpeechService: ObservableObject {
             try dictation.finalizeInterruptedAttempts()
             speakers.speakerStore = try SpeakerPassStore(sharing: opened)
             speakers.peopleStore = try PeopleStore(sharing: opened); speakers.refreshPeople()
+            // Outside the database on purpose: a format rebuild keeps the user's voice.
+            speakers.userVoiceStore = UserVoiceStore(directory: JotPaths.directory); speakers.loadUserVoice()
             let service = LocalServiceServer { [weak self] data in
                 guard let self else { return Data("{\"ok\":false,\"error\":\"Service unavailable\"}".utf8) }
                 return await self.handle(data)

@@ -275,6 +275,40 @@ final class SuggestionEvaluationInteractionTests: XCTestCase {
                        "Recent dictation + meeting ‘Standup’")
     }
 
+    func testTheLearnedVoiceAndTheYouLabelMakeAmbientRowsTheUsers() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        var labeled = Transcript(id: "c", sessionID: "s2", startedAt: now.addingTimeInterval(100), startSeconds: 0, endSeconds: 2,
+                                 text: "Merge after lunch.", speakerID: "speaker-3", mode: "ambient")
+        labeled.speakerLabel = UserVoice.label
+        let rows = [
+            Transcript(id: "a", sessionID: "s1", startedAt: now, startSeconds: 0, endSeconds: 2, text: "Ship it today.", speakerID: "speaker-1", mode: "ambient"),
+            Transcript(id: "b", sessionID: "s1", startedAt: now, startSeconds: 10, endSeconds: 12, text: "I disagree.", speakerID: "speaker-2", mode: "ambient"),
+            labeled,
+        ]
+        let plain = SuggestionContext(rows: rows, sessionTitle: nil)
+        XCTAssertEqual(plain.sources.map(\.role), ["unknown", "unknown", "user"], "A You label from the pass is the user")
+        XCTAssertNil(plain.sources[2].speaker, "You is not a participant named You")
+        let matched = SuggestionContext(rows: rows, sessionTitle: nil,
+                                        userSpeakers: [SuggestionContext.userSpeakerKey(session: "s1", speaker: "speaker-1")])
+        XCTAssertEqual(matched.sources.map(\.role), ["user", "unknown", "user"], "A pass voice matching the learned voice is the user")
+        XCTAssertTrue(SuggestionContext.heldVoices(rows: rows).isEmpty, "No hold, nothing to learn from")
+    }
+
+    func testTheVoiceHeardMostDuringHoldsIsWhatThePassLearnsFrom() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let rows = [
+            Transcript(id: "hold", sessionID: "s1", startedAt: now, startSeconds: 0, endSeconds: 6, text: "Dictated.", mode: "dictation"),
+            Transcript(id: "mine", sessionID: "s1", startedAt: now, startSeconds: 0, endSeconds: 5, text: "Dictated.", speakerID: "speaker-1", mode: "ambient"),
+            Transcript(id: "theirs", sessionID: "s1", startedAt: now, startSeconds: 7, endSeconds: 9, text: "Huh?", speakerID: "speaker-2", mode: "ambient"),
+            Transcript(id: "later", sessionID: "s1", startedAt: now, startSeconds: 20, endSeconds: 22, text: "Also mine.", speakerID: "speaker-1", mode: "ambient"),
+        ]
+        let held = SuggestionContext.heldVoices(rows: rows)
+        XCTAssertEqual(held["s1"]?.speakerID, "speaker-1")
+        XCTAssertEqual(held["s1"]?.heldSeconds ?? 0, 5, accuracy: 0.001)
+        XCTAssertEqual(SuggestionContext(rows: rows, sessionTitle: nil).sources.map(\.role), ["user", "unknown", "user"],
+                       "Within the session, the held voice's other rows are already the user's")
+    }
+
     func testStoreContextUsesTimeWindowLatestSessionAndRevalidatesEditsAndDeletion() throws {
         let directory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

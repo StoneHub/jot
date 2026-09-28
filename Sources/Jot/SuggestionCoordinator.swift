@@ -13,6 +13,8 @@ final class SuggestionCoordinator {
     private let allowed: () -> Bool
     private let readsScreen: () -> Bool
     private let matchesHeardSpeech: () -> Bool
+    /// The learned user voice, so speech in the user's voice takes the user role even with no hold in that session.
+    private let userVoice: () -> UserVoice?
     /// Seconds of speech and agent messages a request may use.
     private let window: () -> TimeInterval
     private let notice: (String) -> Void
@@ -88,9 +90,10 @@ final class SuggestionCoordinator {
          history: @escaping () -> SuggestionHistory? = { nil }, agentContext: AgentContext = AgentContext(),
          allowed: @escaping () -> Bool, readsScreen: @escaping () -> Bool = { true },
          window: @escaping () -> TimeInterval = { 600 }, matchesHeardSpeech: @escaping () -> Bool = { true },
-         notice: @escaping (String) -> Void) {
+         userVoice: @escaping () -> UserVoice? = { nil }, notice: @escaping (String) -> Void) {
         self.input = input; self.store = store; self.history = history; self.agentContext = agentContext; self.allowed = allowed
         self.readsScreen = readsScreen; self.window = window; self.matchesHeardSpeech = matchesHeardSpeech; self.notice = notice
+        self.userVoice = userVoice
         refreshKeyboard()
         sourceObserver = DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String), object: nil, queue: .main
@@ -186,6 +189,7 @@ final class SuggestionCoordinator {
         let reader = readsScreen() ? input.screenContextReader() : nil
         let heardNotes = matchesHeardSpeech() ? Self.draftNotes(in: field) : nil
         let window = self.window()
+        let voice = userVoice()
         let loading: String
         switch SuggestionPlan.make(draft: field.draft, role: field.role, hasAssociatedContext: true) {
         case .draft: loading = "Rewriting your selection…"
@@ -202,7 +206,7 @@ final class SuggestionCoordinator {
                 let now = Date()
                 let screenTask = Task.detached(priority: .userInitiated) { reader?.read() }
                 let heardTask = Task.detached(priority: .userInitiated) { Self.heardSpeech(matching: heardNotes, in: store, now: now, window: window) }
-                let context = try await Task.detached(priority: .userInitiated) { try store?.suggestionContext(window: window, now: now) }.value
+                let context = try await Task.detached(priority: .userInitiated) { try store?.suggestionContext(window: window, now: now, userVoice: voice) }.value
                 let screen = await screenTask.value
                 let heard = await heardTask.value
                 guard self.isCurrent(token, field: field) else { return }

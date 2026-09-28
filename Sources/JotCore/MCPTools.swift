@@ -37,8 +37,8 @@ public struct MCPTool {
         MCPTool("speakers_label", "speakers.label", "Name one speaker in one session. Jot also remembers the voice once the session's speaker pass has run, and names it in later sessions.", ["sessionID": ["type": "string"], "speakerID": ["type": "string"], "name": ["type": "string", "maxLength": 200]], ["sessionID", "speakerID", "name"]),
         MCPTool("context_add", "context.add", "Give Jot one message from the current agent conversation, so a suggestion the user requests can draw on it. Kept in memory for the suggestion window only, never saved. Role is user or assistant; source names the app.", ["role": ["type": "string", "maxLength": 9], "source": ["type": "string", "maxLength": 64], "conversation": ["type": "string", "maxLength": 200], "text": ["type": "string", "maxLength": 8192]], ["role", "source", "text"]),
         MCPTool("context_clear", "context.clear", "Forget every agent message Jot is holding for suggestions.", [:], []),
-        MCPTool("people_list", "people.list", "List the voices Jot remembers: id, name, and how many voice samples each holds. Embeddings are not returned.", [:], []),
-        MCPTool("people_forget", "people.delete", "Forget one remembered voice by id when the user asks. Names already written into sessions stay.", ["id": ["type": "string"]], ["id"])
+        MCPTool("people_list", "people.list", "List the voices Jot remembers: id, name, and how many voice samples each holds. The first row, id \"you\", is the user's own voice learned from dictation once Jot has learned it. Embeddings are not returned.", [:], []),
+        MCPTool("people_forget", "people.delete", "Forget one remembered voice by id when the user asks; id \"you\" forgets the user's own learned voice. Names already written into sessions stay.", ["id": ["type": "string"]], ["id"])
     ]
     public static let limitSchema: [String: Any] = ["type": "integer", "minimum": 1, "maximum": 200, "default": 50]
 
