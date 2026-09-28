@@ -68,6 +68,8 @@ final class SpeechService: ObservableObject {
             availableDevices: dependencies.availableInputs, defaultDeviceUID: dependencies.defaultInputUID)
         capture.onNotice = { [weak self] in self?.notice = $0 }
     }
+    /// A fresh listening start opens Live; input changes preserve the current tab.
+    @Published private(set) var livePresentationRevision = 0
     @Published private(set) var switchingInput = false
     @Published private(set) var preparingUpdate = false
     private var inputChange: Task<Void, Never>?
@@ -823,6 +825,7 @@ final class SpeechService: ObservableObject {
         guard try await capture.startRetrying(shouldContinue: { lifecycle.acceptsWork(token) && ambientRequested && !pauseRequested }) else { return }
         timeline.beginSession(at: dependencies.now())
         ambientEnabled = true; updateKeepAwakeAssertion(); scheduleTimer()
+        if !switchingInput { livePresentationRevision &+= 1 }
         recordEvent(.started, "Ambient microphone capture started."); notice = ""
     }
 
@@ -956,6 +959,7 @@ final class SpeechService: ObservableObject {
         // No audio file: a dictation of one voice needs no speaker pass.
         timeline.beginSession(at: dependencies.now(), withAudio: false)
         ambientEnabled = true; updateKeepAwakeAssertion(); scheduleTimer()
+        if !switchingInput { livePresentationRevision &+= 1 }
         recordEvent(.started, "Microphone started for a held dictation while paused.")
     }
 

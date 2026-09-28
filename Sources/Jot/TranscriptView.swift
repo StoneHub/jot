@@ -106,8 +106,8 @@ struct TranscriptView: View {
         .onDisappear { copyReset?.cancel() }
         .sheet(isPresented: $service.showingSavedDictation) { SavedDictationReview(service: service) }
         .onChange(of: library.historyRevision) { _, _ in copiedID = nil }
-        // Capture starting is the one moment Live is opened for the user; after that the choice is theirs.
-        .onChange(of: service.ambientEnabled) { _, on in if on { section = .live } }
+        // A fresh start opens Live; changing microphones leaves the current tab and selection alone.
+        .onChange(of: service.livePresentationRevision) { _, _ in section = .live }
     }
 
     private var sidebar: some View {

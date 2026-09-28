@@ -75,11 +75,13 @@ enum CaptureFlowChecks {
         precondition(service.input.startBlocker() == nil, "A shortcut press is blocked while listening")
 
         let beforeSwitch = service.timeline.sessionID
+        let presentationBeforeSwitch = service.livePresentationRevision
         microphone.pendingSamples = [Float](repeating: 0.01, count: 8000)
         service.setInput(uid: "verification-hub")
         await service.waitForInputChange()
         precondition(service.capture.selectedInputUID == "verification-hub" && service.ambientEnabled && microphone.running,
                      "Choosing a microphone while listening did not switch and resume: \(service.notice), \(service.capture.selectedInputUID), \(service.mode)")
+        precondition(service.livePresentationRevision == presentationBeforeSwitch, "Changing input took over the current tab")
         let saved = try service.library.store!.session(id: beforeSwitch)
         precondition(saved.count == 1 && saved[0].endSeconds == 0.5, "Changing microphone lost the final half second")
         precondition(service.timeline.sessionID != beforeSwitch, "The new input reused the old recognition timeline")
