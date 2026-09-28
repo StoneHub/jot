@@ -253,7 +253,10 @@ final class SuggestionCoordinator {
                     receipt.beforeEndsSentence = SuggestionPrompt.endsSentence(before)
                 }
                 self.lastMode = mode.rawValue
+                // The matched agent conversation is the field's own: naming it on the target puts its turns in the selector's
+                // conversation tier, above the room's speech, so a busy room cannot crowd them out of the bound.
                 let target = JotCore.Target(app: field.appName, mode: mode, purpose: Self.purpose(of: field),
+                                            conversation: agentSources.first?.scope.conversation,
                                             inputRevision: field.draft.revision, before: before, after: after,
                                             requestedAt: ISO8601DateFormatter().string(from: now),
                                             seed: self.seed?.text, window: screen?.window)
@@ -300,7 +303,9 @@ final class SuggestionCoordinator {
                         return
                     }
                 }
-                let request = SuggestionPrompt.request(for: scenario, sources: selected)
+                // The conversation id ranked the sources; it is an opaque session id and says nothing to the model.
+                var prompted = scenario; prompted.target.conversation = nil
+                let request = SuggestionPrompt.request(for: prompted, sources: selected)
                 let deadline = Self.deadline(for: mode)
                 self.updateReceipt {
                     $0.deadlineMilliseconds = mode == .reply ? 3_000 : 8_000

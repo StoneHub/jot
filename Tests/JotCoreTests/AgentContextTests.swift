@@ -18,6 +18,34 @@ final class AgentContextTests: XCTestCase {
         XCTAssertEqual(context.count, 2)
     }
 
+    /// The room can be louder than the conversation: a video after the user's exchange fills the recency order. The
+    /// conversation the field belongs to sits in the selector's conversation tier, so the bound drops the video instead.
+    func testAMatchedConversationOutranksNewerSpeechAtTheBound() throws {
+        let context = AgentContext()
+        try context.add(role: "user", source: "codex", conversation: "c1", text: "Clean up the Fleet worktrees.", now: now.addingTimeInterval(-300))
+        try context.add(role: "assistant", source: "codex", conversation: "c1",
+                        text: "Done. The Fleet worktrees are removed and main is clean. Start a new Fleet feature or skill next?", now: now.addingTimeInterval(-240))
+        let agent = context.sources(within: 600, now: now)
+        let formatter = ISO8601DateFormatter()
+        let video = (0..<13).map { index in
+            Source(id: "video-\(index)", kind: "meeting-transcript", role: "unknown", origin: "jot", scope: Source.Scope(session: "s1"),
+                   timestamp: formatter.string(from: now.addingTimeInterval(Double(index) - 120)), revision: 1, status: .current,
+                   text: "Video sentence \(index), about something else entirely.")
+        }
+        let target = Target(app: "Codex", mode: .reply, purpose: "agent-prompt", conversation: "c1", before: "", after: "", requestedAt: "now")
+        var input = ScenarioInput(target: target, sources: video + agent)
+        input.association = .explicitRecentRequest
+        let selected = SourceSelector.select(input, limits: .window).selected
+        XCTAssertEqual(selected.count, SelectionLimits.window.maximumSources)
+        XCTAssertTrue(agent.allSatisfy { message in selected.contains { $0.id == message.id } }, "Both turns of the matched conversation survive the bound")
+        XCTAssertEqual(selected.filter { $0.kind == "meeting-transcript" }.count, 10, "The newest video sentences fill the rest")
+
+        var untargeted = input
+        untargeted.target.conversation = nil
+        XCTAssertFalse(SourceSelector.select(untargeted, limits: .window).selected.contains { $0.kind == AgentContext.kind },
+                       "Without the conversation on the target, thirteen newer video sentences crowd the conversation out")
+    }
+
     func testMessagesOlderThanTheWindowAreForgotten() throws {
         let context = AgentContext()
         try context.add(role: "user", source: "codex", text: "old", now: now.addingTimeInterval(-601))
