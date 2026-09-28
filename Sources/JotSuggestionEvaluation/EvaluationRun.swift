@@ -7,6 +7,19 @@ enum EvaluationMode: String, CaseIterable {
     case oracleContext = "oracle-context"
 }
 
+/// Which selection bounds a run uses: the experiment's, or the app's (`SelectionLimits.window`).
+enum EvaluationLimits: String, CaseIterable {
+    case experiment, window
+    var limits: SelectionLimits { self == .window ? .window : .experiment }
+}
+
+/// How a run associates sources with the target: by authored scope, or as the app does for an explicit request, where
+/// every source in the window qualifies and only the bounds choose.
+enum EvaluationAssociation: String, CaseIterable {
+    case scoped, explicit
+    var association: ContextAssociation { self == .explicit ? .explicitRecentRequest : .scoped }
+}
+
 enum Outcome: String {
     case suggest, abstain, invalidate, rejected, unavailable, error, timeout
 }
@@ -17,7 +30,8 @@ struct EvaluationConfiguration {
     var runID = UUID().uuidString.lowercased()
     /// `apple-fm` for the executable; `test-fake` marks records made by an injected test generator.
     var generatorLabel: String
-    var limits = SelectionLimits.experiment
+    var limits = EvaluationLimits.experiment
+    var association = EvaluationAssociation.scoped
     var deadline: Duration = .seconds(2)
     /// The app's deadline for a draft or a continuation: either can run to several sentences.
     var draftDeadline: Duration = .seconds(8)
@@ -160,14 +174,15 @@ final class SuggestionEvaluation {
 
     func evaluate(_ scenario: CorpusScenario, iteration: Int) async -> EvaluationRecord {
         let began = ContinuousClock.now
-        let input = scenario.input
+        var input = scenario.input
+        input.association = configuration.association.association
         let selection: SourceSelection
         switch configuration.mode {
         case .normal:
-            selection = SourceSelector.select(input, limits: configuration.limits)
+            selection = SourceSelector.select(input, limits: configuration.limits.limits)
         case .oracleContext:
             selection = SourceSelector.oracleContext(input, included: scenario.oracle.expected.includedSources,
-                                                     limits: configuration.limits)
+                                                     limits: configuration.limits.limits)
         }
         var record = EvaluationRecord(scenarioID: scenario.id, iteration: iteration, configuration: configuration,
                                       selection: selection)
@@ -304,8 +319,9 @@ struct RunMetadata {
         object["runtime"] = ["operatingSystem": runtime.operatingSystem, "hardwareModel": nullable(runtime.hardwareModel),
                              "modelAvailability": runtime.modelAvailability, "model": "SystemLanguageModel.default",
                              "modelRevision": NSNull(), "appleFMRevision": AppleFMGeneration.revision] as [String: Any]
-        object["selection"] = ["maximumSources": configuration.limits.maximumSources,
-                               "maximumSourceBytes": configuration.limits.maximumSourceBytes]
+        object["selection"] = ["limits": configuration.limits.rawValue, "association": configuration.association.rawValue,
+                               "maximumSources": configuration.limits.limits.maximumSources,
+                               "maximumSourceBytes": configuration.limits.limits.maximumSourceBytes] as [String: Any]
         object["generation"] = ["sampling": AppleFMGeneration.sampling,
                                 "maximumResponseTokens": SuggestionPrompt.maximumResponseTokens,
                                 // Scaled to the notes within this range; prompts.jsonl has each request's value.

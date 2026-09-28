@@ -34,9 +34,10 @@ public struct SourceSelection: Equatable, Sendable {
 }
 
 /// Deterministic retrieval over one scenario's sources: explicit pins and scope, role and provenance,
-/// current revisions, duplicates and the size bounds. Time never makes a source relevant; it only
-/// orders sources that already qualify when the bounds force a choice. Whole sources are kept or
-/// excluded, never truncated, so a negation or prerequisite cannot be cut off.
+/// current revisions, duplicates and the size bounds. When the bounds force a choice, the field's own
+/// context, the user's own words and the sources that share the field's terms come before the rest;
+/// time never makes a source relevant and only breaks ties. Whole sources are kept or excluded, never
+/// truncated, so a negation or prerequisite cannot be cut off.
 public enum SourceSelector {
     public static func select(_ input: ScenarioInput, limits: SelectionLimits = .experiment) -> SourceSelection {
         var reasons: [String: ExclusionReason] = [:]
@@ -88,20 +89,33 @@ public enum SourceSelector {
         return sharesProject || sharesConversation ? nil : .unknownScope
     }
 
-    /// Pins, then this conversation, then the project; newest first within a tier.
+    /// Pins, then the field's own context (the text visible above it and the conversation it belongs to), then the rest.
+    /// Within a tier the user's own words come first, then the sources that share the most distinctive words and
+    /// three-word runs with the field's text, notes and own context; newer wins a tie. So a video playing after the
+    /// user's spoken reply, or a phone call after a dictated note, fills what room is left rather than taking theirs.
     private static func bounded(_ candidates: [Source], reasons: [String: ExclusionReason], input: ScenarioInput,
                                 limits: SelectionLimits) -> SourceSelection {
-        func tier(_ source: Source) -> Int {
-            if source.kind == "pinned-selection" { return 0 }
-            if source.scope.conversation != nil && source.scope.conversation == input.target.conversation { return 1 }
-            return 2
+        func ownContext(_ source: Source) -> Bool {
+            source.kind == ScreenContext.kind
+                || (source.scope.conversation != nil && source.scope.conversation == input.target.conversation)
         }
-        let ranked = candidates.enumerated().sorted { first, second in
-            let (a, b) = (first.element, second.element)
-            if tier(a) != tier(b) { return tier(a) < tier(b) }
-            if a.timestamp != b.timestamp { return a.timestamp > b.timestamp }
-            return first.offset < second.offset
-        }.map(\.element)
+        let query = HeardSpeech.Terms(([input.target.before, input.target.after, input.target.seed ?? ""]
+            + input.sources.filter(ownContext).map(\.text)).joined(separator: " "))
+        struct Ranked { let offset: Int; let source: Source; let tier: Int; let own: Bool; let relevance: Int }
+        let ranked = candidates.enumerated().map { offset, source -> Ranked in
+            // One shared word is noise ("until", "tonight"); two, or a shared run, says the source is about the same thing.
+            let shared = HeardSpeech.Terms(source.text).shared(with: query)
+            let relevance = shared.words >= 2 || shared.runs > 0 ? shared.words + 2 * shared.runs : 0
+            return Ranked(offset: offset, source: source,
+                          tier: source.kind == "pinned-selection" ? 0 : ownContext(source) ? 1 : 2,
+                          own: source.role == "user", relevance: relevance)
+        }.sorted { a, b in
+            if a.tier != b.tier { return a.tier < b.tier }
+            if a.own != b.own { return a.own }
+            if a.relevance != b.relevance { return a.relevance > b.relevance }
+            if a.source.timestamp != b.source.timestamp { return a.source.timestamp > b.source.timestamp }
+            return a.offset < b.offset
+        }.map(\.source)
         var reasons = reasons
         var kept: Set<String> = []
         var bytes = 0

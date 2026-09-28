@@ -37,7 +37,7 @@ class SuggestionFixtureTests(unittest.TestCase):
     def test_committed_corpus_is_valid(self):
         self.assertEqual(fixtures.validate(self.corpus), [])
         modes = [scenario['target']['mode'] for scenario in self.corpus['scenarios']]
-        self.assertTrue(10 <= modes.count('reply') + modes.count('shell-command') <= 14)
+        self.assertTrue(10 <= modes.count('reply') + modes.count('shell-command') <= 17, 'reply and shell cases, including the three relevance-at-the-bound cases')
         self.assertTrue(5 <= modes.count('draft') <= 8, 'a focused set of draft cases')
         self.assertTrue(3 <= modes.count('continuation') <= 6, 'a focused set of continuation cases')
 
