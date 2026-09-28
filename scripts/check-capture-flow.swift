@@ -11,6 +11,7 @@ enum CaptureFlowChecks {
         var running = false
         var pendingSamples: [Float] = []
         var selectedUID: String?
+        var failingUIDs = Set<String>()
         var bufferedSampleCount: Int { pendingSamples.count }
         func setInput(uid: String?) throws {
             precondition(!running, "The input was changed before its captured samples were drained")
@@ -20,7 +21,7 @@ enum CaptureFlowChecks {
         func shouldIgnoreConfigurationChange() -> Bool { false }
         func start() throws {
             startCalls += 1
-            if startCalls <= failuresBeforeStart { throw JotError.message("bad device") }
+            if startCalls <= failuresBeforeStart || selectedUID.map(failingUIDs.contains) == true { throw JotError.message("bad device") }
             running = true
         }
         func stop() { running = false }
@@ -57,6 +58,10 @@ enum CaptureFlowChecks {
         service.library.store = try TranscriptStore(directory: directory)
         service.capture.refreshInputDevices()
         service.automaticMicrophone = true
+        service.highlightTargetField = false
+        service.muteSpeakersDuringDictation = false
+        service.cleanUpDictation = false
+        try service.capture.setInput(uid: "")
         service.keepAudioForSpeakerPass = false
         service.cleanUpTranscriptions = false
         defer { service.shutdown() }
@@ -92,6 +97,36 @@ enum CaptureFlowChecks {
         precondition(!service.capture.findingInput && service.capture.selectedInputUID == "verification-hub",
                      "Automatic search did not keep the input with sound")
         print("PASS: changing a listening microphone saves its tail and resumes; digital silence automatically finds the hub with sound.")
+
+        service.holdBegan()
+        let heldSession = service.timeline.sessionID
+        microphone.pendingSamples = [Float](repeating: 0.01, count: 8000)
+        service.setInput(uid: "built-in")
+        await service.waitForInputChange()
+        let heldRows = try service.library.store!.session(id: heldSession)
+        precondition(heldRows.contains { $0.mode == "dictation" } && !service.dictation.isActive && microphone.running,
+                     "Switching during a hold lost its saved dictation")
+
+        microphone.pendingSamples = [Float](repeating: 0.01, count: 8000)
+        service.setInput(uid: "")
+        service.pause()
+        await service.waitForInputChange()
+        precondition(!service.ambientEnabled && !microphone.running, "A Pause clicked during switching was ignored")
+        service.prepare(confirmingDownload: true)
+        await service.waitForPreparation()
+        microphone.failingUIDs = ["verification-hub"]
+        microphone.pendingSamples = [Float](repeating: 0, count: 160_000)
+        service.tickRecoveryVerification()
+        await service.waitForInputChange()
+        precondition(service.capture.selectedInputUID.isEmpty && microphone.running && !service.capture.findingInput,
+                     "A microphone that cannot start did not fall back to the original input")
+        microphone.pendingSamples = [Float](repeating: 0, count: 160_000)
+        service.tickRecoveryVerification()
+        await service.waitForInputChange()
+        precondition(service.capture.selectedInputUID.isEmpty && !service.switchingInput,
+                     "Automatic input search kept retrying an exhausted list")
+        microphone.failingUIDs = []
+        print("PASS: switching keeps a held dictation, honors Pause during the change, and restores the original input after an alternative fails.")
 
         // An open menu or a live window resize runs the main run loop in event-tracking mode, from an event the run loop delivers. AppKit makes that mode common; this tool has no NSApplication, so it does the same, and a one-shot timer stands in for the event.
         let tracking = CFRunLoopMode(RunLoop.Mode.eventTracking.rawValue as CFString)
@@ -194,8 +229,12 @@ enum CaptureFlowChecks {
         while !service.ambientEnabled { try await Task.sleep(for: .milliseconds(5)) }
         await service.waitForPreparation()
         precondition(microphone.running && service.meetingTitle == "Update check", "A failed update did not restore listening")
+        try await service.prepareForUpdate()
+        service.cancelUpdatePreparation()
         service.pause()
+        await Task.yield()
         while service.pauseRequested { try await Task.sleep(for: .milliseconds(5)) }
+        precondition(!microphone.running && !service.ambientRequested, "Failed update ignored an immediate explicit Pause")
         try await service.prepareForUpdate()
         precondition(UserDefaults.standard.bool(forKey: JotDefaultsKey.servicePaused), "Updating a paused app would start capture at relaunch")
         service.cancelUpdatePreparation()

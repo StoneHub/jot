@@ -72,6 +72,7 @@ final class SpeechService: ObservableObject {
     @Published private(set) var preparingUpdate = false
     private var inputChange: Task<Void, Never>?
     private var resumeAfterUpdate = false
+    private var updateRecovery: Task<Void, Never>?
 
     // MARK: Settings
 
@@ -324,7 +325,7 @@ final class SpeechService: ObservableObject {
     private var directoryLock: DirectoryLock?
     var suggestionHistory: SuggestionHistory?
     private var timer: Timer?
-    /// A `jot` file diagnostic is running. Published because the microphone picker and Update read it through canChangeInput.
+    /// A `jot` file diagnostic is running; app replacement waits for it to settle.
     @Published var diagnosticActive = false
     /// Screens read `preparing` from this, so a change redraws them the way the stored flag's mode update did.
     private var preparation: Task<Void, Never>? { willSet { objectWillChange.send() } }
@@ -688,9 +689,12 @@ final class SpeechService: ObservableObject {
         UserDefaults.standard.removeObject(forKey: JotDefaultsKey.updateMeetingTitle)
         if resumeAfterUpdate {
             // A timeout can occur while Pause still drains: resume only after that work has settled.
-            Task {
+            updateRecovery?.cancel()
+            updateRecovery = Task {
                 if let pausing { await pausing.value }
+                guard !Task.isCancelled, ambientRequested else { return }
                 prepare()
+                updateRecovery = nil
             }
         }
     }
@@ -837,6 +841,7 @@ final class SpeechService: ObservableObject {
     /// meeting for Resume. Nothing to do when the microphone is already off and no start is under way.
     func pause(automatic: Bool = false, runSpeakerPass: Bool = true) {
         if !automatic {
+            updateRecovery?.cancel(); updateRecovery = nil
             sleepResume.cancel()
             capture.resetInputSearch()
             // A Pause clicked during a device change also cancels its automatic resume.
@@ -1086,7 +1091,7 @@ final class SpeechService: ObservableObject {
     func shutdown() {
         cleanup.shutdown()
         if ambientEnabled { recordEvent(.stopped, "Application quit; capture ended.") }
-        inputChange?.cancel()
+        inputChange?.cancel(); updateRecovery?.cancel()
         modelCheck?.cancel(); preparation?.cancel(); transcriber.cancel(); diagnostic?.cancel(); pausing?.cancel(); unloading?.cancel(); holdCapture?.cancel()
         suggestions.dismiss(action: .serviceStopped)
         timer?.invalidate(); dictation.releaseFieldEffects(); input.disable(); capture.stop(); updateKeepAwakeAssertion(); server?.stop()
