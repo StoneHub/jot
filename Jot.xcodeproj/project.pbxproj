@@ -81,6 +81,7 @@
 		95FFB72ABC0B6C3B3A3241C9 /* CoreAudioProperties.swift in Sources */ = {isa = PBXBuildFile; fileRef = A175F3EDC540CE511A831EF1 /* CoreAudioProperties.swift */; };
 		9746908AE8E2351C6FF18B81 /* ModelCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = A66DE823E83854B6AF8688F6 /* ModelCache.swift */; };
 		987B92C586EF2356FE9B3BBC /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */; };
+		99B7E9B2422CA6EB4177D456 /* UserVoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97ADF09DB2276506706FA8DC /* UserVoice.swift */; };
 		A3267595B1A8F60F403F04CB /* JotCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D0BF24005EE0C2BB76EEAC0 /* JotCLI.swift */; };
 		A42EE66E16E8986D5A58EF34 /* SessionLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A601577DB723625149B12CA /* SessionLibrary.swift */; };
 		A4B98AD49438BD1121F60475 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FF011AF3F4B42BB9B97A069F /* Assets.xcassets */; };
@@ -108,6 +109,7 @@
 		C7E8515F5287174F11A8353B /* ClipboardInsertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B8AED40D2D1296EEBFE89FA /* ClipboardInsertion.swift */; };
 		CB99DD1789813FB24F791413 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = CDE54F5568B2E1009E317C26 /* libsqlite3.tbd */; };
 		CE41316CF2FC8414E69CEF14 /* PersonalVocabulary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8056EA6CBA3EA3C1DC87BCCA /* PersonalVocabulary.swift */; };
+		CFE281C0304865E793C37B39 /* DirectoryLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A4B3E828024ED7E37E54C47 /* DirectoryLock.swift */; };
 		D283C88CF89D912165283C80 /* JotCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D2E098CDE7120087F5C947F0 /* JotCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D2C247EB99AD43C79AB4C8A3 /* MicrophoneSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1C5114298E41FD0B34E6B8C /* MicrophoneSelection.swift */; };
 		D4E3CBFA39C405CBEA8684B2 /* TranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC7DF1EDFB214E0732B5272D /* TranscriptView.swift */; };
@@ -216,6 +218,7 @@
 		74B630DD768233386E24B60B /* SessionAudioFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionAudioFile.swift; sourceTree = "<group>"; };
 		75A2B17AAF1631913D5A8DCC /* ResourceStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResourceStats.swift; sourceTree = "<group>"; };
 		78ECFD6E5E5AF02BE9088B4A /* Jot.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = Jot.icns; sourceTree = "<group>"; };
+		7A4B3E828024ED7E37E54C47 /* DirectoryLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectoryLock.swift; sourceTree = "<group>"; };
 		7F1BBAEB2DD84C459697477F /* SpeechPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechPipeline.swift; sourceTree = "<group>"; };
 		7F8706CA0A472D88DA09E8DC /* Jot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Jot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8056EA6CBA3EA3C1DC87BCCA /* PersonalVocabulary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalVocabulary.swift; sourceTree = "<group>"; };
@@ -236,6 +239,7 @@
 		95C80CCA8DD0EA57CBD8F177 /* TranscriptCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptCleanup.swift; sourceTree = "<group>"; };
 		963CF0B6CB7AC19969690774 /* ServiceControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceControls.swift; sourceTree = "<group>"; };
 		96C0189208CFC78FDDDA5D0F /* MicrophoneStartRetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneStartRetry.swift; sourceTree = "<group>"; };
+		97ADF09DB2276506706FA8DC /* UserVoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserVoice.swift; sourceTree = "<group>"; };
 		9A4D583EF07B940C30081D6E /* MeetingExportWait.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingExportWait.swift; sourceTree = "<group>"; };
 		9CB952D28B1838EB34DA1960 /* AgentContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentContext.swift; sourceTree = "<group>"; };
 		A0AFCA46E275997764AE8EFC /* SQLiteConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteConnection.swift; sourceTree = "<group>"; };
@@ -419,6 +423,7 @@
 				9096ACD17598D16FF2D647D3 /* DictationReadiness.swift */,
 				7415694705568E2457081A4F /* DictationShortcut.swift */,
 				6646658769779D619884AA27 /* DictationSpeakerMute.swift */,
+				7A4B3E828024ED7E37E54C47 /* DirectoryLock.swift */,
 				B02C95F663096FB499C5FD80 /* JotDefaultsKey.swift */,
 				5AD3D87777D81B2C449D6211 /* JotSettings.swift */,
 				D8260B75D679FF88E8921F1B /* JotVersion.swift */,
@@ -462,6 +467,7 @@
 				FF9B1EC9EF58D7AA79B27628 /* TranscriptionTuning.swift */,
 				CBDB9C8F81FE456A8328BCE4 /* TranscriptStore.swift */,
 				A6D0115D4240AC8B29E7BC2B /* UnicodeTyping.swift */,
+				97ADF09DB2276506706FA8DC /* UserVoice.swift */,
 			);
 			name = JotCore;
 			path = Sources/JotCore;
@@ -723,6 +729,7 @@
 				54F00210B01AD83169A500BE /* DictationReadiness.swift in Sources */,
 				8EF28A78E5F76B97289D3D9B /* DictationShortcut.swift in Sources */,
 				7F7F23DCD4A5FFD39B920C97 /* DictationSpeakerMute.swift in Sources */,
+				CFE281C0304865E793C37B39 /* DirectoryLock.swift in Sources */,
 				132C26A14258A6D3C8F0920D /* JotDefaultsKey.swift in Sources */,
 				36AD00EC258B2E1DA0551ED7 /* JotSettings.swift in Sources */,
 				E7E4D5D9AA889DAD7DFCB9C8 /* JotVersion.swift in Sources */,
@@ -766,6 +773,7 @@
 				A84D2F3520652FB64F16B110 /* TranscriptStore.swift in Sources */,
 				289C368E513B52686DE68A8B /* TranscriptionTuning.swift in Sources */,
 				541DD1B47FDFBBCC96250CF7 /* UnicodeTyping.swift in Sources */,
+				99B7E9B2422CA6EB4177D456 /* UserVoice.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -42,8 +42,10 @@ final class AgentContextTests: XCTestCase {
 
         var untargeted = input
         untargeted.target.conversation = nil
-        XCTAssertFalse(SourceSelector.select(untargeted, limits: .window).selected.contains { $0.kind == AgentContext.kind },
-                       "Without the conversation on the target, thirteen newer video sentences crowd the conversation out")
+        let untargetedSelection = SourceSelector.select(untargeted, limits: .window).selected
+        XCTAssertEqual(untargetedSelection.filter { $0.kind == AgentContext.kind }.map(\.role), ["user"],
+                       "Without a matched conversation, the user's own words still outrank the video, but the assistant turn does not")
+        XCTAssertEqual(untargetedSelection.filter { $0.kind == "meeting-transcript" }.count, 11)
     }
 
     func testMessagesOlderThanTheWindowAreForgotten() throws {
