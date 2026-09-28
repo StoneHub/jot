@@ -45,7 +45,8 @@ enum CaptureFlowChecks {
             deliver: { _, _ in throw DictationInput.InputError.targetChanged },
             now: Date.init)
         dependencies.makeMicrophone = { microphone }
-        dependencies.availableInputs = { [.init(id: "built-in", name: "Built-in"), .init(id: "verification-hub", name: "Hub")] }
+        var connectedInputs: [AudioInputDevice] = [.init(id: "built-in", name: "Built-in"), .init(id: "verification-hub", name: "Hub")]
+        dependencies.availableInputs = { connectedInputs }
         dependencies.defaultInputUID = { "built-in" }
         dependencies.microphoneRetry = MicrophoneStartRetry(delays: [0.01, 0.01])
         dependencies.prepareModels = { _ in }
@@ -75,11 +76,13 @@ enum CaptureFlowChecks {
         precondition(service.input.startBlocker() == nil, "A shortcut press is blocked while listening")
 
         let beforeSwitch = service.timeline.sessionID
+        let presentationBeforeSwitch = service.livePresentationRevision
         microphone.pendingSamples = [Float](repeating: 0.01, count: 8000)
         service.setInput(uid: "verification-hub")
         await service.waitForInputChange()
         precondition(service.capture.selectedInputUID == "verification-hub" && service.ambientEnabled && microphone.running,
                      "Choosing a microphone while listening did not switch and resume: \(service.notice), \(service.capture.selectedInputUID), \(service.mode)")
+        precondition(service.livePresentationRevision == presentationBeforeSwitch, "Changing input took over the current tab")
         let saved = try service.library.store!.session(id: beforeSwitch)
         precondition(saved.count == 1 && saved[0].endSeconds == 0.5, "Changing microphone lost the final half second")
         precondition(service.timeline.sessionID != beforeSwitch, "The new input reused the old recognition timeline")
@@ -91,6 +94,9 @@ enum CaptureFlowChecks {
         await service.waitForInputChange()
         precondition(service.capture.selectedInputUID == "verification-hub" && service.capture.findingInput,
                      "Silent default input did not try the connected hub")
+        connectedInputs.append(.init(id: "temporary-aggregate", name: "Aggregate", automaticCandidate: false))
+        service.capture.refreshInputDevices()
+        precondition(service.capture.findingInput, "A temporary aggregate device reset the microphone search")
         microphone.pendingSamples = [Float](repeating: 0.01, count: 48_000)
         service.tickRecoveryVerification()
         await service.waitForRecoveryVerification()
