@@ -57,13 +57,12 @@ struct ServiceControls: View {
                 Toggle("Dictation", isOn: Binding(get: { service.fnRequested }, set: { enabled in
                     if enabled { Task { await service.enableFn() } } else { service.disableFn() }
                 })).labelsHidden().toggleStyle(.switch)
-            }.help(service.suggestionsEnabled && service.shortcut.keyCode == nil
-                ? "Hold Fn to dictate. Double-tap Fn for a suggestion; Tab accepts."
-                : "Hold \(service.shortcut.displayName) to dictate, while listening or paused. Double-tap to retry a saved dictation or insert recent speech.")
+            }.help("Hold \(service.shortcut.displayName) to dictate, while listening or paused. Double-tap Fn only requests suggestions when enabled.")
             ControlRow(title: "Hold to talk", secondary: true) { ShortcutSettings(service: service) }
             ControlRow(title: "Keep Mac awake", caption: "While listening", secondary: true) {
                 Toggle("Keep Mac awake while listening", isOn: $service.keepMacAwakeWhileListening).labelsHidden().toggleStyle(.switch)
             }.help("Prevents idle sleep while listening. Closing the lid can still put the Mac to sleep; Jot resumes listening after wake if it was listening before sleep.")
+            ReviewSavedDictationButton(service: service).modifier(GlassButton())
             if !service.recoveryNotice.isEmpty {
                 Text(service.recoveryNotice).font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true).padding(.leading, 30)

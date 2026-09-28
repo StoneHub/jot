@@ -38,7 +38,7 @@ private struct ShortcutEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(forSuggestions ? "Suggestion shortcut" : "Dictation shortcut").font(.headline)
-            Text(forSuggestions ? "Press a key with Control, Option, or Command. Request a draft using recent Jot context; Tab inserts without sending." : "Press a key with Control, Option, or Command. Hold to dictate; release to insert. Double-tap to recover saved or recent speech.")
+            Text(forSuggestions ? "Press a key with Control, Option, or Command. Request a draft using recent Jot context; Tab inserts without sending." : "Press a key with Control, Option, or Command. Hold to dictate; release to insert. Saved dictation is available from Review saved dictation.")
                 .font(.callout).fixedSize(horizontal: false, vertical: true)
             Text("Press shortcut…").font(.title3.monospaced())
                 .frame(maxWidth: .infinity).padding(12)

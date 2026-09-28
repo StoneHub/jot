@@ -142,7 +142,7 @@ private struct SettingToggle: View {
     var enabled = true
     var unavailable = false
     var body: some View {
-        SettingRow(title: title, info: info, indented: indented, enabled: enabled && !unavailable) {
+        SettingRow(title: title, info: info, indented: indented, enabled: enabled && (!unavailable || isOn)) {
             HStack(spacing: 8) {
                 if unavailable { Text("Unavailable").font(.caption).foregroundStyle(.secondary) }
                 Toggle(title, isOn: $isOn).labelsHidden().toggleStyle(.switch)
@@ -185,6 +185,7 @@ extension TranscriptView {
             VStack(alignment: .leading, spacing: 22) {
                 dictationSettings
                 suggestionSettings
+                recoverySettings
                 listeningSettings
                 speakerSettings
             }.frame(maxWidth: 680, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
@@ -201,35 +202,30 @@ extension TranscriptView {
             RowDivider()
             SettingToggle(title: "Clean up with Apple Intelligence", info: cleanupInfo("Runs an Apple Intelligence cleanup pass before inserting text. Off is faster."),
                           isOn: $service.cleanUpDictation, unavailable: service.cleanupAvailability != .available)
-            RowDivider()
-            SettingRow(title: "Recovery window", info: recoveryInfo) {
-                Picker("Recovery window", selection: $service.recoveryLookbackSeconds) {
-                    ForEach(DictationRecovery.lookbackChoices, id: \.self) { Text(DictationRecovery.lookbackLabel($0)).tag($0) }
-                }.labelsHidden().pickerStyle(.menu).fixedSize()
-                    .accessibilityIdentifier("recovery-lookback")
-            }
         }
     }
 
     private var suggestionSettings: some View {
         SettingsGroup(title: "Suggestions", symbol: "sparkles", info: "Experimental. Review each draft: suggestions can get facts or speaker roles wrong.", beta: true) {
-            SettingToggle(title: "Suggestions", info: "Write rough notes in any text field, then double-tap Fn. Jot drafts finished text, and Tab replaces your notes or the selected part. In an empty chat box, it drafts a reply to the conversation above. Typing or Escape dismisses. Nothing is sent. Works while listening is paused.",
-                          isOn: $service.suggestionsEnabled)
+            Text(service.cleanupAvailability.suggestionBlocker ?? "Optional Apple Intelligence drafts. Double-tap Fn to request; Tab accepts. Turning suggestions off leaves dictation unchanged.")
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(14)
+            SettingToggle(title: "Suggestions", info: "Select rough notes in a text field, then double-tap Fn to rewrite them. Without a selection, Jot continues at the cursor. In an empty chat box, it drafts a reply. Typing or Escape dismisses. Nothing is sent. Works while listening is paused. When off, double-Fn does not insert anything.",
+                          isOn: $service.suggestionsEnabled, unavailable: service.cleanupAvailability != .available)
             RowDivider()
-            SettingRow(title: "Extra shortcut", info: "Optional. Requests a suggestion, like double-tapping Fn.", indented: true, enabled: service.suggestionsEnabled) {
+            SettingRow(title: "Extra shortcut", info: "Optional. Requests a suggestion, like double-tapping Fn.", indented: true, enabled: service.suggestionsEnabled && service.cleanupAvailability == .available) {
                 ShortcutSettings(service: service, forSuggestions: true)
             }
             RowDivider()
             SettingToggle(title: "Read visible conversation", info: "When you ask for a suggestion, reads the text shown above the field in the same window. It stays on this Mac and is never saved.",
                           isOn: $service.suggestionScreenContext,
-                          indented: true, enabled: service.suggestionsEnabled)
+                          indented: true, enabled: service.suggestionsEnabled && service.cleanupAvailability == .available)
             RowDivider()
             SettingToggle(title: "Use matching speech", info: "When a selection quotes or paraphrases speech Jot heard within the context window, use the matching sentence to restore missing or misheard words in the rewrite.",
                           isOn: $service.suggestionHeardMatches,
-                          indented: true, enabled: service.suggestionsEnabled)
+                          indented: true, enabled: service.suggestionsEnabled && service.cleanupAvailability == .available)
             RowDivider()
             SettingRow(title: "Context window", info: "How far back a suggestion may read: speech Jot heard, with the speaker when known, and messages agents sent with `jot context add`. Older speech stays in Sessions; older agent messages are forgotten.",
-                       indented: true, enabled: service.suggestionsEnabled) {
+                       indented: true, enabled: service.suggestionsEnabled && service.cleanupAvailability == .available) {
                 Picker("Context window", selection: $service.suggestionWindowMinutes) {
                     ForEach([1, 2, 5, 10, 15, 30, 60], id: \.self) { Text($0 == 1 ? "1 minute" : "\($0) minutes").tag($0) }
                 }.labelsHidden().pickerStyle(.menu).fixedSize()
@@ -280,9 +276,14 @@ extension TranscriptView {
         service.cleanupAvailability == .available ? available : service.cleanupAvailability.explanation
     }
 
-    private var recoveryInfo: String {
-        let base = "Double-tap \(service.shortcut.displayName) in a text field to insert speech Jot did not deliver. A saved dictation comes first, even when it is longer than this window. Otherwise Jot inserts what it heard in this window, every voice included, at the cursor or over the selection."
-        return service.suggestionsEnabled && service.shortcut.keyCode == nil ? base + " While Suggestions is on, double-tap Fn asks for a suggestion instead." : base
+    private var recoverySettings: some View {
+        SettingsGroup(title: "Saved dictation", symbol: "doc.text") {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("If a held dictation could not be inserted, review the saved text and copy it yourself. Works while paused, without Apple Intelligence. Other speech stays in Sessions.")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                ReviewSavedDictationButton(service: service).modifier(GlassButton())
+            }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     /// Presets as one segmented control; values that match none show Custom and leave every segment unselected.

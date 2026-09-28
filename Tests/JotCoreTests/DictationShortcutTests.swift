@@ -82,7 +82,7 @@ final class DictationShortcutTests: XCTestCase {
         _ = tracker.handle(.flagsChanged, keyCode: 63, modifiers: [.fn], shortcut: .fn, at: 1)
         XCTAssertEqual(tracker.handle(.flagsChanged, keyCode: 63, modifiers: [], shortcut: .fn, at: 1.1).action, .discardTap)
         XCTAssertEqual(tracker.handle(.flagsChanged, keyCode: 63, modifiers: [.fn], shortcut: .fn, at: 1.4).action, .start)
-        XCTAssertEqual(tracker.handle(.flagsChanged, keyCode: 63, modifiers: [], shortcut: .fn, at: 1.5).action, .recover)
+        XCTAssertEqual(tracker.handle(.flagsChanged, keyCode: 63, modifiers: [], shortcut: .fn, at: 1.5).action, .doubleTap)
         XCTAssertEqual(tracker.handle(.flagsChanged, keyCode: 63, modifiers: [.fn], shortcut: .fn, at: 1.7).action, .start)
         XCTAssertEqual(tracker.handle(.flagsChanged, keyCode: 63, modifiers: [], shortcut: .fn, at: 1.8).action, .discardTap)
     }
@@ -93,7 +93,7 @@ final class DictationShortcutTests: XCTestCase {
         XCTAssertEqual(tracker.handle(.flagsChanged, keyCode: 63, modifiers: [], shortcut: .fn, at: 70).action, .stop)
     }
 
-    func testSecondLongHoldDoesNotPreemptRecovery() {
+    func testSecondLongHoldDoesNotBecomeDoubleTap() {
         var tracker = ShortcutTracker()
         _ = tracker.handle(.flagsChanged, keyCode: 63, modifiers: [.fn], shortcut: .fn, at: 1)
         _ = tracker.handle(.flagsChanged, keyCode: 63, modifiers: [], shortcut: .fn, at: 1.1)
@@ -138,7 +138,7 @@ final class DictationShortcutTests: XCTestCase {
         _ = tracker.handle(.keyDown, keyCode: 49, modifiers: chord.modifiers, shortcut: chord, at: 1)
         XCTAssertEqual(tracker.handle(.keyUp, keyCode: 49, modifiers: chord.modifiers, shortcut: chord, at: 1.1).action, .discardTap)
         _ = tracker.handle(.keyDown, keyCode: 49, modifiers: chord.modifiers, shortcut: chord, at: 1.3)
-        XCTAssertEqual(tracker.handle(.flagsChanged, keyCode: 58, modifiers: [.control], shortcut: chord, at: 1.4).action, .recover)
+        XCTAssertEqual(tracker.handle(.flagsChanged, keyCode: 58, modifiers: [.control], shortcut: chord, at: 1.4).action, .doubleTap)
         XCTAssertEqual(tracker.handle(.keyUp, keyCode: 49, modifiers: [], shortcut: chord, at: 1.5), .init(consume: true))
     }
 

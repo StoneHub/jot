@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import JotCore
 
-/// One held dictation at a time: the attempt record it saves while the key is down, the text it gathers from the listening timeline on release, the insertion, and the double-tap recovery of anything undelivered.
+/// One held dictation at a time: the attempt record it saves while the key is down, the text it gathers from the listening timeline on release, the insertion, and the saved text available for explicit review.
 @MainActor
 final class DictationCoordinator {
     /// The listening state, and with it the menu icon, reads this through the service; a change redraws it rather than relying on the notice set nearby.
@@ -14,10 +14,8 @@ final class DictationCoordinator {
     private(set) var currentAttempt: DictationAttempt?
     private var attemptEndOffset: Double?
     private var recoveryTask: Task<Void, Never>?
-    private var recoveryDeliveryTask: Task<Void, Never>?
     private var discardedAttemptIDs = Set<String>()
     private var attemptHadGap = false
-    private var deliveryStateSaveFailed = false
     /// The entries enabled when the hold began, so a mid-hold edit does not change what gets inserted.
     private var vocabulary = PersonalVocabulary()
     private let speakerMute = DictationSpeakerMute()
@@ -28,7 +26,7 @@ final class DictationCoordinator {
 
     /// True while release work or recovery is still finishing; the harness waits on it.
     var isBusy: Bool { isPending || recoveryTask != nil }
-    var recoveryRunning: Bool { recoveryTask != nil || recoveryDeliveryTask != nil }
+    var recoveryRunning: Bool { recoveryTask != nil }
 
     func begin() {
         guard service.canHoldDictation, !isPending, !isActive else { return }
@@ -77,7 +75,7 @@ final class DictationCoordinator {
     }
 
     /// A tap explicitly discards only the current held intent. Continuous listening
-    /// rows and the recovery window remain untouched.
+    /// rows and earlier saved dictations remain untouched.
     func cancelTap() {
         speakerMute.end(); highlight.hide()
         if isActive || isPending { service.markPerformance(.dictationCancelled) }
@@ -114,7 +112,6 @@ final class DictationCoordinator {
     func discardForHistoryReset() {
         if let id = currentAttempt?.id { discardedAttemptIDs.insert(id) }
         recoveryTask?.cancel(); recoveryTask = nil
-        recoveryDeliveryTask?.cancel(); recoveryDeliveryTask = nil
         currentAttempt = nil; isActive = false; isPending = false
         speakerMute.end(); highlight.hide(); service.input.discardTarget()
     }
@@ -124,7 +121,6 @@ final class DictationCoordinator {
 
     func waitForRecovery() async {
         if let recoveryTask { await recoveryTask.value }
-        if let recoveryDeliveryTask { await recoveryDeliveryTask.value }
     }
 
     func releaseFieldEffects() { speakerMute.end(); highlight.hide() }
@@ -225,7 +221,7 @@ final class DictationCoordinator {
             attempt.state = .deliveryFailed; attempt.updatedAt = service.dependencies.now()
             try? service.library.store?.saveDictationAttempt(attempt)
             currentAttempt = attempt
-            service.recoveryNotice = "Dictation was saved but could not be finished. Use the recovery gesture to retry."
+            service.recoveryNotice = "Dictation was saved but could not be finished. Choose Review saved dictation to copy the saved text."
             service.notice = "Dictation: \(error.localizedDescription)"
             timing.finish(.failed)
         }
@@ -251,8 +247,7 @@ final class DictationCoordinator {
             currentAttempt = attempt
             do { try service.library.store?.saveDictationAttempt(attempt) }
             catch {
-                deliveryStateSaveFailed = true
-                service.recoveryNotice = "Text was sent, but its delivery record could not be saved. Check the field; automatic recovery is blocked to avoid duplicates."
+                service.recoveryNotice = "Text was sent, but its delivery record could not be saved. Check the field before copying saved text to avoid duplicates."
                 service.notice = "Could not save delivery status: \(error.localizedDescription)"
                 return timing
             }
@@ -262,7 +257,7 @@ final class DictationCoordinator {
             } else {
                 service.recoveryNotice = attempt.hasGap
                     ? "Partial dictation was sent, but insertion could not be verified. Check the field before retrying."
-                    : "Dictation was saved, but insertion could not be verified. Use the recovery gesture to retry."
+                    : "Dictation was saved, but insertion could not be verified. Choose Review saved dictation to copy the saved text."
             }
             service.notice = ""
             return timing
@@ -273,8 +268,8 @@ final class DictationCoordinator {
             try? service.library.store?.saveDictationAttempt(attempt)
             currentAttempt = attempt
             service.recoveryNotice = attempt.hasGap
-                ? "Partial dictation was saved. Review it in Sessions; focus a field and use recovery to insert the recognized portion."
-                : "Dictation was saved. Focus a text field and use the recovery gesture to retry."
+                ? "Partial dictation was saved. Choose Review saved dictation to copy the recognized portion."
+                : "Dictation was saved. Choose Review saved dictation to copy it."
             service.notice = "Text was not inserted: \(error.localizedDescription)"
             return (.failed, max(0, finished - began), finished)
         }
@@ -304,62 +299,15 @@ final class DictationCoordinator {
         })
     }
 
-    /// Uses the target already acquired by DictationInput's recovery callback.
-    func recoverRecent() {
-        guard !deliveryStateSaveFailed else {
-            service.recoveryNotice = "A previous insertion could not save its delivery status. Check the target field and copy saved text from Sessions to avoid duplicate insertion."
-            return
+    /// A snapshot for explicit review/copy. It never acquires a field, starts capture, generates text,
+    /// consumes the attempt, or substitutes ambient speech. Reopening review reads the store again.
+    func savedDictationForReview() async throws -> DictationAttempt? {
+        guard !isActive, !isPending else {
+            throw JotError.message("Finish the current dictation before reviewing saved text.")
         }
-        guard service.canHoldDictation, !isActive, !isPending else {
-            service.recoveryNotice = "Resume listening before recovering speech."
-            return
-        }
-        guard recoveryDeliveryTask == nil else {
-            service.recoveryNotice = "Recovery is already finishing captured speech."
-            return
-        }
-        let failuresBeforeRecovery = service.transcriber.recognitionFailures
-        service.closeChunk()
-        let triggerTime = service.timeline.sessionStarted.addingTimeInterval(service.timeline.ambientOffset)
-        let triggerSession = service.timeline.sessionID
-        let triggerOffset = service.timeline.ambientOffset
-        isPending = true
-        service.recoveryNotice = "Finishing speech captured before the recovery gesture…"
-        service.transcriber.kick()
-        recoveryDeliveryTask = Task { [weak self] in
-            guard let self else { return }
-            await service.transcriber.waitUntilProcessed(sessionID: triggerSession, through: triggerOffset)
-            guard !Task.isCancelled else { recoveryDeliveryTask = nil; isPending = false; return }
-            do {
-                let failed = try service.library.store?.latestRecoverableDictationAttempt()
-                let recent = try service.library.store?.recoveryText(from: triggerTime.addingTimeInterval(-Double(service.recoveryLookbackSeconds)), through: triggerTime) ?? ""
-                guard let selection = DictationRecovery.select(attempt: failed, recentSpeech: recent) else {
-                    service.recoveryNotice = "No saved or recent speech was found to insert."
-                    service.input.discardTarget(); isPending = false; recoveryDeliveryTask = nil; return
-                }
-                var attempt: DictationAttempt
-                switch selection.source {
-                case .failedAttempt:
-                    attempt = failed!
-                case .recentSpeech:
-                    let start = triggerTime.addingTimeInterval(-Double(service.recoveryLookbackSeconds))
-                    attempt = DictationAttempt(sessionID: triggerSession, startedAt: start,
-                        endedAt: triggerTime, text: DictationCleanup.applying(to: service.vocabulary.applyingToDictation(selection.text)),
-                        state: service.transcriber.recognitionFailures == failuresBeforeRecovery ? .ready : .deliveryFailed,
-                        hasGap: service.transcriber.recognitionFailures != failuresBeforeRecovery, updatedAt: service.dependencies.now())
-                    try service.library.store?.saveDictationAttempt(attempt)
-                }
-                currentAttempt = attempt
-                if selection.source == .recentSpeech && attempt.hasGap {
-                    service.recoveryNotice = "Recent speech is partially saved, but finishing its audio failed. Review Sessions; use recovery again to insert the recognized portion."
-                } else {
-                    await deliverAttempt(attempt)
-                }
-            } catch {
-                service.recoveryNotice = "Recovery could not finish. Saved speech was kept for another retry."
-                service.notice = error.localizedDescription
-            }
-            service.input.discardTarget(); isPending = false; recoveryDeliveryTask = nil
-        }
+        guard let store = service.library.store else { throw JotError.message("Saved history is unavailable.") }
+        return try await Task.detached(priority: .userInitiated) {
+            try store.latestRecoverableDictationAttempt()
+        }.value
     }
 }

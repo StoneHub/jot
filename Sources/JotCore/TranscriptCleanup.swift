@@ -4,7 +4,7 @@ import AppleFM
 import FoundationModels
 #endif
 
-public enum CleanupAvailability: String, Sendable {
+public enum CleanupAvailability: String, Sendable, CaseIterable {
     case available, olderSystem, deviceNotEligible, notEnabled, modelNotReady
     public var explanation: String {
         switch self {
@@ -13,6 +13,16 @@ public enum CleanupAvailability: String, Sendable {
         case .deviceNotEligible: return "Apple cleanup is unavailable on this Mac. Transcription works without it."
         case .notEnabled: return "Apple Intelligence is off in macOS. Transcription works without cleanup."
         case .modelNotReady: return "Apple Intelligence is not ready. Transcription works without cleanup."
+        }
+    }
+
+    public var suggestionBlocker: String? {
+        switch self {
+        case .available: return nil
+        case .olderSystem: return "Suggestions require macOS 26 or later. Dictation and saved text still work."
+        case .deviceNotEligible: return "Suggestions are unavailable on this Mac. Dictation and saved text still work."
+        case .notEnabled: return "Apple Intelligence is off in macOS. Dictation and saved text still work."
+        case .modelNotReady: return "Apple Intelligence is not ready. Dictation and saved text still work."
         }
     }
 }
@@ -56,7 +66,12 @@ public final class TranscriptCleanup {
     private var interrupt: (() -> Void)?
     /// Where the instructions and the token limit come from. Live phrases and dictation share both.
     private let settings: JotSettings
-    public init(settings: JotSettings = .standard) { self.settings = settings }
+    private let modelAvailability: @MainActor () -> CleanupAvailability
+    public init(settings: JotSettings = .standard,
+                availability: @escaping @MainActor () -> CleanupAvailability = { TranscriptCleanup.availability }) {
+        self.settings = settings
+        self.modelAvailability = availability
+    }
 
     /// Release a waiting speech worker immediately when dictation takes priority.
     public func cancel() { interrupt?() }
@@ -81,7 +96,7 @@ public final class TranscriptCleanup {
         if busy { return .init(texts: texts, outcome: .busy) }
         if texts.isEmpty { return .init(texts: texts, outcome: .empty) }
         if texts.reduce(0, { $0 + $1.utf8.count }) > 2400 { return .init(texts: texts, outcome: .oversized) }
-        if generator == nil && Self.availability != .available { return .init(texts: texts, outcome: .unavailable) }
+        if modelAvailability() != .available { return .init(texts: texts, outcome: .unavailable) }
         busy = true
         return await withCheckedContinuation { continuation in
             let completion = CleanupCompletion(continuation)

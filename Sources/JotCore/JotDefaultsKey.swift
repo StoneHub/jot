@@ -22,5 +22,4 @@ public enum JotDefaultsKey {
     public static let suggestionWindowMinutes = "suggestionWindowMinutes"
     public static let dictationShortcut = "dictationShortcut"
     public static let personalVocabulary = "personalVocabulary"
-    public static let recoveryLookbackSeconds = "recoveryLookbackSeconds"
 }

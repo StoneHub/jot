@@ -11,13 +11,13 @@ final class SuggestionEvaluationInteractionTests: XCTestCase {
             (.keyDown, 179, [], 0.1571), (.keyUp, 179, [], 0.1572)
         ]
         var paused = SuggestionFnGesture(), listening = ShortcutTracker()
-        var requests = 0, recoveries = 0
+        var requests = 0, doubleTaps = 0
         for (event, code, flags, time) in trace {
             if paused.handle(event, keyCode: code, modifiers: flags, at: time, enabled: true) { requests += 1 }
-            if listening.handle(event, keyCode: code, modifiers: flags, shortcut: .fn, at: time).action == .recover { recoveries += 1 }
+            if listening.handle(event, keyCode: code, modifiers: flags, shortcut: .fn, at: time).action == .doubleTap { doubleTaps += 1 }
         }
         XCTAssertEqual(requests, 1, "Paused Fn request must survive release companion events")
-        XCTAssertEqual(recoveries, 1, "Listening uses the same double-tap recognition")
+        XCTAssertEqual(doubleTaps, 1, "Listening uses the same double-tap recognition")
     }
 
     func testFnCompanionEventsCannotDismissQueuedOrVisibleSuggestion() {

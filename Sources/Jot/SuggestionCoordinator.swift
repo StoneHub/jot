@@ -466,10 +466,15 @@ final class SuggestionCoordinator {
     }
 
     /// A request Jot cannot take right now: the reason shows at the field for a moment, or in the window when there is no field.
-    func refuse(_ text: String) {
+    func refuse(_ text: String, anchorToField: Bool = true) {
         dismiss(action: .newRequest)
         beginReceipt()
         updateReceipt { $0.outcome = .blocked; $0.reason = .refused }
+        guard anchorToField else {
+            updateReceipt { $0.complete = true }
+            notice(text)
+            return
+        }
         do { try input.captureTarget(wakeRetry: false) } catch { dismiss(action: .focusChanged); notice(text); return }
         ownsTarget = true
         showNotice(text, reason: "refused")

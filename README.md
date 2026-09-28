@@ -8,11 +8,11 @@
 
 ![Jot running on macOS, showing a single test dictation in searchable Dictations](docs/images/jot-history.jpg)
 
-Jot listens while resumed and saves a searchable transcript locally. Hold **Fn** (or your custom shortcut) to dictate into a field, or double-tap to insert recent speech or retry an undelivered dictation. Speech recognition runs on your Mac through [FluidAudio](https://github.com/FluidInference/FluidAudio).
+Jot listens while resumed and saves a searchable transcript locally. Hold **Fn** (or your custom shortcut) to dictate into a field. Double-tap Fn requests an optional Apple Intelligence suggestion. Speech recognition runs on your Mac through [FluidAudio](https://github.com/FluidInference/FluidAudio).
 
 - **Speak into your apps.** Release Fn to insert your words without sending the message.
 - **Keep the words.** Search local dictations, select text across statements, or copy a single card.
-- **Recover a missed insertion.** Focus a text field and double-tap the shortcut. Undelivered dictation takes priority over the recent speech window.
+- **Recover a missed insertion.** Choose **Review saved dictation**, check the saved text, then copy and paste it yourself.
 - **Stay in control.** Resume listens; Pause stops listening and keeps the models loaded, so Resume is immediate. Unload Models in the menu frees their memory. No separate Ambient switch.
 - **Give agents context.** Search and read transcripts through the bundled CLI and MCP server.
 - **Feel at home on the Mac.** System accent colors, native Liquid Glass on macOS 26, and material fallbacks on earlier versions.
@@ -33,9 +33,9 @@ Grant microphone and Accessibility access. If Fn triggers a macOS shortcut, set 
 
 **Change the shortcut:** click the key label beside **Hold to talk**. Press a key with Control, Option, or Command, or choose **Use Fn / Globe** to restore the default. Your choice is saved on this Mac. Custom shortcuts take precedence over the same combination in other apps; choose an unused combination. Release the key or a required modifier to finish.
 
-Long holds are transcribed and saved in chunks while you speak. If focus changes or insertion cannot be verified, the dictation remains available for retry. Focus the desired field and double-tap the shortcut. Password fields are excluded, and Jot never presses Return. Text insertion depends on the target app's Accessibility support.
+Long holds are transcribed and saved in chunks while you speak. If focus changes or insertion cannot be verified, the dictation remains available in **Review saved dictation**, from General or the menu controls. Review it before copying: some text may already be in the original field. Password fields are excluded, and Jot never presses Return. Text insertion depends on the target app's Accessibility support.
 
-**Insert what you just said:** when there is no undelivered dictation, double-tap inserts speech from the recent window, including all voices. Set **General → Recovery window** from 30 seconds to 10 minutes; the default is two minutes. A pending dictation takes priority even if it is longer. Recovery inserts at the current cursor or replaces selected text; it does not search for and overwrite a previous insertion.
+**Saved dictation:** recovery shows the most recent undelivered hold, including any partial-audio warning. Copy keeps that record available and never marks it delivered. Review works while paused and without Apple Intelligence; it never inserts into another app or substitutes recent room speech. Other captured speech stays in Sessions. Double-Fn is only for suggestions, even when suggestions are off or unavailable.
 
 **Choose a microphone:** select **System Default** or a specific input from the Microphone menu. Jot changes only its own capture device; it never changes macOS's default input. Pause capture before switching devices. If the chosen microphone is unplugged, Jot keeps the choice, captures from System Default, and uses the microphone again once it is plugged back in.
 
@@ -61,6 +61,12 @@ When an ambient session or meeting ends, a speaker pass reads the whole session 
 
 **Models & updates → Check updates** checks published model revisions. It does not download updates or verify that your cached weights match the latest release.
 
+## Without Apple Intelligence
+
+Dictation, local transcripts, search, exports, speaker processing, vocabulary and saved-dictation review use Jot's speech pipeline and do not require Apple's Foundation Models. The app targets Apple silicon Macs on macOS 14 or later, including macOS 15. Jot does not enable Apple Intelligence or agree to Apple terms on your behalf.
+
+Suggestions and the two **Clean up with Apple Intelligence** switches are independent, optional features. They require [macOS 26 or later and an eligible Mac with Apple Intelligence enabled](https://www.apple.com/newsroom/2025/09/apples-foundation-models-framework-unlocks-new-intelligent-app-experiences/). General explains when the model is unsupported, disabled or not ready. Cleanup preserves recognized text when the model cannot run; unavailable suggestions never become recovery insertion. Previously enabled features can still be turned off while unavailable.
+
 ## Suggestions
 
 Double-tap Fn in a text field and Jot drafts something for it on this Mac, with Apple's on-device model:
@@ -82,7 +88,7 @@ Open **Vocabulary** to add a preferred spelling such as `SwiftUI`. If Jot mishea
 
 Entries can be edited, disabled, removed, and restored with **Undo remove**. Use the preview to check saved, enabled entries without recording. Matching ignores capitalization, respects whole-word boundaries, and prefers longer phrases at the same position. Replacements are applied once, without chaining into other entries.
 
-Jot converts explicit spoken symbol names such as `forward slash`, `at sign`, `underscore`, and `open parenthesis` into their characters only in text it inserts: Fn dictation and speech inserted by the recovery gesture. Listening rows keep the words as spoken, so "a period of time" and "at sign" stay words in Live, Sessions, exports, and transcript access through the CLI or MCP. A held dictation's own row shows the text that was inserted, wherever it appears.
+Jot converts explicit spoken symbol names such as `forward slash`, `at sign`, `underscore`, and `open parenthesis` into their characters only in text it inserts: Fn dictation, including interrupted holds prepared for saved-text review. Listening rows keep the words as spoken, so "a period of time" and "at sign" stay words in Live, Sessions, exports, and transcript access through the CLI or MCP. A held dictation's own row shows the text that was inserted, wherever it appears.
 
 Personal vocabulary is then applied before Fn dictation is inserted into your target app, using the entries enabled when that dictation began. Personal entries stay in Jot's local preferences; this does not train or change the recognition model.
 

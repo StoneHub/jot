@@ -125,28 +125,18 @@ struct RecoveryFlowChecks {
         precondition(service.library.live.paragraphs.contains { $0.mode == "dictation" }, "Live did not show the saved dictation")
         print("PASS: Live adds each saved row and the held dictation as they are saved, matching a full read.")
 
-        // A double-tap creates two short intents before requesting recovery. Neither
-        // may replace the earlier failed attempt or erase the listening timeline.
+        // Double-tap discards its short holds; saved review is read-only and never inserts room speech.
         service.dictation.begin(); service.dictation.cancelTap()
         service.dictation.begin(); service.dictation.cancelTap()
-        probe.deliveryFails = false
-        service.dictation.recoverRecent()
-        await service.waitForRecoveryVerification()
-        precondition(probe.delivered == [expected], "Recovery did not insert the full failed attempt exactly once")
-        let pendingAfterDelivery = try store.latestRecoverableDictationAttempt()
-        precondition(pendingAfterDelivery == nil, "Verified delivery remained pending")
-        print("PASS: two short taps preserve the failed attempt; explicit recovery delivers it once.")
+        let reviewed = try await service.dictation.savedDictationForReview()
+        precondition(reviewed?.text == expected && probe.delivered.isEmpty, "Review lost or inserted the saved hold")
+        let reviewedAgain = try await service.dictation.savedDictationForReview()
+        precondition(reviewedAgain == reviewed, "Review consumed saved text")
+        print("PASS: short taps preserve earlier failed dictation; review returns it without insertion or consumption.")
 
-        service.recoveryLookbackSeconds = 30
         probe.now += 3
         service.ingestRecoveryVerification(samples: Array(repeating: Float(26), count: 48_000), at: probe.now)
-        // Recover without waiting: the command must include queued/in-flight speech.
-        service.dictation.recoverRecent()
         await service.waitForRecoveryVerification()
-        let recent = probe.delivered.last ?? ""
-        precondition(recent.contains("segment26"), "Recovery omitted the newest pending speech")
-        precondition(!recent.split(separator: " ").contains("segment1"), "Lookback ignored the configured start boundary")
-        print("PASS: recent recovery includes pending recognition and respects the time window.")
 
         // Pause must save the sub-chunk tail rather than discard it.
         probe.now += 0.5
@@ -162,6 +152,7 @@ struct RecoveryFlowChecks {
         try await checkDictationTimings(directory: directory)
         try await checkLiveFollowsEdits(directory: directory)
         try await checkInterruptedHold(directory: directory)
+        try await checkOptionalIntelligence(directory: directory)
         for failed in [false, true] {
             let inactive = SpeechService()
             let token = inactive.lifecycle.beginStart()!
@@ -187,6 +178,58 @@ struct RecoveryFlowChecks {
             try await checkRealRecognition(URL(fileURLWithPath: CommandLine.arguments[flag + 1]))
         }
         print("Recovery controller checks passed. These checks do not establish physical Fn or cross-app Accessibility behavior.")
+    }
+
+    @MainActor static func checkOptionalIntelligence(directory: URL) async throws {
+        for availability in CleanupAvailability.allCases {
+            let probe = Probe()
+            probe.deliveryFails = false
+            let store = try TranscriptStore(directory: directory.appendingPathComponent("optional-\(availability.rawValue)"))
+            let service = SpeechService(dependencies: .init(
+                infer: { _, job, _ in probe.infer(job) },
+                deliver: { _, text in try probe.deliver(text) }, now: { probe.now },
+                cleanup: { cleaner, texts, timeout in
+                    await cleaner.cleanWithOutcome(texts, timeout: timeout, generator: { _ in
+                        preconditionFailure("Opted-out or unavailable Apple Intelligence was invoked")
+                    })
+                }, intelligenceAvailability: { availability }))
+            service.highlightTargetField = false; service.muteSpeakersDuringDictation = false
+            service.keepAudioForSpeakerPass = false
+            // Available but opted out; unavailable with saved opt-in preferences. Neither may generate.
+            service.cleanUpDictation = availability != .available
+            service.cleanUpTranscriptions = availability != .available
+            service.suggestionsEnabled = availability != .available
+            service.beginRecoveryVerification(store: store, startedAt: probe.now)
+            precondition(!service.canRequestSuggestion, "Disabled or unavailable suggestions were allowed")
+            precondition(service.cleanupAvailability == availability, "Settings lost the availability reason")
+            service.dictation.begin()
+            do {
+                _ = try await service.dictation.savedDictationForReview()
+                preconditionFailure("Review opened an unfinished hold")
+            } catch {}
+            probe.now += 3
+            service.ingestRecoveryVerification(samples: Array(repeating: Float(1), count: 48_000), at: probe.now)
+            service.dictation.end()
+            await service.waitForRecoveryVerification()
+            precondition(probe.delivered == ["segment1"], "Basic dictation depended on Apple Intelligence")
+            probe.deliveryFails = true
+            service.dictation.begin()
+            probe.now += 3
+            service.ingestRecoveryVerification(samples: Array(repeating: Float(2), count: 48_000), at: probe.now)
+            service.dictation.end()
+            await service.waitForRecoveryVerification()
+            service.pause()
+            while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
+            let before = try store.latestRecoverableDictationAttempt()
+            let reviewed = try await service.dictation.savedDictationForReview()
+            let after = try store.latestRecoverableDictationAttempt()
+            precondition(reviewed?.text == "segment2" && reviewed == before && before == after,
+                         "Paused review changed or lost saved dictation")
+            precondition(service.isPaused && !service.capture.running && probe.delivered == ["segment1"],
+                         "Review restarted capture or inserted saved speech")
+            service.shutdown()
+        }
+        print("PASS: Apple Intelligence opt-out and every unavailable reason preserve dictation, raw text and paused read-only recovery without generation.")
     }
 
     @MainActor static func checkPhraseCleanupModel() async throws {
@@ -402,11 +445,9 @@ struct RecoveryFlowChecks {
             "An empty final barrier failed without retaining a partial attempt")
         try store.deleteDictationAttempt(id: partial!.id)
         try store.deleteDictationAttempt(id: finalFailure!.id)
-        service.dictation.recoverRecent()
-        await service.waitForRecoveryVerification()
-        let recentFailure = try store.latestRecoverableDictationAttempt()
-        precondition(probe.delivered.isEmpty && recentFailure?.hasGap == true,
-            "A failed recent-recovery barrier inserted partial speech without warning")
+        let emptyReview = try await service.dictation.savedDictationForReview()
+        precondition(emptyReview == nil && probe.delivered.isEmpty,
+            "Review substituted ambient speech after saved attempts were removed")
         service.shutdown()
         print("PASS: failed recognition and empty final barriers retain partial text without automatic insertion; disabling dictation keeps it.")
 
@@ -418,7 +459,7 @@ struct RecoveryFlowChecks {
                     try await Task.sleep(for: .milliseconds(400))
                     return $0.map { $0.capitalized }
                 })
-            }))
+            }, intelligenceAvailability: { .available }))
         cleaned.highlightTargetField = false; cleaned.muteSpeakersDuringDictation = false
         cleaned.keepAudioForSpeakerPass = false; cleaned.cleanUpTranscriptions = true
         cleaned.beginRecoveryVerification(store: cleanedStore, startedAt: probe.now)
@@ -456,7 +497,7 @@ struct RecoveryFlowChecks {
                     try await Task.sleep(for: .seconds(3))
                     return $0.map { $0.capitalized }
                 })
-            }))
+            }, intelligenceAvailability: { .available }))
         slow.highlightTargetField = false; slow.muteSpeakersDuringDictation = false
         slow.keepAudioForSpeakerPass = false; slow.cleanUpTranscriptions = false
         slow.cleanUpDictation = true
@@ -489,7 +530,7 @@ struct RecoveryFlowChecks {
                     try await Task.sleep(for: .seconds(cleanupDelay))
                     return $0.map { $0.capitalized }
                 })
-            }))
+            }, intelligenceAvailability: { .available }))
         service.highlightTargetField = false; service.muteSpeakersDuringDictation = false
         service.keepAudioForSpeakerPass = false; service.cleanUpTranscriptions = false
         service.beginRecoveryVerification(store: store, startedAt: probe.now)
@@ -727,14 +768,15 @@ struct RecoveryFlowChecks {
         second.beginRecoveryVerification(store: reopened, startedAt: probe.now)
         try second.dictation.finalizeInterruptedAttempts()
         probe.deliveryFails = false
-        second.dictation.recoverRecent()
-        await second.waitForRecoveryVerification()
-        second.dictation.recoverRecent()
-        await second.waitForRecoveryVerification()
-        precondition(probe.delivered.first == "(Dot)", "Recovery inserted an interrupted hold's words without converting them with the saved vocabulary: \(probe.delivered)")
-        precondition(probe.delivered.last == "email Dot", "Recovery converted a finished hold's dictation text a second time: \(probe.delivered)")
+        let interruptedReview = try await second.dictation.savedDictationForReview()
+        precondition(interruptedReview?.text == "(Dot)", "Interrupted hold was not converted for review")
+        let repeatedReview = try await second.dictation.savedDictationForReview()
+        precondition(repeatedReview == interruptedReview && probe.delivered.isEmpty, "Review inserted or consumed saved text")
+        try reopened.deleteDictationAttempt(id: interruptedReview!.id)
+        let finishedReview = try await second.dictation.savedDictationForReview()
+        precondition(finishedReview?.text == "email Dot", "Review converted finished dictation text again")
         second.shutdown()
-        print("PASS: a hold interrupted by quit is converted once at the next launch and recovered as dictation text; a finished hold's saved text is inserted unchanged.")
+        print("PASS: a hold interrupted by quit is converted once at the next launch and reviewed as dictation text; a finished hold's saved text is reviewed unchanged.")
     }
 
     /// Quiet and a stalled microphone are measured on the injected clock, so a tick at a later fake time reaches them without waiting.

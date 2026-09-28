@@ -104,6 +104,7 @@ struct TranscriptView: View {
         .background(WindowAttachment(attach: delegate.attach))
         .onAppear { delegate.openAction = { openWindow(id: "main") } }
         .onDisappear { copyReset?.cancel() }
+        .sheet(isPresented: $service.showingSavedDictation) { SavedDictationReview(service: service) }
         .onChange(of: library.historyRevision) { _, _ in copiedID = nil }
         // Capture starting is the one moment Live is opened for the user; after that the choice is theirs.
         .onChange(of: service.ambientEnabled) { _, on in if on { section = .live } }

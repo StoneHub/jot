@@ -74,35 +74,6 @@ public struct DictationAttempt: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-public struct RecoverySelection: Equatable, Sendable {
-    public enum Source: Equatable, Sendable { case failedAttempt(String), recentSpeech }
-    public let text: String
-    public let source: Source
-    public init(text: String, source: Source) { self.text = text; self.source = source }
-}
-
-/// Pure decision seam used by both the service and tests. A retained held attempt
-/// always wins over the time-window fallback, including one interrupted by force quit.
-public enum DictationRecovery {
-    /// Seconds of recent speech the recovery gesture can insert: the Recovery window menu's items and the only values `jot settings` accepts.
-    public static let lookbackChoices = [30, 60, 120, 300, 600]
-    public static let defaultLookbackSeconds = 120
-    public static let lookbackRange = 15...600
-
-    public static func lookbackLabel(_ seconds: Int) -> String {
-        seconds < 60 ? "\(seconds) seconds" : seconds == 60 ? "1 minute" : "\(seconds / 60) minutes"
-    }
-
-    public static func select(attempt: DictationAttempt?, recentSpeech: String) -> RecoverySelection? {
-        if let attempt, attempt.state.isRecoverable {
-            let text = attempt.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !text.isEmpty { return RecoverySelection(text: text, source: .failedAttempt(attempt.id)) }
-        }
-        let text = recentSpeech.trimmingCharacters(in: .whitespacesAndNewlines)
-        return text.isEmpty ? nil : RecoverySelection(text: text, source: .recentSpeech)
-    }
-}
-
 /// Bounded recognition chunks keep capture latency independent of how long Jot has
 /// been listening. A sufficiently long silence may close a shorter chunk.
 public struct CaptureChunkScheduler: Equatable, Sendable {

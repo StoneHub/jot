@@ -54,7 +54,7 @@ public final class ShortcutPreferences {
 /// and the trigger's key-up remains consumed even when its modifiers were released first.
 public struct ShortcutTracker {
     public enum Event { case keyDown, keyUp, flagsChanged }
-    public enum Action: Equatable { case none, start, stop, discardTap, recover, cancel }
+    public enum Action: Equatable { case none, start, stop, discardTap, doubleTap, cancel }
     public struct Result: Equatable {
         public var action: Action = .none
         public var consume = false
@@ -72,7 +72,7 @@ public struct ShortcutTracker {
     private var suppressKeyUp = false
     private var suppressFnUntilRelease = false
     private var pressedAt: TimeInterval?
-    private var recoveryCandidate = false
+    private var doubleTapCandidate = false
     private var lastShortReleaseAt: TimeInterval?
     public init() {}
     public mutating func reset() {
@@ -80,7 +80,7 @@ public struct ShortcutTracker {
         suppressKeyUp = false
         suppressFnUntilRelease = false
         pressedAt = nil
-        recoveryCandidate = false
+        doubleTapCandidate = false
         lastShortReleaseAt = nil
     }
 
@@ -152,10 +152,10 @@ public struct ShortcutTracker {
         held = true
         pressedAt = timestamp
         if let lastShortReleaseAt {
-            recoveryCandidate = timestamp >= lastShortReleaseAt
+            doubleTapCandidate = timestamp >= lastShortReleaseAt
                 && timestamp - lastShortReleaseAt <= Self.doubleTapMaximumInterval
         } else {
-            recoveryCandidate = false
+            doubleTapCandidate = false
         }
     }
 
@@ -164,11 +164,11 @@ public struct ShortcutTracker {
         held = false
         pressedAt = nil
         if duration <= Self.shortTapMaximumDuration {
-            if recoveryCandidate {
+            if doubleTapCandidate {
                 clearTapSequence()
-                return .recover
+                return .doubleTap
             }
-            recoveryCandidate = false
+            doubleTapCandidate = false
             lastShortReleaseAt = timestamp
             return .discardTap
         }
@@ -183,7 +183,7 @@ public struct ShortcutTracker {
     }
 
     private mutating func clearTapSequence() {
-        recoveryCandidate = false
+        doubleTapCandidate = false
         lastShortReleaseAt = nil
     }
 

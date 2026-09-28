@@ -210,6 +210,6 @@ public struct SuggestionFnGesture {
     public mutating func handle(_ event: ShortcutTracker.Event, keyCode: UInt16,
                                 modifiers: ShortcutModifiers, at time: TimeInterval, enabled: Bool) -> Bool {
         guard enabled else { tracker.reset(); return false }
-        return tracker.handle(event, keyCode: keyCode, modifiers: modifiers, shortcut: .fn, at: time).action == .recover
+        return tracker.handle(event, keyCode: keyCode, modifiers: modifiers, shortcut: .fn, at: time).action == .doubleTap
     }
 }

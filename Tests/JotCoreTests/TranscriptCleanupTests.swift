@@ -2,6 +2,21 @@ import XCTest
 @testable import JotCore
 
 final class TranscriptCleanupTests: XCTestCase {
+    @MainActor func testUnavailableModelsPreserveTextWithoutInvokingGeneration() async {
+        let source = ["  café: do not ship 15 items.\n"]
+        for availability in CleanupAvailability.allCases where availability != .available {
+            let cleanup = TranscriptCleanup(availability: { availability })
+            let result = await cleanup.cleanWithOutcome(source, generator: { _ in
+                XCTFail("Unavailable model must not be invoked: \(availability)")
+                return ["unexpected"]
+            })
+            XCTAssertEqual(result.outcome, .unavailable)
+            XCTAssertEqual(result.texts, source)
+            XCTAssertNotNil(availability.suggestionBlocker)
+        }
+        XCTAssertNil(CleanupAvailability.available.suggestionBlocker)
+    }
+
     func testLiveParagraphReplacesRawTextWithoutAddingRowsOrChangingIdentity() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -30,7 +45,7 @@ final class TranscriptCleanupTests: XCTestCase {
     }
 
     @MainActor func testDictationCanInterruptAmbientCleanupImmediately() async {
-        let cleanup = TranscriptCleanup()
+        let cleanup = TranscriptCleanup(availability: { .available })
         let started = expectation(description: "Model started")
         let work = Task {
             await cleanup.clean(["original"], generator: { _ in
@@ -48,7 +63,7 @@ final class TranscriptCleanupTests: XCTestCase {
     }
 
     @MainActor func testDictationInterruptionKeepsUncooperativeGeneratorBusy() async {
-        let cleanup = TranscriptCleanup()
+        let cleanup = TranscriptCleanup(availability: { .available })
         let started = expectation(description: "Model started")
         let finished = expectation(description: "Model finished")
         let gate = CleanupGeneratorGate()
@@ -78,7 +93,7 @@ final class TranscriptCleanupTests: XCTestCase {
 
     @MainActor func testGeneratorFailurePreservesExactRawTextAndAllowsNextRequest() async {
         struct ModelFailure: Error {}
-        let cleanup = TranscriptCleanup()
+        let cleanup = TranscriptCleanup(availability: { .available })
         let source = ["  um café\n", "Do not ship Friday."]
         let result = await cleanup.clean(source, generator: { received in
             XCTAssertEqual(received, source)
@@ -99,7 +114,7 @@ final class TranscriptCleanupTests: XCTestCase {
     }
 
     @MainActor func testPreservesTurnCountAndRejectsOnlyUnsafeEdits() async {
-        let cleanup = TranscriptCleanup()
+        let cleanup = TranscriptCleanup(availability: { .available })
         let source = ["Um hello there.", "Do not ship."]
         let edited = await cleanup.clean(source, generator: { _ in ["Hello there.", "Ship."] })
         XCTAssertEqual(edited, ["Hello there.", "Do not ship."])
@@ -108,7 +123,7 @@ final class TranscriptCleanupTests: XCTestCase {
     }
 
     @MainActor func testDeadlineReturnsWithoutWaitingForUncooperativeGenerator() async {
-        let cleanup = TranscriptCleanup()
+        let cleanup = TranscriptCleanup(availability: { .available })
         let began = ContinuousClock.now
         let result = await cleanup.clean(["original"], timeout: .milliseconds(20), generator: { _ in
             // Simulates a provider that does not stop immediately after task cancellation.
@@ -128,12 +143,12 @@ final class TranscriptCleanupTests: XCTestCase {
 
     @MainActor func testOversizedInputBypassesProvider() async {
         let source = [String(repeating: "a", count: 2401)]
-        let result = await TranscriptCleanup().clean(source, generator: { _ in XCTFail("Input must be bounded"); return [] })
+        let result = await TranscriptCleanup(availability: { .available }).clean(source, generator: { _ in XCTFail("Input must be bounded"); return [] })
         XCTAssertEqual(result, source)
     }
 
     @MainActor func testInputLimitCountsCombinedUTF8BytesAndIncludesBoundary() async {
-        let cleanup = TranscriptCleanup()
+        let cleanup = TranscriptCleanup(availability: { .available })
         let source = [String(repeating: "é", count: 600), String(repeating: "é", count: 600)]
         let called = expectation(description: "Exactly 2400 bytes reaches the model")
         let accepted = await cleanup.clean(source, generator: { received in

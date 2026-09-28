@@ -27,25 +27,18 @@ final class CaptureRecoveryTests: XCTestCase {
         XCTAssertTrue(scheduler.shouldFlush(bufferedSamples: 30, consecutiveSilentSamples: 0))
     }
 
-    func testFailedAttemptHasRecoveryPriority() {
-        let attempt = DictationAttempt(id: "attempt", sessionID: "session",
-            startedAt: Date(), endedAt: Date(), text: "held words", state: .deliveryFailed)
-        XCTAssertEqual(DictationRecovery.select(attempt: attempt, recentSpeech: "newer room speech"),
-            RecoverySelection(text: "held words", source: .failedAttempt("attempt")))
-    }
-
-    func testDeliveredOrEmptyAttemptFallsBackToRecentSpeech() {
-        let delivered = DictationAttempt(id: "attempt", sessionID: "session",
-            startedAt: Date(), text: "already inserted", state: .delivered)
-        XCTAssertEqual(DictationRecovery.select(attempt: delivered, recentSpeech: "recent words"),
-            RecoverySelection(text: "recent words", source: .recentSpeech))
-        XCTAssertNil(DictationRecovery.select(attempt: nil, recentSpeech: "  \n"))
-    }
-
-    func testLookbackLabelsReadAsMenuItems() {
-        XCTAssertEqual(DictationRecovery.lookbackChoices.map(DictationRecovery.lookbackLabel),
-            ["30 seconds", "1 minute", "2 minutes", "5 minutes", "10 minutes"])
-        XCTAssertTrue(DictationRecovery.lookbackChoices.contains(DictationRecovery.defaultLookbackSeconds))
+    func testSavedReviewNeverSubstitutesAmbientSpeechOrDeliveredAttempts() throws {
+        let store = try TranscriptStore(directory: directory)
+        try store.append(Transcript(sessionID: "room", startedAt: Date(), startSeconds: 0,
+                                    endSeconds: 2, text: "room speech", mode: "ambient"))
+        try store.saveDictationAttempt(DictationAttempt(sessionID: "room", startedAt: Date(),
+            text: "already inserted", state: .delivered))
+        XCTAssertNil(try store.latestRecoverableDictationAttempt())
+        let failed = DictationAttempt(sessionID: "hold", startedAt: Date(timeIntervalSince1970: 100),
+                                     text: "saved hold", state: .deliveryFailed, updatedAt: Date(timeIntervalSince1970: 101))
+        try store.saveDictationAttempt(failed)
+        XCTAssertEqual(try store.latestRecoverableDictationAttempt(), failed)
+        XCTAssertEqual(try store.latestRecoverableDictationAttempt(), failed, "Review must not consume the attempt")
     }
 
     func testAttemptTextAndStateSurviveReopeningAndDeletionClearsThem() throws {

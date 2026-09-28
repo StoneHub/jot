@@ -23,6 +23,7 @@ struct SpeechServiceDependencies {
     var cleanup: @MainActor (TranscriptCleanup, [String], Duration) async -> CleanupResult = { cleaner, texts, timeout in
         await cleaner.cleanWithOutcome(texts, timeout: timeout)
     }
+    var intelligenceAvailability: @MainActor () -> CleanupAvailability = { TranscriptCleanup.availability }
     var makeMicrophone: @MainActor () -> MicrophoneSource = { MicrophoneCapture() }
     var microphoneRetry = MicrophoneStartRetry()
     var prepareModels: @MainActor (SpeechPipeline) async throws -> Void = { try await $0.prepare() }
@@ -60,6 +61,7 @@ final class SpeechService: ObservableObject {
 
     init(dependencies: SpeechServiceDependencies = .live) {
         self.dependencies = dependencies
+        cleanupAvailability = dependencies.intelligenceAvailability()
         capture = CaptureController(microphone: dependencies.makeMicrophone(), retry: dependencies.microphoneRetry)
         capture.onNotice = { [weak self] in self?.notice = $0 }
     }
@@ -149,11 +151,6 @@ final class SpeechService: ObservableObject {
         get { settings.bool(JotDefaultsKey.cleanUpDictation) }
         set { save(JotDefaultsKey.cleanUpDictation, newValue) }
     }
-    /// The store keeps the nearest Recovery window choice, and the picker shows what it kept.
-    var recoveryLookbackSeconds: Int {
-        get { settings.int(JotDefaultsKey.recoveryLookbackSeconds) }
-        set { save(JotDefaultsKey.recoveryLookbackSeconds, newValue) }
-    }
     /// The four grouping and speaker values as one, for the sliders and the code that groups rows.
     var tuning: TranscriptionTuning {
         get { settings.tuning }
@@ -176,6 +173,7 @@ final class SpeechService: ObservableObject {
     /// Why a suggestion cannot be requested right now, in the words the card shows.
     var suggestionBlocker: String? {
         if !suggestionsEnabled { return "Suggestions are off in General." }
+        if let reason = dependencies.intelligenceAvailability().suggestionBlocker { return reason }
         if dictation.isActive || dictation.isPending { return "No suggestion while a dictation is in progress." }
         if diagnosticActive { return "No suggestion while diagnostics run." }
         if preparing { return "No suggestion while Jot is loading models." }
@@ -201,6 +199,7 @@ final class SpeechService: ObservableObject {
     var canChangeInput: Bool { !capture.running && !dictation.isPending && !diagnosticActive }
     /// Replacing the app must not interrupt capture, a pending dictation, inference, model setup, cleanup, or a session's relabel.
     var canInstallUpdate: Bool { canChangeInput && transcriber.processing == nil && !preparing && !cleanup.isRunning && !library.isRelabeling }
+    @Published var showingSavedDictation = false
     @Published var recoveryNotice = ""
     @Published private(set) var cleanupAvailability = TranscriptCleanup.availability
 
@@ -334,7 +333,8 @@ final class SpeechService: ObservableObject {
         result.onSuggestionRequest = { [weak self] in self?.suggestions.request() }
         result.onSuggestionRefused = { [weak self] in
             guard let self else { return }
-            self.suggestions.refuse(self.suggestionBlocker ?? "Suggestions are not available on this keyboard layout.")
+            self.suggestions.refuse(self.suggestionBlocker ?? "Suggestions are not available on this keyboard layout.",
+                                    anchorToField: self.suggestionsEnabled && self.dependencies.intelligenceAvailability() == .available)
         }
         result.onSuggestionAccept = { [weak self] in self?.suggestions.accept() }
         result.onSuggestionDismiss = { [weak self] action in self?.suggestions.dismiss(action: action) }
@@ -348,10 +348,9 @@ final class SpeechService: ObservableObject {
         result.onError = { [weak self] error in
             self?.notice = error.localizedDescription
             if self?.dictation.isActive == true {
-                self?.recoveryNotice = "Speech is still being saved. Use the recovery gesture in a text field to insert it."
+                self?.recoveryNotice = "Speech is still being saved. Choose Review saved dictation to copy it."
             }
         }
-        result.onRecover = { [weak self] in self?.dictation.recoverRecent() }
         result.onDiscardTap = { [weak self] in self?.holdDiscarded() }
         return result
     }()
@@ -387,8 +386,8 @@ final class SpeechService: ObservableObject {
             library.refreshRecent(); library.refreshSessions()
             if let attempt = try library.store?.latestRecoverableDictationAttempt() {
                 recoveryNotice = attempt.hasGap
-                    ? "Partial dictation was saved. Review it in Sessions; recovery can insert the recognized portion."
-                    : "Saved dictation is ready to retry in the current text field."
+                    ? "Partial dictation was saved. Choose Review saved dictation to copy the recognized portion."
+                    : "Choose Review saved dictation to copy the saved text."
             }
             for stale in SessionAudioFile.discardStale(except: timeline.sessionID) { recordEvent(.audioDiscarded, "Session audio left by an earlier run was deleted.", session: stale) }
             if let data = UserDefaults.standard.data(forKey: JotDefaultsKey.modelUpdateChecks),
@@ -882,7 +881,7 @@ final class SpeechService: ObservableObject {
             samplePerformance(); lastStatsTime = dependencies.now(); refreshPermissions()
             resourceReadout.snapshot = readoutSampler.sample()
             // A published assignment tells the window to redraw even when the value is the same, so only changes are assigned.
-            let availability = TranscriptCleanup.availability
+            let availability = dependencies.intelligenceAvailability()
             if cleanupAvailability != availability { cleanupAvailability = availability }
             transcriber.queuedSeconds = transcriber.queuedAudioSeconds
             if !pauseRequested, ambientEnabled || dictation.isActive, let lastAudioAt, dependencies.now().timeIntervalSince(lastAudioAt) > 4 {
@@ -938,7 +937,6 @@ final class SpeechService: ObservableObject {
     /// Counts and state only; transcript and field contents never enter diagnostics.
     var recoveryDiagnostics: [String: Any] {
         [
-            "lookbackSeconds": recoveryLookbackSeconds,
             "attemptState": dictation.currentAttempt?.state.rawValue ?? "none",
             "attemptPending": dictation.isActive || dictation.isPending,
             "pendingAudioJobs": transcriber.jobs.count + (transcriber.processing == nil ? 0 : 1),

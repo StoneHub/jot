@@ -16,10 +16,10 @@ final class DictationInput {
             switch self {
             case .accessibilityRequired: return "Allow Accessibility access to use dictation."
             case .eventTapUnavailable: return "The shortcut listener could not start. Check Input Monitoring permission."
-            case .noTextField(let app, let role): return "Jot retained the speech, but did not find an editable field. To retry, turn off Suggestions in General, focus a text field, then double-tap the dictation shortcut. Jot saw \(role) in \(app)."
-            case .secureField: return "Jot will not insert into password fields. Speech was retained; turn off Suggestions in General, focus a non-secure editable field, then double-tap the dictation shortcut to retry."
-            case .targetChanged: return "Focus changed while Jot was listening. Speech was retained; turn off Suggestions in General, focus an editable field, then double-tap the dictation shortcut to retry."
-            case .shortcutCancelled: return "The shortcut was released with another key. Speech was retained; turn off Suggestions in General, focus an editable field, then double-tap the dictation shortcut to retry."
+            case .noTextField(let app, let role): return "Jot retained the speech, but did not find an editable field. Choose Review saved dictation in Jot to copy it. Jot saw \(role) in \(app)."
+            case .secureField: return "Jot will not insert into password fields. Speech was retained. Choose Review saved dictation in Jot to copy it."
+            case .targetChanged: return "Focus changed while Jot was listening. Speech was retained. Choose Review saved dictation in Jot to copy it."
+            case .shortcutCancelled: return "The shortcut was released with another key. Speech was retained. Choose Review saved dictation in Jot to copy it."
             case .pasteUnavailable: return "The paste shortcut could not be created."
             case .selectionUnavailable: return "This field did not let Jot select your notes, so nothing was replaced."
             case .pressIgnored(let shortcut, let reason): return "\(shortcut) press ignored. \(reason)"
@@ -28,7 +28,6 @@ final class DictationInput {
     }
 
     var onError: ((Error) -> Void)?
-    var onRecover: (() -> Void)?
     var onDiscardTap: (() -> Void)?
     struct DeliveryResult: Codable {
         let verified: Bool
@@ -84,7 +83,6 @@ final class DictationInput {
     private var acceptedPresses = 0
     private var busyPresses = 0
     private var discardedTaps = 0
-    private var recoveryGestures = 0
     private var targetCaptureFailures = 0
     private var lastShortcutError: String?
     /// Kept after a later press succeeds, so a rejection in one app survives a success in another.
@@ -96,7 +94,7 @@ final class DictationInput {
             "eventTapEnabled": eventTap.map { CGEvent.tapIsEnabled(tap: $0) } ?? false,
             "fnPresses": fnPresses, "acceptedPresses": acceptedPresses,
             "busyPresses": busyPresses, "discardedTaps": discardedTaps,
-            "recoveryGestures": recoveryGestures, "targetCaptureFailures": targetCaptureFailures]
+            "targetCaptureFailures": targetCaptureFailures]
         if let lastShortcutError { result["lastError"] = lastShortcutError }
         if let lastRejection { result["lastRejection"] = lastRejection }
         return result
@@ -690,12 +688,9 @@ final class DictationInput {
                 clearTarget()
                 onDiscardTap?()
             }
-        case .recover:
-            // A wholly rejected busy double-tap cannot replace the target owned by
-            // in-flight delivery. An accepted second press remains eligible even if
-            // focus loss already ended its audio before physical release.
+        case .doubleTap:
+            // End the two short holds without ever interpreting them as recovery insertion.
             let acceptedTap = gestureAccepted
-            let mayRecover = acceptedTap || startBlocker() == nil
             gestureAccepted = false
             if acceptedTap {
                 recording = false
@@ -703,22 +698,9 @@ final class DictationInput {
                 clearTarget()
                 onDiscardTap?()
             }
-            // Reuse the physical double-tap recognizer after cancelling the short capture.
-            // Never fall through to speech insertion when suggestions are enabled but busy.
             if shortcut.keyCode == nil && fnSuggestionsEnabled {
                 if suggestionAllowed() { scheduleSuggestionRequest() } else { onSuggestionRefused?() }
-                break
             }
-            guard mayRecover else { break }
-            recoveryGestures += 1
-            do { try captureTarget() }
-            catch {
-                targetCaptureFailures += 1
-                report(error)
-            }
-            // Selection of the retained attempt is independent of target acquisition.
-            // A later retry can reacquire a field without losing the chosen speech.
-            onRecover?()
         case .cancel:
             // A rejected busy press must not clear the target owned by pending work.
             if recording { cancel(InputError.shortcutCancelled) }

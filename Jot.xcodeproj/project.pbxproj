@@ -89,6 +89,7 @@
 		A6DB3AD1B2BD456A7B73ECC5 /* MachTimebase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00B4F5D92D25351C93A3E99B /* MachTimebase.swift */; };
 		A84D2F3520652FB64F16B110 /* TranscriptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBDB9C8F81FE456A8328BCE4 /* TranscriptStore.swift */; };
 		AE5F58B04CE443D34C9291BA /* SessionSplit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C33A3E252A64EE9389B3646 /* SessionSplit.swift */; };
+		B1F1264C6DA76653CA34A703 /* SavedDictationReview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D448D370ACFB9028B1116C5 /* SavedDictationReview.swift */; };
 		B2F7BA8FE06A847F539FEC30 /* ResourceStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75A2B17AAF1631913D5A8DCC /* ResourceStats.swift */; };
 		B33DD6B2558C8E7D3978BD2F /* SuggestionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B84EA74928EFDD284B87A3FE /* SuggestionCard.swift */; };
 		B35C2539D0016CA07D5E8AC2 /* ShortcutSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B091B8659394C293AB6A5B14 /* ShortcutSettings.swift */; };
@@ -186,6 +187,7 @@
 		00B4F5D92D25351C93A3E99B /* MachTimebase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MachTimebase.swift; sourceTree = "<group>"; };
 		0481ADADD05BFA1A6D0E293C /* LiveCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCleanup.swift; sourceTree = "<group>"; };
 		0BCB88E7AF3431E116F525DD /* SuggestionHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionHistory.swift; sourceTree = "<group>"; };
+		0D448D370ACFB9028B1116C5 /* SavedDictationReview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedDictationReview.swift; sourceTree = "<group>"; };
 		0F426834033E58473457EA73 /* SourceSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceSelection.swift; sourceTree = "<group>"; };
 		0FD7554D79D87DF0EC3E65D6 /* SessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsView.swift; sourceTree = "<group>"; };
 		12855DDC22F95E87740F7F47 /* SuggestionContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionContext.swift; sourceTree = "<group>"; };
@@ -347,6 +349,7 @@
 				BD326956C3E7FB03D26E6E5E /* PeopleView.swift */,
 				44E0895E441BAAD4EA6D5DB0 /* RecognitionCommitWindow.swift */,
 				75A2B17AAF1631913D5A8DCC /* ResourceStats.swift */,
+				0D448D370ACFB9028B1116C5 /* SavedDictationReview.swift */,
 				DF4F7EA10A696D822E25FABC /* SelectableHistory.swift */,
 				963CF0B6CB7AC19969690774 /* ServiceControls.swift */,
 				74B630DD768233386E24B60B /* SessionAudioFile.swift */,
@@ -695,6 +698,7 @@
 				C5A65B901A55E853DD64E9C7 /* PeopleView.swift in Sources */,
 				BAE214D6953B9B468EA693C6 /* RecognitionCommitWindow.swift in Sources */,
 				B3AB2422EE65311C8F9EEEEA /* ResourceStats.swift in Sources */,
+				B1F1264C6DA76653CA34A703 /* SavedDictationReview.swift in Sources */,
 				F8582FACF33F73EA96F027A9 /* SelectableHistory.swift in Sources */,
 				0C918687DE78757C418F4D09 /* ServiceControls.swift in Sources */,
 				5A660A2CA87AA8E5225DC142 /* SessionAudioFile.swift in Sources */,
