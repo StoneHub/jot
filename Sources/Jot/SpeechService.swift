@@ -26,6 +26,8 @@ struct SpeechServiceDependencies {
     var intelligenceAvailability: @MainActor () -> CleanupAvailability = { TranscriptCleanup.availability }
     var makeMicrophone: @MainActor () -> MicrophoneSource = { MicrophoneCapture() }
     var microphoneRetry = MicrophoneStartRetry()
+    var availableInputs: () -> [AudioInputDevice] = AudioInputDevice.available
+    var defaultInputUID: () -> String? = AudioInputDevice.defaultUID
     var prepareModels: @MainActor (SpeechPipeline) async throws -> Void = { try await $0.prepare() }
     var unloadModels: @MainActor (SpeechPipeline) async -> Void = { await $0.unload() }
     var microphoneAuthorization: @MainActor () -> AVAuthorizationStatus = { AVCaptureDevice.authorizationStatus(for: .audio) }
@@ -62,9 +64,15 @@ final class SpeechService: ObservableObject {
     init(dependencies: SpeechServiceDependencies = .live) {
         self.dependencies = dependencies
         cleanupAvailability = dependencies.intelligenceAvailability()
-        capture = CaptureController(microphone: dependencies.makeMicrophone(), retry: dependencies.microphoneRetry)
+        capture = CaptureController(microphone: dependencies.makeMicrophone(), retry: dependencies.microphoneRetry,
+            availableDevices: dependencies.availableInputs, defaultDeviceUID: dependencies.defaultInputUID)
         capture.onNotice = { [weak self] in self?.notice = $0 }
     }
+    @Published private(set) var switchingInput = false
+    @Published private(set) var preparingUpdate = false
+    private var inputChange: Task<Void, Never>?
+    private var resumeAfterUpdate = false
+
     // MARK: Settings
 
     /// The one store. Nothing here copies a value out of it: each property below reads it, and each setter writes it and
@@ -77,6 +85,7 @@ final class SpeechService: ObservableObject {
     func settingChanged(_ key: String) {
         objectWillChange.send()
         switch key {
+        case JotDefaultsKey.automaticMicrophone: capture.resetInputSearch()
         case JotDefaultsKey.suggestionsEnabled:
             if suggestionsEnabled && !DictationInput.accessibilityGranted { input.requestAccessibility() }
             updateSuggestionMonitoring()
@@ -101,6 +110,11 @@ final class SpeechService: ObservableObject {
 
     private func save(_ key: String, _ value: Bool) { settings.set(key, value); settingChanged(key) }
     private func save(_ key: String, _ value: Int) { settings.set(key, value); settingChanged(key) }
+
+    var automaticMicrophone: Bool {
+        get { settings.bool(JotDefaultsKey.automaticMicrophone) }
+        set { save(JotDefaultsKey.automaticMicrophone, newValue) }
+    }
 
     var suggestionsEnabled: Bool {
         get { settings.bool(JotDefaultsKey.suggestionsEnabled) }
@@ -172,6 +186,8 @@ final class SpeechService: ObservableObject {
     var canRequestSuggestion: Bool { suggestionBlocker == nil }
     /// Why a suggestion cannot be requested right now, in the words the card shows.
     var suggestionBlocker: String? {
+        if preparingUpdate { return "Jot is finishing the update." }
+        if switchingInput { return "Jot is switching microphones." }
         if !suggestionsEnabled { return "Suggestions are off in General." }
         if let reason = dependencies.intelligenceAvailability().suggestionBlocker { return reason }
         if dictation.isActive || dictation.isPending { return "No suggestion while a dictation is in progress." }
@@ -196,9 +212,13 @@ final class SpeechService: ObservableObject {
         input.fnSuggestionsEnabled = suggestionsEnabled
     }
     var canChangeShortcut: Bool { !dictation.isActive && !dictation.isPending }
-    var canChangeInput: Bool { !capture.running && !dictation.isPending && !diagnosticActive }
-    /// Replacing the app must not interrupt capture, a pending dictation, inference, model setup, cleanup, or a session's relabel.
-    var canInstallUpdate: Bool { canChangeInput && transcriber.processing == nil && !preparing && !cleanup.isRunning && !library.isRelabeling }
+    var canChangeInput: Bool { !switchingInput && !preparingUpdate }
+    /// Internal replacement barrier. The Update button is always usable; its operation waits for this after saving capture.
+    var canInstallUpdate: Bool {
+        !capture.running && !dictation.isActive && !dictation.isPending && !dictation.recoveryRunning && !diagnosticActive &&
+        transcriber.isIdle && !preparing && !pauseRequested && !cleanup.isRunning && !library.isRelabeling &&
+        !speakers.hasPendingPasses && !switchingInput && unloading == nil
+    }
     @Published var showingSavedDictation = false
     @Published var recoveryNotice = ""
     @Published private(set) var cleanupAvailability = TranscriptCleanup.availability
@@ -340,6 +360,8 @@ final class SpeechService: ObservableObject {
         result.onSuggestionDismiss = { [weak self] action in self?.suggestions.dismiss(action: action) }
         result.startBlocker = { [weak self] in
             guard let self else { return "Jot is shutting down." }
+            if self.preparingUpdate { return "Jot is finishing the update." }
+            if self.switchingInput { return "Jot is switching microphones." }
             return DictationReadiness.blocker(phase: self.lifecycle.phase, modelsReady: self.modelState == .ready,
                 ambientEnabled: self.ambientEnabled, pauseRequested: self.pauseRequested, dictationPending: self.dictation.isPending,
                 dictationActive: self.dictation.isActive, diagnosticActive: self.diagnosticActive,
@@ -392,6 +414,8 @@ final class SpeechService: ObservableObject {
             for stale in SessionAudioFile.discardStale(except: timeline.sessionID) { recordEvent(.audioDiscarded, "Session audio left by an earlier run was deleted.", session: stale) }
             if let data = UserDefaults.standard.data(forKey: JotDefaultsKey.modelUpdateChecks),
                let saved = try? JSONDecoder().decode([ModelUpdate].self, from: data) { modelUpdates = saved }
+            meetingTitle = UserDefaults.standard.string(forKey: JotDefaultsKey.updateMeetingTitle)
+            UserDefaults.standard.removeObject(forKey: JotDefaultsKey.updateMeetingTitle)
             if UserDefaults.standard.bool(forKey: JotDefaultsKey.modelsPrepared) {
                 // The models load at launch either way, so Resume is immediate; a launch left paused only leaves the microphone off.
                 prepare(listen: !UserDefaults.standard.bool(forKey: JotDefaultsKey.servicePaused))
@@ -421,7 +445,7 @@ final class SpeechService: ObservableObject {
         observers.append(NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.ambientEnabled || self.dictation.isActive else { return }
-                if self.capture.shouldIgnoreConfigurationChange() { return }
+                if self.switchingInput || self.preparingUpdate || self.capture.shouldIgnoreConfigurationChange() { return }
                 self.recordEvent(.deviceChange, "Audio input configuration changed."); self.pause(automatic: true); self.notice = "Audio input changed. Resume when ready."
             }
         })
@@ -436,6 +460,7 @@ final class SpeechService: ObservableObject {
     var keepAwakeActive: Bool { keepAwake.isActive }
 
     private func resumeAfterSleepIfReady() {
+        guard !preparingUpdate, !switchingInput else { return }
         guard sleepResume.takeResume(paused: !ambientEnabled && !pauseRequested && !preparing) else { return }
         guard ambientRequested else { return }
         capture.refreshInputDevices()
@@ -459,6 +484,7 @@ final class SpeechService: ObservableObject {
     /// is the normal case after Pause, only the microphone starts. `listen: false` loads the models and leaves the microphone
     /// off, for a launch that was left paused.
     func prepare(confirmingDownload: Bool = false, listen: Bool = true) {
+        guard !preparingUpdate else { notice = "Finishing the update…"; return }
         guard !pauseRequested else {
             notice = "Pause is still saving captured speech. Resume when it finishes."
             return
@@ -468,13 +494,14 @@ final class SpeechService: ObservableObject {
             return
         }
         sleepResume.cancel()
+        if !switchingInput { capture.resetInputSearch() }
         if listen {
             ambientRequested = true
             UserDefaults.standard.set(false, forKey: JotDefaultsKey.servicePaused)
             markPerformance(.resume)
         }
         cachedModelBytes = ModelCache.bytesOnDisk()
-        if cachedModelBytes == 0 && !confirmingDownload {
+        if cachedModelBytes == 0 && !confirmingDownload && !modelsLoaded {
             downloadPrompt = ModelCache.expectedBytes
             return
         }
@@ -604,10 +631,68 @@ final class SpeechService: ObservableObject {
 
     // MARK: Work that spans the owned objects
 
-    func setInput(uid: String) {
+    /// A click owns the stop/save/restart sequence; the user never needs to press Pause first.
+    func setInput(uid: String, automatic: Bool = false) {
         guard canChangeInput else { return }
-        do { try capture.setInput(uid: uid); notice = "" }
-        catch { notice = error.localizedDescription }
+        if !automatic { capture.resetInputSearch() }
+        switchingInput = true
+        // Stop immediately and flush the tail before changing the device. Automatic pause retains listening and meeting intent.
+        pause(automatic: true, runSpeakerPass: timeline.lastAmbientRowAt != nil)
+        inputChange = Task {
+            if let pausing { await pausing.value }
+            if let unloading { await unloading.value }
+            guard !Task.isCancelled else { switchingInput = false; return }
+            do {
+                try capture.setInput(uid: uid)
+                notice = "Microphone changed to \(capture.inputName)."
+            } catch { notice = error.localizedDescription }
+            if ambientRequested && !preparingUpdate {
+                prepare()
+                await waitForPreparation()
+            }
+            switchingInput = false; inputChange = nil
+            if automatic && !capture.running && ambientRequested,
+               let next = capture.nextAutomaticInput(failed: true) { setInput(uid: next, automatic: true) }
+        }
+    }
+
+    func waitForInputChange() async {
+        while let inputChange { await inputChange.value }
+    }
+
+    /// Called only after the downloaded update has passed verification. New intake stays blocked until swap or failure.
+    func prepareForUpdate() async throws {
+        guard !preparingUpdate else { throw JotError.message("An update is already finishing.") }
+        preparingUpdate = true
+        resumeAfterUpdate = ambientRequested
+        sleepResume.cancel()
+        pause(automatic: true, runSpeakerPass: timeline.lastAmbientRowAt != nil)
+        let deadline = ContinuousClock.now + .seconds(60)
+        while !canInstallUpdate {
+            try Task.checkCancellation()
+            guard ContinuousClock.now < deadline else {
+                throw JotError.message("Captured speech is still being saved. The update could not finish yet; try Update again.")
+            }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        // The next app launch resumes only the listening the update interrupted, including its meeting title.
+        UserDefaults.standard.set(!resumeAfterUpdate, forKey: JotDefaultsKey.servicePaused)
+        if resumeAfterUpdate, let meetingTitle {
+            UserDefaults.standard.set(meetingTitle, forKey: JotDefaultsKey.updateMeetingTitle)
+        } else { UserDefaults.standard.removeObject(forKey: JotDefaultsKey.updateMeetingTitle) }
+    }
+
+    func cancelUpdatePreparation() {
+        guard preparingUpdate else { return }
+        preparingUpdate = false
+        UserDefaults.standard.removeObject(forKey: JotDefaultsKey.updateMeetingTitle)
+        if resumeAfterUpdate {
+            // A timeout can occur while Pause still drains: resume only after that work has settled.
+            Task {
+                if let pausing { await pausing.value }
+                prepare()
+            }
+        }
     }
 
     /// The session being recorded belongs to Live until capture stops.
@@ -643,7 +728,7 @@ final class SpeechService: ObservableObject {
     func sessionIsSettled(_ id: String) -> Bool { transcriber.isDone(session: id) && !cleanup.isCleaning(session: id) }
 
     /// Models loaded, microphone on, no pause under way.
-    var canHoldDictation: Bool { listeningState.modelsLoaded && ambientEnabled && !pauseRequested }
+    var canHoldDictation: Bool { listeningState.modelsLoaded && ambientEnabled && !pauseRequested && !switchingInput && !preparingUpdate }
 
     /// Closes the audio chunk in progress so a held range starts or ends on an exact timeline boundary.
     func closeChunk() { drainAudio(); timeline.flushAmbient(final: true) }
@@ -738,6 +823,7 @@ final class SpeechService: ObservableObject {
     }
 
     func startAmbient() async throws {
+        guard !preparingUpdate else { throw JotError.message("Jot is finishing the update.") }
         ambientRequested = true
         UserDefaults.standard.set(false, forKey: JotDefaultsKey.servicePaused)
         if lifecycle.phase == .paused || lifecycle.phase == .failed { prepare() }
@@ -749,9 +835,15 @@ final class SpeechService: ObservableObject {
     /// Stop the microphone immediately and save already captured chunks. The models stay loaded, so Resume only starts the
     /// microphone again; `unloadModels()` releases them on request. Automatic pauses keep listening intent and a running
     /// meeting for Resume. Nothing to do when the microphone is already off and no start is under way.
-    func pause(automatic: Bool = false) {
-        if !automatic { sleepResume.cancel() }
-        guard !pauseRequested, ambientEnabled || ambientRequested || preparing else { return }
+    func pause(automatic: Bool = false, runSpeakerPass: Bool = true) {
+        if !automatic {
+            sleepResume.cancel()
+            capture.resetInputSearch()
+            // A Pause clicked during a device change also cancels its automatic resume.
+            ambientRequested = false
+            UserDefaults.standard.set(true, forKey: JotDefaultsKey.servicePaused)
+        }
+        guard !pauseRequested, ambientEnabled || ambientRequested || preparing || holdCapture != nil || capture.running else { return }
         suggestions.dismiss(action: .serviceStopped)
         pauseRequested = true
         markPerformance(.pause)
@@ -761,10 +853,11 @@ final class SpeechService: ObservableObject {
         if ambientEnabled { timeline.flushAmbient(final: true) }
         updateKeepAwakeAssertion()
         if ambientEnabled { recordEvent(.paused, "Service paused.") }
-        timeline.endSessionAudio(runPass: automatic)
+        timeline.endSessionAudio(runPass: automatic && runSpeakerPass)
         let outcome = PauseOutcome(automatic: automatic, ambientRequested: ambientRequested, meetingTitle: meetingTitle)
         ambientRequested = outcome.ambientRequested; meetingTitle = outcome.meetingTitle
-        holdCapture?.cancel(); holdOnlyCapture = false
+        let holdingTask = holdCapture
+        holdingTask?.cancel(); holdOnlyCapture = false
         // The dictation tap stays on: with the models loaded, a hold while paused runs the microphone for the hold.
         updateSuggestionMonitoring()
         if dictation.isActive { dictation.end() }
@@ -772,6 +865,7 @@ final class SpeechService: ObservableObject {
         loadingTask?.cancel(); fileTask?.cancel()
         notice = transcriber.isIdle ? "" : "Saving captured speech before Pause…"
         pausing = Task {
+            await holdingTask?.value
             await loadingTask?.value
             _ = try? await fileTask?.value
             while !transcriber.isIdle {
@@ -815,6 +909,7 @@ final class SpeechService: ObservableObject {
     /// The dictation shortcut went down. Listening: the hold begins at once. Paused with the models loaded: the microphone
     /// starts for this hold, in a session of its own, and the hold begins when it is up. A release before then stops it again.
     func holdBegan() {
+        guard !switchingInput, !preparingUpdate else { return }
         if canHoldDictation { dictation.begin(); return }
         guard microphoneOff, holdCapture == nil else { return }
         holdOnlyCapture = true
@@ -893,6 +988,10 @@ final class SpeechService: ObservableObject {
                 isMeeting: meetingTitle != nil, workPending: !transcriber.isIdle) { timeline.rotateSession() }
         }
         transcriber.kick()
+        if automaticMicrophone, ambientEnabled, !pauseRequested, !preparing, canChangeInput,
+           !dictation.isActive, !dictation.isPending, let next = capture.nextAutomaticInput() {
+            setInput(uid: next, automatic: true)
+        }
     }
 
     func drainAudio() {
@@ -987,6 +1086,7 @@ final class SpeechService: ObservableObject {
     func shutdown() {
         cleanup.shutdown()
         if ambientEnabled { recordEvent(.stopped, "Application quit; capture ended.") }
+        inputChange?.cancel()
         modelCheck?.cancel(); preparation?.cancel(); transcriber.cancel(); diagnostic?.cancel(); pausing?.cancel(); unloading?.cancel(); holdCapture?.cancel()
         suggestions.dismiss(action: .serviceStopped)
         timer?.invalidate(); dictation.releaseFieldEffects(); input.disable(); capture.stop(); updateKeepAwakeAssertion(); server?.stop()

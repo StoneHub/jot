@@ -79,6 +79,7 @@ struct RecoveryFlowChecks {
             exit(2)
         }
         defer { watchdog.cancel() }
+        if CommandLine.arguments.contains("--capture") { try await CaptureFlowChecks.run(); return }
         checkRecognitionCommitWindow()
         checkShortFinalRecognition()
         checkCPUReadout()

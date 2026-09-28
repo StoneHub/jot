@@ -14,6 +14,8 @@ final class SpeakerRecognizer: ObservableObject {
     @Published private(set) var passRunning = false
     /// Passes run one at a time in session order; a pass survives a pause and finishes on its own.
     private var passQueue: Task<Void, Never>?
+    private var pendingPasses = 0
+    var hasPendingPasses: Bool { pendingPasses > 0 || !passesBeingApplied.isEmpty }
     /// Sessions whose pass voices are stored while their rows may still carry live speaker ids, which can name another voice in the pass: from storing the pass until its relabel ends.
     private var passesBeingApplied = Set<String>()
     /// Sessions whose pass relabel failed partway, so some rows still carry live speaker ids. A successful Regroup rewrites them all.
@@ -28,7 +30,11 @@ final class SpeakerRecognizer: ObservableObject {
 
     func enqueuePass(_ file: SessionAudioFile) {
         let previous = passQueue
-        passQueue = Task { await previous?.value; await run(file) }
+        pendingPasses += 1
+        passQueue = Task {
+            defer { pendingPasses -= 1 }
+            await previous?.value; await run(file)
+        }
     }
 
     /// The pass runs off the main actor; only its outcome lands here.

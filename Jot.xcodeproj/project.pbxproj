@@ -54,6 +54,7 @@
 		55B642EC08906D1FD23C693A /* MCPTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA19A72F6D28FCFD5CA7D316 /* MCPTools.swift */; };
 		582F5668DA3F5277CE58F7E0 /* SuggestionInteraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F1183E2300C944A080346B9 /* SuggestionInteraction.swift */; };
 		5A660A2CA87AA8E5225DC142 /* SessionAudioFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74B630DD768233386E24B60B /* SessionAudioFile.swift */; };
+		5C2A486A8981A0EB8EC7037A /* MicrophoneSignal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 714B3F5A437978ACA7A6EE48 /* MicrophoneSignal.swift */; };
 		5E5BCB33BE3FA0C312F91826 /* DictationHighlight.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE1CC811540F74F27A08E5AF /* DictationHighlight.swift */; };
 		6689C56E5F2476BAEFBA6523 /* JotCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D2E098CDE7120087F5C947F0 /* JotCore.framework */; };
 		66B8957514BEDD3D82E0A662 /* AppleFM in Frameworks */ = {isa = PBXBuildFile; productRef = 82EA2AAAF0F7562ED7F86957 /* AppleFM */; };
@@ -216,6 +217,7 @@
 		651850351DF0D76098A021B7 /* ReleaseInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleaseInfo.swift; sourceTree = "<group>"; };
 		6613AB3B8F7BD75C2CFDF556 /* RowRelabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RowRelabel.swift; sourceTree = "<group>"; };
 		6646658769779D619884AA27 /* DictationSpeakerMute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationSpeakerMute.swift; sourceTree = "<group>"; };
+		714B3F5A437978ACA7A6EE48 /* MicrophoneSignal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneSignal.swift; sourceTree = "<group>"; };
 		7415694705568E2457081A4F /* DictationShortcut.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationShortcut.swift; sourceTree = "<group>"; };
 		74B630DD768233386E24B60B /* SessionAudioFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionAudioFile.swift; sourceTree = "<group>"; };
 		75A2B17AAF1631913D5A8DCC /* ResourceStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResourceStats.swift; sourceTree = "<group>"; };
@@ -438,6 +440,7 @@
 				BA19A72F6D28FCFD5CA7D316 /* MCPTools.swift */,
 				9A4D583EF07B940C30081D6E /* MeetingExportWait.swift */,
 				C1C5114298E41FD0B34E6B8C /* MicrophoneSelection.swift */,
+				714B3F5A437978ACA7A6EE48 /* MicrophoneSignal.swift */,
 				96C0189208CFC78FDDDA5D0F /* MicrophoneStartRetry.swift */,
 				A66DE823E83854B6AF8688F6 /* ModelCache.swift */,
 				1EBF5ABC9AB3F8267175FB84 /* ModelCallGate.swift */,
@@ -745,6 +748,7 @@
 				A6DB3AD1B2BD456A7B73ECC5 /* MachTimebase.swift in Sources */,
 				44270DB6A337277CD915775F /* MeetingExportWait.swift in Sources */,
 				D2C247EB99AD43C79AB4C8A3 /* MicrophoneSelection.swift in Sources */,
+				5C2A486A8981A0EB8EC7037A /* MicrophoneSignal.swift in Sources */,
 				BB64AED560E2CD1F4B4FF675 /* MicrophoneStartRetry.swift in Sources */,
 				9746908AE8E2351C6FF18B81 /* ModelCache.swift in Sources */,
 				1B47F4253D363DD041DFC31E /* ModelCallGate.swift in Sources */,

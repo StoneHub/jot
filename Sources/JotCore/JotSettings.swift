@@ -43,6 +43,7 @@ public final class JotSettings: @unchecked Sendable {
     private static let phraseDefaults = PhraseCleanup.Limits()
 
     public static let definitions: [Definition] = [
+        .init(key: JotDefaultsKey.automaticMicrophone, kind: .bool(true), summary: "Try other connected microphones when the current input has no signal"),
         .init(key: JotDefaultsKey.cleanUpDictation, kind: .bool(false), summary: "Clean up dictation with Apple Intelligence before inserting it"),
         .init(key: JotDefaultsKey.highlightTargetField, kind: .bool(true), summary: "Outline the field dictation goes into"),
         .init(key: JotDefaultsKey.muteSpeakersDuringDictation, kind: .bool(true), summary: "Mute the built-in speakers while the dictation key is held"),

@@ -14,18 +14,44 @@ final class CaptureController: ObservableObject {
     @Published private(set) var systemDefaultInputName = "System Default"
     /// Sentences for the service notice; the controller has no screen of its own.
     var onNotice: (String) -> Void = { _ in }
+    @Published private(set) var inputLevel = 0
+    @Published private(set) var inputIsSilent = false
+    @Published private(set) var findingInput = false
+    private var signal = MicrophoneSignal()
+    private var inputSearch = MicrophoneInputSearch()
+    private var activeInputUID: String?
+    var inputName: String { selectedInputUID.isEmpty || selectedInputMissing ? systemDefaultInputName : selectedInputName }
+
+    func resetInputSearch() { inputSearch = MicrophoneInputSearch(); findingInput = false }
+
+    func nextAutomaticInput(failed: Bool = false) -> String? {
+        if failed { signal = MicrophoneSignal(); signal.observe(samples: 48_000, rms: 0) }
+        let next = inputSearch.next(current: selectedInputUID, resolved: activeInputUID,
+            candidates: inputDevices.filter(\.automaticCandidate).map(\.id), signal: signal)
+        if findingInput != inputSearch.isSearching { findingInput = inputSearch.isSearching }
+        return next
+    }
+
+    private func resetSignal() {
+        signal = MicrophoneSignal()
+        if inputLevel != 0 { inputLevel = 0 }
+        if inputIsSilent { inputIsSilent = false }
+    }
     private let availableDevices: () -> [AudioInputDevice]
     private let defaultDeviceName: () -> String?
+    private let defaultDeviceUID: () -> String?
     private let retry: MicrophoneStartRetry
     private var watcher: AudioInputDeviceWatcher?
 
     init(microphone: MicrophoneSource, retry: MicrophoneStartRetry = MicrophoneStartRetry(),
          availableDevices: @escaping () -> [AudioInputDevice] = AudioInputDevice.available,
-         defaultDeviceName: @escaping () -> String? = AudioInputDevice.defaultName) {
+         defaultDeviceName: @escaping () -> String? = AudioInputDevice.defaultName,
+         defaultDeviceUID: @escaping () -> String? = AudioInputDevice.defaultUID) {
         self.microphone = microphone
         self.retry = retry
         self.availableDevices = availableDevices
         self.defaultDeviceName = defaultDeviceName
+        self.defaultDeviceUID = defaultDeviceUID
     }
 
     var running: Bool { microphone.running }
@@ -44,7 +70,9 @@ final class CaptureController: ObservableObject {
     func stopWatching() { watcher?.stop(); watcher = nil }
 
     func refreshInputDevices() {
-        inputDevices = availableDevices()
+        let devices = availableDevices()
+        if devices != inputDevices { resetInputSearch() }
+        inputDevices = devices
         systemDefaultInputName = defaultDeviceName() ?? "System Default"
         if let saved = inputDevices.first(where: { $0.id == selectedInputUID }), saved.name != selectedInputName {
             selectedInputName = saved.name; UserDefaults.standard.set(saved.name, forKey: JotDefaultsKey.selectedInputName)
@@ -70,7 +98,12 @@ final class CaptureController: ObservableObject {
     func startRetrying(shouldContinue: () -> Bool) async throws -> Bool {
         var attempt = 1
         while true {
-            do { try microphone.start(); return true }
+            do {
+                try microphone.start()
+                activeInputUID = selectedInputUID.isEmpty || selectedInputMissing ? defaultDeviceUID() : selectedInputUID
+                resetSignal()
+                return true
+            }
             catch {
                 guard let delay = retry.delay(afterFailedAttempt: attempt) else {
                     throw JotError.message("The microphone did not start after \(attempt) tries (\(error.localizedDescription)). Choose Resume to try again, or relaunch Jot.")
@@ -84,7 +117,15 @@ final class CaptureController: ObservableObject {
         }
     }
 
-    func stop() { microphone.stop() }
-    func drain() -> (samples: [Float], dropped: Int, lastAudio: Date, rms: Float) { microphone.drain() }
+    func stop() { microphone.stop(); resetSignal() }
+    func drain() -> (samples: [Float], dropped: Int, lastAudio: Date, rms: Float) {
+        let packet = microphone.drain()
+        if microphone.running {
+            signal.observe(samples: packet.samples.count, rms: packet.rms)
+            if inputLevel != signal.level { inputLevel = signal.level }
+            if inputIsSilent != signal.isSilent { inputIsSilent = signal.isSilent }
+        }
+        return packet
+    }
     func shouldIgnoreConfigurationChange() -> Bool { microphone.shouldIgnoreConfigurationChange() }
 }
