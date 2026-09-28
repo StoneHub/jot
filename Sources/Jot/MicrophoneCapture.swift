@@ -90,7 +90,7 @@ final class MicrophoneCapture: MicrophoneSource, @unchecked Sendable {
         do { engine.prepare(); try engine.start() }
         catch { input.removeTap(onBus: 0); tapInstalled = false; configurationChangeFilter.cancelExpectedChange(); throw error }
         // The controller handles our own selection notification only after this returns, so the ignore window starts once the engine is up, not before a slow USB device finishes starting.
-        if selectedInputUID != nil { configurationChangeFilter.expectSelectionChange(at: ProcessInfo.processInfo.systemUptime) }
+        configurationChangeFilter.expectSelectionChange(at: ProcessInfo.processInfo.systemUptime)
     }
 
     private func accept(_ samples: [Float]) {

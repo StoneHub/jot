@@ -42,6 +42,9 @@ extension SpeechService {
         result["transcriptionCleanup"] = ["enabled": cleanUpTranscriptions,
             "dictationEnabled": cleanUpDictation,
             "availability": TranscriptCleanup.availability.rawValue, "model": "Apple on-device"]
+        result["microphone"] = ["selected": capture.inputName, "signalLevel": capture.inputLevel,
+            "noSignal": capture.inputIsSilent, "findingInput": capture.findingInput, "switching": switchingInput,
+            "automatic": automaticMicrophone]
         result["dictationInput"] = input.diagnostics
         result["dictationRecovery"] = recoveryDiagnostics
         if let delivery = input.lastDelivery { result["lastDelivery"] = delivery.metadata }
@@ -129,7 +132,7 @@ extension SpeechService {
                 if params["format"] as? String == "json" { result = try object(TranscriptGrouping.foldContinuations(rows)) }
                 else { result = ["sessionID": id, "text": TranscriptExport.markdown(session: session, rows: rows, tuning: tuning)] }
             case "speech.transcribe_file":
-                guard lifecycle.phase == .paused, !capture.running, transcriber.isIdle, !diagnosticActive else { throw JotError.message("Pause Jot before diagnostic file transcription.") }
+                guard !preparingUpdate, !switchingInput, lifecycle.phase == .paused, !capture.running, transcriber.isIdle, !diagnosticActive else { throw JotError.message("Pause Jot before diagnostic file transcription.") }
                 guard ModelCache.bytesOnDisk() > 0 else { throw JotError.message("Prepare speech models before diagnostic file transcription.") }
                 guard let path = params["path"] as? String else { throw JotError.message("path is required") }
                 diagnosticActive = true

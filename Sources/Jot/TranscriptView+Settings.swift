@@ -13,13 +13,12 @@ private struct AppUpdateRow: View {
                 Spacer()
                 if case .available(let release) = updater.state {
                     Link("Release notes", destination: release.pageURL)
-                    // Checked again on the click, in case work began since the row last drew.
-                    Button("Update") { if service.canInstallUpdate { updater.install() } }
-                        .disabled(!service.canInstallUpdate).modifier(GlassButton())
-                        .help(service.canInstallUpdate ? "Downloads the release and relaunches Jot." : "Pause capture before updating")
+                    Button("Update") { updater.install(service: service) }
+                        .modifier(GlassButton())
+                        .help("Downloads the release, saves captured speech, and relaunches Jot. Listening resumes automatically.")
                 } else {
                     Button(updater.state == .checking ? "Checking…" : "Check for updates") { updater.check() }
-                        .disabled(updater.state == .checking || updater.state == .installing).modifier(GlassButton())
+                        .disabled(updater.isBusy).modifier(GlassButton())
                 }
             }
             switch updater.state {
@@ -31,6 +30,7 @@ private struct AppUpdateRow: View {
                 if !release.firstNoteLine.isEmpty { Text(release.firstNoteLine).font(.caption).foregroundStyle(.secondary) }
             case .downloading(let fraction):
                 ProgressView(value: fraction) { Text("Downloading…").font(.caption).foregroundStyle(.secondary) }
+            case .finishing: Text("Saving captured speech before relaunching…").font(.callout).foregroundStyle(.secondary)
             case .installing: Text("Verifying and installing…").font(.callout).foregroundStyle(.secondary)
             case .failed(let message): Text(message).font(.callout).foregroundStyle(.red)
             }

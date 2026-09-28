@@ -109,6 +109,12 @@ Dictation marks a range in continuous listening; it creates no additional audio 
 
 Transcripts use local SQLite storage protected by your account's file permissions, without application-level encryption. Model files are cached separately. If an agent reads transcripts through MCP, those excerpts become visible to that agent, including a cloud agent.
 
+## Microphones and updates
+
+Choose a different microphone while listening; Jot saves the current speech and continues on the new input. The sidebar shows the input level. **Switch silent microphones** is on by default: after ten seconds with no input signal, Jot tries other connected microphones and keeps one that receives sound. Each alternative gets three seconds. If none has signal, Jot returns to the original choice and shows the no-signal message. A closed MacBook lid can silence the built-in microphone, so a hub or headset microphone can keep listening working. Virtual and aggregate inputs remain available for manual selection but are not automatic candidates.
+
+**Update** works while listening. Jot downloads and verifies the release first, then saves captured speech and finishes pending work before relaunching. Listening and a named meeting resume afterward; an app that was paused stays paused. If saving cannot finish within a minute, the update reports the problem and restores listening.
+
 ## CLI and MCP
 
 The installer adds `~/.local/bin/jot`. Jot must be running to use it.

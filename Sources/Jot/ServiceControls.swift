@@ -31,10 +31,14 @@ struct ServiceControls: View {
     @ObservedObject var service: SpeechService
     var compact = false
     private var statusTitle: String {
+        if service.preparingUpdate { return "Updating" }
+        if service.switchingInput { return "Switching microphone" }
         if service.holdOnlyCapture { return "Dictating" }
         return service.isPaused ? "Paused" : (service.isTransitioning ? "Starting" : (service.ambientEnabled ? "Listening" : "Ready"))
     }
     private var statusCaption: String {
+        if service.preparingUpdate { return "Saving captured speech…" }
+        if service.switchingInput { return "Listening continues automatically" }
         if service.holdOnlyCapture { return "Microphone on for the hold" }
         if service.isPaused {
             if service.pauseRequested { return "Finishing…" }
@@ -97,7 +101,7 @@ struct PauseResumeButton: View {
             if iconOnly { button.labelStyle(.iconOnly) } else { button }
         }
         .modifier(PrimaryGlassButton())
-        .disabled(service.isPaused && service.isTransitioning)
+        .disabled(service.preparingUpdate || (service.isPaused && service.isTransitioning))
         .help("Pause stops listening and finishes saving captured speech. The models stay loaded, so Resume is immediate.")
         .accessibilityIdentifier("service-pause-resume")
     }
@@ -108,15 +112,34 @@ private struct MicrophoneRow: View {
     @ObservedObject var service: SpeechService
     @ObservedObject var capture: CaptureController
     var body: some View {
-        ControlRow(symbol: "mic", title: "Microphone") {
-            Picker("Microphone", selection: Binding(get: { capture.selectedInputUID }, set: { service.setInput(uid: $0) })) {
-                Text("System Default (\(capture.systemDefaultInputName))").tag("")
-                ForEach(capture.inputRows) { device in Text(device.name).tag(device.id) }
+        VStack(alignment: .leading, spacing: 8) {
+            ControlRow(symbol: "mic", title: "Microphone") {
+                Picker("Microphone", selection: Binding(get: { capture.selectedInputUID }, set: { service.setInput(uid: $0) })) {
+                    Text("System Default (\(capture.systemDefaultInputName))").tag("")
+                    ForEach(capture.inputRows) { device in Text(device.name).tag(device.id) }
+                }
+                .labelsHidden().pickerStyle(.menu)
+                .disabled(!service.canChangeInput)
             }
-            .labelsHidden().pickerStyle(.menu)
-            .disabled(!service.canChangeInput)
+            .help("Change input while listening. Jot saves captured speech and continues on the selected microphone.")
+            if service.ambientEnabled {
+                ProgressView(value: Double(capture.inputLevel), total: 8)
+                    .accessibilityLabel("Microphone input level")
+                    .accessibilityValue("\(capture.inputLevel) of 8")
+                    .padding(.leading, 30)
+            }
+            Toggle("Switch silent microphones", isOn: $service.automaticMicrophone)
+                .font(.caption).toggleStyle(.checkbox).padding(.leading, 30)
+                .help("After ten seconds with no input signal, try other connected microphones. Keep one that receives sound, or return to the original if none does.")
+            if capture.findingInput {
+                Text("Checking connected microphones for sound…").font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true).padding(.leading, 30)
+            } else if capture.inputIsSilent && service.ambientEnabled {
+                Text("No input signal. A closed MacBook lid can disable its built-in microphone. Choose another input above.")
+                    .font(.caption).foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true).padding(.leading, 30)
+            }
         }
-        .help(service.canChangeInput ? "Choose the microphone Jot uses. This does not change macOS's default input." : "Pause capture before changing the microphone.")
     }
 }
 

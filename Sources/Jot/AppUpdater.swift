@@ -6,7 +6,7 @@ import JotCore
 @MainActor
 final class AppUpdater: ObservableObject {
     enum State: Equatable {
-        case idle, checking, upToDate(String), available(ReleaseInfo), downloading(Double), installing, failed(String)
+        case idle, checking, upToDate(String), available(ReleaseInfo), downloading(Double), finishing, installing, failed(String)
     }
     @Published private(set) var state = State.idle
     // The list endpoint, not /releases/latest: development-signed builds publish as pre-releases, which that endpoint hides.
@@ -14,10 +14,16 @@ final class AppUpdater: ObservableObject {
     static let installPath = "/Applications/Jot.app"
     static let officialTeamIdentifier = "N6GPP46885"
     static let logURL = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Application Support/Jot/update.log")
+    var isBusy: Bool {
+        switch state {
+        case .checking, .downloading, .finishing, .installing: return true
+        default: return false
+        }
+    }
     private var progressObservation: NSKeyValueObservation?
 
     func check() {
-        guard state != .checking else { return }
+        guard !isBusy else { return }
         state = .checking
         Task {
             do {
@@ -46,8 +52,8 @@ final class AppUpdater: ObservableObject {
         }
     }
 
-    /// The caller checks SpeechService.canInstallUpdate first; this only requires that a release was found.
-    func install() {
+    /// Download and verify while listening continues; only then finish captured work before replacing the app.
+    func install(service: SpeechService) {
         guard case .available(let release) = state else { return }
         state = .downloading(0)
         Task {
@@ -62,8 +68,12 @@ final class AppUpdater: ObservableObject {
                 let bundle = staging.appending(path: "Jot.app")
                 try verify(bundle, expecting: release.version)
                 log("verified \(bundle.path)")
+                state = .finishing
+                try await service.prepareForUpdate()
+                state = .installing
                 try swap(bundle, staging: staging)
             } catch {
+                service.cancelUpdatePreparation()
                 log("failed: \(error.localizedDescription)")
                 try? FileManager.default.removeItem(at: staging)
                 state = .failed(error.localizedDescription)

@@ -79,6 +79,7 @@ struct RecoveryFlowChecks {
             exit(2)
         }
         defer { watchdog.cancel() }
+        if CommandLine.arguments.contains("--capture") { try await CaptureFlowChecks.run(); return }
         checkRecognitionCommitWindow()
         checkShortFinalRecognition()
         checkCPUReadout()
@@ -915,7 +916,7 @@ struct RecoveryFlowChecks {
                     try await cleanupGate.pass()
                     return texts.map { $0.capitalized }
                 })
-            }))
+            }, intelligenceAvailability: { .available }))
         service.highlightTargetField = false; service.muteSpeakersDuringDictation = false
         service.keepAudioForSpeakerPass = false; service.cleanUpDictation = false
         service.cleanUpTranscriptions = false
@@ -938,17 +939,17 @@ struct RecoveryFlowChecks {
         deliveryGate.open()
         await service.waitForRecoveryVerification()
         try await screen.settle()
-        precondition(!service.dictation.isPending && screen.shortcut && screen.update, "The shortcut and Update buttons stayed disabled after a dictation discarded during insertion")
-        print("PASS: a released dictation discarded during insertion enables the shortcut and Update buttons again.")
+        precondition(!service.dictation.isPending && screen.shortcut && screen.update, "The shortcut and replacement readiness stayed disabled after a dictation discarded during insertion")
+        print("PASS: a released dictation discarded during insertion enables the shortcut and replacement readiness again.")
 
         // What speech.transcribe_file sets and clears around a file diagnostic.
         service.diagnosticActive = true
         try await screen.settle()
-        precondition(!screen.update, "The Update button stayed enabled during a file diagnostic")
+        precondition(!screen.update, "App replacement stayed allowed during a file diagnostic")
         service.diagnosticActive = false
         try await screen.settle()
-        precondition(screen.update, "The Update button stayed disabled after a file diagnostic")
-        print("PASS: a file diagnostic disables the Update button and enables it again when it ends.")
+        precondition(screen.update, "App replacement stayed blocked after a file diagnostic")
+        print("PASS: app replacement waits for a file diagnostic to end.")
 
         // Phrase cleanup still running when Pause finishes.
         service.cleanUpTranscriptions = true
@@ -960,12 +961,17 @@ struct RecoveryFlowChecks {
         service.pause()
         while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
         try await screen.settle()
-        precondition(service.cleanup.isRunning && !screen.update, "The Update button was enabled while cleanup was still running after Pause")
+        precondition(service.cleanup.isRunning && !screen.update, "App replacement was allowed while cleanup was still running after Pause")
+        var updateFinished = false
+        let update = Task { try await service.prepareForUpdate(); updateFinished = true }
+        try await Task.sleep(for: .milliseconds(30))
+        precondition(!updateFinished, "Update skipped pending cleanup")
         cleanupGate.open()
-        while service.cleanup.isRunning { try await Task.sleep(for: .milliseconds(5)) }
+        try await update.value
+        service.cancelUpdatePreparation()
         try await screen.settle()
-        precondition(service.canInstallUpdate && screen.update, "The Update button stayed disabled after cleanup that outlasted Pause finished")
-        print("PASS: cleanup that outlasts Pause enables the Update button when it finishes.")
+        precondition(service.canInstallUpdate && screen.update, "Replacement stayed blocked after cleanup that outlasted Pause finished")
+        print("PASS: app replacement waits for cleanup that outlasts Pause.")
     }
 
     /// Holds phrase cleanup until opened, and says when a phrase is waiting at it.
@@ -1013,7 +1019,7 @@ struct RecoveryFlowChecks {
                     try await gate.pass()
                     return texts.map { $0.prefix(1).uppercased() + $0.dropFirst() + "." }
                 })
-            }))
+            }, intelligenceAvailability: { .available }))
         service.keepAudioForSpeakerPass = false
         service.cleanUpTranscriptions = true
         service.speakers.speakerStore = try SpeakerPassStore(sharing: store)
@@ -1162,7 +1168,7 @@ struct RecoveryFlowChecks {
         precondition(!log.entries.contains("next"), "A second relabel of the session ran while the first held its turn: \(log.entries)")
         precondition(!service.canInstallUpdate, "Install Update was offered while a relabel was writing")
         try await screen.settle()
-        precondition(!screen.update, "The Update button stayed enabled while a relabel was writing")
+        precondition(!screen.update, "App replacement stayed allowed while a relabel was writing")
         gate.signal()
         _ = try await held.value
         _ = try await next.value
@@ -1171,7 +1177,7 @@ struct RecoveryFlowChecks {
         precondition(labels == ["speaker-2"], "The later relabel's speakers did not stay: \(labels)")
         precondition(service.canInstallUpdate, "Install Update stayed held off after the relabels finished")
         try await screen.settle()
-        precondition(screen.update, "The Update button stayed disabled after the relabels finished")
+        precondition(screen.update, "App replacement stayed blocked after the relabels finished")
         print("PASS: a second relabel of a session waits until the first has finished, the later one's speakers stay, and Install Update waits for both, on screen too.")
 
         // Regroup waits behind the held relabel; the session is deleted before its turn comes.
