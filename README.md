@@ -25,7 +25,9 @@ Jot listens while resumed and saves a searchable transcript locally. Hold **Fn**
 
 Build and install Jot using the [instructions below](#build-and-install), then open it from Applications. Requires **Apple Silicon and macOS 14 or later**. The first model download needs internet.
 
-Grant microphone and Accessibility access. If Fn triggers a macOS shortcut, set the Fn/Globe action to **Do Nothing** in Keyboard settings.
+**Setup** opens on the first launch. It explains listening and dictation, downloads the speech models when you choose (the microphone stays off), asks for microphone access on the microphone page and Accessibility on the dictation page, shows the input level once you Resume, and walks you through a first dictation into another app. Apple Intelligence suggestions and cleanup are separate, optional choices at the end; Jot never turns Apple Intelligence on for you. Skip any step; an unfinished Setup reopens at launch where it left off, or at an earlier step whose permission or download is missing. **Finish Later** stops it opening at launch. Reopen it any time from **Setup** in the sidebar or **Jot → Set Up Jot…**. Installs that already have history or Jot preferences are not sent through Setup after an update.
+
+If Fn triggers a macOS shortcut, set the Fn/Globe action to **Do Nothing** in Keyboard settings.
 
 - **Resume** starts listening immediately; the first Resume downloads and loads the models. **Pause** stops new capture after saving captured speech and keeps the models loaded; agent hooks are refused while paused; a running meeting ends without exporting, with its transcript in **Sessions**. An explicit Pause stays paused across launch, with the models loaded and the microphone off. **Unload Models** in the menu, or `jot models unload`, frees the models' memory until the next Resume. Jot resumes after sleep if it was listening beforehand.
 - **Dictation** enables the insertion shortcut. Turning it off does not stop listening; use **Pause** for that. While paused, holding the shortcut turns the microphone on for the hold and off again on release; the dictation is saved as a session of its own.

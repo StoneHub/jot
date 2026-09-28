@@ -107,8 +107,8 @@ struct PauseResumeButton: View {
     }
 }
 
-/// Observes only the device list, so a device change redraws this row and not the whole card.
-private struct MicrophoneRow: View {
+/// Observes only the device list, so a device change redraws this row and not the whole card. Setup's microphone page shows it too.
+struct MicrophoneRow: View {
     @ObservedObject var service: SpeechService
     @ObservedObject var capture: CaptureController
     var body: some View {

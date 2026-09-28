@@ -37,6 +37,7 @@ private struct NoticeToast: View {
 struct TranscriptView: View {
     @ObservedObject var service: SpeechService
     @ObservedObject var library: SessionLibrary
+    @ObservedObject var setup: SetupFlow
     let delegate: JotDelegate
     @Environment(\.openWindow) private var openWindow
     @State private var copiedID: String?
@@ -47,9 +48,9 @@ struct TranscriptView: View {
     @State private var copyReset: Task<Void, Never>?
 
     private enum Section: String, CaseIterable {
-        case live = "Live", dictations = "Dictations", sessions = "Sessions", people = "People", general = "General", vocabulary = "Vocabulary", models = "Models & updates", activity = "Activity"
-        /// The four under the Settings heading, drawn quieter than the places where transcripts live.
-        var isSetting: Bool { self == .general || self == .vocabulary || self == .models || self == .activity }
+        case live = "Live", dictations = "Dictations", sessions = "Sessions", people = "People", general = "General", vocabulary = "Vocabulary", models = "Models & updates", activity = "Activity", setup = "Setup"
+        /// The five under the Settings heading, drawn quieter than the places where transcripts live.
+        var isSetting: Bool { self == .general || self == .vocabulary || self == .models || self == .activity || self == .setup }
         /// Help for the page as a whole, behind the (i) beside its title.
         var info: String? {
             switch self {
@@ -68,6 +69,7 @@ struct TranscriptView: View {
             case .activity: "chart.xyaxis.line"
             case .general: "gearshape"
             case .models: "square.stack.3d.up"
+            case .setup: "checklist"
             }
         }
     }
@@ -92,6 +94,7 @@ struct TranscriptView: View {
                     case .activity: activity
                     case .general: general
                     case .models: models
+                    case .setup: SetupView(service: service, library: library, flow: setup, close: { section = .live })
                     }
                 }.padding(narrow ? 16 : 24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .modifier(GlassSurface())
@@ -102,12 +105,20 @@ struct TranscriptView: View {
         .background(JotBackdrop())
         .tint(Color(nsColor: .controlAccentColor))
         .background(WindowAttachment(attach: delegate.attach))
-        .onAppear { delegate.openAction = { openWindow(id: "main") } }
+        .onAppear { delegate.openAction = { openWindow(id: "main") }; showRequestedSetup() }
         .onDisappear { copyReset?.cancel() }
         .sheet(isPresented: $service.showingSavedDictation) { SavedDictationReview(service: service) }
         .onChange(of: library.historyRevision) { _, _ in copiedID = nil }
-        // A fresh start opens Live; changing microphones leaves the current tab and selection alone.
-        .onChange(of: service.livePresentationRevision) { _, _ in section = .live }
+        // A fresh start opens Live; changing microphones leaves the current tab and selection alone. Setup stays on screen while its level check or trial dictation starts the microphone.
+        .onChange(of: service.livePresentationRevision) { _, _ in if section != .setup { section = .live } }
+        .onChange(of: setup.requested) { _, requested in if requested { showRequestedSetup() } }
+    }
+
+    /// Launch and the Set Up Jot command ask for setup; the request waits until this window is open to show it.
+    private func showRequestedSetup() {
+        guard setup.requested else { return }
+        setup.requested = false
+        section = .setup
     }
 
     private var sidebar: some View {
