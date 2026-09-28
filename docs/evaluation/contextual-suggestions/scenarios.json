@@ -1339,6 +1339,390 @@
           "Mentions harbor tides"
         ]
       }
+    },
+    {
+      "id": "reply-video-after-the-spoken-reply",
+      "title": "The user said their reply aloud, then a video played until the request",
+      "covers": ["multiple-speakers", "unrelated-context", "blank-field", "role-confusion"],
+      "target": {
+        "integration": "native-ax",
+        "app": "Claude",
+        "mode": "reply",
+        "purpose": "text-entry",
+        "project": "harbor-app",
+        "conversation": "claude-c15",
+        "inputRevision": 0,
+        "before": "",
+        "after": "",
+        "requestedAt": "2026-09-28T09:10:00Z"
+      },
+      "sources": [
+        {
+          "id": "s1",
+          "kind": "assistant-response",
+          "role": "assistant",
+          "origin": "claude-visible-text",
+          "scope": {"project": "harbor-app", "conversation": "claude-c15"},
+          "timestamp": "2026-09-28T09:04:00Z",
+          "revision": 1,
+          "status": "current",
+          "text": "The export pause fix is merged and installed. Should I open the pull request for the settings screen now, or wait until you have tested the export on your Mac?"
+        },
+        {
+          "id": "s2",
+          "kind": "meeting-transcript",
+          "role": "unknown",
+          "speaker": "speaker 3",
+          "origin": "jot-meeting",
+          "scope": {"project": "harbor-app", "session": "desk-0928a"},
+          "timestamp": "2026-09-28T09:05:00Z",
+          "revision": 1,
+          "status": "current",
+          "text": "So my reply to that would be, open the pull request for the settings screen now, I'll test the export pause tonight."
+        },
+        {
+          "id": "s3",
+          "kind": "meeting-transcript",
+          "role": "unknown",
+          "speaker": "speaker 2",
+          "origin": "jot-meeting",
+          "scope": {"project": "harbor-app", "session": "desk-0928a"},
+          "timestamp": "2026-09-28T09:06:00Z",
+          "revision": 1,
+          "status": "current",
+          "text": "First, feed the starter twelve hours ahead so it doubles before you mix."
+        },
+        {
+          "id": "s4",
+          "kind": "meeting-transcript",
+          "role": "unknown",
+          "speaker": "speaker 2",
+          "origin": "jot-meeting",
+          "scope": {"project": "harbor-app", "session": "desk-0928a"},
+          "timestamp": "2026-09-28T09:06:30Z",
+          "revision": 1,
+          "status": "current",
+          "text": "Then hold back the salt until the dough has rested for half an hour."
+        },
+        {
+          "id": "s5",
+          "kind": "meeting-transcript",
+          "role": "unknown",
+          "speaker": "speaker 2",
+          "origin": "jot-meeting",
+          "scope": {"project": "harbor-app", "session": "desk-0928a"},
+          "timestamp": "2026-09-28T09:07:00Z",
+          "revision": 1,
+          "status": "current",
+          "text": "Fold it every forty minutes for the first three hours, four folds each time."
+        },
+        {
+          "id": "s6",
+          "kind": "meeting-transcript",
+          "role": "unknown",
+          "speaker": "speaker 2",
+          "origin": "jot-meeting",
+          "scope": {"project": "harbor-app", "session": "desk-0928a"},
+          "timestamp": "2026-09-28T09:07:30Z",
+          "revision": 1,
+          "status": "current",
+          "text": "Shape it tight, seam side up, and let it proof overnight in the fridge."
+        },
+        {
+          "id": "s7",
+          "kind": "meeting-transcript",
+          "role": "unknown",
+          "speaker": "speaker 2",
+          "origin": "jot-meeting",
+          "scope": {"project": "harbor-app", "session": "desk-0928a"},
+          "timestamp": "2026-09-28T09:08:00Z",
+          "revision": 1,
+          "status": "current",
+          "text": "Score deep along one side so the loaf opens where you want it to."
+        },
+        {
+          "id": "s8",
+          "kind": "meeting-transcript",
+          "role": "unknown",
+          "speaker": "speaker 2",
+          "origin": "jot-meeting",
+          "scope": {"project": "harbor-app", "session": "desk-0928a"},
+          "timestamp": "2026-09-28T09:08:30Z",
+          "revision": 1,
+          "status": "current",
+          "text": "Bake covered for twenty minutes, then uncovered until the crust is dark."
+        }
+      ],
+      "expected": {
+        "outcome": "suggest",
+        "includedSources": ["s1", "s2", "s5", "s6", "s7", "s8"],
+        "excludedSources": [
+          {"id": "s3", "reason": "over-limit"},
+          {"id": "s4", "reason": "over-limit"}
+        ],
+        "reason": "The spoken reply shares the assistant's terms (pull request, settings screen, export pause), so it outranks the newer video that shares none, and the two oldest video sentences fall to the bound.",
+        "idealText": {"origin": "authored", "text": "Open the pull request for the settings screen now. I'll test the export pause tonight."}
+      },
+      "scoring": {
+        "criteria": ["outcome", "source-selection", "user-voice", "grounded", "useful"],
+        "pass": "The spoken answer to the assistant's question, as the user's message.",
+        "failIf": [
+          "Mentions sourdough, the starter, folding or baking",
+          "Returns NO_SUGGESTION because the voice is not identified",
+          "Asks the assistant which option it prefers"
+        ]
+      }
+    },
+    {
+      "id": "reply-phone-call-during-a-slack-reply",
+      "title": "A dictated note answers the Slack question; a phone call is newer",
+      "covers": ["multiple-speakers", "unrelated-context", "blank-field", "user-intent"],
+      "target": {
+        "integration": "native-ax",
+        "app": "Slack",
+        "mode": "reply",
+        "purpose": "text-entry",
+        "project": "harbor-app",
+        "inputRevision": 0,
+        "before": "",
+        "after": "",
+        "requestedAt": "2026-09-28T11:30:00Z"
+      },
+      "sources": [
+        {
+          "id": "s1",
+          "kind": "screen-text",
+          "role": "unknown",
+          "origin": "accessibility",
+          "scope": {"project": "harbor-app"},
+          "timestamp": "2026-09-28T11:30:00Z",
+          "revision": 1,
+          "status": "current",
+          "text": "Dana: Can you send the September invoice by Friday? Finance closes the books on Monday."
+        },
+        {
+          "id": "s2",
+          "kind": "dictation",
+          "role": "user",
+          "origin": "jot-dictation",
+          "scope": {"project": "harbor-app"},
+          "timestamp": "2026-09-28T11:24:00Z",
+          "revision": 1,
+          "status": "current",
+          "text": "Note to self, the September invoice goes out Thursday once the hours are approved."
+        },
+        {
+          "id": "s3",
+          "kind": "meeting-transcript",
+          "role": "unknown",
+          "speaker": "speaker 2",
+          "origin": "jot-meeting",
+          "scope": {"project": "harbor-app", "session": "desk-0928b"},
+          "timestamp": "2026-09-28T11:26:00Z",
+          "revision": 1,
+          "status": "current",
+          "text": "Yeah, I can be there at six, no problem."
+        },
+        {
+          "id": "s4",
+          "kind": "meeting-transcript",
+          "role": "unknown",
+          "speaker": "speaker 2",
+          "origin": "jot-meeting",
+          "scope": {"project": "harbor-app", "session": "desk-0928b"},
+          "timestamp": "2026-09-28T11:26:45Z",
+          "revision": 1,
+          "status": "current",
+          "text": "Bring the tall ladder, the gutter on the north side is the worst one."
+        },
+        {
+          "id": "s5",
+          "kind": "meeting-transcript",
+          "role": "unknown",
+          "speaker": "speaker 2",
+          "origin": "jot-meeting",
+          "scope": {"project": "harbor-app", "session": "desk-0928b"},
+          "timestamp": "2026-09-28T11:27:30Z",
+          "revision": 1,
+          "status": "current",
+          "text": "If it rains we'll do the garage door instead and leave the roof for Saturday."
+        },
+        {
+          "id": "s6",
+          "kind": "meeting-transcript",
+          "role": "unknown",
+          "speaker": "speaker 2",
+          "origin": "jot-meeting",
+          "scope": {"project": "harbor-app", "session": "desk-0928b"},
+          "timestamp": "2026-09-28T11:28:15Z",
+          "revision": 1,
+          "status": "current",
+          "text": "Tell your brother the trailer hitch is in the shed behind the mower."
+        },
+        {
+          "id": "s7",
+          "kind": "meeting-transcript",
+          "role": "unknown",
+          "speaker": "speaker 2",
+          "origin": "jot-meeting",
+          "scope": {"project": "harbor-app", "session": "desk-0928b"},
+          "timestamp": "2026-09-28T11:29:00Z",
+          "revision": 1,
+          "status": "current",
+          "text": "Okay, see you at six, I'll grab sandwiches on the way."
+        }
+      ],
+      "expected": {
+        "outcome": "suggest",
+        "includedSources": ["s1", "s2", "s4", "s5", "s6", "s7"],
+        "excludedSources": [
+          {"id": "s3", "reason": "over-limit"}
+        ],
+        "reason": "The user's own dictation comes before any other voice, and the thread on screen is the field's own context; the phone call fills what is left, oldest sentence out.",
+        "idealText": {"origin": "authored", "text": "Yes. The September invoice goes out Thursday, once the hours are approved."}
+      },
+      "scoring": {
+        "criteria": ["outcome", "source-selection", "user-voice", "grounded", "useful"],
+        "pass": "Answers Dana with the user's own plan for the invoice.",
+        "failIf": [
+          "Mentions the ladder, the gutter, the roof or sandwiches",
+          "Promises Friday instead of Thursday",
+          "Addresses the caller rather than Dana"
+        ]
+      }
+    },
+    {
+      "id": "reply-two-topics-in-one-meeting",
+      "title": "The meeting settled the import question, then moved on to lunch and the offsite",
+      "covers": ["multiple-speakers", "matching-context", "unrelated-context", "blank-field"],
+      "target": {
+        "integration": "native-ax",
+        "app": "Claude",
+        "mode": "reply",
+        "purpose": "text-entry",
+        "project": "harbor-app",
+        "conversation": "claude-c16",
+        "inputRevision": 0,
+        "before": "",
+        "after": "",
+        "requestedAt": "2026-09-28T14:20:00Z"
+      },
+      "sources": [
+        {
+          "id": "s1",
+          "kind": "assistant-response",
+          "role": "assistant",
+          "origin": "claude-visible-text",
+          "scope": {"project": "harbor-app", "conversation": "claude-c16"},
+          "timestamp": "2026-09-28T14:05:00Z",
+          "revision": 1,
+          "status": "current",
+          "text": "The tide chart import is failing on the new station file. Do you want me to skip malformed rows and log them, or stop the import on the first bad row?"
+        },
+        {
+          "id": "s2",
+          "kind": "meeting-transcript",
+          "role": "participant",
+          "speaker": "Priya",
+          "origin": "jot-meeting",
+          "scope": {"project": "harbor-app", "session": "desk-0928c"},
+          "timestamp": "2026-09-28T14:06:00Z",
+          "revision": 1,
+          "status": "current",
+          "text": "For the tide chart import, skip the malformed rows and log each one with its line number. Stopping on the first bad row is what got us stuck last time."
+        },
+        {
+          "id": "s3",
+          "kind": "meeting-transcript",
+          "role": "participant",
+          "speaker": "Sam",
+          "origin": "jot-meeting",
+          "scope": {"project": "harbor-app", "session": "desk-0928c"},
+          "timestamp": "2026-09-28T14:07:00Z",
+          "revision": 1,
+          "status": "current",
+          "text": "Agreed, log them and keep the import going. We can review the log after the import finishes."
+        },
+        {
+          "id": "s4",
+          "kind": "meeting-transcript",
+          "role": "participant",
+          "speaker": "Sam",
+          "origin": "jot-meeting",
+          "scope": {"project": "harbor-app", "session": "desk-0928c"},
+          "timestamp": "2026-09-28T14:10:00Z",
+          "revision": 1,
+          "status": "current",
+          "text": "Lunch is at the taco place at half twelve, order ahead if you want the fish."
+        },
+        {
+          "id": "s5",
+          "kind": "meeting-transcript",
+          "role": "unknown",
+          "speaker": "speaker 4",
+          "origin": "jot-meeting",
+          "scope": {"project": "harbor-app", "session": "desk-0928c"},
+          "timestamp": "2026-09-28T14:12:00Z",
+          "revision": 1,
+          "status": "current",
+          "text": "The offsite is the second week of October, the lodge confirmed forty beds."
+        },
+        {
+          "id": "s6",
+          "kind": "meeting-transcript",
+          "role": "participant",
+          "speaker": "Sam",
+          "origin": "jot-meeting",
+          "scope": {"project": "harbor-app", "session": "desk-0928c"},
+          "timestamp": "2026-09-28T14:14:00Z",
+          "revision": 1,
+          "status": "current",
+          "text": "Bring a jacket, the lake gets cold in the evening even in October."
+        },
+        {
+          "id": "s7",
+          "kind": "meeting-transcript",
+          "role": "unknown",
+          "speaker": "speaker 4",
+          "origin": "jot-meeting",
+          "scope": {"project": "harbor-app", "session": "desk-0928c"},
+          "timestamp": "2026-09-28T14:16:00Z",
+          "revision": 1,
+          "status": "current",
+          "text": "Someone book the minibus for the Friday, the train doesn't stop there."
+        },
+        {
+          "id": "s8",
+          "kind": "meeting-transcript",
+          "role": "participant",
+          "speaker": "Sam",
+          "origin": "jot-meeting",
+          "scope": {"project": "harbor-app", "session": "desk-0928c"},
+          "timestamp": "2026-09-28T14:18:00Z",
+          "revision": 1,
+          "status": "current",
+          "text": "And the karaoke machine is coming, that's not up for discussion."
+        }
+      ],
+      "expected": {
+        "outcome": "suggest",
+        "includedSources": ["s1", "s2", "s3", "s6", "s7", "s8"],
+        "excludedSources": [
+          {"id": "s4", "reason": "over-limit"},
+          {"id": "s5", "reason": "over-limit"}
+        ],
+        "reason": "The two turns that answer the assistant's question share its terms (import, rows, log) and outrank the newer lunch and offsite talk, which fills the rest of the bound newest first.",
+        "idealText": {"origin": "authored", "text": "Skip the malformed rows and log each one with its line number, then keep going. We will review the log after the import finishes."}
+      },
+      "scoring": {
+        "criteria": ["outcome", "source-selection", "user-voice", "grounded", "useful"],
+        "pass": "The meeting's decision on the import, as the user's instruction.",
+        "failIf": [
+          "Mentions lunch, tacos, the offsite, the lodge or karaoke",
+          "Chooses stopping on the first bad row",
+          "Asks the assistant to decide"
+        ]
+      }
     }
   ]
 }

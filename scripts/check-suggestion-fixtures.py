@@ -34,7 +34,7 @@ ROLES_BY_KIND = {
     'screen-text': {'unknown'},
 }
 STATUSES = {'current', 'stale', 'deleted'}
-EXCLUSION_REASONS = {'unrelated-scope', 'stale', 'deleted', 'duplicate', 'generated-not-intent', 'not-relevant'}
+EXCLUSION_REASONS = {'unrelated-scope', 'stale', 'deleted', 'duplicate', 'generated-not-intent', 'not-relevant', 'over-limit'}
 CHANGE_KINDS = {'input-edited', 'source-deleted'}
 SCOPE_KEYS = {'project', 'conversation', 'session'}
 REQUIRED_COVERAGE = {

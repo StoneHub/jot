@@ -275,9 +275,18 @@ final class SuggestionEvaluationRunTests: XCTestCase {
         XCTAssertEqual(options.mode, .oracleContext)
         XCTAssertEqual(options.iterations, 1)
         XCTAssertNil(options.sourceRevision)
+        XCTAssertEqual(options.limits, .experiment)
+        XCTAssertEqual(options.association, .scoped)
+        let app = try XCTUnwrap(CommandOptions.parse(["--corpus", "c.json", "--output", "out", "--limits", "window", "--association", "explicit"]))
+        XCTAssertEqual(app.limits, .window)
+        XCTAssertEqual(app.association, .explicit)
+        XCTAssertEqual(app.limits.limits, SelectionLimits.window)
+        XCTAssertEqual(app.association.association, .explicitRecentRequest)
         let invalid: [[String]] = [
             ["--output", "out"], ["--corpus", "c.json"], ["--corpus"],
             ["--corpus", "c.json", "--output", "out", "--mode", "oracle"],
+            ["--corpus", "c.json", "--output", "out", "--limits", "app"],
+            ["--corpus", "c.json", "--output", "out", "--association", "recent"],
             ["--corpus", "c.json", "--output", "out", "--iterations", "0"],
             ["--corpus", "c.json", "--output", "out", "--live"],
         ]

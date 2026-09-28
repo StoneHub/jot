@@ -20,6 +20,8 @@ struct CommandOptions: Equatable {
     var corpusArgument: String
     var outputArgument: String
     var mode = EvaluationMode.normal
+    var limits = EvaluationLimits.experiment
+    var association = EvaluationAssociation.scoped
     var iterations = 1
     var sourceRevision: String?
 
@@ -35,18 +37,23 @@ struct CommandOptions: Equatable {
         jot-suggestion-eval: synthetic on-device contextual-suggestion experiment
 
         jot-suggestion-eval --corpus <scenarios.json> --output <new-directory>
-                            [--mode normal|oracle-context] [--iterations 1-20] [--source-revision <commit>]
+                            [--mode normal|oracle-context] [--limits experiment|window] [--association scoped|explicit]
+                            [--iterations 1-20] [--source-revision <commit>]
 
         Reads only the synthetic corpus and writes run.json, results.jsonl and prompts.jsonl into a directory
         that must not exist yet. It never connects to Jot, reads transcripts, inserts text or runs commands.
         normal selects sources itself. oracle-context generates from the corpus's expected sources instead,
         isolating the model from retrieval; its records are labeled with that mode.
+        --limits window and --association explicit select as the app does for a double-tap Fn request: twelve
+        sources and 6,000 bytes, every source in the window eligible, so only the ranking and the bounds choose.
+        The corpus's expected selections are authored for the experiment's scoped defaults.
         """
 
     /// nil when help was requested.
     static func parse(_ arguments: [String]) throws -> CommandOptions? {
         var corpus: String?, output: String?, revision: String?
         var mode = EvaluationMode.normal, iterations = 1
+        var limits = EvaluationLimits.experiment, association = EvaluationAssociation.scoped
         var index = 0
         func value() throws -> String {
             index += 1
@@ -67,6 +74,14 @@ struct CommandOptions: Equatable {
                     throw EvaluationError.usage("--mode must be normal or oracle-context")
                 }
                 mode = parsed
+            case "--limits":
+                let name = try value()
+                guard let parsed = EvaluationLimits(rawValue: name) else { throw EvaluationError.usage("--limits must be experiment or window") }
+                limits = parsed
+            case "--association":
+                let name = try value()
+                guard let parsed = EvaluationAssociation(rawValue: name) else { throw EvaluationError.usage("--association must be scoped or explicit") }
+                association = parsed
             case "--iterations":
                 let text = try value()
                 guard let count = Int(text), (1...20).contains(count) else {
@@ -81,8 +96,8 @@ struct CommandOptions: Equatable {
             index += 1
         }
         guard let corpus, let output else { throw EvaluationError.usage("--corpus and --output are required\n\n\(usage)") }
-        return CommandOptions(corpusArgument: corpus, outputArgument: output, mode: mode, iterations: iterations,
-                              sourceRevision: revision)
+        return CommandOptions(corpusArgument: corpus, outputArgument: output, mode: mode, limits: limits,
+                              association: association, iterations: iterations, sourceRevision: revision)
     }
 }
 
@@ -112,7 +127,8 @@ struct SuggestionEvaluationCommand {
         let corpus = try Corpus.decode(data)
         let output = try EvaluationOutput(creating: options.output)
         let configuration = EvaluationConfiguration(mode: options.mode, iterations: options.iterations,
-                                                    generatorLabel: generatorLabel)
+                                                    generatorLabel: generatorLabel, limits: options.limits,
+                                                    association: options.association)
         var metadata = RunMetadata(configuration: configuration, corpus: corpus, corpusPath: options.corpusPath,
                                    corpusSHA256: ContentHash.sha256(data), sourceRevision: options.sourceRevision,
                                    runtime: runtime, startedAt: Date())
