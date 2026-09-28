@@ -380,7 +380,8 @@ final class SpeechService: ObservableObject {
         return result
     }()
 
-    func launch() {
+    /// `askPermissions: false` while first-run setup is open: setup asks for each permission on the page that explains it.
+    func launch(askPermissions: Bool = true) {
         markPerformance(.launch)
         resourceReadout.snapshot = readoutSampler.sample()
         capture.watchDevices()
@@ -426,7 +427,7 @@ final class SpeechService: ObservableObject {
         } catch { notice = "Service startup: \(error.localizedDescription)" }
         // A second Jot stands down entirely: no models, no key tap, no socket. The window shows the notice and Quit.
         guard directoryLock != nil else { return }
-        promptForPermissionsAtLaunch()
+        if askPermissions { promptForPermissionsAtLaunch() }
         _ = suggestions
         updateSuggestionMonitoring()
         scheduleTimer()
@@ -573,6 +574,15 @@ final class SpeechService: ObservableObject {
         return pending
     }
 
+    /// Setup's Download button: fetches and loads the models with the microphone off. Jot stays paused, across a relaunch too,
+    /// until the user chooses Resume, so a download never starts listening.
+    func prepareModelsOnly() {
+        guard !ambientEnabled, !preparing, !preparingUpdate, !pauseRequested else { return }
+        ambientRequested = false
+        UserDefaults.standard.set(true, forKey: JotDefaultsKey.servicePaused)
+        prepare(confirmingDownload: true, listen: false)
+    }
+
     /// Assigns only a change, since the tick calls this every second.
     func refreshPermissions() {
         let microphone = dependencies.microphoneAuthorization()
@@ -602,8 +612,18 @@ final class SpeechService: ObservableObject {
 
     /// The persistent button. Asks again where macOS still allows it, otherwise opens the exact settings pane.
     func fixPermissions() {
+        if micPermission != .authorized { fixMicrophonePermission(); return }
+        fixAccessibilityPermission()
+    }
+
+    /// Asks for the microphone while macOS still allows asking, otherwise opens its settings pane. Setup's microphone page uses it too.
+    func fixMicrophonePermission() {
         if micPermission == .notDetermined { Task { _ = await requestMic() }; return }
-        if micPermission != .authorized { openSettings("Privacy_Microphone"); return }
+        openSettings("Privacy_Microphone")
+    }
+
+    /// macOS's own Accessibility prompt, and the pane where Jot is switched on. Setup's dictation page uses it too.
+    func fixAccessibilityPermission() {
         input.requestAccessibility()
         openSettings("Privacy_Accessibility")
     }

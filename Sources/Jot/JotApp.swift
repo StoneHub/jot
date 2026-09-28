@@ -7,12 +7,15 @@ struct JotApp: App {
     var body: some Scene {
         Window("Jot", id: "main") {
             // Every page must fit this size: below it nothing lays out, above it nothing may overflow the window.
-            TranscriptView(service: delegate.service, library: delegate.service.library, delegate: delegate)
+            TranscriptView(service: delegate.service, library: delegate.service.library, setup: delegate.setup, delegate: delegate)
                 .frame(minWidth: 520, minHeight: 420)
         }
         .defaultSize(width: 920, height: 760)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(after: .appInfo) {
+                Button("Set Up Jot…") { delegate.openSetup() }
+            }
         }
         MenuBarExtra {
             MenuControls(service: delegate.service, delegate: delegate)
@@ -104,6 +107,7 @@ struct JotBrand: View {
 final class JotDelegate: NSObject, NSApplicationDelegate {
     let service = SpeechService()
     let updater = AppUpdater()
+    let setup = SetupFlow()
     weak var mainWindow: NSWindow?
     var openAction: (() -> Void)?
     private var closeObserver: NSObjectProtocol?
@@ -134,7 +138,14 @@ final class JotDelegate: NSObject, NSApplicationDelegate {
             icon.isTemplate = false
             NSApp.applicationIconImage = icon
         }
-        service.launch()
+        // Setup decides before the service opens the store, whose file marks an existing install. While setup is open, it asks for each permission itself.
+        setup.launch(readiness: service.setupReadiness)
+        service.launch(askPermissions: !setup.progress.offeredAtLaunch)
+    }
+    /// The Set Up Jot command: setup where it left off, in the main window.
+    func openSetup() {
+        setup.open(readiness: service.setupReadiness)
+        showWindow()
     }
     func attach(_ window: NSWindow) {
         guard mainWindow !== window else { return }
