@@ -300,6 +300,8 @@ final class SpeechService: ObservableObject {
     private let readoutSampler = ResourceSampler()
     private let keepAwake = KeepAwakeAssertion()
     private var server: LocalServiceServer?
+    /// Held from before the store opens until quit. See DirectoryLock.
+    private var directoryLock: DirectoryLock?
     var suggestionHistory: SuggestionHistory?
     private var timer: Timer?
     /// A `jot` file diagnostic is running. Published because the microphone picker and Update read it through canChangeInput.
@@ -360,6 +362,8 @@ final class SpeechService: ObservableObject {
         do { vocabulary = try vocabularyPreferences.load() }
         catch { vocabularyLoadError = "Could not load vocabulary. Saved entries were preserved. " + error.localizedDescription }
         do {
+            // The lock comes before the store: opening an older format rebuilds the file, which must never happen under a running Jot.
+            directoryLock = try DirectoryLock(directory: JotPaths.directory)
             let opened = try TranscriptStore()
             library.store = opened
             // Diagnostics are best effort; a telemetry schema failure must not stop capture or history access.
@@ -391,6 +395,8 @@ final class SpeechService: ObservableObject {
                 prepare(listen: !UserDefaults.standard.bool(forKey: JotDefaultsKey.servicePaused))
             }
         } catch { notice = "Service startup: \(error.localizedDescription)" }
+        // A second Jot stands down entirely: no models, no key tap, no socket. The window shows the notice and Quit.
+        guard directoryLock != nil else { return }
         promptForPermissionsAtLaunch()
         _ = suggestions
         updateSuggestionMonitoring()
