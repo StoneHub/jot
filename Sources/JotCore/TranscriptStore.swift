@@ -643,7 +643,9 @@ public final class TranscriptStore: @unchecked Sendable {
     /// Bounded explicit-request context: recent dictation plus only the latest ambient session.
     /// Time predicates use the existing absolute-time index; the query never returns an entire session.
     /// Every row spoken in the last `window` seconds, dictation and ambient alike, with the title of the newest session among them.
-    public func suggestionContext(window: TimeInterval = 600, now: Date = Date()) throws -> SuggestionContext {
+    /// `userVoice`, when trusted, names the pass speakers in the window whose voice is the user's, so their rows take the
+    /// user role even in a session with no dictation hold.
+    public func suggestionContext(window: TimeInterval = 600, now: Date = Date(), userVoice: UserVoice? = nil) throws -> SuggestionContext {
         try db.locked {
             let cutoff = now.addingTimeInterval(-window).timeIntervalSince1970
             let clause = """
@@ -658,7 +660,23 @@ public final class TranscriptStore: @unchecked Sendable {
                 db.bind(session, to: 1, in: stmt)
                 if sqlite3_step(stmt) == SQLITE_ROW { title = db.column(stmt, 0) }
             }
-            return SuggestionContext(rows: selected, sessionTitle: title)
+            var userSpeakers: Set<String> = []
+            if let userVoice, userVoice.trusted {
+                for session in Set(selected.filter { $0.mode == "ambient" }.map(\.sessionID)).sorted() {
+                    let stmt = try db.prepare("SELECT speaker_id,embedding FROM session_speakers WHERE session_id = ?")
+                    defer { sqlite3_finalize(stmt) }
+                    db.bind(session, to: 1, in: stmt)
+                    while true {
+                        let status = sqlite3_step(stmt)
+                        if status == SQLITE_DONE { break }
+                        guard status == SQLITE_ROW else { throw db.error() }
+                        if userVoice.matches(SpeakerPassStore.floats(db.blob(stmt, 1))) {
+                            userSpeakers.insert(SuggestionContext.userSpeakerKey(session: session, speaker: db.column(stmt, 0)!))
+                        }
+                    }
+                }
+            }
+            return SuggestionContext(rows: selected, sessionTitle: title, userSpeakers: userSpeakers)
         }
     }
 

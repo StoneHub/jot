@@ -176,10 +176,18 @@ extension SpeechService {
             case "context.clear": agentContext.clear(); result = ["held": 0]
             case "people.list":
                 let iso = ISO8601DateFormatter()
-                result = try speakers.peopleStore?.list().map { ["id": $0.id, "name": $0.name, "sampleCount": $0.sampleCount, "createdAt": iso.string(from: $0.createdAt), "updatedAt": iso.string(from: $0.updatedAt)] } ?? []
+                var rows: [[String: Any]] = []
+                if let you = speakers.userVoice {
+                    // The user's own voice, learned from dictation holds; "you" is its id for people.delete.
+                    rows.append(["id": "you", "name": UserVoice.label, "sampleCount": you.sampleCount, "heldSeconds": you.heldSeconds,
+                                 "trusted": you.trusted, "updatedAt": iso.string(from: you.updatedAt)])
+                }
+                rows += try speakers.peopleStore?.list().map { ["id": $0.id, "name": $0.name, "sampleCount": $0.sampleCount, "createdAt": iso.string(from: $0.createdAt), "updatedAt": iso.string(from: $0.updatedAt)] } ?? []
+                result = rows
             case "people.delete":
                 guard let id = params["id"] as? String else { throw JotError.message("id is required") }
-                try speakers.peopleStore?.delete(id: id); speakers.refreshPeople(); result = ["deleted": true]
+                if id == "you" { speakers.forgetUserVoice() } else { try speakers.peopleStore?.delete(id: id); speakers.refreshPeople() }
+                result = ["deleted": true]
             case "speakers.label":
                 guard let session = params["sessionID"] as? String, let speaker = params["speakerID"] as? String, let name = params["name"] as? String else { throw JotError.message("sessionID, speakerID and name are required") }
                 // The name is saved before the voice is remembered, so Live shows it even when remembering the voice fails.

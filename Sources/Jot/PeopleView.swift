@@ -10,8 +10,23 @@ struct PeopleView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if speakers.people.isEmpty {
-                Text("No one yet. Name a speaker in Live or Sessions, and Jot remembers the voice once the session's speaker pass has run.").foregroundStyle(.secondary)
+            if speakers.people.isEmpty && speakers.userVoice == nil {
+                Text("No one yet. Name a speaker in Live or Sessions, and Jot remembers the voice once the session's speaker pass has run. Jot learns your own voice from your dictations.").foregroundStyle(.secondary)
+            }
+            if let you = speakers.userVoice {
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(UserVoice.label).font(.headline)
+                        Text(you.trusted
+                             ? "Your voice, learned from \(you.sampleCount) session\(you.sampleCount == 1 ? "" : "s") of dictation"
+                             : "Learning your voice: \(Int(you.heldSeconds)) of \(Int(UserVoice.minimumHeldSeconds)) seconds of dictation heard")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Forget", systemImage: "trash", role: .destructive) { speakers.forgetUserVoice() }
+                        .labelStyle(.iconOnly).modifier(GlassButton()).help("Forget your voice. Jot learns it again from your next dictations.")
+                }.padding(14).frame(maxWidth: 820, alignment: .leading)
+                    .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
             }
             ForEach(speakers.people) { person in
                 HStack(spacing: 10) {
