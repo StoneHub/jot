@@ -79,6 +79,7 @@ struct RecoveryFlowChecks {
             exit(2)
         }
         defer { watchdog.cancel() }
+        if CommandLine.arguments.contains("--dictation-model") { try await checkDictationProse(); return }
         if CommandLine.arguments.contains("--capture") { try await CaptureFlowChecks.run(); return }
         checkRecognitionCommitWindow()
         checkShortFinalRecognition()
@@ -151,6 +152,7 @@ struct RecoveryFlowChecks {
 
         try await checkFailureAndCleanup(directory: directory)
         try await checkDictationTimings(directory: directory)
+        try await checkSingleWordDictation(directory: directory)
         try await checkLiveFollowsEdits(directory: directory)
         try await checkInterruptedHold(directory: directory)
         try await checkOptionalIntelligence(directory: directory)
@@ -176,6 +178,7 @@ struct RecoveryFlowChecks {
         if CommandLine.arguments.contains("--cleanup-model") { try await checkPhraseCleanupModel() }
 
         if let flag = CommandLine.arguments.firstIndex(of: "--audio"), CommandLine.arguments.count > flag + 1 {
+            try await checkDictationProse()
             try await checkRealRecognition(URL(fileURLWithPath: CommandLine.arguments[flag + 1]))
         }
         print("Recovery controller checks passed. These checks do not establish physical Fn or cross-app Accessibility behavior.")
@@ -512,6 +515,50 @@ struct RecoveryFlowChecks {
         precondition(probe.delivered.last == "Segment5", "Dictation inserted raw text instead of waiting for a three-second cleanup")
         slow.shutdown()
         print("PASS: dictation waits for a three-second cleanup and inserts the cleaned text.")
+    }
+
+    /// A one-word hold bypasses prose generation even when cleanup is enabled. Recognition stays saved as heard.
+    @MainActor static func checkSingleWordDictation(directory: URL) async throws {
+        let store = try TranscriptStore(directory: directory.appendingPathComponent("single-word"))
+        let probe = Probe()
+        probe.deliveryFails = false
+        let service = SpeechService(dependencies: .init(
+            infer: { _, job, _ in
+                let row = Transcript(sessionID: job.sessionID, startedAt: job.startedAt,
+                    startSeconds: job.offset, endSeconds: job.offset + AudioClock.seconds(samples: job.samples.count),
+                    text: "purple.", mode: "ambient")
+                return SpeechOutput(transcripts: [row], text: row.text, processingSeconds: 0)
+            }, deliver: { _, text in try probe.deliver(text) }, now: { probe.now },
+            cleanup: { _, _, _ in preconditionFailure("A single word reached the prose model") },
+            intelligenceAvailability: { .available }))
+        service.highlightTargetField = false; service.muteSpeakersDuringDictation = false
+        service.keepAudioForSpeakerPass = false; service.cleanUpTranscriptions = false
+        service.cleanUpDictation = true
+        service.beginRecoveryVerification(store: store, startedAt: probe.now)
+        service.dictation.begin()
+        probe.now += 3
+        service.ingestRecoveryVerification(samples: Array(repeating: Float(5), count: 48_000), at: probe.now)
+        await service.waitForRecoveryVerification()
+        service.dictation.end()
+        await service.waitForRecoveryVerification()
+        precondition(probe.delivered == ["purple"], "A single word acquired sentence punctuation")
+        let rows = try store.session(id: service.timeline.activeSessionID!)
+        precondition(rows.contains { $0.mode == "ambient" && $0.text == "purple." }, "Recognition source was changed")
+        precondition(rows.contains { $0.mode == "dictation" && $0.text == "purple" }, "Saved dictation differs from insertion")
+        service.shutdown()
+        print("PASS: a single word bypasses prose cleanup, inserts without a period, and preserves its recognized source.")
+    }
+
+    /// Actual on-device generation must distinguish fragments from short complete sentences.
+    @MainActor static func checkDictationProse() async throws {
+        let cleanup = TranscriptCleanup(purpose: .dictation)
+        for (source, expected) in [("the blue one.", "the blue one"), ("tomorrow morning.", "tomorrow morning"),
+                                   ("I want the blue one", "I want the blue one."), ("Go now", "Go now.")] {
+            let result = await cleanup.cleanWithOutcome([source], timeout: .seconds(12))
+            precondition(result.texts.first?.lowercased() == expected.lowercased(),
+                         "Dictation punctuation failed for synthetic fixture \(source): \(result.texts), \(result.outcome)")
+        }
+        print("PASS: the real cleanup model leaves phrase fragments open and punctuates complete sentences, including short ones.")
     }
 
     /// Ten held dictations, five with cleanup and five without, each record release-to-insert, cleanup, and insertion time with the cleanup outcome, and the diagnostics report splits the latency by whether cleanup ran. Cleanup and insertion take known minimum times, so each cleaned dictation must be slower by at least the cleanup time.

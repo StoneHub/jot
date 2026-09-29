@@ -26,7 +26,7 @@ final class LiveCleanup {
     init(service: SpeechService) {
         self.service = service
         liveTranscriptCleanup = TranscriptCleanup(settings: service.settings, availability: service.dependencies.intelligenceAvailability)
-        transcriptCleanup = TranscriptCleanup(settings: service.settings, availability: service.dependencies.intelligenceAvailability)
+        transcriptCleanup = TranscriptCleanup(settings: service.settings, purpose: .dictation, availability: service.dependencies.intelligenceAvailability)
     }
 
     /// A phrase worker is running; Install Update and the harness wait for it.

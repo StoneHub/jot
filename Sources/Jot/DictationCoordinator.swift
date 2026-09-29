@@ -165,8 +165,9 @@ final class DictationCoordinator {
               var attempt = currentAttempt, attempt.id == id else { recoveryTask = nil; return }
         do {
             let raw = try service.library.store?.recoveryText(from: attempt.startedAt, through: attempt.endedAt ?? service.dependencies.now()) ?? ""
-            var text = DictationCleanup.applying(to: vocabulary.applyingToDictation(raw))
-            if service.cleanUpDictation, !text.isEmpty {
+            let prepared = DictationCleanup.prepare(raw, vocabulary: vocabulary)
+            var text = prepared.text
+            if service.cleanUpDictation, prepared.needsProseCleanup, !text.isEmpty {
                 let began = Timing.now
                 let cleaned = await service.cleanup.cleanDictation(text)
                 text = cleaned.text
@@ -216,7 +217,7 @@ final class DictationCoordinator {
         } catch {
             // Still recognizing means reading the held range failed, so the text is the words the blocks saved.
             if attempt.state == .recognizing {
-                attempt.text = DictationCleanup.applying(to: vocabulary.applyingToDictation(attempt.text))
+                attempt.text = DictationCleanup.prepare(attempt.text, vocabulary: vocabulary).text
             }
             attempt.state = .deliveryFailed; attempt.updatedAt = service.dependencies.now()
             try? service.library.store?.saveDictationAttempt(attempt)
@@ -295,7 +296,7 @@ final class DictationCoordinator {
     /// A hold cut short by quit saved only the words as recognized. Launch converts symbols, vocabulary, and hesitations once so recovery inserts dictation text; the optional model cleanup that release runs is skipped.
     func finalizeInterruptedAttempts() throws {
         try service.library.store?.finalizeInterruptedDictationAttempts(converting: { words in
-            DictationCleanup.applying(to: service.vocabulary.applyingToDictation(words))
+            DictationCleanup.prepare(words, vocabulary: service.vocabulary).text
         })
     }
 

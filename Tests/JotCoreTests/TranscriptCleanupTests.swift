@@ -2,6 +2,19 @@ import XCTest
 @testable import JotCore
 
 final class TranscriptCleanupTests: XCTestCase {
+    @MainActor func testDictationInstructionsDistinguishFragmentsFromCompleteSentences() throws {
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let settings = JotSettings(defaults: defaults)
+        let transcript = TranscriptCleanup(settings: settings)
+        let dictation = TranscriptCleanup(settings: settings, purpose: .dictation)
+        XCTAssertEqual(transcript.instructions, settings.text(JotSettings.cleanupInstructions))
+        XCTAssertTrue(dictation.instructions.contains("only for complete sentences"))
+        XCTAssertTrue(dictation.instructions.contains("'the blue one.' becomes 'the blue one'"))
+        try settings.set(JotSettings.cleanupInstructions, raw: "Remove filler only.")
+        XCTAssertTrue(dictation.instructions.hasPrefix("Remove filler only."), "Keep the user's saved cleanup instructions")
+        XCTAssertTrue(dictation.instructions.contains("only for complete sentences"))
+    }
+
     @MainActor func testUnavailableModelsPreserveTextWithoutInvokingGeneration() async {
         let source = ["  café: do not ship 15 items.\n"]
         for availability in CleanupAvailability.allCases where availability != .available {

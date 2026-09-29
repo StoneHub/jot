@@ -61,16 +61,29 @@ public struct CleanupResult: Sendable {
 
 @MainActor
 public final class TranscriptCleanup {
+    public enum Purpose { case transcript, dictation }
     public typealias Generator = @Sendable ([String]) async throws -> [String]
     private var busy = false
     private var interrupt: (() -> Void)?
-    /// Where the instructions and the token limit come from. Live phrases and dictation share both.
+    /// Live phrases and dictation share user settings; dictation also keeps fragments as fragments.
     private let settings: JotSettings
+    private let purpose: Purpose
     private let modelAvailability: @MainActor () -> CleanupAvailability
-    public init(settings: JotSettings = .standard,
+    public init(settings: JotSettings = .standard, purpose: Purpose = .transcript,
                 availability: @escaping @MainActor () -> CleanupAvailability = { TranscriptCleanup.availability }) {
         self.settings = settings
+        self.purpose = purpose
         self.modelAvailability = availability
+    }
+
+    var instructions: String {
+        let base = settings.text(JotSettings.cleanupInstructions)
+        guard purpose == .dictation else { return base }
+        let editing = base == JotSettings.defaultCleanupInstructions
+            ? base.replacingOccurrences(of: "use sentence capitalization and add punctuation and paragraph breaks",
+                                        with: "use appropriate capitalization and paragraph breaks")
+            : base
+        return editing + " This is held dictation inserted at a cursor, which may be inside existing text. First decide whether each entry is a complete sentence or a fragment. Add sentence-ending punctuation only for complete sentences. A noun phrase such as 'the blue one' or a time phrase such as 'tomorrow morning' is a fragment. Remove a recognizer-added final period from a fragment; an existing period is not evidence of a complete sentence. Keep fragment capitalization and never expand a fragment into a sentence. Examples: 'purple' stays 'purple'; 'the blue one.' becomes 'the blue one'; 'tomorrow morning.' becomes 'tomorrow morning'; 'I want the blue one' becomes 'I want the blue one.'; 'Go now' becomes 'Go now.'. Preserve explicit symbols, abbreviations, decimals, URLs and preferred spellings."
     }
 
     /// Release a waiting speech worker immediately when dictation takes priority.
@@ -138,7 +151,6 @@ public final class TranscriptCleanup {
     private func generate(_ texts: [String]) async throws -> [String] {
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
-            let instructions = settings.text(JotSettings.cleanupInstructions)
             let input = String(decoding: try JSONEncoder().encode(texts), as: UTF8.self)
             return try await AppleFMClient().generate(instructions: instructions, prompt: input,
                 generating: CleanedTranscripts.self,
