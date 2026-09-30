@@ -22,6 +22,8 @@ final class Transcriber {
     /// The Activity screen shows these and redraws with the CPU readout once a second, so they are not published either: they change after every recognition, including the silent chunk recognized every 0.8 seconds of quiet. Queued audio counts the chunk the same tick has just cut, before the worker takes it, so publishing it told the whole window to redraw whenever the status second landed on a chunk close, about every four seconds of quiet.
     private(set) var lagSeconds = 0.0
     private(set) var lastInferenceSeconds = 0.0
+    /// Whether the last block taken for recognition closed its recognition window. A block that follows a closed one and closes its own holds a whole utterance, not the first second of continuing speech.
+    private var lastJobWasFinal = true
     /// Set by the service's once-a-second status work, and cleared when models unload.
     var queuedSeconds = 0.0
     private unowned let service: SpeechService
@@ -61,6 +63,8 @@ final class Transcriber {
     func kick() {
         guard service.lifecycle.phase == .ready, processing == nil, !jobs.isEmpty else { return }
         let job = jobs.removeFirst()
+        let wholeUtterance = job.isFinal && lastJobWasFinal
+        lastJobWasFinal = job.isFinal
         processingJob = job
         let generation = service.lifecycle.generation
         let began = ProcessInfo.processInfo.systemUptime
@@ -71,18 +75,23 @@ final class Transcriber {
             defer { withExtendedLifetime(owner) {} }
             var outcome = PerformanceJob.Outcome.completed
             var inferenceSeconds: Double?
+            var speechProbability: Double?
             do {
                 let output = try await service.dependencies.infer(service.pipeline, job, service.tuning)
                 try Task.checkCancellation()
                 guard service.lifecycle.acceptsWork(generation) else { throw CancellationError() }
                 inferenceSeconds = output.processingSeconds
-                outcome = output.text.isEmpty ? .noSpeech : .completed
+                speechProbability = output.speechProbability.map(Double.init)
+                // A lone "Mm-hmm" or "Yeah" in a quiet room is usually a throat clear or a chair; it goes no further than recognition. A leading "Okay," of continuing speech is kept.
+                let fillerOnly = wholeUtterance && !job.keepsFillers && service.settings.bool(JotSettings.dropFillerOnlyBlocks) && NoiseFillers.isFillerOnly(output.text)
+                outcome = fillerOnly ? .fillerOnly : output.text.isEmpty ? .noSpeech : .completed
                 lastInferenceSeconds = output.processingSeconds
                 processedAudioSeconds += AudioClock.seconds(samples: job.samples.count)
                 lagSeconds = max(0, service.dependencies.now().timeIntervalSince(job.startedAt) - job.offset - AudioClock.seconds(samples: job.samples.count))
                 // Persist recognition before awaiting optional cleanup. Capture keeps draining while we await.
-                let sources = output.transcripts
-                if !(await library.waitForDeletion(job.sessionID)) {
+                let sources = fillerOnly ? [] : output.transcripts
+                // A quiet chunk has no rows, so it skips the store; cleanup below still gets its final boundary.
+                if !sources.isEmpty, !(await library.waitForDeletion(job.sessionID)) {
                     // Live must see recognition before the model's cleanup suspension. It adds each row once it is saved, without re-reading the session, so a row saved before a later one fails still shows.
                     // Recent rows, Sessions and Dictations take in every saved row when the block ends, even when a later row or the words fail.
                     // Word evidence is kept in the session's clock so a saved session can be regrouped later.
@@ -136,7 +145,7 @@ final class Transcriber {
                 mode: .ambient, outcome: outcome,
                 audioSeconds: AudioClock.seconds(samples: job.samples.count), queueWaitSeconds: waitSeconds,
                 inferenceSeconds: inferenceSeconds, completionSeconds: max(0, ProcessInfo.processInfo.systemUptime - job.submittedUptime),
-                cleanupSeconds: nil, deliverySeconds: nil))
+                cleanupSeconds: nil, deliverySeconds: nil, speechProbability: speechProbability))
             inFlightAudioSeconds = 0
             processingJob = nil
             processing = nil

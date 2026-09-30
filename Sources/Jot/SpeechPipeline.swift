@@ -92,10 +92,12 @@ actor SpeechPipeline {
         // Conservative neural speech gate; uncertain speaker attribution does not suppress ASR.
         // It runs before the speaker model so quiet audio is held back from it rather than fed.
         var heardSpeech = false
+        var speechProbability: Float?
         if !recognitionSamples.isEmpty {
             do {
                 let gate = Float(settings.double(JotSettings.speechGate))
-                heardSpeech = try await vad.process(recognitionSamples).contains(where: { $0.probability >= gate })
+                speechProbability = try await vad.process(recognitionSamples).map(\.probability).max()
+                heardSpeech = (speechProbability ?? 0) >= gate
             } catch {
                 // Held, not lost: the model's frames stay on the session clock after a failed job.
                 speakerFeed.holdQuiet(job.samples)
@@ -125,7 +127,7 @@ actor SpeechPipeline {
         guard heardSpeech else {
             recognitionWindow.commit(recognitionPlan)
             recognitionPlanResolved = true
-            return SpeechOutput(transcripts: [], text: "", processingSeconds: Date().timeIntervalSince(begin))
+            return SpeechOutput(transcripts: [], text: "", processingSeconds: Date().timeIntervalSince(begin), speechProbability: speechProbability)
         }
         try Task.checkCancellation()
         var state = try TdtDecoderState()
@@ -138,7 +140,7 @@ actor SpeechPipeline {
         let text = words.map(\.word).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         recognitionWindow.commit(recognitionPlan, words: words)
         recognitionPlanResolved = true
-        guard !text.isEmpty else { return SpeechOutput(transcripts: [], text: "", processingSeconds: Date().timeIntervalSince(begin)) }
+        guard !text.isEmpty else { return SpeechOutput(transcripts: [], text: "", processingSeconds: Date().timeIntervalSince(begin), speechProbability: speechProbability) }
         var segments: [Transcript] = []
         var wordsByTranscript: [String: [AttributedWord]] = [:]
         if !words.isEmpty {
@@ -161,7 +163,7 @@ actor SpeechPipeline {
             segments = [Transcript(sessionID: job.sessionID, startedAt: job.startedAt, startSeconds: job.offset,
                 endSeconds: job.offset + Double(job.samples.count) / 16000, text: text, speakerID: nil, mode: "ambient")]
         }
-        return SpeechOutput(transcripts: segments, text: text, processingSeconds: Date().timeIntervalSince(begin), wordsByTranscript: wordsByTranscript)
+        return SpeechOutput(transcripts: segments, text: text, processingSeconds: Date().timeIntervalSince(begin), wordsByTranscript: wordsByTranscript, speechProbability: speechProbability)
     }
 
     /// The recognizer rejects audio under 0.3 seconds, which a final job can be once a boundary has reset the recognition window.

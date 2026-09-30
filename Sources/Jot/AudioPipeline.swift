@@ -8,6 +8,8 @@ struct AudioJob: Sendable {
     let samples: [Float]
     let ticket: UUID
     var isFinal = false
+    /// Cut while the dictation key was held, so a dictated "Okay" is saved even though it is only a filler.
+    var keepsFillers = false
     var submittedUptime = ProcessInfo.processInfo.systemUptime
 }
 
@@ -24,6 +26,8 @@ struct SpeechOutput: Sendable {
     let processingSeconds: Double
     /// The words each ambient transcript was built from, keyed by Transcript.id, with times relative to the job like AttributedWord.
     var wordsByTranscript: [String: [AttributedWord]] = [:]
+    /// The voice detector's highest speech probability over the recognition window; nil when it did not run.
+    var speechProbability: Float?
 }
 
 enum JotError: LocalizedError {

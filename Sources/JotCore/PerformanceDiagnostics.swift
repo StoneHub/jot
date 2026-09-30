@@ -37,7 +37,7 @@ public struct PerformanceEvent: Codable, Sendable {
 }
 public struct PerformanceJob: Codable, Sendable {
     public enum Mode: String, Codable, Sendable { case dictation, ambient }
-    public enum Outcome: String, Codable, Sendable { case completed, noSpeech, cancelled, failed, deliveryUnverified }
+    public enum Outcome: String, Codable, Sendable { case completed, noSpeech, fillerOnly, cancelled, failed, deliveryUnverified }
     public var elapsedSeconds: Double
     public var mode: Mode
     public var outcome: Outcome
@@ -53,12 +53,15 @@ public struct PerformanceJob: Codable, Sendable {
     public var deliverySeconds: Double?
     /// From submission (Fn release for dictation) to completion, including delivery.
     public var completionSeconds: Double
+    /// For ambient recognition, the voice detector's highest speech probability over the window, to tune the speech gate against; nil when it did not run.
+    public var speechProbability: Double?
     public init(elapsedSeconds: Double, mode: Mode, outcome: Outcome, audioSeconds: Double, queueWaitSeconds: Double,
                 inferenceSeconds: Double?, completionSeconds: Double, cleanupSeconds: Double? = nil, deliverySeconds: Double? = nil,
-                cleanupOutcome: String? = nil) {
+                cleanupOutcome: String? = nil, speechProbability: Double? = nil) {
         self.elapsedSeconds = elapsedSeconds; self.mode = mode; self.outcome = outcome; self.audioSeconds = audioSeconds
         self.queueWaitSeconds = queueWaitSeconds; self.inferenceSeconds = inferenceSeconds; self.completionSeconds = completionSeconds
         self.cleanupSeconds = cleanupSeconds; self.deliverySeconds = deliverySeconds; self.cleanupOutcome = cleanupOutcome
+        self.speechProbability = speechProbability
     }
 }
 public struct LatencySummary: Codable, Sendable {
@@ -145,7 +148,7 @@ public struct PerformanceDiagnostics: Sendable {
         jobs.remove(at: jobs.firstIndex { $0.mode == mode } ?? 0)
     }
     public var report: PerformanceReport {
-        let successful = jobs.filter { $0.outcome == .completed || $0.outcome == .deliveryUnverified || $0.outcome == .noSpeech }
+        let successful = jobs.filter { $0.outcome == .completed || $0.outcome == .deliveryUnverified || $0.outcome == .noSpeech || $0.outcome == .fillerOnly }
         let dictations = jobs.filter { $0.mode == .dictation }
         let inserted = dictations.filter { $0.outcome == .completed || $0.outcome == .deliveryUnverified }
         return .init(build: build, schemaVersion: 1, sampleIntervalSeconds: Self.sampleInterval,
