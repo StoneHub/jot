@@ -88,7 +88,8 @@ final class Transcriber {
                 lagSeconds = max(0, service.dependencies.now().timeIntervalSince(job.startedAt) - job.offset - AudioClock.seconds(samples: job.samples.count))
                 // Persist recognition before awaiting optional cleanup. Capture keeps draining while we await.
                 let sources = fillerOnly ? [] : output.transcripts
-                if !(await library.waitForDeletion(job.sessionID)) {
+                // A quiet chunk has no rows, so it skips the store; cleanup below still gets its final boundary.
+                if !sources.isEmpty, !(await library.waitForDeletion(job.sessionID)) {
                     // Live must see recognition before the model's cleanup suspension. It adds each row once it is saved, without re-reading the session, so a row saved before a later one fails still shows.
                     // Recent rows, Sessions and Dictations take in every saved row when the block ends, even when a later row or the words fail.
                     // Word evidence is kept in the session's clock so a saved session can be regrouped later.
