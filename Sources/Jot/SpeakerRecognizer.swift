@@ -36,7 +36,8 @@ final class SpeakerRecognizer: ObservableObject {
         let previous = passQueue
         let owner = service
         pendingPasses += 1
-        passQueue = Task {
+        // Deferred work that often starts after a quiet stretch; utility keeps it off the cores the foreground app is using.
+        passQueue = Task(priority: .utility) {
             defer {
                 withExtendedLifetime(owner) {}
                 pendingPasses -= 1
