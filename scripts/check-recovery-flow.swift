@@ -576,7 +576,7 @@ struct RecoveryFlowChecks {
                 let duration = AudioClock.seconds(samples: job.samples.count)
                 let row = Transcript(sessionID: job.sessionID, startedAt: job.startedAt, startSeconds: job.offset,
                     endSeconds: job.offset + duration, text: "Mm-hmm.", mode: "ambient")
-                return SpeechOutput(transcripts: [row], text: row.text, processingSeconds: 0.001)
+                return SpeechOutput(transcripts: [row], text: row.text, processingSeconds: 0.001, speechProbability: 0.25)
             },
             deliver: { _, text in try probe.deliver(text) }, now: { probe.now }))
         service.highlightTargetField = false; service.muteSpeakersDuringDictation = false
@@ -595,7 +595,10 @@ struct RecoveryFlowChecks {
         await speak(7)
         let heard = try store.recent(limit: 20)
         precondition(heard.isEmpty, "A filler-only block heard while listening was saved")
-        precondition(service.diagnostics.report.jobs.last?.outcome == .fillerOnly, "A dropped filler-only block was not recorded as filler only")
+        // The same report `jot diagnostics` returns, read back from its JSON.
+        let dropped = try JSONDecoder().decode(PerformanceReport.self, from: service.diagnostics.export()).jobs.last
+        precondition(dropped?.outcome == .fillerOnly, "A dropped filler-only block was not recorded as filler only")
+        precondition(dropped?.speechProbability == 0.25, "The voice detector's peak was not recorded for the job")
         await speak(3)
         let kept = try store.recent(limit: 20).map(\.text)
         precondition(kept == ["segment3"], "A block with real words was not saved")
@@ -623,7 +626,7 @@ struct RecoveryFlowChecks {
         await speak(7)
         let fillers = try store.recent(limit: 20).filter { $0.text == "Mm-hmm." }
         precondition(fillers.count == 3, "Turning the filter off did not save a filler-only block")
-        print("PASS: a silence-bounded filler-only block is not saved while listening, is kept when it opens continuing speech or is dictated, and is saved with the filter off.")
+        print("PASS: a silence-bounded filler-only block is not saved while listening, is kept when it opens continuing speech or is dictated, and is saved with the filter off; diagnostics record its outcome and voice detector peak.")
     }
 
     /// Ten held dictations, five with cleanup and five without, each record release-to-insert, cleanup, and insertion time with the cleanup outcome, and the diagnostics report splits the latency by whether cleanup ran. Cleanup and insertion take known minimum times, so each cleaned dictation must be slower by at least the cleanup time.

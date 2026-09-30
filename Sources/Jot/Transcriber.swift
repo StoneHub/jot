@@ -75,11 +75,13 @@ final class Transcriber {
             defer { withExtendedLifetime(owner) {} }
             var outcome = PerformanceJob.Outcome.completed
             var inferenceSeconds: Double?
+            var speechProbability: Double?
             do {
                 let output = try await service.dependencies.infer(service.pipeline, job, service.tuning)
                 try Task.checkCancellation()
                 guard service.lifecycle.acceptsWork(generation) else { throw CancellationError() }
                 inferenceSeconds = output.processingSeconds
+                speechProbability = output.speechProbability.map(Double.init)
                 // A lone "Mm-hmm" or "Yeah" in a quiet room is usually a throat clear or a chair; it goes no further than recognition. A leading "Okay," of continuing speech is kept.
                 let fillerOnly = wholeUtterance && !job.keepsFillers && service.settings.bool(JotSettings.dropFillerOnlyBlocks) && NoiseFillers.isFillerOnly(output.text)
                 outcome = fillerOnly ? .fillerOnly : output.text.isEmpty ? .noSpeech : .completed
@@ -143,7 +145,7 @@ final class Transcriber {
                 mode: .ambient, outcome: outcome,
                 audioSeconds: AudioClock.seconds(samples: job.samples.count), queueWaitSeconds: waitSeconds,
                 inferenceSeconds: inferenceSeconds, completionSeconds: max(0, ProcessInfo.processInfo.systemUptime - job.submittedUptime),
-                cleanupSeconds: nil, deliverySeconds: nil))
+                cleanupSeconds: nil, deliverySeconds: nil, speechProbability: speechProbability))
             inFlightAudioSeconds = 0
             processingJob = nil
             processing = nil
