@@ -29,5 +29,26 @@ import AppKit
         outline.finish(reduceMotion: true)
         precondition(!outline.isShown && outline.sweepCount == 2, "Reduce Motion still played the finish sweep")
         print("PASS: Reduce Motion removes the outline without a sweep.")
+
+        var acquired: CGRect?
+        outline.show(follow: { acquired })
+        precondition(!outline.isShown, "The outline appeared before the field was known")
+        try await Task.sleep(for: .seconds(0.3))
+        precondition(!outline.isShown, "The outline appeared before the field was known")
+        acquired = field
+        try await Task.sleep(for: .seconds(0.5))
+        precondition(outline.isShown, "The outline never appeared once the field was found after the press")
+        acquired = nil
+        try await Task.sleep(for: .seconds(0.5))
+        precondition(!outline.isShown, "The outline stayed up after the field went away")
+        print("PASS: a field found after the press gets its outline, and loses it when the field goes.")
+
+        acquired = nil
+        outline.show(follow: { acquired })
+        try await Task.sleep(for: .seconds(2.3))
+        acquired = field
+        try await Task.sleep(for: .seconds(0.5))
+        precondition(!outline.isShown, "The outline kept polling a field that never arrived")
+        print("PASS: the outline stops looking for a field that never arrives.")
     }
 }
