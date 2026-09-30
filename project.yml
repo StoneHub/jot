@@ -50,12 +50,16 @@ targets:
     sources:
       - scripts/check-recovery-flow.swift
       - scripts/check-capture-flow.swift
+      - scripts/check-store-responsiveness.swift
+      - scripts/check-shortcut-input.swift
       - Sources/Jot/AudioInputDevice.swift
       - Sources/Jot/AudioPipeline.swift
       - Sources/Jot/CaptureController.swift
       - Sources/Jot/DictationCoordinator.swift
       - Sources/Jot/DictationHighlight.swift
       - Sources/Jot/DictationInput.swift
+      - Sources/Jot/ShortcutEventTap.swift
+      - Sources/Jot/ShortcutTargetAcquisition.swift
       - Sources/Jot/KeepAwakeAssertion.swift
       - Sources/Jot/ListeningTimeline.swift
       - Sources/Jot/LiveCleanup.swift
@@ -67,6 +71,7 @@ targets:
       - Sources/Jot/ShortcutSettings.swift
       - Sources/Jot/SuggestionCard.swift
       - Sources/Jot/SuggestionCoordinator.swift
+      - Sources/Jot/ScreenContextReader.swift
       - Sources/Jot/SpeakerPass.swift
       - Sources/Jot/SpeakerRecognizer.swift
       - Sources/Jot/SpeechPipeline.swift

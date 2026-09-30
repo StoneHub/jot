@@ -6,9 +6,15 @@ import JotCore
 @MainActor
 final class DictationCoordinator {
     /// The listening state, and with it the menu icon, reads this through the service; a change redraws it rather than relying on the notice set nearby.
-    private(set) var isActive = false { willSet { service.objectWillChange.send() } }
+    private(set) var isActive = false {
+        willSet { service.objectWillChange.send() }
+        didSet { service.refreshShortcutEligibility() }
+    }
     /// The shortcut button, the microphone picker and Update read this through the service, and a release can end with no other service change, so a change redraws them. It changes a few times per hold.
-    private(set) var isPending = false { willSet { service.objectWillChange.send() } }
+    private(set) var isPending = false {
+        willSet { service.objectWillChange.send() }
+        didSet { service.refreshShortcutEligibility() }
+    }
     private var ticket = UUID()
     private var started = Date()
     private(set) var currentAttempt: DictationAttempt?
@@ -21,12 +27,45 @@ final class DictationCoordinator {
     private let speakerMute = DictationSpeakerMute()
     private let highlight = DictationHighlight()
     private unowned let service: SpeechService
+    private let timeline: ListeningTimeline
+    private let library: SessionLibrary
+    private let cleanup: LiveCleanup
+    private let transcriber: Transcriber
 
-    init(service: SpeechService) { self.service = service }
+    init(service: SpeechService, timeline: ListeningTimeline, library: SessionLibrary,
+         cleanup: LiveCleanup, transcriber: Transcriber) {
+        self.service = service
+        self.timeline = timeline
+        self.library = library
+        self.cleanup = cleanup
+        self.transcriber = transcriber
+    }
 
     /// True while release work or recovery is still finishing; the harness waits on it.
     var isBusy: Bool { isPending || recoveryTask != nil }
     var recoveryRunning: Bool { recoveryTask != nil }
+
+    /// Submission happens before returning to the key callback, preserving its order
+    /// against recognition writes and an explicit discard on the same store queue.
+    private func submitSave(_ attempt: DictationAttempt) -> StoreOperation<Void>? {
+        guard let store = library.store else { return nil }
+        return library.storeExecutor.submit { try store.saveDictationAttempt(attempt) }
+    }
+
+    private func save(_ attempt: DictationAttempt) async throws {
+        guard !(await library.waitForDeletion(attempt.sessionID)) else { throw CancellationError() }
+        if let operation = submitSave(attempt) { try await operation.value }
+    }
+
+    private func isCurrent(_ id: String, session: String) -> Bool {
+        !Task.isCancelled && !discardedAttemptIDs.contains(id) &&
+        !library.sessionIsDeleted(session) && currentAttempt?.id == id
+    }
+
+    private func isCurrentAfterDeletion(_ id: String, session: String) async -> Bool {
+        guard !(await library.waitForDeletion(session)) else { return false }
+        return isCurrent(id, session: session)
+    }
 
     func begin() {
         guard service.canHoldDictation, !isPending, !isActive else { return }
@@ -35,14 +74,23 @@ final class DictationCoordinator {
         service.closeChunk()
         if service.muteSpeakersDuringDictation { speakerMute.begin() }
         vocabulary = service.vocabulary
-        service.cleanup.cancelDictationCleanup()
-        started = service.timeline.sessionStarted.addingTimeInterval(service.timeline.ambientOffset)
+        cleanup.cancelDictationCleanup()
+        started = timeline.sessionStarted.addingTimeInterval(timeline.ambientOffset)
         ticket = UUID(); isActive = true; attemptHadGap = false
-        let attempt = DictationAttempt(id: ticket.uuidString, sessionID: service.timeline.sessionID,
+        let attempt = DictationAttempt(id: ticket.uuidString, sessionID: timeline.sessionID,
             startedAt: started, state: .capturing, updatedAt: started)
         currentAttempt = attempt
-        do { try service.library.store?.saveDictationAttempt(attempt) }
-        catch { service.recoveryNotice = "Dictation started, but its recovery record could not be saved." }
+        if let operation = submitSave(attempt) {
+            let owner = service
+            Task { [weak self] in
+                defer { withExtendedLifetime(owner) {} }
+                do { try await operation.value }
+                catch {
+                    guard let self, await self.isCurrentAfterDeletion(attempt.id, session: attempt.sessionID) else { return }
+                    service.recoveryNotice = "Dictation started, but its recovery record could not be saved."
+                }
+            }
+        }
         if service.highlightTargetField { highlight.show(follow: { [weak self] in self?.service.input.targetFrame() }) }
         service.markPerformance(.dictationStarted)
         service.notice = "Listening for dictation… release \(service.shortcut.displayName) to insert."
@@ -59,17 +107,28 @@ final class DictationCoordinator {
         isActive = false
         isPending = true
         service.markPerformance(.dictationReleased)
-        attempt.endedAt = max(attempt.startedAt, service.timeline.sessionStarted.addingTimeInterval(service.timeline.ambientOffset))
+        attempt.endedAt = max(attempt.startedAt, timeline.sessionStarted.addingTimeInterval(timeline.ambientOffset))
         attempt.state = .recognizing
         attempt.updatedAt = attempt.endedAt!
         currentAttempt = attempt
-        attemptEndOffset = service.timeline.ambientOffset
-        do { try service.library.store?.saveDictationAttempt(attempt) }
-        catch { service.recoveryNotice = "Dictation ended, but its recovery record could not be updated." }
+        attemptEndOffset = timeline.ambientOffset
+        if let operation = submitSave(attempt) {
+            let owner = service
+            Task { [weak self] in
+                defer { withExtendedLifetime(owner) {} }
+                do { try await operation.value }
+                catch {
+                    guard let self, await self.isCurrentAfterDeletion(attempt.id, session: attempt.sessionID) else { return }
+                    service.recoveryNotice = "Dictation ended, but its recovery record could not be updated."
+                }
+            }
+        }
         service.notice = "Finishing saved dictation…"
-        service.transcriber.kick()
+        transcriber.kick()
         recoveryTask?.cancel()
+        let owner = service
         recoveryTask = Task { [weak self] in
+            defer { withExtendedLifetime(owner) {} }
             await self?.finishAttempt(id: attempt.id, throughOffset: self?.attemptEndOffset ?? 0, releasedAt: released)
         }
     }
@@ -82,7 +141,10 @@ final class DictationCoordinator {
         service.input.discardTarget()
         if let id = currentAttempt?.id {
             discardedAttemptIDs.insert(id)
-            try? service.library.store?.deleteDictationAttempt(id: id)
+            if let store = library.store {
+                let operation = library.storeExecutor.submit { try store.deleteDictationAttempt(id: id) }
+                Task { try? await operation.value }
+            }
         }
         recoveryTask?.cancel(); recoveryTask = nil
         isActive = false; isPending = false; ticket = UUID()
@@ -121,6 +183,7 @@ final class DictationCoordinator {
 
     func waitForRecovery() async {
         if let recoveryTask { await recoveryTask.value }
+        await library.storeExecutor.flush()
     }
 
     func releaseFieldEffects() { speakerMute.end(); highlight.hide() }
@@ -153,34 +216,51 @@ final class DictationCoordinator {
 
     private func finishAttempt(id: String, throughOffset: Double, releasedAt released: Double) async {
         // The outline stays through recognition, cleanup, and insertion; a newer hold keeps its own.
+        defer {
+            if currentAttempt?.id == id {
+                service.input.discardTarget()
+                isPending = false
+                attemptEndOffset = nil
+                if let session = currentAttempt?.sessionID, library.sessionIsDeleted(session) { currentAttempt = nil }
+                recoveryTask = nil
+            }
+        }
         defer { if !isActive { highlight.hide() } }
         // Every released hold records one timing; one that never finishes is recorded as cancelled.
         var timing = Timing(released: released)
         defer { service.recordPerformance(timing.job) }
-        guard let started = currentAttempt, started.id == id else { recoveryTask = nil; return }
+        guard let started = currentAttempt, started.id == id else { return }
         timing.holdSeconds = max(0, (started.endedAt ?? started.startedAt).timeIntervalSince(started.startedAt))
-        await service.transcriber.waitUntilProcessed(sessionID: started.sessionID, through: throughOffset)
+        await transcriber.waitUntilProcessed(sessionID: started.sessionID, through: throughOffset)
         timing.recognitionSeconds = timing.sinceRelease
-        guard !Task.isCancelled, !discardedAttemptIDs.contains(id), !service.library.sessionIsDeleted(started.sessionID),
-              var attempt = currentAttempt, attempt.id == id else { recoveryTask = nil; return }
+        guard await isCurrentAfterDeletion(id, session: started.sessionID),
+              var attempt = currentAttempt, attempt.id == id else { return }
         do {
-            let raw = try service.library.store?.recoveryText(from: attempt.startedAt, through: attempt.endedAt ?? service.dependencies.now()) ?? ""
+            let store = library.store
+            let lowerBound = attempt.startedAt
+            let upperBound = attempt.endedAt ?? service.dependencies.now()
+            let read = library.storeExecutor.submit {
+                try store?.recoveryText(from: lowerBound, through: upperBound) ?? ""
+            }
+            let raw = try await read.value
+            guard await isCurrentAfterDeletion(id, session: started.sessionID) else { return }
             let prepared = DictationCleanup.prepare(raw, vocabulary: vocabulary)
             var text = prepared.text
             if service.cleanUpDictation, prepared.needsProseCleanup, !text.isEmpty {
                 let began = Timing.now
-                let cleaned = await service.cleanup.cleanDictation(text)
+                let cleaned = await cleanup.cleanDictation(text)
                 text = cleaned.text
                 timing.cleanupSeconds = max(0, Timing.now - began)
                 timing.cleanupOutcome = cleaned.outcome.rawValue
             }
-            guard !Task.isCancelled, !discardedAttemptIDs.contains(id) else { recoveryTask = nil; return }
+            guard await isCurrentAfterDeletion(id, session: started.sessionID) else { return }
             attempt.text = text
             attempt.hasGap = attemptHadGap
             attempt.updatedAt = service.dependencies.now()
             if text.isEmpty || attemptHadGap {
                 attempt.state = .deliveryFailed
-                try service.library.store?.saveDictationAttempt(attempt)
+                try await save(attempt)
+                guard await isCurrentAfterDeletion(id, session: started.sessionID) else { return }
                 currentAttempt = attempt
                 if attemptHadGap {
                     service.recoveryNotice = "Partial dictation was saved after an audio gap. It was not inserted automatically."
@@ -192,7 +272,8 @@ final class DictationCoordinator {
                 timing.finish(attemptHadGap ? .failed : .noSpeech)
             } else {
                 attempt.state = .ready
-                try service.library.store?.saveDictationAttempt(attempt)
+                try await save(attempt)
+                guard await isCurrentAfterDeletion(id, session: started.sessionID) else { return }
                 // History gets one durable dictation row, while the underlying listening
                 // timeline remains the recognition source of truth.
                 if !discardedAttemptIDs.contains(attempt.id) {
@@ -202,12 +283,16 @@ final class DictationCoordinator {
                         text: text, mode: "dictation")
                     // The row belongs to the listening session too, so Live shows it once it is saved.
                     do {
-                        try service.library.store?.append(row)
-                        service.library.appendLive([row])
+                        if let store = library.store {
+                            let write = library.storeExecutor.submit { try store.append(row) }
+                            try await write.value
+                            if await isCurrentAfterDeletion(id, session: started.sessionID) { library.appendLive([row]) }
+                        }
                     } catch {
                         // A row that cannot be saved is left out of History and Live; the attempt is saved and still delivers.
                     }
                 }
+                guard await isCurrentAfterDeletion(id, session: started.sessionID) else { return }
                 currentAttempt = attempt
                 if let delivery = await deliverAttempt(attempt) {
                     timing.deliverySeconds = delivery.seconds
@@ -215,43 +300,45 @@ final class DictationCoordinator {
                 }
             }
         } catch {
+            guard await isCurrentAfterDeletion(id, session: started.sessionID) else { return }
             // Still recognizing means reading the held range failed, so the text is the words the blocks saved.
             if attempt.state == .recognizing {
                 attempt.text = DictationCleanup.prepare(attempt.text, vocabulary: vocabulary).text
             }
             attempt.state = .deliveryFailed; attempt.updatedAt = service.dependencies.now()
-            try? service.library.store?.saveDictationAttempt(attempt)
+            try? await save(attempt)
+            guard await isCurrentAfterDeletion(id, session: started.sessionID) else { return }
             currentAttempt = attempt
             service.recoveryNotice = "Dictation was saved but could not be finished. Choose Review saved dictation to copy the saved text."
             service.notice = "Dictation: \(error.localizedDescription)"
             timing.finish(.failed)
         }
-        service.input.discardTarget()
-        isPending = false; attemptEndOffset = nil; recoveryTask = nil
-        service.library.refreshRecent()
+        library.refreshRecent()
     }
 
     /// Returns how delivery ended and how long insertion took, or nil when the attempt was discarded.
     @discardableResult
     private func deliverAttempt(_ original: DictationAttempt) async -> (outcome: PerformanceJob.Outcome, seconds: Double, finishedUptime: Double)? {
         var attempt = original
-        guard !discardedAttemptIDs.contains(attempt.id), !service.library.sessionIsDeleted(attempt.sessionID) else { return nil }
+        guard await isCurrentAfterDeletion(attempt.id, session: attempt.sessionID) else { return nil }
         let began = Timing.now
         do {
             let delivery = try await service.dependencies.deliver(service.input, attempt.text)
             let finished = Timing.now
             let timing = (outcome: delivery.verified ? PerformanceJob.Outcome.completed : .deliveryUnverified,
                           seconds: max(0, finished - began), finishedUptime: finished)
-            guard !discardedAttemptIDs.contains(attempt.id), !service.library.sessionIsDeleted(attempt.sessionID) else { return nil }
+            guard await isCurrentAfterDeletion(attempt.id, session: attempt.sessionID) else { return nil }
             attempt.state = delivery.verified ? .delivered : .deliveryUnverified
             attempt.updatedAt = service.dependencies.now()
             currentAttempt = attempt
-            do { try service.library.store?.saveDictationAttempt(attempt) }
+            do { try await save(attempt) }
             catch {
+                guard await isCurrentAfterDeletion(attempt.id, session: attempt.sessionID) else { return nil }
                 service.recoveryNotice = "Text was sent, but its delivery record could not be saved. Check the field before copying saved text to avoid duplicates."
                 service.notice = "Could not save delivery status: \(error.localizedDescription)"
                 return timing
             }
+            guard await isCurrentAfterDeletion(attempt.id, session: attempt.sessionID) else { return nil }
             if delivery.verified {
                 highlight.finish()
                 service.recoveryNotice = attempt.hasGap ? "Saved partial dictation inserted. Some audio was not recognized; review the text." : "Dictation inserted."
@@ -264,9 +351,10 @@ final class DictationCoordinator {
             return timing
         } catch {
             let finished = Timing.now
-            guard !discardedAttemptIDs.contains(attempt.id), !service.library.sessionIsDeleted(attempt.sessionID) else { return nil }
+            guard await isCurrentAfterDeletion(attempt.id, session: attempt.sessionID) else { return nil }
             attempt.state = .deliveryFailed; attempt.updatedAt = service.dependencies.now()
-            try? service.library.store?.saveDictationAttempt(attempt)
+            try? await save(attempt)
+            guard await isCurrentAfterDeletion(attempt.id, session: attempt.sessionID) else { return nil }
             currentAttempt = attempt
             service.recoveryNotice = attempt.hasGap
                 ? "Partial dictation was saved. Choose Review saved dictation to copy the recognized portion."
@@ -278,26 +366,49 @@ final class DictationCoordinator {
 
     /// Each recognized block inside the hold refreshes the saved attempt text, so a crash mid-hold loses only the unrecognized tail.
     func updateAttemptText(for job: AudioJob) {
-        guard var attempt = currentAttempt, attempt.sessionID == job.sessionID,
+        guard let attempt = currentAttempt, attempt.sessionID == job.sessionID,
               !discardedAttemptIDs.contains(attempt.id),
-              attempt.state == .capturing || attempt.state == .recognizing else { return }
-        do {
-            let text = try service.library.store?.recoveryText(from: attempt.startedAt, through: attempt.endedAt ?? service.dependencies.now()) ?? ""
-            guard !text.isEmpty else { return }
-            attempt.text = text; attempt.hasGap = attemptHadGap; attempt.updatedAt = service.dependencies.now()
-            try service.library.store?.saveDictationAttempt(attempt)
-            currentAttempt = attempt
-            service.recoveryNotice = isActive ? "Dictation is being saved as you speak." : service.recoveryNotice
-        } catch {
-            service.recoveryNotice = "Speech is still being recognized, but the recovery record could not be updated."
+              attempt.state == .capturing || attempt.state == .recognizing,
+              let store = library.store else { return }
+        let upperBound = attempt.endedAt ?? service.dependencies.now()
+        let updatedAt = service.dependencies.now()
+        let hadGap = attemptHadGap
+        let operation = library.storeExecutor.submit { () throws -> DictationAttempt? in
+            let text = try store.recoveryText(from: attempt.startedAt, through: upperBound)
+            guard !text.isEmpty else { return nil }
+            var updated = attempt
+            updated.text = text
+            updated.hasGap = hadGap
+            updated.updatedAt = updatedAt
+            try store.saveDictationAttempt(updated)
+            return updated
+        }
+        let owner = service
+        Task { [weak self] in
+            defer { withExtendedLifetime(owner) {} }
+            guard let self else { return }
+            do {
+                guard let updated = try await operation.value,
+                      await isCurrentAfterDeletion(attempt.id, session: attempt.sessionID),
+                      currentAttempt?.state == attempt.state else { return }
+                currentAttempt = updated
+                if isActive { service.recoveryNotice = "Dictation is being saved as you speak." }
+            } catch {
+                if await isCurrentAfterDeletion(attempt.id, session: attempt.sessionID), currentAttempt?.state == attempt.state {
+                    service.recoveryNotice = "Speech is still being recognized, but the recovery record could not be updated."
+                }
+            }
         }
     }
 
     /// A hold cut short by quit saved only the words as recognized. Launch converts symbols, vocabulary, and hesitations once so recovery inserts dictation text; the optional model cleanup that release runs is skipped.
-    func finalizeInterruptedAttempts() throws {
-        try service.library.store?.finalizeInterruptedDictationAttempts(converting: { words in
-            DictationCleanup.prepare(words, vocabulary: service.vocabulary).text
-        })
+    func finalizeInterruptedAttempts() async throws {
+        let store = library.store, vocabulary = service.vocabulary
+        try await library.storeExecutor.submit {
+            try store?.finalizeInterruptedDictationAttempts(converting: { words in
+                DictationCleanup.prepare(words, vocabulary: vocabulary).text
+            })
+        }.value
     }
 
     /// A snapshot for explicit review/copy. It never acquires a field, starts capture, generates text,
@@ -306,9 +417,9 @@ final class DictationCoordinator {
         guard !isActive, !isPending else {
             throw JotError.message("Finish the current dictation before reviewing saved text.")
         }
-        guard let store = service.library.store else { throw JotError.message("Saved history is unavailable.") }
-        return try await Task.detached(priority: .userInitiated) {
+        guard let store = library.store else { throw JotError.message("Saved history is unavailable.") }
+        return try await library.storeExecutor.perform {
             try store.latestRecoverableDictationAttempt()
-        }.value
+        }
     }
 }

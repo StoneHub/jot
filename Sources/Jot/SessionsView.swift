@@ -20,12 +20,19 @@ struct SpeakerNameSheet: View {
                 Button("Cancel", action: onCancel)
                 Spacer()
                 Button("Save") {
-                    if let speaker = transcript.speakerID { service.labelSpeaker(session: transcript.sessionID, speaker: speaker, name: draft, voice: voice) }
-                    onSave()
+                    Task {
+                        if let speaker = transcript.speakerID { await service.labelSpeaker(session: transcript.sessionID, speaker: speaker, name: draft, voice: voice) }
+                        onSave()
+                    }
                 }.disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty).keyboardShortcut(.defaultAction)
             }
         }.padding(20)
-        .onAppear { voice = transcript.speakerID.flatMap { service.speakers.passEmbedding(session: transcript.sessionID, speaker: $0) } }
+        .task(id: transcript.id) {
+            guard let speaker = transcript.speakerID else { return }
+            let read = await service.speakers.passEmbedding(session: transcript.sessionID, speaker: speaker)
+            guard !Task.isCancelled else { return }
+            voice = read
+        }
     }
 }
 
@@ -53,7 +60,6 @@ struct SessionsView: View {
             } else {
                 header
                 TextField("Search sessions", text: $search).textFieldStyle(.roundedBorder).frame(maxWidth: 360)
-                    .onChange(of: search) { _, value in hits = library.searchSessions(value) }
                 if !search.isEmpty {
                     searchResults
                 } else if let session = selected {
@@ -67,27 +73,47 @@ struct SessionsView: View {
         .onChange(of: library.historyRevision) { _, _ in
             labelTarget = nil
             select(readable.contains { $0.sessionID == selectedID } ? selectedID : readable.first?.sessionID)
-            if !search.isEmpty { hits = library.searchSessions(search) }
         }
         .onChange(of: revisionAndCounts) { old, new in
             // A pass or Regroup moves the revision and the counts together, and the revision's handler above reads the session. This one reads only for rows saved without a revision.
-            guard old.first == new.first, let selectedID else { return }
-            rows = library.sessionParagraphs(selectedID)
+            guard old.first == new.first, selectedID != nil else { return }
+            refreshRows()
         }
         // The pause decides where paragraphs break, and `jot settings` can change it while this reader is open.
         .onChange(of: service.tuning.bounded.paragraphPause) { _, _ in
-            if let selectedID { rows = library.sessionParagraphs(selectedID) }
+            refreshRows()
         }
         .sheet(item: $labelTarget) { target in
             SpeakerNameSheet(transcript: target, service: service, draft: $labelDraft,
-                onSave: { rows = library.sessionParagraphs(target.sessionID); labelTarget = nil },
+                onSave: { refreshRows(); labelTarget = nil },
                 onCancel: { labelTarget = nil })
+        }
+        .task(id: searchReadID) {
+            let query = search
+            let result = await library.searchSessions(query)
+            guard !Task.isCancelled, search == query else { return }
+            hits = result
+        }
+        .task(id: sessionReadID) {
+            guard let id = selectedID else { rows = []; return }
+            let result = await library.sessionParagraphs(id)
+            guard !Task.isCancelled, selectedID == id else { return }
+            rows = result
+        }
+        .onChange(of: library.sessions.map(\.sessionID)) { _, _ in
+            if selectedID == nil { select(readable.first?.sessionID) }
         }
     }
 
     private var selected: TranscriptSession? { library.sessions.first { $0.sessionID == selectedID } }
     /// The history revision, then each session's row count.
     private var revisionAndCounts: [Int] { [library.historyRevision] + library.sessions.map(\.transcriptCount) }
+    @State private var readRevision = 0
+    private var sessionReadID: String {
+        "\(selectedID ?? ""):\(library.historyRevision):\(selected?.transcriptCount ?? 0):\(service.tuning.bounded.paragraphPause):\(readRevision)"
+    }
+    private var searchReadID: String { "\(search):\(library.historyRevision)" }
+    private func refreshRows() { readRevision += 1 }
     private func isRecording(_ session: TranscriptSession) -> Bool { session.sessionID == timeline.activeSessionID && service.ambientEnabled }
     /// Saved sessions this reader can show; the recording one belongs to Live.
     private var readable: [TranscriptSession] { library.sessions.filter { !isRecording($0) } }
@@ -143,7 +169,7 @@ struct SessionsView: View {
     @ViewBuilder private var actions: some View {
         if let session = selected {
             HStack(spacing: 8) {
-                Button(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc") { copyAll(session) }.modifier(GlassButton())
+                Button(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc") { copyAll(session) }.modifier(GlassButton()).disabled(rows.isEmpty)
                 Button("Regroup", systemImage: "arrow.triangle.2.circlepath") {
                     Task {
                         do { try await service.regroupSession(session.sessionID) }
@@ -151,12 +177,16 @@ struct SessionsView: View {
                     }
                 }.modifier(GlassButton()).help("Relabels this session's speakers from its speaker pass, or from the speaker settings in General when it has none")
                 Button("Export", systemImage: "square.and.arrow.up") {
-                    do { NSWorkspace.shared.activateFileViewerSelecting([try library.exportSession(session.sessionID)]) }
-                    catch { service.notice = error.localizedDescription }
+                    Task {
+                        do { NSWorkspace.shared.activateFileViewerSelecting([try await library.exportSession(session.sessionID)]) }
+                        catch { service.notice = error.localizedDescription }
+                    }
                 }.modifier(PrimaryGlassButton()).help("Saves Markdown to Documents/Jot Sessions and shows it in Finder")
                 Button("Delete session", systemImage: "trash", role: .destructive) {
-                    do { try service.deleteSession(session.sessionID) }
-                    catch { service.notice = error.localizedDescription }
+                    Task {
+                        do { try await service.deleteSession(session.sessionID) }
+                        catch { service.notice = error.localizedDescription }
+                    }
                 }.labelStyle(.iconOnly).modifier(GlassButton())
                     .disabled(!service.canDeleteSession(session.sessionID))
                     .help("Delete this saved session")
@@ -206,8 +236,8 @@ struct SessionsView: View {
 
     private func select(_ id: String?) {
         if let id, id == timeline.activeSessionID, service.ambientEnabled { openLive(); return }
+        if selectedID != id { rows = [] }
         selectedID = id; renaming = false
-        rows = id.map { library.sessionParagraphs($0) } ?? []
     }
     private func commitRename(_ session: TranscriptSession) {
         library.renameSession(session.sessionID, title: titleDraft); renaming = false

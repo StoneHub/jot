@@ -65,6 +65,7 @@ struct RecoveryFlowChecks {
     }
 
     @MainActor static func main() async throws {
+        ShortcutInputChecks.run()
         if let flag = CommandLine.arguments.firstIndex(of: "--quiet-cpu") {
             try await profileQuietListening(CommandLine.arguments.dropFirst(flag + 1).map { URL(fileURLWithPath: $0) })
             return
@@ -111,7 +112,7 @@ struct RecoveryFlowChecks {
             precondition(service.library.live.paragraphs.last?.text.hasSuffix("segment\(index)") == true, "Live did not add the row when it was saved")
         }
         precondition(probe.chunks.allSatisfy { $0 <= 3 }, "Recognition still waits for a large audio block")
-        try libraryMatchesStore(service, store, "25 dictation blocks")
+        try await libraryMatchesStore(service, store, "25 dictation blocks")
         service.dictation.end()
         await service.waitForRecoveryVerification()
         let expected = (1...25).map { "segment\($0)" }.joined(separator: " ")
@@ -122,7 +123,7 @@ struct RecoveryFlowChecks {
         let reopenedAttempt = try reopened.latestRecoverableDictationAttempt()
         precondition(reopenedAttempt?.text == expected, "Saved dictation did not survive reopening storage")
         print("PASS: 75-second hold persisted all 25 chunks before release; failed delivery retained across store reopen.")
-        let fullRead = service.library.sessionParagraphs(service.timeline.activeSessionID!).map(\.text)
+        let fullRead = await service.library.sessionParagraphs(service.timeline.activeSessionID!).map(\.text)
         precondition(service.library.live.paragraphs.map(\.text) == fullRead, "Live differs from a full read of the session")
         precondition(service.library.live.paragraphs.contains { $0.mode == "dictation" }, "Live did not show the saved dictation")
         print("PASS: Live adds each saved row and the held dictation as they are saved, matching a full read.")
@@ -174,6 +175,8 @@ struct RecoveryFlowChecks {
         try await checkRelabelsTakeTurns(directory: directory)
         try await checkControlsRedrawWhenWorkEnds(directory: directory)
         try await checkSpeakerPassKeepsMainFree(directory: directory)
+        try await checkLibraryReadsStayResponsive(directory: directory)
+        try await checkDeletionFailurePreservesLateRecognition(directory: directory)
         try await CaptureFlowChecks.run()
         if CommandLine.arguments.contains("--cleanup-model") { try await checkPhraseCleanupModel() }
 
@@ -488,7 +491,7 @@ struct RecoveryFlowChecks {
         precondition(cleaned.recoveryDiagnostics["cleanupApplied"] as? Int == 2, "Cleanup outcome was not reported")
         precondition(cleaned.library.live.paragraphs.map(\.text) == ["Segment1 Segment2"] && cleaned.library.live.cleanupRevision == 2,
             "Live did not put cleaned text in place of the raw text")
-        try libraryMatchesStore(cleaned, cleanedStore, "phrase cleanup")
+        try await libraryMatchesStore(cleaned, cleanedStore, "phrase cleanup")
         cleaned.shutdown()
         print("PASS: raw text publishes before delayed cleanup; the next recognition completes while cleanup runs, then the first row is replaced.")
         print("PASS: Live shows raw rows as they are saved and puts each cleaned phrase in place, without re-reading the session.")
@@ -673,15 +676,21 @@ struct RecoveryFlowChecks {
         func shown() -> [String] {
             service.library.live.paragraphs.map { "\(TranscriptExport.speakerName($0)): \($0.text)" }
         }
-        func fullRead() -> [String] {
-            service.library.sessionParagraphs(id).map { "\(TranscriptExport.speakerName($0)): \($0.text)" }
+        func fullRead() async -> [String] {
+            await service.library.sessionParagraphs(id).map { "\(TranscriptExport.speakerName($0)): \($0.text)" }
+        }
+
+        func checkShown(_ message: String, condition: () -> Bool = { true }) async {
+            await service.library.waitForReads()
+            let expected = await fullRead()
+            precondition(condition() && shown() == expected, message)
         }
 
         for index in 1...4 {
             await speak(index)
         }
-        precondition(shown().last == "Speaker 2: segment4" && shown() == fullRead(), "Live lost a saved row when the next row of its block could not be saved")
-        try libraryMatchesStore(service, store, "a block whose second row could not be saved")
+        await checkShown("Live lost a saved row when the next row of its block could not be saved", condition: { shown().last == "Speaker 2: segment4" })
+        try await libraryMatchesStore(service, store, "a block whose second row could not be saved")
         let revision = service.library.live.revision
         service.library.showLive(id)
         precondition(service.library.live.revision == revision, "Live read its session again when it was shown a second time")
@@ -689,66 +698,72 @@ struct RecoveryFlowChecks {
         await speak(5)
         service.dictation.end()
         await service.waitForRecoveryVerification()
-        precondition(service.library.live.paragraphs.contains { $0.mode == "dictation" } && shown() == fullRead(), "Live did not show the session as saved")
-        try libraryMatchesStore(service, store, "a dictation held while listening")
+        await checkShown("Live did not show the session as saved", condition: { service.library.live.paragraphs.contains { $0.mode == "dictation" } })
+        try await libraryMatchesStore(service, store, "a dictation held while listening")
 
-        service.labelSpeaker(session: id, speaker: "speaker-1", name: "Ada")
-        precondition(shown().contains("Ada: segment1") && shown() == fullRead(), "Live kept the old name after a speaker was named")
+        await service.labelSpeaker(session: id, speaker: "speaker-1", name: "Ada")
+        await checkShown("Live kept the old name after a speaker was named", condition: { shown().contains("Ada: segment1") })
         service.notice = ""
         // A voice of zeros cannot be remembered. The name is saved before that fails.
-        service.labelSpeaker(session: id, speaker: "speaker-2", name: "Grace", voice: [0, 0])
+        await service.labelSpeaker(session: id, speaker: "speaker-2", name: "Grace", voice: [0, 0])
+        await service.library.waitForReads()
         precondition(!service.notice.isEmpty, "Remembering a voice of zeros did not fail")
-        precondition(shown().contains("Grace: segment3") && shown() == fullRead(), "Live kept the old name when remembering the voice failed")
+        await checkShown("Live kept the old name when remembering the voice failed", condition: { shown().contains("Grace: segment3") })
         let request = try JSONSerialization.data(withJSONObject: ["method": "speakers.label", "params": ["sessionID": id, "speakerID": "speaker-1", "name": "Ada King"]])
         let reply = try JSONSerialization.jsonObject(with: await service.handle(request)) as? [String: Any]
         precondition(reply?["ok"] as? Bool == true, "speakers.label failed over the socket")
-        precondition(shown().contains("Ada King: segment1") && shown() == fullRead(), "Live kept the old name after speakers.label")
+        await checkShown("Live kept the old name after speakers.label", condition: { shown().contains("Ada King: segment1") })
 
         service.tuning.paragraphPause = 2.5
-        precondition(shown().contains("Ada King: segment1 segment2") && shown() == fullRead(), "Live kept the old paragraphs after a new paragraph pause")
+        await checkShown("Live kept the old paragraphs after a new paragraph pause", condition: { shown().contains("Ada King: segment1 segment2") })
         let paused = service.library.live.revision
         service.tuning.speakerConfidence = 0.8
         precondition(service.library.live.revision == paused, "Live read its session again after a setting it does not group by")
-        try service.deleteHistoryCard(service.library.history.first!)
-        precondition(!service.library.live.paragraphs.contains { $0.mode == "dictation" } && shown() == fullRead(), "Live still showed a deleted row")
+        try await service.deleteHistoryCard(service.library.history.first!)
+        await checkShown("Live still showed a deleted row", condition: { !service.library.live.paragraphs.contains { $0.mode == "dictation" } })
 
         // Hiding the names table makes the session read fail. Live still moves to the session, so a row saved next shows, and the next reload reads the whole session.
         service.library.showLive(nil)
         renameTable("speaker_labels", to: "hidden_labels", in: folder)
         service.notice = ""
         service.library.showLive(id)
+        await service.library.waitForReads()
         precondition(!service.notice.isEmpty && service.library.live.paragraphs.isEmpty, "Reading the session without its names table did not fail")
         renameTable("hidden_labels", to: "speaker_labels", in: folder)
         await speak(6)
         precondition(service.library.live.paragraphs.map(\.text) == ["segment6"], "Live dropped a row saved after a failed read")
-        service.labelSpeaker(session: id, speaker: "speaker-2", name: "Grace Hopper")
-        precondition(shown().contains("Ada King: segment1 segment2") && shown() == fullRead(), "Live did not read the session again after a failed read")
+        await service.labelSpeaker(session: id, speaker: "speaker-2", name: "Grace Hopper")
+        await checkShown("Live did not read the session again after a failed read", condition: { shown().contains("Ada King: segment1 segment2") })
 
         // A reload of the shown session that fails keeps what Live shows, and the next show reads the session again.
         let kept = shown()
         renameTable("speaker_labels", to: "hidden_labels", in: folder)
         service.notice = ""
         service.tuning.paragraphPause = 1.5
+        await service.library.waitForReads()
         precondition(!service.notice.isEmpty && shown() == kept, "Live dropped its rows when a reload of the shown session failed")
         renameTable("hidden_labels", to: "speaker_labels", in: folder)
         service.library.showLive(id)
-        precondition(shown().contains("Ada King: segment1") && shown() == fullRead(), "Live did not read the session again after a failed reload")
+        await checkShown("Live did not read the session again after a failed reload", condition: { shown().contains("Ada King: segment1") })
         await speak(7)
-        try libraryMatchesStore(service, store, "speaker names, a delete and failed reads, then a block")
+        try await libraryMatchesStore(service, store, "speaker names, a delete and failed reads, then a block")
         print("PASS: Live keeps a row saved before a failed one, and reads its session again after a speaker name, a failed voice, speakers.label, a new paragraph pause, and a delete, but not after another setting or a second show.")
         print("PASS: after a failed switch Live shows the rows saved next; after a failed reload it keeps its rows; either way the next read retries.")
         print("PASS: recent rows, Sessions and Dictations take in each block's saved rows and cleaned text without a full read, and match one.")
         // A service reads its tuning from the settings when it is made, so later checks start from the defaults again.
         service.tuning = TranscriptionTuning()
+        await service.library.waitForReads()
     }
 
     /// Recent rows, Sessions and Dictations fold in each block's saved rows and each phrase's cleaned text instead of reading the store again; what they hold must be what a full read returns.
-    @MainActor static func libraryMatchesStore(_ service: SpeechService, _ store: TranscriptStore, _ step: String) throws {
+    @MainActor static func libraryMatchesStore(_ service: SpeechService, _ store: TranscriptStore, _ step: String) async throws {
+        await service.library.waitForReads()
         let recent = try store.recent(limit: 20), sessions = try store.sessions(limit: 200)
         precondition(service.library.recent == recent, "Recent rows differ from a full read after \(step)")
         precondition(service.library.sessions == sessions, "Sessions differ from a full read after \(step)")
         let history = service.library.history, count = service.library.dictationCount, more = service.library.hasMoreHistory
         service.library.refreshHistory()
+        await service.library.waitForReads()
         precondition(service.library.history == history && service.library.dictationCount == count && service.library.hasMoreHistory == more,
             "Dictations differ from a full read after \(step)")
     }
@@ -814,7 +829,7 @@ struct RecoveryFlowChecks {
         // In the order launch runs them: load the vocabulary, open the store, finalize interrupted holds.
         try second.saveVocabularyEntry(VocabularyEntry(preferred: "Dot", heard: "dott"))
         second.beginRecoveryVerification(store: reopened, startedAt: probe.now)
-        try second.dictation.finalizeInterruptedAttempts()
+        try await second.dictation.finalizeInterruptedAttempts()
         probe.deliveryFails = false
         let interruptedReview = try await second.dictation.savedDictationForReview()
         precondition(interruptedReview?.text == "(Dot)", "Interrupted hold was not converted for review")
@@ -1092,19 +1107,20 @@ struct RecoveryFlowChecks {
         let pass = SpeakerPassResult(segments: [("S1", 0, 1.7), ("S2", 1.7, 6)], speakers: ["S1": [1], "S2": [2]], durationSeconds: 6, processingSeconds: 0.1)
         await service.speakers.apply(pass, session: id, truncated: false)
         // Live reloads after the pass names the voice, not only after the relabel.
+        await service.library.waitForReads()
         let named = service.library.live.paragraphs.filter { $0.speakerID == "speaker-1" }.map(\.speakerLabel)
         precondition(!named.isEmpty && named.allSatisfy { $0 == "Ada" }, "Live did not show the name the pass recognized: \(named), \(service.notice)")
         await service.waitForRecoveryVerification()
         let expected = ["So we should", "ship it on friday then ok."]
         let speakers = ["speaker-1", "speaker-2"]
-        let paragraphs = service.library.sessionParagraphs(id)
+        let paragraphs = await service.library.sessionParagraphs(id)
         precondition(paragraphs.map(\.text) == expected, "The speaker pass lost cleaned text: \(paragraphs.map(\.text))")
         precondition(paragraphs.map(\.speakerID) == speakers, "The speaker pass labels were not applied: \(paragraphs.map(\.speakerID))")
         let events = try store.events(sessionID: id)
         precondition(events.contains { $0.kind == "speaker_pass" }, "The speaker pass recorded no event: \(service.notice)")
         let rows = try store.session(id: id).map(\.id)
         try await service.regroupSession(id)
-        let regrouped = service.library.sessionParagraphs(id)
+        let regrouped = await service.library.sessionParagraphs(id)
         precondition(regrouped.map(\.text) == expected && regrouped.map(\.speakerID) == speakers, "Regroup from the stored pass changed the session: \(regrouped.map(\.text))")
         let regroupedRows = try store.session(id: id).map(\.id)
         precondition(regroupedRows == rows, "Regroup from the stored pass replaced rows it only needed to keep")
@@ -1118,7 +1134,7 @@ struct RecoveryFlowChecks {
         }
         try await service.regroupSession(second)
         await service.waitForRecoveryVerification()
-        let duringCleanup = service.library.sessionParagraphs(second)
+        let duringCleanup = await service.library.sessionParagraphs(second)
         precondition(duringCleanup.map(\.text) == expected, "Regroup during cleanup lost cleaned text: \(duringCleanup.map(\.text))")
         precondition(duringCleanup.map(\.speakerID) == speakers, "Regroup during cleanup did not apply the pass: \(duringCleanup.map(\.speakerID))")
         print("PASS: Regroup pressed while a session's last phrase is being cleaned waits for it and keeps the cleaned text.")
@@ -1142,7 +1158,7 @@ struct RecoveryFlowChecks {
         await service.speakers.apply(pass, session: third, truncated: false)
         precondition(service.library.isRelabeling, "Regroup finished before the pass relabeled, so it did not write last: \(service.notice)")
         try await early.value
-        let afterEarly = service.library.sessionParagraphs(third)
+        let afterEarly = await service.library.sessionParagraphs(third)
         precondition(afterEarly.map(\.speakerID) == speakers, "Regroup pressed before the pass stored its segments replaced the pass's speakers: \(afterEarly.map(\.speakerID)), \(afterEarly.map(\.text))")
         precondition(afterEarly.map(\.text) == expected, "Regroup pressed before the pass lost cleaned text: \(afterEarly.map(\.text))")
         let earlyNames = afterEarly.map(\.speakerLabel)
@@ -1197,8 +1213,17 @@ struct RecoveryFlowChecks {
             }
             return relabel
         }
+        func waitUntil(_ description: String, _ ready: () -> Bool) async throws {
+            for _ in 0..<400 {
+                if ready() { return }
+                try await Task.sleep(for: .milliseconds(5))
+            }
+            preconditionFailure("Timed out waiting for \(description)")
+        }
 
         try seed("turns")
+        await service.library.waitForReads()
+        await service.library.storeExecutor.flush()
         precondition(service.canInstallUpdate, "Install Update was held off before any relabel")
         let screen = ServiceScreen(service)
         let gate = DispatchSemaphore(value: 0)
@@ -1222,6 +1247,8 @@ struct RecoveryFlowChecks {
         precondition(log.entries == ["held began", "held ended", "next"], "The second relabel did not wait for the first: \(log.entries)")
         let labels = try store.session(id: "turns").map(\.speakerID)
         precondition(labels == ["speaker-2"], "The later relabel's speakers did not stay: \(labels)")
+        await service.library.waitForReads()
+        await service.library.storeExecutor.flush()
         precondition(service.canInstallUpdate, "Install Update stayed held off after the relabels finished")
         try await screen.settle()
         precondition(screen.update, "App replacement stayed blocked after the relabels finished")
@@ -1234,9 +1261,11 @@ struct RecoveryFlowChecks {
         let regroupBlocker = try await hold("regroup-deleted", gate: regroupGate, log: regroupLog)
         let regroup = Task { try await service.regroupSession("regroup-deleted") }
         try await Task.sleep(for: .milliseconds(50))
-        try service.deleteSession("regroup-deleted")
+        let deleteRegroup = Task { try await service.deleteSession("regroup-deleted") }
+        try await waitUntil("Regroup deletion intent") { service.library.pendingDeletionCount > 0 }
         regroupGate.signal()
         _ = try await regroupBlocker.value
+        try await deleteRegroup.value
         do {
             try await regroup.value
         } catch {
@@ -1251,14 +1280,14 @@ struct RecoveryFlowChecks {
         let passLog = RelabelLog()
         let passBlocker = try await hold("pass-deleted", gate: passGate, log: passLog)
         let result = SpeakerPassResult(segments: [("S1", 0, 0.45), ("S2", 0.45, 1)], speakers: ["S1": [1], "S2": [2]], durationSeconds: 1, processingSeconds: 0.1)
+        let pendingBeforePass = service.library.storeExecutor.pendingCount
         let pass = Task { await service.speakers.apply(result, session: "pass-deleted", truncated: false) }
-        while try passStore.segments(sessionID: "pass-deleted").isEmpty {
-            try await Task.sleep(for: .milliseconds(5))
-        }
-        try service.deleteSession("pass-deleted")
-        try passStore.replace(sessionID: "pass-deleted", result: SpeakerPassRelabel.renumbered(result))
+        try await waitUntil("queued pass replacement") { service.library.storeExecutor.pendingCount > pendingBeforePass }
+        let deletePass = Task { try await service.deleteSession("pass-deleted") }
+        try await waitUntil("pass deletion intent") { service.library.pendingDeletionCount > 0 }
         passGate.signal()
         _ = try await passBlocker.value
+        try await deletePass.value
         await pass.value
         let leftSegments = try passStore.segments(sessionID: "pass-deleted")
         precondition(leftSegments.isEmpty, "A pass for a deleted session left \(leftSegments.count) segments behind")
@@ -1281,6 +1310,7 @@ struct RecoveryFlowChecks {
         let failing = SpeakerPassResult(segments: [("S1", 0, 1.5), ("S2", 1.5, 3)], speakers: ["S1": [1], "S2": [2]], durationSeconds: 3, processingSeconds: 0.1)
         await service.speakers.apply(failing, session: "fails", truncated: false)
         precondition(service.notice.hasPrefix("Speaker pass failed"), "The relabel did not fail partway: \(service.notice)")
+        await service.library.waitForReads()
         let shown = service.library.live.paragraphs.map(\.speakerID)
         precondition(shown == ["speaker-1", "speaker-4"], "Live kept showing rows the failed relabel had already changed: \(shown)")
         print("PASS: a speaker pass whose relabel fails partway still reloads Live with the rows it changed.")
@@ -1293,6 +1323,7 @@ struct RecoveryFlowChecks {
             StoredWord(transcriptID: regrouped.id, position: 1, word: "two", startSeconds: 0.5, endSeconds: 0.9, probabilities: [0.9, 0, 0, 0])])
         service.library.showLive("regroup-reloads")
         try await service.regroupSession("regroup-reloads")
+        await service.library.waitForReads()
         let regroupedLive = service.library.live.paragraphs.map(\.speakerID)
         precondition(regroupedLive == ["speaker-1"], "Live kept showing the speakers from before Regroup: \(regroupedLive)")
         print("PASS: Regroup reloads Live with the speakers it wrote.")
@@ -1314,16 +1345,15 @@ struct RecoveryFlowChecks {
         let voicesLog = RelabelLog()
         let voicesBlocker = try await hold("voices", gate: voicesGate, log: voicesLog)
         let voices = SpeakerPassResult(segments: [("S1", 0, 1)], speakers: ["S1": [1, 0]], durationSeconds: 1, processingSeconds: 0.1)
+        let pendingBeforeVoices = service.library.storeExecutor.pendingCount
         let voicesPass = Task { await service.speakers.apply(voices, session: "voices", truncated: false) }
-        while try passStore.speakers(sessionID: "voices").isEmpty {
-            try await Task.sleep(for: .milliseconds(5))
-        }
-        let waiting = service.speakers.passEmbedding(session: "voices", speaker: "speaker-1")
+        try await waitUntil("queued voice pass") { service.library.storeExecutor.pendingCount > pendingBeforeVoices }
+        let waiting = await service.speakers.passEmbedding(session: "voices", speaker: "speaker-1")
         precondition(waiting == nil, "The name sheet offered a pass voice before the pass relabeled the rows: \(String(describing: waiting))")
         voicesGate.signal()
         _ = try await voicesBlocker.value
         await voicesPass.value
-        let relabeled = service.speakers.passEmbedding(session: "voices", speaker: "speaker-1")
+        let relabeled = await service.speakers.passEmbedding(session: "voices", speaker: "speaker-1")
         precondition(relabeled != nil, "The name sheet offered no pass voice once the pass relabeled the rows: \(service.notice)")
         print("PASS: the name sheet offers a pass voice only once the pass has relabeled the session's rows.")
 
@@ -1338,8 +1368,8 @@ struct RecoveryFlowChecks {
                 StoredWord(transcriptID: row.id, position: 0, word: text, startSeconds: start, endSeconds: start + 0.4, probabilities: []),
                 StoredWord(transcriptID: row.id, position: 1, word: text, startSeconds: start + 0.5, endSeconds: start + 0.9, probabilities: [])])
         }
-        service.labelSpeaker(session: "names", speaker: "speaker-2", name: "Ada")
-        service.labelSpeaker(session: "names", speaker: "speaker-1", name: "Grace")
+        await service.labelSpeaker(session: "names", speaker: "speaker-2", name: "Ada")
+        await service.labelSpeaker(session: "names", speaker: "speaker-1", name: "Grace")
         let beforePass = try people.list().map(\.sampleCount)
         precondition(beforePass == [1], "Naming before the pass remembered a voice it did not have yet: \(beforePass)")
         let named = SpeakerPassResult(segments: [("S5", 0, 1.5), ("S2", 1.5, 3.5), ("S9", 3.5, 5)], speakers: ["S5": [1, 0], "S2": [0, 1], "S9": [1, 0.1]], durationSeconds: 5, processingSeconds: 0.1)
@@ -1419,10 +1449,15 @@ struct RecoveryFlowChecks {
                     ticks += 1
                     let start = Double(ticks) * 0.01
                     let row = Transcript(sessionID: listening, startedAt: started, startSeconds: start, endSeconds: start + 0.005, text: "tick", mode: "ambient")
-                    try? store.append(row)
-                    service.library.appendLive([row])
-                    try? store.appendWords([StoredWord(transcriptID: row.id, position: 0, word: "tick", startSeconds: start, endSeconds: start + 0.005, probabilities: [])])
-                    service.library.didSave([row])
+                    let write = service.storeExecutor.submit {
+                        try store.append(row)
+                        try store.appendWords([StoredWord(transcriptID: row.id, position: 0, word: "tick", startSeconds: start, endSeconds: start + 0.005, probabilities: [])])
+                    }
+                    Task { @MainActor in
+                        guard (try? await write.value) != nil else { return }
+                        service.library.appendLive([row])
+                        service.library.didSave([row])
+                    }
                 }
                 return longest
             }
@@ -1441,6 +1476,7 @@ struct RecoveryFlowChecks {
         let total = began.duration(to: .now)
         ticker.cancel()
         let gap = await ticker.value
+        await service.waitForRecoveryVerification()
         let events = try store.events(limit: 200)
         let rowCount = try store.session(id: session).count
         let cleanedCount = try store.readableTexts(sessionID: session).count

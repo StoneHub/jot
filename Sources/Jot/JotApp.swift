@@ -140,7 +140,7 @@ final class JotDelegate: NSObject, NSApplicationDelegate {
         }
         // Setup decides before the service opens the store, whose file marks an existing install. While setup is open, it asks for each permission itself.
         setup.launch(readiness: service.setupReadiness)
-        service.launch(askPermissions: !setup.progress.offeredAtLaunch)
+        Task { await service.launch(askPermissions: !setup.progress.offeredAtLaunch) }
     }
     /// The Set Up Jot command: setup where it left off, in the main window.
     func openSetup() {

@@ -62,8 +62,8 @@ private struct ShortcutEditor: View {
         service.setShortcutRecording(true)
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { event in
             MainActor.assumeIsolated {
-                if event.keyCode == 53 { dismiss(); return nil }
-                guard !event.isARepeat else { return nil }
+                if event.keyCode == 53 { dismiss(); return }
+                guard !event.isARepeat else { return }
                 let flags = event.cgEvent.map { ShortcutModifiers($0.flags).subtracting(.fn) } ?? []
                 let names: [UInt16: String] = [36: "Return", 48: "Tab", 49: "Space", 51: "Delete", 117: "⌦",
                     123: "←", 124: "→", 125: "↓", 126: "↑", 115: "Home", 119: "End", 116: "Page Up", 121: "Page Down",
@@ -71,10 +71,10 @@ private struct ShortcutEditor: View {
                     109: "F10", 103: "F11", 111: "F12"]
                 let shortcut = DictationShortcut(keyCode: event.keyCode, modifiers: flags,
                     keyLabel: names[event.keyCode] ?? (event.charactersIgnoringModifiers ?? "").uppercased())
-                guard shortcut.isValid else { error = "Include Control, Option, or Command with a key."; return nil }
+                guard shortcut.isValid else { error = "Include Control, Option, or Command with a key."; return }
                 save(shortcut)
-                return nil
             }
+            return nil
         }
     }
     private func end() {

@@ -1,6 +1,11 @@
 import Foundation
 import JotCore
 
+private struct TranscriberSavedBlock: Sendable {
+    let rows: [Transcript]
+    let failure: String?
+}
+
 /// Chunk-to-row recognition: the queue of audio the listening timeline cuts, one recognition at a time, and saving each block's rows and word evidence before cleanup runs.
 @MainActor
 final class Transcriber {
@@ -20,8 +25,23 @@ final class Transcriber {
     /// Set by the service's once-a-second status work, and cleared when models unload.
     var queuedSeconds = 0.0
     private unowned let service: SpeechService
+    private let library: SessionLibrary
+    private let cleanup: LiveCleanup
+    private let recordedRows: (AudioJob) -> Void
+    private let recognitionCompleted: (AudioJob) -> Void
+    private let recognitionFailed: (AudioJob) -> Void
 
-    init(service: SpeechService) { self.service = service }
+    init(service: SpeechService, library: SessionLibrary, cleanup: LiveCleanup,
+         recordedRows: @escaping (AudioJob) -> Void,
+         recognitionCompleted: @escaping (AudioJob) -> Void,
+         recognitionFailed: @escaping (AudioJob) -> Void) {
+        self.service = service
+        self.library = library
+        self.cleanup = cleanup
+        self.recordedRows = recordedRows
+        self.recognitionCompleted = recognitionCompleted
+        self.recognitionFailed = recognitionFailed
+    }
 
     /// Nothing queued and nothing being recognized.
     var isIdle: Bool { processing == nil && jobs.isEmpty }
@@ -46,7 +66,9 @@ final class Transcriber {
         let began = ProcessInfo.processInfo.systemUptime
         let waitSeconds = max(0, began - job.submittedUptime)
         inFlightAudioSeconds = AudioClock.seconds(samples: job.samples.count)
+        let owner = service
         processing = Task {
+            defer { withExtendedLifetime(owner) {} }
             var outcome = PerformanceJob.Outcome.completed
             var inferenceSeconds: Double?
             do {
@@ -60,35 +82,50 @@ final class Transcriber {
                 lagSeconds = max(0, service.dependencies.now().timeIntervalSince(job.startedAt) - job.offset - AudioClock.seconds(samples: job.samples.count))
                 // Persist recognition before awaiting optional cleanup. Capture keeps draining while we await.
                 let sources = output.transcripts
-                let library = service.library
-                if !library.sessionIsDeleted(job.sessionID) {
+                if !(await library.waitForDeletion(job.sessionID)) {
                     // Live must see recognition before the model's cleanup suspension. It adds each row once it is saved, without re-reading the session, so a row saved before a later one fails still shows.
                     // Recent rows, Sessions and Dictations take in every saved row when the block ends, even when a later row or the words fail.
-                    var saved: [Transcript] = []
-                    defer { library.didSave(saved) }
-                    for transcript in sources {
-                        try library.store?.append(transcript)
-                        saved.append(transcript)
-                        library.appendLive([transcript])
-                    }
                     // Word evidence is kept in the session's clock so a saved session can be regrouped later.
                     let words = sources.flatMap { transcript in
                         (output.wordsByTranscript[transcript.id] ?? []).enumerated().map { position, word in
                             StoredWord(transcriptID: transcript.id, position: position, word: word.text, startSeconds: job.offset + word.start, endSeconds: job.offset + word.end, probabilities: word.probabilities)
                         }
                     }
-                    try library.store?.appendWords(words)
-                    if !sources.isEmpty {
-                        lastTranscriptAt = service.dependencies.now()
-                        if job.sessionID == service.timeline.sessionID { service.timeline.lastAmbientRowAt = service.dependencies.now() }
+                    guard let store = library.store else { throw JotError.message("Transcript storage is unavailable.") }
+                    let operation = library.storeExecutor.submit { () -> TranscriberSavedBlock in
+                        var saved: [Transcript] = []
+                        do {
+                            for transcript in sources {
+                                try store.append(transcript)
+                                saved.append(transcript)
+                            }
+                            try store.appendWords(words)
+                            return TranscriberSavedBlock(rows: saved, failure: nil)
+                        } catch {
+                            return TranscriberSavedBlock(rows: saved, failure: error.localizedDescription)
+                        }
+                    }
+                    let result = try await operation.value
+                    // A delete submitted after this write may still be settling. On failure
+                    // the saved prefix remains valid; on success it must not return to Live.
+                    if !(await library.waitForDeletion(job.sessionID)) {
+                        for transcript in result.rows { library.appendLive([transcript]) }
+                        library.didSave(result.rows)
+                        if let failure = result.failure { throw JotError.message(failure) }
+                        if !sources.isEmpty {
+                            lastTranscriptAt = service.dependencies.now()
+                            recordedRows(job)
+                        }
                     }
                 }
-                service.cleanup.scheduleCleanup(sources: sources, final: job.isFinal)
-                service.dictation.updateAttemptText(for: job)
+                if !(await library.waitForDeletion(job.sessionID)) {
+                    cleanup.scheduleCleanup(sources: sources, final: job.isFinal)
+                    recognitionCompleted(job)
+                }
             } catch {
                 outcome = error is CancellationError ? .cancelled : .failed
                 recognitionFailures += 1
-                service.dictation.noteRecognitionFailure(for: job)
+                recognitionFailed(job)
                 if !(error is CancellationError) { service.recordEvent(.processingError, error.localizedDescription, session: job.sessionID) }
                 if service.lifecycle.acceptsWork(generation) {
                     service.notice = "Ambient: \(error.localizedDescription). Transcript insertion was not completed."

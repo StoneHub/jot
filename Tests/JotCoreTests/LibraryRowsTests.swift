@@ -29,6 +29,23 @@ final class LibraryRowsTests: XCTestCase {
         try rows.add(saved, savedTo: store)
     }
 
+    func testDelayedCommittedBlockUsesCurrentTextAndCountsEachIDOnce() throws {
+        let store = try TranscriptStore(directory: directory)
+        let saved = [row("first", session: "session", at: 1), row("deleted", session: "session", at: 3)]
+        for item in saved { try store.append(item) }
+        var rows = LibraryRows()
+        try rows.readRecent(from: store); try rows.readSessions(from: store)
+        // The snapshot already includes the block; edits finish before its
+        // queued screen update receives its turn, even if delivered twice.
+        XCTAssertTrue(try store.setReadablePhrase(["Cleaned text."], for: [saved[0]]))
+        try store.deleteTranscripts(ids: [saved[1].id])
+        try rows.addCommitted(saved, savedTo: store)
+        try rows.addCommitted(saved, savedTo: store)
+        try assertMatchesFullRead(rows, store, "a delayed block delivered twice after edits")
+        XCTAssertEqual(rows.recent.map(\.text), ["Cleaned text."])
+        XCTAssertEqual(rows.sessions.first?.transcriptCount, 1)
+    }
+
     func testFoldedBlocksMatchAFullReadThroughCleanupAndEdits() throws {
         let store = try TranscriptStore(directory: directory)
         for index in 0..<30 { try store.append(row("old-\(index)", session: "old-\(index % 3)", at: Double(index))) }
