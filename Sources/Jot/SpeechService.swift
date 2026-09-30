@@ -48,8 +48,14 @@ final class SpeechService: ObservableObject {
         isSessionSettled: { [weak self] in self?.sessionIsSettled($0) ?? true },
         isApplyingPass: { [weak self] in self?.speakers.isApplyingPass($0) ?? false })
     lazy var speakers: SpeakerRecognizer = SpeakerRecognizer(pass: pipeline.speakerPass, service: self, library: library)
-    lazy var dictation: DictationCoordinator = DictationCoordinator(service: self, timeline: timeline, library: library,
-        cleanup: cleanup, transcriber: transcriber)
+    lazy var dictation: DictationCoordinator = DictationCoordinator(owner: self, timeline: timeline, library: library,
+        cleanup: cleanup, transcriber: transcriber, input: input, settings: settings,
+        deliver: dependencies.deliver, now: dependencies.now,
+        currentVocabulary: { [unowned self] in vocabulary }, shortcut: { [unowned self] in shortcut },
+        canHold: { [unowned self] in canHoldDictation }, closeChunk: { [unowned self] in closeChunk() },
+        markPerformance: { [unowned self] in markPerformance($0) }, recordPerformance: { [unowned self] in recordPerformance($0) },
+        setNotice: { [unowned self] in notice = $0 }, setRecoveryNotice: { [unowned self] in recoveryNotice = $0 },
+        stateWillChange: { [unowned self] in objectWillChange.send() }, stateChanged: { [unowned self] in refreshShortcutEligibility() })
     /// What agents told Jot lately, for suggestions. In memory only; see AgentContext.
     let agentContext = AgentContext()
     lazy var suggestions: SuggestionCoordinator = SuggestionCoordinator(input: input, store: { [weak self] in self?.library.store },
