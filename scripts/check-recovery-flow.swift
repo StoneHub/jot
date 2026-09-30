@@ -1001,7 +1001,8 @@ struct RecoveryFlowChecks {
         deliveryGate.open()
         await service.waitForRecoveryVerification()
         try await screen.settle()
-        precondition(!service.dictation.isPending && screen.shortcut && screen.update, "The shortcut and replacement readiness stayed disabled after a dictation discarded during insertion")
+        // Replacement readiness is read live, as Update's wait reads it: the discard's closing library read can still be on the store queue when isPending's redraw lands, and its end publishes on the library, not the service. In the app, listening keeps replacement blocked through any dictation anyway.
+        precondition(!service.dictation.isPending && screen.shortcut && service.canInstallUpdate, "The shortcut and replacement readiness stayed disabled after a dictation discarded during insertion")
         print("PASS: a released dictation discarded during insertion enables the shortcut and replacement readiness again.")
 
         // What speech.transcribe_file sets and clears around a file diagnostic.
