@@ -153,6 +153,7 @@ struct RecoveryFlowChecks {
 
         try await checkFailureAndCleanup(directory: directory)
         try await checkDictationTimings(directory: directory)
+        try await checkFillerOnlyBlocksAreNotSaved(directory: directory)
         try await checkSingleWordDictation(directory: directory)
         try await checkLiveFollowsEdits(directory: directory)
         try await checkInterruptedHold(directory: directory)
@@ -562,6 +563,67 @@ struct RecoveryFlowChecks {
                          "Dictation punctuation failed for synthetic fixture \(source): \(result.texts), \(result.outcome)")
         }
         print("PASS: the real cleanup model leaves phrase fragments open and punctuates complete sentences, including short ones.")
+    }
+
+    /// A silence-bounded block recognized as only "Mm-hmm." while listening is not saved and is recorded as filler only. The same words are kept as the first chunk of continuing speech and when held as a dictation, and a block with any other word is kept. The setting turns the filter off.
+    @MainActor static func checkFillerOnlyBlocksAreNotSaved(directory: URL) async throws {
+        let probe = Probe()
+        probe.deliveryFails = false
+        let store = try TranscriptStore(directory: directory.appendingPathComponent("filler-only"))
+        let service = SpeechService(dependencies: .init(
+            infer: { _, job, _ in
+                guard job.samples.first == 7 else { return probe.infer(job) }
+                let duration = AudioClock.seconds(samples: job.samples.count)
+                let row = Transcript(sessionID: job.sessionID, startedAt: job.startedAt, startSeconds: job.offset,
+                    endSeconds: job.offset + duration, text: "Mm-hmm.", mode: "ambient")
+                return SpeechOutput(transcripts: [row], text: row.text, processingSeconds: 0.001)
+            },
+            deliver: { _, text in try probe.deliver(text) }, now: { probe.now }))
+        service.highlightTargetField = false; service.muteSpeakersDuringDictation = false
+        service.keepAudioForSpeakerPass = false; service.cleanUpTranscriptions = false; service.cleanUpDictation = false
+        // Reset first too: a failed precondition traps before the defer, which would leave the filter off for the next run.
+        try? service.settings.reset(JotSettings.dropFillerOnlyBlocks)
+        service.beginRecoveryVerification(store: store, startedAt: probe.now)
+        defer { service.shutdown(); try? service.settings.reset(JotSettings.dropFillerOnlyBlocks) }
+        func speak(_ value: Float) async {
+            probe.now += 1
+            service.ingestRecoveryVerification(samples: Array(repeating: value, count: 16_000), at: probe.now)
+            service.flushRecoveryVerification()
+            await service.waitForRecoveryVerification()
+        }
+
+        await speak(7)
+        let heard = try store.recent(limit: 20)
+        precondition(heard.isEmpty, "A filler-only block heard while listening was saved")
+        precondition(service.diagnostics.report.jobs.last?.outcome == .fillerOnly, "A dropped filler-only block was not recorded as filler only")
+        await speak(3)
+        let kept = try store.recent(limit: 20).map(\.text)
+        precondition(kept == ["segment3"], "A block with real words was not saved")
+        // A full three-second chunk is cut while the sound goes on; its words open an utterance and are kept.
+        probe.now += 3
+        service.ingestRecoveryVerification(samples: Array(repeating: 7, count: 48_000), at: probe.now)
+        await service.waitForRecoveryVerification()
+        service.flushRecoveryVerification()
+        await service.waitForRecoveryVerification()
+        let opening = try store.recent(limit: 20).filter { $0.text == "Mm-hmm." }
+        precondition(opening.count == 1, "The first chunk of continuing speech was dropped as filler only")
+
+        service.dictation.begin()
+        probe.now += 1
+        service.ingestRecoveryVerification(samples: Array(repeating: 7, count: 16_000), at: probe.now)
+        await service.waitForRecoveryVerification()
+        service.dictation.end()
+        await service.waitForRecoveryVerification()
+        precondition(probe.delivered == ["Mm-hmm"], "A dictated filler was not inserted: \(probe.delivered)")
+        await speak(7)
+        let afterDictation = try store.recent(limit: 20).filter { $0.text == "Mm-hmm." }
+        precondition(afterDictation.count == 2, "A filler-only block after a dictation was saved")
+
+        service.settings.set(JotSettings.dropFillerOnlyBlocks, false)
+        await speak(7)
+        let fillers = try store.recent(limit: 20).filter { $0.text == "Mm-hmm." }
+        precondition(fillers.count == 3, "Turning the filter off did not save a filler-only block")
+        print("PASS: a silence-bounded filler-only block is not saved while listening, is kept when it opens continuing speech or is dictated, and is saved with the filter off.")
     }
 
     /// Ten held dictations, five with cleanup and five without, each record release-to-insert, cleanup, and insertion time with the cleanup outcome, and the diagnostics report splits the latency by whether cleanup ran. Cleanup and insertion take known minimum times, so each cleaned dictation must be slower by at least the cleanup time.

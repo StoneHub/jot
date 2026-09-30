@@ -110,6 +110,7 @@ final class ListeningTimeline: ObservableObject {
             markDictationGap("Dictation is partially saved, but an inference backlog caused an audio gap. Retry only after reviewing it.")
             return
         }
-        transcriber.enqueue(AudioJob(sessionID: sessionID, startedAt: sessionStarted, offset: start, samples: samples, ticket: UUID(), isFinal: final))
+        transcriber.enqueue(AudioJob(sessionID: sessionID, startedAt: sessionStarted, offset: start, samples: samples, ticket: UUID(), isFinal: final,
+            keepsFillers: service.dictation.isActive))
     }
 }

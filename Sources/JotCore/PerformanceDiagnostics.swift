@@ -37,7 +37,7 @@ public struct PerformanceEvent: Codable, Sendable {
 }
 public struct PerformanceJob: Codable, Sendable {
     public enum Mode: String, Codable, Sendable { case dictation, ambient }
-    public enum Outcome: String, Codable, Sendable { case completed, noSpeech, cancelled, failed, deliveryUnverified }
+    public enum Outcome: String, Codable, Sendable { case completed, noSpeech, fillerOnly, cancelled, failed, deliveryUnverified }
     public var elapsedSeconds: Double
     public var mode: Mode
     public var outcome: Outcome
@@ -145,7 +145,7 @@ public struct PerformanceDiagnostics: Sendable {
         jobs.remove(at: jobs.firstIndex { $0.mode == mode } ?? 0)
     }
     public var report: PerformanceReport {
-        let successful = jobs.filter { $0.outcome == .completed || $0.outcome == .deliveryUnverified || $0.outcome == .noSpeech }
+        let successful = jobs.filter { $0.outcome == .completed || $0.outcome == .deliveryUnverified || $0.outcome == .noSpeech || $0.outcome == .fillerOnly }
         let dictations = jobs.filter { $0.mode == .dictation }
         let inserted = dictations.filter { $0.outcome == .completed || $0.outcome == .deliveryUnverified }
         return .init(build: build, schemaVersion: 1, sampleIntervalSeconds: Self.sampleInterval,
