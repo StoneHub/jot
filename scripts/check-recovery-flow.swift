@@ -572,11 +572,13 @@ struct RecoveryFlowChecks {
         let store = try TranscriptStore(directory: directory.appendingPathComponent("filler-only"))
         let service = SpeechService(dependencies: .init(
             infer: { _, job, _ in
-                guard job.samples.first == 7 else { return probe.infer(job) }
+                // 7 is a chair scrape, 8 a clearly spoken "Mm-hmm", 9 a cold microphone's first moments heard as "Yeah".
+                guard let first = job.samples.first, [7, 8, 9].contains(first) else { return probe.infer(job) }
                 let duration = AudioClock.seconds(samples: job.samples.count)
                 let row = Transcript(sessionID: job.sessionID, startedAt: job.startedAt, startSeconds: job.offset,
-                    endSeconds: job.offset + duration, text: "Mm-hmm.", mode: "ambient")
-                return SpeechOutput(transcripts: [row], text: row.text, processingSeconds: 0.001, speechProbability: 0.25)
+                    endSeconds: job.offset + duration, text: first == 9 ? "Yeah." : "Mm-hmm.", mode: "ambient")
+                let peak: Float = first == 8 ? 0.95 : first == 9 ? 0.45 : 0.25
+                return SpeechOutput(transcripts: [row], text: row.text, processingSeconds: 0.001, speechProbability: peak)
             },
             deliver: { _, text in try probe.deliver(text) }, now: { probe.now }))
         service.highlightTargetField = false; service.muteSpeakersDuringDictation = false
@@ -611,13 +613,20 @@ struct RecoveryFlowChecks {
         let opening = try store.recent(limit: 20).filter { $0.text == "Mm-hmm." }
         precondition(opening.count == 1, "The first chunk of continuing speech was dropped as filler only")
 
-        service.dictation.begin()
-        probe.now += 1
-        service.ingestRecoveryVerification(samples: Array(repeating: 7, count: 16_000), at: probe.now)
-        await service.waitForRecoveryVerification()
-        service.dictation.end()
-        await service.waitForRecoveryVerification()
+        func dictate(_ value: Float) async {
+            service.dictation.begin()
+            probe.now += 1
+            service.ingestRecoveryVerification(samples: Array(repeating: value, count: 16_000), at: probe.now)
+            await service.waitForRecoveryVerification()
+            service.dictation.end()
+            await service.waitForRecoveryVerification()
+        }
+        await dictate(8)
         precondition(probe.delivered == ["Mm-hmm"], "A dictated filler was not inserted: \(probe.delivered)")
+        await dictate(9)
+        precondition(probe.delivered == ["Mm-hmm"], "A hold with no clear speech inserted \(probe.delivered)")
+        let afterEmptyHold = try store.recent(limit: 20)
+        precondition(afterEmptyHold.allSatisfy { !$0.text.hasPrefix("Yeah") }, "A hold with no clear speech saved a filler")
         await speak(7)
         let afterDictation = try store.recent(limit: 20).filter { $0.text == "Mm-hmm." }
         precondition(afterDictation.count == 2, "A filler-only block after a dictation was saved")
@@ -626,7 +635,7 @@ struct RecoveryFlowChecks {
         await speak(7)
         let fillers = try store.recent(limit: 20).filter { $0.text == "Mm-hmm." }
         precondition(fillers.count == 3, "Turning the filter off did not save a filler-only block")
-        print("PASS: a silence-bounded filler-only block is not saved while listening, is kept when it opens continuing speech or is dictated, and is saved with the filter off; diagnostics record its outcome and voice detector peak.")
+        print("PASS: a silence-bounded filler-only block is not saved while listening, is kept when it opens continuing speech or is clearly dictated, is dropped from a hold the voice detector barely heard, and is saved with the filter off; diagnostics record its outcome and voice detector peak.")
     }
 
     /// Ten held dictations, five with cleanup and five without, each record release-to-insert, cleanup, and insertion time with the cleanup outcome, and the diagnostics report splits the latency by whether cleanup ran. Cleanup and insertion take known minimum times, so each cleaned dictation must be slower by at least the cleanup time.

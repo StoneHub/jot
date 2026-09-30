@@ -83,7 +83,9 @@ final class Transcriber {
                 inferenceSeconds = output.processingSeconds
                 speechProbability = output.speechProbability.map(Double.init)
                 // A lone "Mm-hmm" or "Yeah" in a quiet room is usually a throat clear or a chair; it goes no further than recognition. A leading "Okay," of continuing speech is kept.
-                let fillerOnly = wholeUtterance && !job.keepsFillers && service.settings.bool(JotSettings.dropFillerOnlyBlocks) && NoiseFillers.isFillerOnly(output.text)
+                // A held dictation keeps its fillers only when the voice detector clearly heard them: a hold with nothing said decodes the cold microphone's first moments as "Yeah".
+                let unclear = job.keepsFillers ? (output.speechProbability ?? 1) < NoiseFillers.dictatedConfidence : wholeUtterance
+                let fillerOnly = unclear && service.settings.bool(JotSettings.dropFillerOnlyBlocks) && NoiseFillers.isFillerOnly(output.text)
                 outcome = fillerOnly ? .fillerOnly : output.text.isEmpty ? .noSpeech : .completed
                 lastInferenceSeconds = output.processingSeconds
                 processedAudioSeconds += AudioClock.seconds(samples: job.samples.count)
