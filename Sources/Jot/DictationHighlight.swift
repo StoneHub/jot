@@ -8,24 +8,39 @@ final class DictationHighlight {
     private var timer: Timer?
     private var lastFrame = CGRect.zero
     private var finishing: Task<Void, Never>?
+    /// Two seconds of 0.2 s ticks, well past the shortcut's own field lookup.
+    static let waitTicks = 10
     /// Counts finish sweeps so the AppKit check can see one without watching pixels.
     private(set) var sweepCount = 0
     var isShown: Bool { panel?.isVisible == true }
 
+    /// The shortcut finds its field off the main thread, so the frame is often nil at the press. The outline appears once it is known,
+    /// and stops looking after `waitTicks` so a target app that never answers does not keep stalling the main thread.
     func show(follow frame: @escaping () -> CGRect?) {
-        guard let initial = frame() else { return }
         finishing?.cancel(); finishing = nil
         let panel = self.panel ?? makePanel()
         self.panel = panel
         (panel.contentView as? OutlineView)?.pulse()
-        place(panel, around: initial)
-        panel.orderFrontRegardless()
+        if let initial = frame() {
+            place(panel, around: initial)
+            panel.orderFrontRegardless()
+        } else {
+            panel.orderOut(nil)
+        }
         timer?.invalidate()
+        var misses = 0
         timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, let panel = self.panel else { return }
-                guard let current = frame() else { self.hide(); return }
-                if current != self.lastFrame { self.place(panel, around: current) }
+                guard let current = frame() else {
+                    misses += 1
+                    if panel.isVisible || misses >= Self.waitTicks { self.hide() }
+                    return
+                }
+                if !panel.isVisible {
+                    self.place(panel, around: current)
+                    panel.orderFrontRegardless()
+                } else if current != self.lastFrame { self.place(panel, around: current) }
             }
         }
     }
