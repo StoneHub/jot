@@ -42,6 +42,25 @@ public struct LibraryRows: Sendable {
         }
     }
 
+    /// Folds a committed block after an asynchronous read. Another snapshot may
+    /// already include these ids, or cleanup may already have edited their text.
+    /// Read only this block's rows and session summaries, then replace by identity.
+    public mutating func addCommitted(_ saved: [Transcript], savedTo store: TranscriptStore) throws {
+        let committed = try saved.compactMap { try store.read(id: $0.id) }
+        let submittedIDs = Set(saved.map(\.id))
+        if recentIsCurrent { recent = Self.newest(committed, merging: recent.filter { !submittedIDs.contains($0.id) }, limit: Self.recentLimit) }
+        else { try readRecent(from: store) }
+        if !sessionsAreCurrent { try readSessions(from: store); return }
+        for id in Set(saved.filter { $0.mode == "ambient" }.map(\.sessionID)) {
+            sessions.removeAll { $0.sessionID == id }
+            if let summary = try store.sessionSummary(id: id) { sessions.append(summary) }
+        }
+        sessions = Array(sessions.sorted {
+            if $0.lastTranscriptAt != $1.lastTranscriptAt { return $0.lastTranscriptAt > $1.lastTranscriptAt }
+            return $0.sessionID.utf8.lexicographicallyPrecedes($1.sessionID.utf8)
+        }.prefix(Self.sessionLimit))
+    }
+
     /// Cleaned text a phrase has just saved, by row id. The rows keep their places; Sessions holds no text.
     public mutating func replace(texts: [String: String]) {
         recent = Self.replacing(texts, in: recent)
@@ -61,7 +80,8 @@ public struct LibraryRows: Sendable {
 
     /// The newest `limit` of `rows` (already newest first) and `saved`, in the store's order: absolute start, then id, both descending.
     public static func newest(_ saved: [Transcript], merging rows: [Transcript], limit: Int) -> [Transcript] {
-        Array((rows + saved).sorted(by: isNewer).prefix(limit))
+        let replaced = Set(saved.map(\.id))
+        return Array((rows.filter { !replaced.contains($0.id) } + saved).sorted(by: isNewer).prefix(limit))
     }
 
     /// The store's row order: `(started_at + start_seconds) DESC, id DESC`, ids compared bytewise as SQLite does.

@@ -52,32 +52,30 @@ final class DictationInput {
     private let onStart: () -> Void
     /// Called with the key event's own timestamp (system uptime), so a stalled main thread does not shorten the measured latency.
     private let onStop: (TimeInterval) -> Void
-    private var eventTap: CFMachPort?
-    private var eventSource: CFRunLoopSource?
+    private let eventTap = ShortcutEventTap()
+    private var tapEpoch = 0
     private var activationObserver: NSObjectProtocol?
     private var mouseUpMonitor: Any?
+    private var mouseDownMonitor: Any?
     private var focusObserver: AXObserver?
     private var observedApplication: AXUIElement?
     private var target: Target?
-    var shortcut: DictationShortcut = .fn { didSet { tracker.reset(); suggestionFn.reset() } }
-    var isRecordingShortcut = false { didSet { tracker.reset(); suggestionFn.reset(); dismissSuggestionKeys() } }
-    var dictationEnabled = true
-    var suggestionShortcut: DictationShortcut?
-    var fnSuggestionsEnabled = false { didSet { suggestionFn.reset() } }
-    private var suggestionFn = SuggestionFnGesture()
+    var shortcut: DictationShortcut = .fn { didSet { eventTap.resetGesture(); refreshShortcutState() } }
+    var isRecordingShortcut = false { didSet { eventTap.resetGesture(); dismissSuggestionKeys(); refreshShortcutState() } }
+    var dictationEnabled = true { didSet { refreshShortcutState() } }
+    var suggestionShortcut: DictationShortcut? { didSet { refreshShortcutState() } }
+    var fnSuggestionsEnabled = false { didSet { eventTap.resetFnSuggestion(); refreshShortcutState() } }
     var suggestionAllowed: () -> Bool = { false }
     var onSuggestionRequest: (() -> Void)?
     /// A request the service cannot take right now, so the gesture is not a silent no-op.
     var onSuggestionRefused: (() -> Void)?
     var onSuggestionAccept: (() -> Void)?
     var onSuggestionDismiss: ((SuggestionHistoryEntry.Action) -> Void)?
-    private var suggestionKeys = SuggestionKeyTracker()
     private var suggestionKeyRevision = 0
-    var suggestionState: SuggestionKeyTracker.State { suggestionKeys.state }
-    func showSuggestionKeys(_ state: SuggestionKeyTracker.State) { suggestionKeys.show(state) }
-    func dismissSuggestionKeys() { suggestionKeys.dismiss() }
+    var suggestionState: SuggestionKeyTracker.State { eventTap.suggestionState }
+    func showSuggestionKeys(_ state: SuggestionKeyTracker.State) { eventTap.showSuggestion(state); refreshShortcutState() }
+    func dismissSuggestionKeys() { eventTap.dismissSuggestion(); refreshShortcutState() }
 
-    private var tracker = ShortcutTracker()
     private var shortcutPresses = 0
     private var fnPresses = 0
     private var acceptedPresses = 0
@@ -91,7 +89,7 @@ final class DictationInput {
     var diagnostics: [String: Any] {
         var result: [String: Any] = [
             "shortcut": shortcut.displayName, "shortcutPresses": shortcutPresses, "enabled": isEnabled,
-            "eventTapEnabled": eventTap.map { CGEvent.tapIsEnabled(tap: $0) } ?? false,
+            "eventTapEnabled": eventTap.isTapEnabled,
             "fnPresses": fnPresses, "acceptedPresses": acceptedPresses,
             "busyPresses": busyPresses, "discardedTaps": discardedTaps,
             "targetCaptureFailures": targetCaptureFailures]
@@ -112,6 +110,7 @@ final class DictationInput {
     private var clipboardRestore: (() -> Void)?
     private var pasteGeneration = 0
     private var targetGeneration = 0
+    private var targetAcquisition: Task<AXUIElement, Error>?
     private static let pasteEventMarker: Int64 = 0x50534F524348
 
     private struct Target {
@@ -127,16 +126,13 @@ final class DictationInput {
     deinit {
         // The C callbacks hold an unretained context; remove their sources before
         // this instance can disappear even if its owner forgot to call disable().
-        if let eventTap {
-            CGEvent.tapEnable(tap: eventTap, enable: false)
-            CFMachPortInvalidate(eventTap)
-        }
-        if let eventSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), eventSource, .commonModes) }
+        eventTap.stop()
         if let focusObserver {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(focusObserver), .commonModes)
         }
         if let activationObserver { NSWorkspace.shared.notificationCenter.removeObserver(activationObserver) }
         if let mouseUpMonitor { NSEvent.removeMonitor(mouseUpMonitor) }
+        if let mouseDownMonitor { NSEvent.removeMonitor(mouseDownMonitor) }
         clipboardRestore?()
     }
 
@@ -154,61 +150,54 @@ final class DictationInput {
             report(InputError.accessibilityRequired)
             return false
         }
-        let mask = (CGEventMask(1) << CGEventType.flagsChanged.rawValue)
-            | (CGEventMask(1) << CGEventType.keyDown.rawValue)
-            | (CGEventMask(1) << CGEventType.keyUp.rawValue)
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap, place: .headInsertEventTap,
-            options: .defaultTap, eventsOfInterest: mask,
-            callback: { _, type, event, context in
-                guard let context else { return Unmanaged.passUnretained(event) }
-                let controller = Unmanaged<DictationInput>.fromOpaque(context).takeUnretainedValue()
-                // This tap's source is installed only on the main run loop.
-                let consume = MainActor.assumeIsolated { controller.handle(type, event: event) }
-                return consume ? nil : Unmanaged.passUnretained(event)
-            }, userInfo: Unmanaged.passUnretained(self).toOpaque()
-        ) else {
+        refreshShortcutState()
+        tapEpoch += 1
+        let epoch = tapEpoch
+        guard eventTap.start(onDecision: { [weak self] decision in
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.isEnabled, self.tapEpoch == epoch else { return }
+                self.apply(decision)
+            }
+        }) else {
             report(InputError.eventTapUnavailable)
             return false
         }
-        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        eventTap = tap
-        eventSource = source
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
         activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                if let front = NSWorkspace.shared.frontmostApplication { Self.wakeAccessibility(front.processIdentifier) }
-                self?.checkFocus()
+                if let front = NSWorkspace.shared.frontmostApplication {
+                    let pid = front.processIdentifier
+                    Task.detached { Self.wakeAccessibility(pid) }
+                }
+                self?.focusChanged()
             }
         }
         // A drag or window click finishes an interactive screenshot; the keys after it belong to the field again.
         mouseUpMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [weak self] _ in
-            MainActor.assumeIsolated { self?.suggestionKeys.endScreenshot() }
+            MainActor.assumeIsolated { self?.eventTap.endScreenshot() }
         }
-        if let front = NSWorkspace.shared.frontmostApplication { Self.wakeAccessibility(front.processIdentifier) }
+        mouseDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
+            MainActor.assumeIsolated { self?.invalidatePendingTarget() }
+        }
+        if let front = NSWorkspace.shared.frontmostApplication {
+            let pid = front.processIdentifier
+            Task.detached { Self.wakeAccessibility(pid) }
+        }
         isEnabled = true
         return true
     }
 
     func disable() {
         isEnabled = false
-        if let eventTap {
-            CGEvent.tapEnable(tap: eventTap, enable: false)
-            CFMachPortInvalidate(eventTap)
-        }
-        if let eventSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), eventSource, .commonModes) }
-        eventTap = nil
-        eventSource = nil
+        tapEpoch += 1
+        eventTap.stop()
         if let activationObserver { NSWorkspace.shared.notificationCenter.removeObserver(activationObserver) }
         activationObserver = nil
         if let mouseUpMonitor { NSEvent.removeMonitor(mouseUpMonitor) }
         mouseUpMonitor = nil
-        tracker.reset()
-        suggestionFn.reset()
-        suggestionKeys.reset()
+        if let mouseDownMonitor { NSEvent.removeMonitor(mouseDownMonitor) }
+        mouseDownMonitor = nil
         onSuggestionDismiss?(.serviceStopped)
         gestureAccepted = false
         clearTarget()
@@ -251,9 +240,11 @@ final class DictationInput {
     }
 
     /// Electron honors AXManualAccessibility; native apps ignore it. Harmless to set every time an app comes to the front.
-    static func wakeAccessibility(_ pid: pid_t) {
+    nonisolated static func wakeAccessibility(_ pid: pid_t) {
         guard pid != ProcessInfo.processInfo.processIdentifier else { return }
-        AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        let application = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(application, 0.05)
+        AXUIElementSetAttributeValue(application, "AXManualAccessibility" as CFString, kCFBooleanTrue)
     }
 
     /// Screen rectangle of the captured field in AppKit coordinates, or nil when the app is not in front or does not report one.
@@ -288,6 +279,13 @@ final class DictationInput {
     /// Never equates a successful AX call or dispatched shortcut with verified insertion.
     /// Field contents are used transiently for verification and never included in diagnostics.
     func insert(_ text: String, expected: SuggestionField? = nil) async throws -> DeliveryResult {
+        // A quick recognition result can beat the asynchronous AX lookup. Wait only
+        // for this press's bounded lookup, then keep the usual fail-closed behavior.
+        if target == nil {
+            for _ in 0..<14 where targetAcquisition != nil {
+                try await Task.sleep(nanoseconds: 50_000_000)
+            }
+        }
         guard let target else { throw InputError.targetChanged }
         let generation = targetGeneration
         var path = "accessibility"
@@ -574,149 +572,137 @@ final class DictationInput {
         return result
     }
 
-    private func handle(_ type: CGEventType, event: CGEvent) -> Bool {
-        guard isEnabled else { return false }
-        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            suggestionKeys.reset()
-            onSuggestionDismiss?(.serviceStopped)
-            cancel(InputError.shortcutCancelled)
-            gestureAccepted = false
-            tracker.reset()
-            suggestionFn.reset()
-            if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: true) }
-            return false
-        }
-        guard !isRecordingShortcut else { return false }
-        if event.getIntegerValueField(.eventSourceUserData) == Self.pasteEventMarker { return false }
-        let kind: ShortcutTracker.Event
-        switch type {
-        case .keyDown: kind = .keyDown
-        case .keyUp: kind = .keyUp
-        case .flagsChanged: kind = .flagsChanged
-        default: return false
-        }
-        let eventTimestamp = event.timestamp == 0
-            ? ProcessInfo.processInfo.systemUptime
-            : Double(event.timestamp) / 1_000_000_000
-        let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
-        // Fn release can emit a second, non-text key pair (179 on this Mac).
-        // Leave it to macOS, but do not invalidate the tap sequence or queued request.
-        if ShortcutTracker.isFnCompanionEvent(kind, keyCode: keyCode) { return false }
-        let modifiers = ShortcutModifiers(event.flags).subtracting(.fn)
-        let repeating = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+    /// Refresh the tap thread's immutable view of settings and current availability.
+    /// The action is checked again on main before requesting or accepting a suggestion.
+    func refreshShortcutState() {
         let allowed = !recording && suggestionAllowed()
-        let suggestion = suggestionKeys.handle(kind, keyCode: keyCode, modifiers: modifiers, repeating: repeating,
-                                              shortcut: suggestionShortcut, allowed: allowed, at: eventTimestamp)
-        switch suggestion.action {
-        case .request:
-            scheduleSuggestionRequest()
-        case .accept:
-            Task { @MainActor [weak self] in
-                guard let self, self.suggestionKeys.state == .accepting else { return }
-                self.onSuggestionAccept?()
-            }
-        case .dismiss:
-            suggestionKeyRevision += 1
-            // No AX calls in this branch: acceptance checks this integer before any insertion.
-            Task { @MainActor [weak self] in
-                guard let self, self.suggestionKeys.state == .idle else { return }
-                self.onSuggestionDismiss?(keyCode == 53 && modifiers.isEmpty ? .escape : .typedOver)
-            }
-        case .none: break
+        eventTap.configure { config in
+            config.shortcut = shortcut
+            config.suggestionShortcut = suggestionShortcut
+            config.dictationEnabled = dictationEnabled
+            config.fnSuggestionsEnabled = fnSuggestionsEnabled
+            config.suggestionAllowed = allowed
+            config.recordingShortcut = isRecordingShortcut
         }
-        if suggestion.consume { return true }
-        if kind == .keyDown && !suggestion.screenshot { suggestionKeyRevision += 1 }
-        if let request = suggestionShortcut, request.keyCode == keyCode,
-           request.modifiers == modifiers, !allowed {
-            if kind == .keyDown && !repeating { onSuggestionRefused?() }
-            return false
-        }
-        // While Fn dictation is held, the suggestion chord's modifiers must not cancel capture.
-        if recording, shortcut.keyCode == nil, kind == .flagsChanged, event.flags.contains(.maskSecondaryFn),
-           let request = suggestionShortcut, !modifiers.isEmpty,
-           modifiers.subtracting(request.modifiers).isEmpty { return false }
-        // Fn still requests suggestions when hold dictation is disabled or uses a different key.
-        if !dictationEnabled || shortcut.keyCode != nil {
-            if suggestionFn.handle(kind, keyCode: keyCode, modifiers: ShortcutModifiers(event.flags),
-                                   at: eventTimestamp, enabled: fnSuggestionsEnabled) {
-                if allowed { scheduleSuggestionRequest() } else { onSuggestionRefused?() }
-            }
-        }
-        guard dictationEnabled else { return false }
-        let result = tracker.handle(kind, keyCode: UInt16(event.getIntegerValueField(.keyboardEventKeycode)),
-            modifiers: shortcut.keyCode == nil ? ShortcutModifiers(event.flags) : ShortcutModifiers(event.flags).subtracting(.fn), repeating: event.getIntegerValueField(.keyboardEventAutorepeat) != 0,
-            shortcut: shortcut, at: eventTimestamp)
-        switch result.action {
-        case .start:
-            onSuggestionDismiss?(.typedOver)
-            shortcutPresses += 1
-            if shortcut.keyCode == nil { fnPresses += 1 }
-            if let reason = startBlocker() {
-                gestureAccepted = false
-                busyPresses += 1
-                report(InputError.pressIgnored(shortcut: shortcut.displayName, reason: reason))
-                return result.consume
-            }
-            gestureAccepted = true
-            recording = true
-            acceptedPresses += 1
-            lastShortcutError = nil
-            var targetError: Error?
-            do {
-                try captureTarget()
-            } catch {
-                targetCaptureFailures += 1
-                targetError = error
-            }
-            // Capturing speech is useful even when there is not yet a safe insertion
-            // target. The service retains that utterance for an explicit retry.
-            onStart()
-            if let targetError { report(targetError) }
-        case .stop:
-            if recording {
-                recording = false
-                checkFocus()
-                onStop(eventTimestamp)
-            }
-            gestureAccepted = false
-        case .discardTap:
-            let acceptedTap = gestureAccepted
-            gestureAccepted = false
-            if acceptedTap {
-                recording = false
-                discardedTaps += 1
-                clearTarget()
-                onDiscardTap?()
-            }
-        case .doubleTap:
-            // End the two short holds without ever interpreting them as recovery insertion.
-            let acceptedTap = gestureAccepted
-            gestureAccepted = false
-            if acceptedTap {
-                recording = false
-                discardedTaps += 1
-                clearTarget()
-                onDiscardTap?()
-            }
-            if shortcut.keyCode == nil && fnSuggestionsEnabled {
+    }
+
+    /// Decisions arrive in physical key order. Main-actor work never holds the tap.
+    private func apply(_ decision: ShortcutEventTap.Decision) {
+        for action in decision.actions {
+            switch action {
+            case .typed:
+                suggestionKeyRevision += 1
+                invalidatePendingTarget()
+            case .suggestionRequest:
                 if suggestionAllowed() { scheduleSuggestionRequest() } else { onSuggestionRefused?() }
+            case .suggestionAccept:
+                if eventTap.suggestionState == .accepting { onSuggestionAccept?() }
+            case .suggestionDismiss(let reason):
+                suggestionKeyRevision += 1
+                if eventTap.suggestionState == .idle { onSuggestionDismiss?(reason) }
+            case .suggestionRefused:
+                onSuggestionRefused?()
+            case .start:
+                onSuggestionDismiss?(.typedOver)
+                shortcutPresses += 1
+                if shortcut.keyCode == nil { fnPresses += 1 }
+                if let reason = startBlocker() {
+                    gestureAccepted = false
+                    busyPresses += 1
+                    report(InputError.pressIgnored(shortcut: shortcut.displayName, reason: reason))
+                    break
+                }
+                gestureAccepted = true
+                recording = true
+                acceptedPresses += 1
+                lastShortcutError = nil
+                beginShortcutTargetAcquisition()
+                onStart()
+            case .stop(let timestamp):
+                if recording {
+                    recording = false
+                    onStop(timestamp)
+                }
+                gestureAccepted = false
+            case .discardTap, .doubleTap:
+                let acceptedTap = gestureAccepted
+                gestureAccepted = false
+                if acceptedTap {
+                    recording = false
+                    discardedTaps += 1
+                    clearTarget()
+                    onDiscardTap?()
+                }
+                if case .doubleTap = action, shortcut.keyCode == nil && fnSuggestionsEnabled {
+                    if suggestionAllowed() { scheduleSuggestionRequest() } else { onSuggestionRefused?() }
+                }
+            case .cancel:
+                if recording { cancel(InputError.shortcutCancelled) }
+                gestureAccepted = false
+            case .tapDisabled:
+                onSuggestionDismiss?(.serviceStopped)
+                cancel(InputError.shortcutCancelled)
+                gestureAccepted = false
             }
-        case .cancel:
-            // A rejected busy press must not clear the target owned by pending work.
-            if recording { cancel(InputError.shortcutCancelled) }
-            gestureAccepted = false
-        case .none: break
         }
-        return result.consume
+        refreshShortcutState()
+    }
+
+    private func beginShortcutTargetAcquisition() {
+        clearTarget()
+        let generation = targetGeneration
+        guard Self.accessibilityGranted else {
+            targetCaptureFailures += 1
+            report(InputError.accessibilityRequired)
+            return
+        }
+        guard let app = NSWorkspace.shared.frontmostApplication,
+              app.processIdentifier != ProcessInfo.processInfo.processIdentifier else {
+            targetCaptureFailures += 1
+            report(InputError.noTextField(app: "no other app in front", role: "none"))
+            return
+        }
+        let pid = app.processIdentifier
+        let ticket = ShortcutTargetTicket(generation: generation, pid: pid)
+        let application = AXUIElementCreateApplication(pid)
+        // Registration and final identity validation run on main; the detached
+        // acquisition has its own application reference with a longer budget.
+        AXUIElementSetMessagingTimeout(application, 0.005)
+        observeFocus(application, pid: pid)
+        let acquisition = ShortcutTargetAcquisition(pid: pid,
+            appName: app.bundleIdentifier ?? app.localizedName ?? "unknown app")
+        let acquisitionTask = Task.detached(priority: .userInitiated) {
+            try await acquisition.acquire()
+        }
+        targetAcquisition = acquisitionTask
+        Task { [weak self] in
+            let result = await acquisitionTask.result
+            guard let self, ticket.accepts(generation: self.targetGeneration,
+                frontmostPID: NSWorkspace.shared.frontmostApplication?.processIdentifier) else { return }
+            self.targetAcquisition = nil
+            do {
+                let field = try result.get()
+                guard let focused = Self.focusedField(application),
+                      CFEqual(focused, field) else { throw InputError.targetChanged }
+                AXUIElementSetMessagingTimeout(focused, 0.005)
+                try Self.validateEditable(focused)
+                guard ticket.accepts(generation: self.targetGeneration,
+                    frontmostPID: NSWorkspace.shared.frontmostApplication?.processIdentifier) else { return }
+                self.target = Target(pid: pid, field: field)
+            } catch {
+                self.targetCaptureFailures += 1
+                self.report(error)
+            }
+        }
     }
 
     private func scheduleSuggestionRequest() {
         suggestionKeyRevision += 1
         let revision = suggestionKeyRevision
         let requestedPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
-        suggestionKeys.show(.requesting)
+        eventTap.showSuggestion(.requesting)
         Task { @MainActor [weak self] in
-            guard let self, self.suggestionKeys.state == .requesting,
+            guard let self, self.eventTap.suggestionState == .requesting,
                   self.suggestionKeyRevision == revision, self.suggestionAllowed(),
                   requestedPID == NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
             self.onSuggestionRequest?()
@@ -736,13 +722,25 @@ final class DictationInput {
         guard let target else { return }
         do { try validateCurrent(target) }
         catch {
-            if suggestionKeys.state != .idle { onSuggestionDismiss?(.focusChanged) }
+            if eventTap.suggestionState != .idle { onSuggestionDismiss?(.focusChanged) }
             else { cancel(error) }
         }
     }
 
+    private func focusChanged() {
+        if targetAcquisition != nil { invalidatePendingTarget() }
+        else { checkFocus() }
+    }
+
+    private func invalidatePendingTarget() {
+        guard targetAcquisition != nil else { return }
+        clearTarget()
+        targetCaptureFailures += 1
+        report(InputError.targetChanged)
+    }
+
     /// The focused element, a fresh reference with the default timeout; uses the timeout already set on `application`.
-    nonisolated fileprivate static func focusedField(_ application: AXUIElement) -> AXUIElement? {
+    nonisolated static func focusedField(_ application: AXUIElement) -> AXUIElement? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(application, kAXFocusedUIElementAttribute as CFString, &value) == .success,
               let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
@@ -763,7 +761,7 @@ final class DictationInput {
         return value as? String
     }
 
-    nonisolated fileprivate static func validateEditable(_ field: AXUIElement) throws {
+    nonisolated static func validateEditable(_ field: AXUIElement) throws {
         let role = stringAttribute(field, kAXRoleAttribute)
         let subrole = stringAttribute(field, kAXSubroleAttribute)
         if subrole == kAXSecureTextFieldSubrole || subrole?.localizedCaseInsensitiveContains("secure") == true {
@@ -791,7 +789,7 @@ final class DictationInput {
         guard AXObserverCreate(pid, { _, _, _, context in
             guard let context else { return }
             let controller = Unmanaged<DictationInput>.fromOpaque(context).takeUnretainedValue()
-            MainActor.assumeIsolated { controller.checkFocus() }
+            MainActor.assumeIsolated { controller.focusChanged() }
         }, &observer) == .success, let observer else { return }
         let context = Unmanaged.passUnretained(self).toOpaque()
         for notification in [kAXFocusedUIElementChangedNotification, kAXFocusedWindowChangedNotification] {
@@ -804,6 +802,8 @@ final class DictationInput {
 
     private func clearTarget() {
         targetGeneration += 1
+        targetAcquisition?.cancel()
+        targetAcquisition = nil
         if let focusObserver {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(focusObserver), .commonModes)
             if let observedApplication {

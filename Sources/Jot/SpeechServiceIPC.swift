@@ -27,7 +27,7 @@ extension SpeechService {
     /// One setting as `jot settings` lists it, after a change.
     private func settingRow(_ key: String) -> [String: Any] { settings.report().first { $0["key"] as? String == key } ?? [:] }
 
-    func status() throws -> [String: Any] {
+    func status() async throws -> [String: Any] {
         let pendingAudioSeconds = transcriber.queuedAudioSeconds
         var result: [String: Any] = ["mode": mode, "models": modelState.rawValue, "microphoneRunning": capture.running,
             "microphonePermission": AVCaptureDevice.authorizationStatus(for: .audio).rawValue,
@@ -50,7 +50,9 @@ extension SpeechService {
         if let delivery = input.lastDelivery { result["lastDelivery"] = delivery.metadata }
         if let lastAudioAt { result["lastAudioAt"] = ISO8601DateFormatter().string(from: lastAudioAt) }
         if let lastTranscriptAt = transcriber.lastTranscriptAt { result["lastTranscriptAt"] = ISO8601DateFormatter().string(from: lastTranscriptAt) }
-        if let store = library.store { result["storage"] = try object(store.metrics()) }
+        if let store = library.store { result["storage"] = try await readOffMain { try store.metrics() } }
+        result["storageWorkPending"] = storeExecutor.pendingCount
+        result["speakerPassPending"] = speakers.hasPendingPasses
         return result
     }
 
@@ -62,15 +64,15 @@ extension SpeechService {
             let offset = params["offset"] as? Int ?? 0
             var result: Any = [:]
             switch method {
-            case "speech.status": result = try status()
+            case "speech.status": result = try await status()
             case "models.prepare": result = ["state": modelState.rawValue, "downloadBytes": prepareFromCommand()]
-            case "models.unload": unloadModels(); result = try status()
+            case "models.unload": unloadModels(); result = try await status()
             case "models.check": checkModelUpdates(); if let modelCheck { await modelCheck.value }; result = try object(modelUpdates)
             case "speech.diagnostics":
                 samplePerformance(); result = try object(diagnostics.report)
-            case "speech.start": try await startAmbient(); result = try status()
-            case "speech.pause": pause(); result = try status()
-            case "speech.resume": _ = prepareFromCommand(); result = try status()
+            case "speech.start": try await startAmbient(); result = try await status()
+            case "speech.pause": pause(); result = try await status()
+            case "speech.resume": _ = prepareFromCommand(); result = try await status()
             case "speech.meeting_start":
                 guard let title = params["title"] as? String else { throw JotError.message("Meeting needs a title") }
                 await startMeeting(title)
@@ -83,7 +85,7 @@ extension SpeechService {
                 result = ["sessionID": id, "file": file?.path ?? ""]
             case "sessions.title":
                 guard let id = params["sessionID"] as? String, let title = params["title"] as? String else { throw JotError.message("sessionID and title are required") }
-                try setSessionTitle(id, title: title)
+                try await setSessionTitle(id, title: title)
                 result = ["sessionID": id, "title": title]
             case "settings.get": result = ["settings": settings.report(), "revision": JotSettings.revision]
             case "settings.set":
@@ -94,10 +96,10 @@ extension SpeechService {
                 guard let key = params["key"] as? String else { throw JotError.message("key is required") }
                 try settings.reset(key); settingChanged(key)
                 result = settingRow(key)
-            case "transcripts.clear": try clearHistory(); result = ["cleared": true]
+            case "transcripts.clear": try await clearHistory(); result = ["cleared": true]
             case "transcripts.delete_session":
                 guard let id = params["sessionID"] as? String else { throw JotError.message("sessionID is required") }
-                try deleteSession(id); result = ["deleted": true]
+                try await deleteSession(id); result = ["deleted": true]
             case "transcripts.search":
                 let store = library.store, query = params["query"] as? String ?? ""
                 result = try await readOffMain { try store?.search(query, limit: limit, offset: offset) ?? [] }
@@ -128,7 +130,7 @@ extension SpeechService {
                 result = try object(item)
             case "transcripts.export":
                 guard let id = params["sessionID"] as? String else { throw JotError.message("sessionID is required") }
-                let (session, rows) = try library.exportable(id)
+                let (session, rows) = try await library.exportable(id)
                 if params["format"] as? String == "json" { result = try object(TranscriptGrouping.foldContinuations(rows)) }
                 else { result = ["sessionID": id, "text": TranscriptExport.markdown(session: session, rows: rows, tuning: tuning)] }
             case "speech.transcribe_file":
@@ -185,17 +187,19 @@ extension SpeechService {
                     rows.append(["id": "you", "name": UserVoice.label, "sampleCount": you.sampleCount, "heldSeconds": you.heldSeconds,
                                  "trusted": you.trusted, "updatedAt": iso.string(from: you.updatedAt)])
                 }
-                rows += try speakers.peopleStore?.list().map { ["id": $0.id, "name": $0.name, "sampleCount": $0.sampleCount, "createdAt": iso.string(from: $0.createdAt), "updatedAt": iso.string(from: $0.updatedAt)] } ?? []
+                let peopleStore = speakers.peopleStore
+                let people = try await storeExecutor.perform { try peopleStore?.list() ?? [] }
+                rows += people.map { ["id": $0.id, "name": $0.name, "sampleCount": $0.sampleCount, "createdAt": iso.string(from: $0.createdAt), "updatedAt": iso.string(from: $0.updatedAt)] }
                 result = rows
             case "people.delete":
                 guard let id = params["id"] as? String else { throw JotError.message("id is required") }
-                if id == "you" { speakers.forgetUserVoice() } else { try speakers.peopleStore?.delete(id: id); speakers.refreshPeople() }
+                if id == "you" { speakers.forgetUserVoice() } else { let store = speakers.peopleStore; try await storeExecutor.submit { try store?.delete(id: id) }.value; speakers.refreshPeople() }
                 result = ["deleted": true]
             case "speakers.label":
                 guard let session = params["sessionID"] as? String, let speaker = params["speakerID"] as? String, let name = params["name"] as? String else { throw JotError.message("sessionID, speakerID and name are required") }
                 // The name is saved before the voice is remembered, so Live shows it even when remembering the voice fails.
                 defer { library.reloadLive() }
-                try speakers.labelSpeaker(session: session, speaker: speaker, name: name, voice: speakers.passEmbedding(session: session, speaker: speaker))
+                try await speakers.labelSpeaker(session: session, speaker: speaker, name: name, voice: await speakers.passEmbedding(session: session, speaker: speaker))
                 result = ["updated": true]
             default: throw JotError.message("Unknown method: \(method)")
             }

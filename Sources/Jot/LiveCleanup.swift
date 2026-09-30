@@ -22,9 +22,11 @@ final class LiveCleanup {
     private(set) var cleanupBypassedCount = 0
     private(set) var cleanupOutcomeCounts: [String: Int] = [:]
     private unowned let service: SpeechService
+    private let library: SessionLibrary
 
-    init(service: SpeechService) {
+    init(service: SpeechService, library: SessionLibrary) {
         self.service = service
+        self.library = library
         liveTranscriptCleanup = TranscriptCleanup(settings: service.settings, availability: service.dependencies.intelligenceAvailability)
         transcriptCleanup = TranscriptCleanup(settings: service.settings, purpose: .dictation, availability: service.dependencies.intelligenceAvailability)
     }
@@ -57,10 +59,13 @@ final class LiveCleanup {
         }
         guard cleanupTasks.isEmpty, !cleanupQueue.isEmpty else { return }
         let id = UUID()
+        let owner = service
         cleanupTasks[id] = Task { [weak self] in
+            defer { withExtendedLifetime(owner) {} }
             guard let self else { return }
             defer {
                 cleanupTasks[id] = nil
+                service.refreshShortcutEligibility()
                 // Install Update waits for this worker, which can outlast Pause, and nothing else publishes when it ends. Only an ending that allows the update redraws, so listening never does; a cancelled worker is quitting.
                 if !Task.isCancelled, service.canInstallUpdate { service.objectWillChange.send() }
             }
@@ -69,7 +74,10 @@ final class LiveCleanup {
                 runningSession = phrase.sources.first?.sessionID
                 defer { runningSession = nil }
                 guard service.cleanUpTranscriptions, let session = phrase.sources.first?.sessionID,
-                      !service.library.sessionIsDeleted(session) else {
+                      !library.sessionIsDeleted(session) else {
+                    cleanupBypassedCount += 1; cleanupCompletedCount += 1; continue
+                }
+                if await library.waitForDeletion(session) {
                     cleanupBypassedCount += 1; cleanupCompletedCount += 1; continue
                 }
                 var cleanup = await service.dependencies.cleanup(liveTranscriptCleanup, [phrase.text], Self.livePhraseCleanupTimeout)
@@ -81,21 +89,26 @@ final class LiveCleanup {
                 }
                 cleanupOutcomeCounts[cleanup.outcome.rawValue, default: 0] += 1
                 defer { cleanupCompletedCount += 1 }
-                guard !Task.isCancelled, service.cleanUpTranscriptions, !service.library.sessionIsDeleted(session),
+                guard !Task.isCancelled, service.cleanUpTranscriptions, !library.sessionIsDeleted(session),
                       let text = cleanup.texts.first, text != phrase.text else {
                     cleanupBypassedCount += 1; continue
                 }
+                if await library.waitForDeletion(session) { cleanupBypassedCount += 1; continue }
                 do {
                     let readable = PhraseCleanup.distribute(text, over: phrase.sources.map(\.text))
-                    if try service.library.store?.setReadablePhrase(readable, for: phrase.sources) == true {
+                    let store = library.store
+                    let applied = try await library.storeExecutor.submit { try store?.setReadablePhrase(readable, for: phrase.sources) == true }.value
+                    guard !(await library.waitForDeletion(session)) else { cleanupBypassedCount += 1; continue }
+                    if applied {
                         cleanupAppliedCount += 1
                         let texts = Dictionary(uniqueKeysWithValues: zip(phrase.sources.map(\.id), readable))
-                        service.library.replaceLive(texts: texts)
-                        service.library.didClean(phrase.sources, texts: texts)
+                        library.replaceLive(texts: texts)
+                        library.didClean(phrase.sources, texts: texts)
                     } else { cleanupBypassedCount += 1 }
                 } catch { cleanupBypassedCount += 1 }
             }
         }
+        service.refreshShortcutEligibility()
     }
 
     /// One dictation row through the on-device cleanup, counted with the live phrases in the recovery diagnostics.

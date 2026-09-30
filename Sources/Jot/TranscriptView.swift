@@ -191,8 +191,10 @@ struct TranscriptView: View {
             .modifier(GlassButton())
             .help("Shows the transcript database. Quit Jot before moving its files to Trash.")
             Button("Clear", systemImage: "clear", role: .destructive) {
-                do { try service.clearHistory(); search = ""; copiedID = nil }
-                catch { service.notice = error.localizedDescription }
+                Task {
+                    do { try await service.clearHistory(); search = ""; copiedID = nil }
+                    catch { service.notice = error.localizedDescription }
+                }
             }.modifier(GlassButton()).help("Delete every saved dictation. Sessions are deleted from the Sessions tab.")
             Button(showHistory ? "Hide" : "Show", systemImage: showHistory ? "eye.slash" : "eye") { showHistory.toggle() }
                 .modifier(GlassButton())
@@ -300,8 +302,10 @@ struct TranscriptView: View {
                                 HStack {
                                     Spacer()
                                     Button("Delete transcript", systemImage: "trash", role: .destructive) {
-                                        do { try service.deleteHistoryCard(item) }
-                                        catch { service.notice = error.localizedDescription }
+                                        Task {
+                                            do { try await service.deleteHistoryCard(item) }
+                                            catch { service.notice = error.localizedDescription }
+                                        }
                                     }.labelStyle(.iconOnly).buttonStyle(.plain).help("Delete this transcript")
                                 }
                             }.padding(14).background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 14))

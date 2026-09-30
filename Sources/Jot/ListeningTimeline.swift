@@ -23,8 +23,19 @@ final class ListeningTimeline: ObservableObject {
             minimumSeconds: CaptureChunkScheduler.defaultMinimumSeconds, silenceSeconds: service.settings.double(JotSettings.chunkSilenceSeconds))
     }
     private unowned let service: SpeechService
+    private let library: SessionLibrary
+    private let speakers: SpeakerRecognizer
+    private let transcriber: Transcriber
+    private let markDictationGap: (String) -> Void
 
-    init(service: SpeechService) { self.service = service }
+    init(service: SpeechService, library: SessionLibrary, speakers: SpeakerRecognizer,
+         transcriber: Transcriber, markDictationGap: @escaping (String) -> Void) {
+        self.service = service
+        self.library = library
+        self.speakers = speakers
+        self.transcriber = transcriber
+        self.markDictationGap = markDictationGap
+    }
 
     /// Audio received but not yet cut into a recognition chunk.
     var bufferedSampleCount: Int { ambient.count }
@@ -47,7 +58,7 @@ final class ListeningTimeline: ObservableObject {
             ambientOffset += AudioClock.seconds(samples: ambient.count + dropped); ambient = []
             sessionAudio?.appendSilence(samples: dropped)
             service.notice = "Audio backlog overflow: a gap was recorded."
-            service.dictation.markGap("Some microphone audio was lost before recognition. Saved dictation remains available to retry.")
+            markDictationGap("Some microphone audio was lost before recognition. Saved dictation remains available to retry.")
         }
         if service.ambientEnabled {
             ambient.append(contentsOf: samples)
@@ -71,14 +82,14 @@ final class ListeningTimeline: ObservableObject {
         if spoken { service.recordEvent(.sessionSplit, "New session started after \(service.newSessionAfterSilence) minutes of quiet.", duration: nil, session: nil) }
         endSessionAudio(runPass: spoken)
         beginSession(at: service.dependencies.now())
-        service.library.refreshSessions()
+        library.refreshSessions()
     }
 
     func endSessionAudio(runPass: Bool) {
         guard let file = sessionAudio else { return }
         sessionAudio = nil
         guard runPass else { file.discard(); return }
-        service.speakers.enqueuePass(file)
+        speakers.enqueuePass(file)
     }
 
     /// Switching the speaker pass off deletes the running session's file.
@@ -92,13 +103,13 @@ final class ListeningTimeline: ObservableObject {
         if ambient.isEmpty { consecutiveSilentSamples = 0 }
         let start = ambientOffset; ambientOffset += AudioClock.seconds(samples: samples.count)
         guard final || samples.count >= Self.minimumJobSamples else { return }
-        if service.transcriber.jobs.count >= 40 && !final {
+        if transcriber.jobs.count >= 40 && !final {
             service.droppedSeconds += AudioClock.seconds(samples: samples.count)
             service.recordEvent(.audioGap, "Inference queue full; segment discarded.", duration: AudioClock.seconds(samples: samples.count), session: nil)
             service.notice = "Inference fell behind; bounded audio queue dropped a segment."
-            service.dictation.markGap("Dictation is partially saved, but an inference backlog caused an audio gap. Retry only after reviewing it.")
+            markDictationGap("Dictation is partially saved, but an inference backlog caused an audio gap. Retry only after reviewing it.")
             return
         }
-        service.transcriber.enqueue(AudioJob(sessionID: sessionID, startedAt: sessionStarted, offset: start, samples: samples, ticket: UUID(), isFinal: final))
+        transcriber.enqueue(AudioJob(sessionID: sessionID, startedAt: sessionStarted, offset: start, samples: samples, ticket: UUID(), isFinal: final))
     }
 }

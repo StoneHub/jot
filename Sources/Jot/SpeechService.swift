@@ -43,12 +43,16 @@ struct SpeechServiceDependencies {
 final class SpeechService: ObservableObject {
     let dependencies: SpeechServiceDependencies
     let capture: CaptureController
-    lazy var library = SessionLibrary(service: self)
-    lazy var speakers = SpeakerRecognizer(pass: pipeline.speakerPass, service: self)
-    lazy var dictation = DictationCoordinator(service: self)
+    let storeExecutor = StoreExecutor()
+    lazy var library: SessionLibrary = SessionLibrary(service: self, executor: storeExecutor,
+        isSessionSettled: { [weak self] in self?.sessionIsSettled($0) ?? true },
+        isApplyingPass: { [weak self] in self?.speakers.isApplyingPass($0) ?? false })
+    lazy var speakers: SpeakerRecognizer = SpeakerRecognizer(pass: pipeline.speakerPass, service: self, library: library)
+    lazy var dictation: DictationCoordinator = DictationCoordinator(service: self, timeline: timeline, library: library,
+        cleanup: cleanup, transcriber: transcriber)
     /// What agents told Jot lately, for suggestions. In memory only; see AgentContext.
     let agentContext = AgentContext()
-    lazy var suggestions = SuggestionCoordinator(input: input, store: { [weak self] in self?.library.store },
+    lazy var suggestions: SuggestionCoordinator = SuggestionCoordinator(input: input, store: { [weak self] in self?.library.store },
         history: { [weak self] in self?.suggestionHistory },
         agentContext: agentContext,
         allowed: { [weak self] in self?.canRequestSuggestion == true },
@@ -57,9 +61,15 @@ final class SpeechService: ObservableObject {
         matchesHeardSpeech: { [weak self] in self?.suggestionHeardMatches == true },
         userVoice: { [weak self] in self?.speakers.userVoice },
         notice: { [weak self] in self?.notice = $0 })
-    lazy var timeline = ListeningTimeline(service: self)
-    lazy var cleanup = LiveCleanup(service: self)
-    lazy var transcriber = Transcriber(service: self)
+    lazy var timeline: ListeningTimeline = ListeningTimeline(service: self, library: library, speakers: speakers,
+        transcriber: transcriber, markDictationGap: { [weak self] in self?.dictation.markGap($0) })
+    lazy var cleanup: LiveCleanup = LiveCleanup(service: self, library: library)
+    lazy var transcriber: Transcriber = Transcriber(service: self, library: library, cleanup: cleanup,
+        recordedRows: { [weak self] job in
+            guard let self else { return }
+            if job.sessionID == self.timeline.sessionID { self.timeline.lastAmbientRowAt = self.dependencies.now() }
+        }, recognitionCompleted: { [weak self] in self?.dictation.updateAttemptText(for: $0) },
+        recognitionFailed: { [weak self] in self?.dictation.noteRecognitionFailure(for: $0) })
 
     init(dependencies: SpeechServiceDependencies = .live) {
         self.dependencies = dependencies
@@ -70,8 +80,8 @@ final class SpeechService: ObservableObject {
     }
     /// A fresh listening start opens Live; input changes preserve the current tab.
     @Published private(set) var livePresentationRevision = 0
-    @Published private(set) var switchingInput = false
-    @Published private(set) var preparingUpdate = false
+    @Published private(set) var switchingInput = false { didSet { refreshShortcutEligibility() } }
+    @Published private(set) var preparingUpdate = false { didSet { refreshShortcutEligibility() } }
     private var inputChange: Task<Void, Never>?
     private var resumeAfterUpdate = false
     private var updateRecovery: Task<Void, Never>?
@@ -220,11 +230,16 @@ final class SpeechService: ObservableObject {
     var canInstallUpdate: Bool {
         !capture.running && !dictation.isActive && !dictation.isPending && !dictation.recoveryRunning && !diagnosticActive &&
         transcriber.isIdle && !preparing && !pauseRequested && !cleanup.isRunning && !library.isRelabeling &&
-        !speakers.hasPendingPasses && !switchingInput && unloading == nil
+        !speakers.hasPendingPasses && !switchingInput && unloading == nil && storeExecutor.pendingCount == 0
     }
     @Published var showingSavedDictation = false
     @Published var recoveryNotice = ""
     @Published private(set) var cleanupAvailability = TranscriptCleanup.availability
+
+    private var shortcutStateReady = false
+    func refreshShortcutEligibility() {
+        if shortcutStateReady { input.refreshShortcutState() }
+    }
 
     func setShortcutRecording(_ active: Bool) { suggestions.dismiss(action: .settingsChanged); input.isRecordingShortcut = active }
 
@@ -328,9 +343,12 @@ final class SpeechService: ObservableObject {
     var suggestionHistory: SuggestionHistory?
     private var timer: Timer?
     /// A `jot` file diagnostic is running; app replacement waits for it to settle.
-    @Published var diagnosticActive = false
+    @Published var diagnosticActive = false { didSet { refreshShortcutEligibility() } }
     /// Screens read `preparing` from this, so a change redraws them the way the stored flag's mode update did.
-    private var preparation: Task<Void, Never>? { willSet { objectWillChange.send() } }
+    private var preparation: Task<Void, Never>? {
+        willSet { objectWillChange.send() }
+        didSet { refreshShortcutEligibility() }
+    }
     private var pausing: Task<Void, Never>?
     private var unloading: Task<Void, Never>?
     /// A hold while paused: the microphone starts for this hold alone. See `holdBegan`.
@@ -377,11 +395,12 @@ final class SpeechService: ObservableObject {
             }
         }
         result.onDiscardTap = { [weak self] in self?.holdDiscarded() }
+        shortcutStateReady = true
         return result
     }()
 
     /// `askPermissions: false` while first-run setup is open: setup asks for each permission on the page that explains it.
-    func launch(askPermissions: Bool = true) {
+    func launch(askPermissions: Bool = true) async {
         markPerformance(.launch)
         resourceReadout.snapshot = readoutSampler.sample()
         capture.watchDevices()
@@ -390,18 +409,18 @@ final class SpeechService: ObservableObject {
         do {
             // The lock comes before the store: opening an older format rebuilds the file, which must never happen under a running Jot.
             directoryLock = try DirectoryLock(directory: JotPaths.directory)
-            let opened = try TranscriptStore()
+            let opened = try await storeExecutor.perform { try TranscriptStore() }
             library.store = opened
             // Diagnostics are best effort; a telemetry schema failure must not stop capture or history access.
-            suggestionHistory = try? SuggestionHistory(sharing: opened)
+            suggestionHistory = try? await storeExecutor.perform { try SuggestionHistory(sharing: opened) }
             if opened.replacedDatabase {
                 recordEvent(.databaseReplaced, "Saved history was in a format this version does not read; it was deleted and an empty database created.")
                 notice = "Saved history was in a format this version does not read, so it was replaced with an empty history."
             }
             // Converts interrupted holds with the vocabulary loaded above.
-            try dictation.finalizeInterruptedAttempts()
-            speakers.speakerStore = try SpeakerPassStore(sharing: opened)
-            speakers.peopleStore = try PeopleStore(sharing: opened); speakers.refreshPeople()
+            try await dictation.finalizeInterruptedAttempts()
+            speakers.speakerStore = try await storeExecutor.perform { try SpeakerPassStore(sharing: opened) }
+            speakers.peopleStore = try await storeExecutor.perform { try PeopleStore(sharing: opened) }; speakers.refreshPeople()
             // Outside the database on purpose: a format rebuild keeps the user's voice.
             speakers.userVoiceStore = UserVoiceStore(directory: JotPaths.directory); speakers.loadUserVoice()
             let service = LocalServiceServer { [weak self] data in
@@ -410,7 +429,7 @@ final class SpeechService: ObservableObject {
             }
             try service.start(); server = service
             library.refreshRecent(); library.refreshSessions()
-            if let attempt = try library.store?.latestRecoverableDictationAttempt() {
+            if let attempt = try await storeExecutor.perform({ try opened.latestRecoverableDictationAttempt() }) {
                 recoveryNotice = attempt.hasGap
                     ? "Partial dictation was saved. Choose Review saved dictation to copy the recognized portion."
                     : "Choose Review saved dictation to copy the saved text."
@@ -525,7 +544,7 @@ final class SpeechService: ObservableObject {
                 UserDefaults.standard.set(true, forKey: JotDefaultsKey.modelsPrepared)
                 cachedModelBytes = ModelCache.bytesOnDisk()
                 if fnRequested { await enableFn() }
-                if ambientRequested { try await activateAmbient(); try continueMeeting() }
+                if ambientRequested { try await activateAmbient(); try await continueMeeting() }
                 if lifecycle.acceptsWork(token) { notice = "" }
             } catch {
                 if lifecycle.finishStart(token, succeeded: false) {
@@ -546,7 +565,7 @@ final class SpeechService: ObservableObject {
         preparation = Task {
             do {
                 if fnRequested { await enableFn() }
-                try await activateAmbient(); try continueMeeting()
+                try await activateAmbient(); try await continueMeeting()
             } catch { notice = error.localizedDescription }
             preparation = nil; scheduleTimer()
         }
@@ -724,29 +743,29 @@ final class SpeechService: ObservableObject {
     /// The session being recorded belongs to Live until capture stops.
     func canDeleteSession(_ id: String) -> Bool { !(id == timeline.activeSessionID && ambientEnabled) }
 
-    func deleteSession(_ id: String) throws {
+    func deleteSession(_ id: String) async throws {
         guard canDeleteSession(id) else { throw JotError.message("Stop recording this session before deleting it.") }
-        try library.deleteSession(id)
+        try await library.deleteSession(id)
     }
 
     func regroupSession(_ id: String) async throws {
         guard canDeleteSession(id) else { throw JotError.message("Stop recording this session before regrouping it.") }
-        try await library.regroupSession(id) { try speakers.segments(sessionID: id) }
+        try await library.regroupSession(id) { try await speakers.segments(sessionID: id) }
         speakers.didRegroup(id)
     }
 
-    func deleteHistoryCard(_ item: Transcript) throws {
-        try library.deleteHistoryCard(item, discard: dictation.discard(ids:))
+    func deleteHistoryCard(_ item: Transcript) async throws {
+        try await library.deleteHistoryCard(item, discard: dictation.discard(ids:))
     }
 
-    func clearHistory() throws {
-        try library.clearHistory(discardAttempt: dictation.discardForHistoryReset)
+    func clearHistory() async throws {
+        try await library.clearHistory(discardAttempt: dictation.discardForHistoryReset)
     }
 
-    func labelSpeaker(session: String, speaker: String, name: String, voice: [Float]? = nil) {
+    func labelSpeaker(session: String, speaker: String, name: String, voice: [Float]? = nil) async {
         // The name is saved before the voice is remembered, so Live shows it even when remembering the voice fails.
         defer { library.reloadLive() }
-        do { try speakers.labelSpeaker(session: session, speaker: speaker, name: name, voice: voice) }
+        do { try await speakers.labelSpeaker(session: session, speaker: speaker, name: name, voice: voice) }
         catch { notice = error.localizedDescription }
     }
 
@@ -769,7 +788,8 @@ final class SpeechService: ObservableObject {
             try await startAmbient()
             guard ambientEnabled else { throw JotError.message("Ambient capture did not start.") }
             meetingTitle = trimmed
-            try library.store?.setTitle(sessionID: timeline.sessionID, title: trimmed)
+            let store = library.store, id = timeline.sessionID
+            try await storeExecutor.submit { try store?.setTitle(sessionID: id, title: trimmed) }.value
             library.refreshSessions()
         } catch { meetingTitle = nil; notice = error.localizedDescription }
     }
@@ -782,16 +802,21 @@ final class SpeechService: ObservableObject {
     }
 
     /// Names any session from the socket. Naming the running meeting's session renames the meeting too, so the Live chip and a continuation after an automatic pause use the new name.
-    func setSessionTitle(_ id: String, title: String) throws {
-        try library.store?.setTitle(sessionID: id, title: title); library.refreshSessions()
+    func setSessionTitle(_ id: String, title: String) async throws {
+        let store = library.store
+        guard !(await library.waitForDeletion(id)) else { throw JotError.message("Session was deleted.") }
+        try await storeExecutor.submit { try store?.setTitle(sessionID: id, title: title) }.value
+        library.refreshSessions()
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         if meetingTitle != nil, id == timeline.activeSessionID, !trimmed.isEmpty { meetingTitle = trimmed }
     }
 
     /// A meeting kept through an automatic pause records on into a new session under the same name. The earlier part stays in Sessions, and TranscriptExport.write adds " (2)" to a duplicate file name.
-    private func continueMeeting() throws {
+    private func continueMeeting() async throws {
         guard let meetingTitle, ambientEnabled else { return }
-        try library.store?.setTitle(sessionID: timeline.sessionID, title: meetingTitle); library.refreshSessions()
+        let store = library.store, id = timeline.sessionID
+        try await storeExecutor.submit { try store?.setTitle(sessionID: id, title: meetingTitle) }.value
+        library.refreshSessions()
     }
 
     /// Closes and exports the named session while continuous listening immediately
@@ -827,9 +852,10 @@ final class SpeechService: ObservableObject {
         }
         library.refreshSessions()
         // A meeting with nothing transcribed ends quietly; there is no file to show.
-        guard (try? library.store?.session(id: id).isEmpty) == false else { return nil }
+        let store = library.store
+        guard (try? await storeExecutor.perform { try store?.session(id: id).isEmpty }) == false else { return nil }
         do {
-            let url = try library.exportSession(id)
+            let url = try await library.exportSession(id)
             NSWorkspace.shared.activateFileViewerSelecting([url])
             return url
         } catch { notice = error.localizedDescription; return nil }
@@ -1006,7 +1032,10 @@ final class SpeechService: ObservableObject {
             resourceReadout.snapshot = readoutSampler.sample()
             // A published assignment tells the window to redraw even when the value is the same, so only changes are assigned.
             let availability = dependencies.intelligenceAvailability()
-            if cleanupAvailability != availability { cleanupAvailability = availability }
+            if cleanupAvailability != availability {
+                cleanupAvailability = availability
+                refreshShortcutEligibility()
+            }
             transcriber.queuedSeconds = transcriber.queuedAudioSeconds
             if !pauseRequested, ambientEnabled || dictation.isActive, let lastAudioAt, dependencies.now().timeIntervalSince(lastAudioAt) > 4 {
                 recordEvent(.inputStalled, "No microphone samples for more than four seconds."); pause(automatic: true); notice = "Microphone stopped delivering audio. Resume to reconnect; a capture gap occurred."
@@ -1060,6 +1089,8 @@ final class SpeechService: ObservableObject {
             transcriber.kick()
             try? await Task.sleep(for: .milliseconds(10))
         }
+        await storeExecutor.flush()
+        await library.waitForReads()
     }
 
     /// Counts and state only; transcript and field contents never enter diagnostics.
@@ -1090,9 +1121,13 @@ final class SpeechService: ObservableObject {
         default: marker = nil
         }
         if let marker { markPerformance(marker) }
-        do { try library.store?.appendEvent(CaptureEvent(sessionID: session ?? timeline.sessionID, kind: kind.rawValue, detail: detail, durationSeconds: duration)) }
-        catch { notice = "Could not save capture event: \(error.localizedDescription)"; return }
-        library.refreshEvents()
+        let store = library.store
+        let event = CaptureEvent(sessionID: session ?? timeline.sessionID, kind: kind.rawValue, detail: detail, durationSeconds: duration)
+        let write = storeExecutor.submit { try store?.appendEvent(event) }
+        Task {
+            do { _ = try await write.value; library.refreshEvents() }
+            catch { notice = "Could not save capture event: \(error.localizedDescription)" }
+        }
     }
 
     func checkModelUpdates() {
