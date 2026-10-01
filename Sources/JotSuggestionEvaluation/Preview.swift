@@ -7,7 +7,7 @@ public struct Preview: Equatable {
     public let after: String
     public let sources: [SourceRevision]
 
-    public init(for input: ScenarioInput, sources: [SourceRevision]) {
+    public init(for input: SuggestionRequest, sources: [SourceRevision]) {
         inputRevision = input.target.inputRevision
         before = input.target.before
         after = input.target.after
@@ -16,7 +16,7 @@ public struct Preview: Equatable {
 
     /// Acceptance rereads the target. Any input edit, including a same-length one, or a revised, stale
     /// or deleted source withdraws the preview.
-    public func isCurrent(for input: ScenarioInput) -> Bool {
+    public func isCurrent(for input: SuggestionRequest) -> Bool {
         guard input.target.inputRevision == inputRevision, input.target.before == before, input.target.after == after else {
             return false
         }

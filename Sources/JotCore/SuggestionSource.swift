@@ -1,12 +1,6 @@
 import Foundation
 
-public struct SourceRevision: Decodable, Equatable, Sendable, Hashable {
-    public init(id: String, revision: Int) { self.id = id; self.revision = revision }
-    public let id: String
-    public let revision: Int
-}
-
-public struct Source: Decodable, Equatable, Sendable {
+public struct SuggestionSource: Decodable, Equatable, Sendable {
     public init(id: String, kind: String, role: String, speaker: String? = nil, origin: String,
                 scope: Scope, timestamp: String, revision: Int, status: Status, text: String,
                 derivedFrom: [SourceRevision]? = nil, duplicateOf: String? = nil) {

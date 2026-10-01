@@ -58,7 +58,7 @@ public struct SuggestionHistoryEntry: Codable, Sendable, Equatable {
     public enum SourceKind: String, Codable, Sendable {
         case screenText, dictation, meetingTranscript, heardSpeech, agentMessage, pinnedSelection, other
 
-        public init(_ source: Source) {
+        public init(_ source: SuggestionSource) {
             switch source.kind {
             case "screen-text": self = .screenText
             case "dictation": self = .dictation
@@ -151,7 +151,7 @@ public struct SuggestionHistoryEntry: Codable, Sendable, Equatable {
         usage(selected: selection.selected, excluded: selection.excluded)
     }
 
-    public static func usage(selected: [Source], excluded: [SourceSelection.Exclusion]) ->
+    public static func usage(selected: [SuggestionSource], excluded: [SourceSelection.Exclusion]) ->
         (selected: [SourceUsage], excluded: [ExcludedUsage]) {
         var sources: [SourceKind: (count: Int, bytes: Int)] = [:]
         for source in selected {

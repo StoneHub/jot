@@ -3,7 +3,7 @@ import XCTest
 @testable import JotCore
 
 /// Brain-dump drafting, blank-field abstention and on-screen context (#90). Synthetic text only.
-final class SuggestionEvaluationDraftTests: XCTestCase {
+final class SuggestionDraftTests: XCTestCase {
     private let notes = "reply to alex — can help saturday after 2, ask what tools to bring, keep it casual"
 
     func testTextWithoutASelectionIsContinuedAtTheCursor() throws {
@@ -63,9 +63,9 @@ final class SuggestionEvaluationDraftTests: XCTestCase {
     }
 
     func testDraftPromptQuotesTheNotesAndKeepsSurroundingText() {
-        let target = Target(app: "Slack", mode: .draft, purpose: "text-entry", before: "", after: "",
+        let target = SuggestionTarget(app: "Slack", mode: .draft, purpose: "text-entry", before: "", after: "",
                             requestedAt: "2026-09-26T12:00:00Z", seed: notes, window: "Weekend plans")
-        let request = SuggestionPrompt.request(for: ScenarioInput(target: target, sources: []), sources: [])
+        let request = SuggestionPrompt.request(for: SuggestionRequest(target: target, sources: []), sources: [])
         let lines = request.prompt.components(separatedBy: "\n")
         XCTAssertEqual(lines.first, #"Field: draft for a text-entry field in Slack, window "Weekend plans"."#)
         XCTAssertTrue(lines.contains("Notes to rewrite: " + SuggestionPrompt.quoted(notes)))
@@ -77,7 +77,7 @@ final class SuggestionEvaluationDraftTests: XCTestCase {
 
         var selection = target
         selection.before = "Hi team,\n"; selection.after = "\nThanks"; selection.seed = String(repeating: "note ", count: 200)
-        let selected = SuggestionPrompt.request(for: ScenarioInput(target: selection, sources: []), sources: [])
+        let selected = SuggestionPrompt.request(for: SuggestionRequest(target: selection, sources: []), sources: [])
         XCTAssertTrue(selected.prompt.contains(#"Field text before the notes, kept as is: "Hi team,\n""#))
         XCTAssertTrue(selected.prompt.contains(#"Field text after the notes, kept as is: "\nThanks""#))
         XCTAssertEqual(selected.maximumResponseTokens, 400, "Long notes get a larger, bounded budget")
@@ -86,8 +86,8 @@ final class SuggestionEvaluationDraftTests: XCTestCase {
     func testReplyAndDraftDescribeScreenTextWithoutAnAuthor() {
         let screen = ScreenContext.source("Rowan: can anyone help me move a couch saturday?", at: Date(timeIntervalSince1970: 0))
         XCTAssertEqual(screen.kind, "screen-text"); XCTAssertEqual(screen.role, "unknown")
-        let target = Target(app: "Slack", mode: .reply, purpose: "text-entry", before: "", after: "", requestedAt: "now")
-        var input = ScenarioInput(target: target, sources: [screen])
+        let target = SuggestionTarget(app: "Slack", mode: .reply, purpose: "text-entry", before: "", after: "", requestedAt: "now")
+        var input = SuggestionRequest(target: target, sources: [screen])
         input.association = .explicitRecentRequest
         let selection = SourceSelector.select(input)
         XCTAssertEqual(selection.selected, [screen])
@@ -96,7 +96,7 @@ final class SuggestionEvaluationDraftTests: XCTestCase {
         XCTAssertTrue(prompt.contains(SuggestionPrompt.quoted(screen.text)))
         XCTAssertTrue(prompt.contains("If the visible text holds no message for the user to answer or continue, return NO_SUGGESTION."),
                       "A new chat's greeting is not something to reply to")
-        let withoutScreen = SuggestionPrompt.request(for: ScenarioInput(target: target, sources: []), sources: []).prompt
+        let withoutScreen = SuggestionPrompt.request(for: SuggestionRequest(target: target, sources: []), sources: []).prompt
         XCTAssertFalse(withoutScreen.contains("visible text"), "Prompts without screen text keep the v3 wording")
     }
 
@@ -177,7 +177,7 @@ final class SuggestionEvaluationDraftTests: XCTestCase {
 
     func testAttributionNamesWhoseWordsWereUsed() {
         let screen = ScreenContext.source("x", at: Date())
-        let dictation = Source(id: "d", kind: "dictation", role: "user", origin: "jot", scope: .init(), timestamp: "t",
+        let dictation = SuggestionSource(id: "d", kind: "dictation", role: "user", origin: "jot", scope: .init(), timestamp: "t",
                                revision: 1, status: .current, text: "y")
         let whole = SuggestionPlan.draft(SuggestionSeed(text: "a", location: 0, length: 1, isSelection: false))
         let selected = SuggestionPlan.draft(SuggestionSeed(text: "a", location: 0, length: 1, isSelection: true))
@@ -201,7 +201,7 @@ final class SuggestionEvaluationDraftTests: XCTestCase {
 
         // Five seconds apart, so each phrase is its own turn.
         let speech = SuggestionContext(rows: (0..<14).map { row("m\($0)", "ambient", at: Double($0) * 5) }, sessionTitle: nil)
-        let target = Target(app: "Slack", mode: .reply, purpose: "text-entry", before: "", after: "", requestedAt: "now")
+        let target = SuggestionTarget(app: "Slack", mode: .reply, purpose: "text-entry", before: "", after: "", requestedAt: "now")
         let selected = SourceSelector.select(speech.input(target: target), limits: .window).selected
         XCTAssertEqual(selected.count, 12)
         XCTAssertEqual(selected.first?.id, "m2", "The newest phrases are kept when the bound forces a choice")

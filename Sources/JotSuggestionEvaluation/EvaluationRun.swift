@@ -186,7 +186,7 @@ final class SuggestionEvaluation {
         }
         var record = EvaluationRecord(scenarioID: scenario.id, iteration: iteration, configuration: configuration,
                                       selection: selection)
-        // A draft is generated from the user's notes (`Target.seed`), so it needs no source. A continuation adds to the
+        // A draft is generated from the user's notes (`SuggestionTarget.seed`), so it needs no source. A continuation adds to the
         // user's text, and with nothing to draw on the model invents what comes next, so it needs one like a reply.
         if selection.selected.isEmpty && input.target.mode != .draft {
             record.detail = "no-selected-source"

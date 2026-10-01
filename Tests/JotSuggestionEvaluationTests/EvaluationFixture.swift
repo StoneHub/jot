@@ -26,23 +26,23 @@ enum EvaluationFixture {
         try XCTUnwrap(corpus().scenarios.first { $0.id == id })
     }
 
-    static func target(mode: SuggestionMode = .reply, project: String? = "alpha", conversation: String? = "chat-1") -> Target {
-        Target(app: "Test chat", mode: mode, purpose: "chat-reply", project: project, conversation: conversation, cwd: nil,
+    static func target(mode: SuggestionMode = .reply, project: String? = "alpha", conversation: String? = "chat-1") -> SuggestionTarget {
+        SuggestionTarget(app: "Test chat", mode: mode, purpose: "chat-reply", project: project, conversation: conversation, cwd: nil,
                inputRevision: 0, before: "", after: "", requestedAt: "2026-09-20T12:00:00Z")
     }
 
     static func source(_ id: String, kind: String = "dictation", role: String = "user", speaker: String? = nil,
                        project: String? = "alpha", conversation: String? = nil,
                        timestamp: String = "2026-09-20T10:00:00Z", revision: Int = 1,
-                       status: Source.Status = .current, text: String? = nil, derivedFrom: [SourceRevision]? = nil,
-                       duplicateOf: String? = nil) -> Source {
-        Source(id: id, kind: kind, role: role, speaker: speaker, origin: "test",
-               scope: Source.Scope(project: project, conversation: conversation, session: nil), timestamp: timestamp,
+                       status: SuggestionSource.Status = .current, text: String? = nil, derivedFrom: [SourceRevision]? = nil,
+                       duplicateOf: String? = nil) -> SuggestionSource {
+        SuggestionSource(id: id, kind: kind, role: role, speaker: speaker, origin: "test",
+               scope: SuggestionSource.Scope(project: project, conversation: conversation, session: nil), timestamp: timestamp,
                revision: revision, status: status, text: text ?? "Test source \(id).", derivedFrom: derivedFrom,
                duplicateOf: duplicateOf)
     }
 
-    static func syntheticScenario(sources: [Source]) -> CorpusScenario {
+    static func syntheticScenario(sources: [SuggestionSource]) -> CorpusScenario {
         CorpusScenario(id: "test-scenario", target: EvaluationFixture.target(), sources: sources, pendingSuggestion: nil,
                        change: nil, expected: Expected(outcome: "abstain", includedSources: [], excludedSources: []),
                        scoring: Scoring(criteria: ["outcome"]))
