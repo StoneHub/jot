@@ -35,12 +35,16 @@ final class SessionLibrary: ObservableObject {
     var pendingDeletionCount: Int { pendingDeletions.count }
     /// Relabels waiting for their session to settle or writing. Install Update reads this through the service, so a change redraws the screens that observe the service; it changes when a relabel starts and ends.
     private var relabelsInFlight = 0 {
-        willSet { if (relabelsInFlight == 0) != (newValue == 0) { service.objectWillChange.send() } }
+        willSet { if (relabelsInFlight == 0) != (newValue == 0) { relabelsWillChange() } }
     }
     private var historyQuery = ""
     private var historyLimit = 50
     private var titleRequests: [String: UInt64] = [:]
-    private unowned let service: SpeechService
+    /// Only queued work retains the owner, keeping its callbacks alive until that work finishes.
+    private unowned let owner: AnyObject
+    private let settings: JotSettings
+    private let setNotice: (String) -> Void
+    private let relabelsWillChange: () -> Void
     /// Reads and writes share submission order, including capture and session edits.
     let storeExecutor: StoreExecutor
     private var readTask: Task<Void, Never>?
@@ -56,9 +60,13 @@ final class SessionLibrary: ObservableObject {
     private let isSessionSettled: (String) -> Bool
     private let isApplyingPass: (String) -> Bool
 
-    init(service: SpeechService, executor: StoreExecutor, isSessionSettled: @escaping (String) -> Bool,
+    init(owner: AnyObject, settings: JotSettings, executor: StoreExecutor, setNotice: @escaping (String) -> Void,
+         relabelsWillChange: @escaping () -> Void, isSessionSettled: @escaping (String) -> Bool,
          isApplyingPass: @escaping (String) -> Bool) {
-        self.service = service
+        self.owner = owner
+        self.settings = settings
+        self.setNotice = setNotice
+        self.relabelsWillChange = relabelsWillChange
         self.storeExecutor = executor
         self.isSessionSettled = isSessionSettled
         self.isApplyingPass = isApplyingPass
@@ -68,11 +76,10 @@ final class SessionLibrary: ObservableObject {
         let previous = readTask
         readSequence &+= 1
         let sequence = readSequence
-        // An in-flight read can outlive its caller's last reference to the service.
-        // Its work still accesses `service` through this library's unowned link, so
-        // retain the owner only until this queued read has finished. The final task
+        // An in-flight read can outlive its caller's last reference to the owner.
+        // Its callbacks still need that owner, so retain it until this queued read finishes. The final task
         // clears readTask below, breaking the temporary owner/library/task cycle.
-        let owner = service
+        let owner = owner
         readTask = Task { [weak self, owner] in
             await previous?.value
             guard let self else { withExtendedLifetime(owner) {}; return }
@@ -131,7 +138,7 @@ final class SessionLibrary: ObservableObject {
                 events = result.1
                 refreshHistory()
             } catch {
-                if revision == contentRevision { service.notice = error.localizedDescription }
+                if revision == contentRevision { setNotice(error.localizedDescription) }
                 else { recentReadNeedsRefresh = true }
             }
         }
@@ -142,7 +149,7 @@ final class SessionLibrary: ObservableObject {
         enqueueRead { [weak self] in
             guard let self else { return }
             do { events = try await storeExecutor.perform { try store?.events(limit: 50) ?? [] } }
-            catch { service.notice = "Could not save capture event: \(error.localizedDescription)" }
+            catch { setNotice("Could not save capture event: \(error.localizedDescription)") }
         }
     }
 
@@ -168,7 +175,7 @@ final class SessionLibrary: ObservableObject {
                 guard revision == contentRevision else { sessionsReadNeedsRefresh = true; return }
                 rows = next
             } catch {
-                if revision == contentRevision { service.notice = error.localizedDescription }
+                if revision == contentRevision { setNotice(error.localizedDescription) }
                 else { sessionsReadNeedsRefresh = true }
             }
         }
@@ -192,7 +199,7 @@ final class SessionLibrary: ObservableObject {
                 guard revision == contentRevision else { refreshRecent(); refreshSessions(); return }
                 rows = next
                 if saved.contains(where: { $0.mode == "dictation" }) || !historyIsCurrent { refreshHistory() }
-            } catch { service.notice = error.localizedDescription }
+            } catch { setNotice(error.localizedDescription) }
         }
     }
 
@@ -241,7 +248,7 @@ final class SessionLibrary: ObservableObject {
                 historyIsCurrent = true
             } catch {
                 if request == historyRequest {
-                    if revision == contentRevision { service.notice = error.localizedDescription }
+                    if revision == contentRevision { setNotice(error.localizedDescription) }
                     else { refreshHistory() }
                 }
             }
@@ -252,7 +259,7 @@ final class SessionLibrary: ObservableObject {
         historyRows = found
         hasMoreHistory = found.count > historyLimit
         dictationCount = count
-        let groups = TranscriptGrouping.historyGroups(Array(found.prefix(historyLimit)), tuning: service.tuning)
+        let groups = TranscriptGrouping.historyGroups(Array(found.prefix(historyLimit)), tuning: settings.tuning)
         history = groups.map(\.transcript)
         historySources = Dictionary(uniqueKeysWithValues: groups.map { ($0.transcript.id, $0.sourceIDs) })
     }
@@ -267,9 +274,9 @@ final class SessionLibrary: ObservableObject {
     /// Folded and merged rows for reading one session. Stored rows are untouched.
     func sessionParagraphs(_ id: String) async -> [Transcript] {
         guard let store else { return [] }
-        let tuning = service.tuning
+        let tuning = settings.tuning
         do { return try await storeExecutor.perform { TranscriptExport.readingParagraphs(try store.session(id: id), tuning: tuning) } }
-        catch { if !Task.isCancelled { service.notice = error.localizedDescription }; return [] }
+        catch { if !Task.isCancelled { setNotice(error.localizedDescription) }; return [] }
     }
 
     /// Live joins rows up to phrase cleanup's 1.2-second gap even under a shorter paragraph pause, so a cleaned phrase stays one paragraph.
@@ -302,7 +309,7 @@ final class SessionLibrary: ObservableObject {
     }
 
     private func loadLive(_ id: String?) {
-        let gap = max(Self.liveMergeGap, service.tuning.bounded.paragraphPause)
+        let gap = max(Self.liveMergeGap, settings.tuning.bounded.paragraphPause)
         liveRequest &+= 1
         let request = liveRequest
         let revision = contentRevision
@@ -336,7 +343,7 @@ final class SessionLibrary: ObservableObject {
                 guard request == liveRequest else { return }
                 if revision != contentRevision { loadLive(id); return }
                 pendingLiveID = nil
-                service.notice = error.localizedDescription
+                setNotice(error.localizedDescription)
                 liveReadFailed = true
                 // A failed reload keeps the current feed; a failed switch still follows the requested session.
                 if id != live.sessionID {
@@ -351,7 +358,7 @@ final class SessionLibrary: ObservableObject {
     func searchSessions(_ query: String) async -> [Transcript] {
         guard let store, !query.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
         do { return try await storeExecutor.perform { try store.search(query, mode: "ambient", limit: 50) } }
-        catch { if !Task.isCancelled { service.notice = error.localizedDescription }; return [] }
+        catch { if !Task.isCancelled { setNotice(error.localizedDescription) }; return [] }
     }
 
     func renameSession(_ id: String, title: String) {
@@ -359,7 +366,7 @@ final class SessionLibrary: ObservableObject {
         let request = (titleRequests[id] ?? 0) &+ 1
         titleRequests[id] = request
         if pendingDeletions[id] != nil {
-            let owner = service
+            let owner = owner
             Task { [weak self] in
                 defer { withExtendedLifetime(owner) {} }
                 guard let self, !(await waitForDeletion(id)), titleRequests[id] == request else { return }
@@ -376,7 +383,7 @@ final class SessionLibrary: ObservableObject {
         enqueueRead { [weak self] in
             guard let self else { return }
             do { _ = try await write.value; contentRevision &+= 1; refreshSessions() }
-            catch { service.notice = error.localizedDescription }
+            catch { setNotice(error.localizedDescription) }
         }
     }
 
@@ -397,7 +404,7 @@ final class SessionLibrary: ObservableObject {
     func exportSession(_ id: String) async throws -> URL {
         let (session, rows) = try await exportable(id)
         let directory = Self.exportDirectory
-        let tuning = service.tuning
+        let tuning = settings.tuning
         let url = try await storeExecutor.perform {
             try TranscriptExport.write(session: session, rows: rows, directory: directory, tuning: tuning)
         }
@@ -428,12 +435,12 @@ final class SessionLibrary: ObservableObject {
         deletedSessions.insert(id)
         pendingDeletions.removeValue(forKey: id)
         didDeleteHistory()
-        service.notice = "Session deleted."
+        setNotice("Session deleted.")
     }
 
     /// Relabels a saved session's rows from its stored words under the current Tuning: from the speaker pass's segments when the session has them, otherwise from the live probabilities. Rows keep their cleaned text; a row whose speaker changes inside it splits there. `segments` is read once the session has settled, so a pass that stores its segments while Regroup waits is used rather than overwritten with the live speakers. Regroup also waits while a pass is being applied to the session, so the pass moves the session's names before Regroup writes its speakers.
     func regroupSession(_ id: String, segments: () async throws -> [(speaker: String, start: Double, end: Double)]) async throws {
-        let tuning = service.tuning
+        let tuning = settings.tuning
         var fromPass = false
         // Batches written before a failure stay, so Live and Sessions reload either way.
         defer { didDeleteHistory() }
@@ -448,7 +455,7 @@ final class SessionLibrary: ObservableObject {
         guard changed else {
             throw JotError.message("This session was recorded before Jot kept word timings; it cannot be regrouped.")
         }
-        service.notice = fromPass ? "Session regrouped from the speaker pass." : "Session regrouped with the current tuning."
+        setNotice(fromPass ? "Session regrouped from the speaker pass." : "Session regrouped with the current tuning.")
     }
 
     /// A relabel is waiting or writing; Install Update waits for it.
@@ -487,7 +494,7 @@ final class SessionLibrary: ObservableObject {
         contentRevision &+= 1
         try await storeExecutor.submit { try store.deleteTranscripts(ids: ids) }.value
         didDeleteHistory()
-        service.notice = "Transcript deleted."
+        setNotice("Transcript deleted.")
     }
 
     /// Deletes every saved dictation; sessions are kept. `discardAttempt` drops the live attempt once storage is known to be there.
@@ -499,6 +506,6 @@ final class SessionLibrary: ObservableObject {
         lastExport = nil
         historyLimit = 50
         didDeleteHistory()
-        service.notice = "Dictations cleared. Sessions were kept."
+        setNotice("Dictations cleared. Sessions were kept.")
     }
 }
