@@ -4,61 +4,8 @@ import AppleFM
 import FoundationModels
 #endif
 
-public enum CleanupAvailability: String, Sendable, CaseIterable {
-    case available, olderSystem, deviceNotEligible, notEnabled, modelNotReady
-    public var explanation: String {
-        switch self {
-        case .available: return "Uses Apple Intelligence on this Mac to make captured speech more readable."
-        case .olderSystem: return "Apple cleanup requires macOS 26 or later. Transcription works without it."
-        case .deviceNotEligible: return "Apple cleanup is unavailable on this Mac. Transcription works without it."
-        case .notEnabled: return "Apple Intelligence is off in macOS. Transcription works without cleanup."
-        case .modelNotReady: return "Apple Intelligence is not ready. Transcription works without cleanup."
-        }
-    }
-
-    public var suggestionBlocker: String? {
-        switch self {
-        case .available: return nil
-        case .olderSystem: return "Suggestions require macOS 26 or later. Dictation and saved text still work."
-        case .deviceNotEligible: return "Suggestions are unavailable on this Mac. Dictation and saved text still work."
-        case .notEnabled: return "Apple Intelligence is off in macOS. Dictation and saved text still work."
-        case .modelNotReady: return "Apple Intelligence is not ready. Dictation and saved text still work."
-        }
-    }
-}
-
-/// Rejects known dangerous edits. This is a conservative fallback, not a proof of semantic equivalence.
-public enum CleanupValidation {
-    public static func accepts(_ candidate: String, source: String) -> Bool {
-        let output = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !output.isEmpty, output.utf8.count <= max(120, source.utf8.count * 2) else { return false }
-        let numbers = Set("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand million billion trillion first second third half quarter percent point".split(separator: " ").map(String.init))
-        let qualifiers = Set("no not never cannot can't don't doesn't didn't won't wouldn't shouldn't isn't aren't wasn't weren't haven't hasn't hadn't maybe probably possibly might unless".split(separator: " ").map(String.init))
-        func protected(_ text: String) -> [String] {
-            let words = text.lowercased().replacingOccurrences(of: "’", with: "'")
-                .components(separatedBy: CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "'.,")).inverted)
-                .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: ".,")) }.filter { !$0.isEmpty }
-            var result: [String] = []
-            for word in words where numbers.contains(word) || qualifiers.contains(word) || word.contains(where: \.isNumber) {
-                if result.last != word { result.append(word) }
-            }
-            return result
-        }
-        return protected(source) == protected(output)
-    }
-}
-
 /// One local request at a time, with no cleanup backlog and a caller deadline.
 /// A slow model may finish cancelling after the deadline; later calls then bypass it.
-public struct CleanupResult: Sendable {
-    public enum Outcome: String, Sendable {
-        case changed, unchanged, busy, cancelled, empty, oversized, unavailable
-        case invalidCount, rejectedEdits, modelError, timedOut
-    }
-    public let texts: [String]
-    public let outcome: Outcome
-}
-
 @MainActor
 public final class TranscriptCleanup {
     public enum Purpose { case transcript, dictation }
@@ -112,7 +59,7 @@ public final class TranscriptCleanup {
         if modelAvailability() != .available { return .init(texts: texts, outcome: .unavailable) }
         busy = true
         return await withCheckedContinuation { continuation in
-            let completion = CleanupCompletion(continuation)
+            let completion = OneShotCompletion(continuation)
             let request = Task {
                 defer { busy = false; interrupt = nil }
                 do {
@@ -158,18 +105,6 @@ public final class TranscriptCleanup {
         }
         #endif
         return texts
-    }
-}
-
-@MainActor
-private final class CleanupCompletion {
-    private var continuation: CheckedContinuation<CleanupResult, Never>?
-    init(_ continuation: CheckedContinuation<CleanupResult, Never>) { self.continuation = continuation }
-    @discardableResult func finish(_ value: CleanupResult) -> Bool {
-        guard let continuation else { return false }
-        self.continuation = nil
-        continuation.resume(returning: value)
-        return true
     }
 }
 
