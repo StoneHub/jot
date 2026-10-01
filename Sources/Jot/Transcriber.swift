@@ -26,20 +26,37 @@ final class Transcriber {
     private var lastJobWasFinal = true
     /// Set by the service's once-a-second status work, and cleared when models unload.
     var queuedSeconds = 0.0
-    private unowned let service: SpeechService
+    /// Retained by each recognition task so its siblings and callbacks remain valid until it finishes.
+    private unowned let owner: AnyObject
     private let library: SessionLibrary
     private let cleanup: LiveCleanup
+    private let pipeline: SpeechPipeline
+    private let settings: JotSettings
+    private let infer: @MainActor (SpeechPipeline, AudioJob, TranscriptionTuning) async throws -> SpeechOutput
+    private let now: @MainActor () -> Date
+    private let lifecycle: () -> ServiceLifecycle
+    private let recordFailure: (String, String) -> Void
+    private let setNotice: (String) -> Void
+    private let recordPerformance: (PerformanceJob) -> Void
+    private let recognitionEnded: () -> Void
     private let recordedRows: (AudioJob) -> Void
     private let recognitionCompleted: (AudioJob) -> Void
     private let recognitionFailed: (AudioJob) -> Void
 
-    init(service: SpeechService, library: SessionLibrary, cleanup: LiveCleanup,
+    init(owner: AnyObject, library: SessionLibrary, cleanup: LiveCleanup, pipeline: SpeechPipeline, settings: JotSettings,
+         infer: @escaping @MainActor (SpeechPipeline, AudioJob, TranscriptionTuning) async throws -> SpeechOutput,
+         now: @escaping @MainActor () -> Date, lifecycle: @escaping () -> ServiceLifecycle,
+         recordFailure: @escaping (String, String) -> Void, setNotice: @escaping (String) -> Void,
+         recordPerformance: @escaping (PerformanceJob) -> Void, recognitionEnded: @escaping () -> Void,
          recordedRows: @escaping (AudioJob) -> Void,
          recognitionCompleted: @escaping (AudioJob) -> Void,
          recognitionFailed: @escaping (AudioJob) -> Void) {
-        self.service = service
+        self.owner = owner
         self.library = library
         self.cleanup = cleanup
+        self.pipeline = pipeline; self.settings = settings; self.infer = infer; self.now = now
+        self.lifecycle = lifecycle; self.recordFailure = recordFailure; self.setNotice = setNotice
+        self.recordPerformance = recordPerformance; self.recognitionEnded = recognitionEnded
         self.recordedRows = recordedRows
         self.recognitionCompleted = recognitionCompleted
         self.recognitionFailed = recognitionFailed
@@ -61,35 +78,35 @@ final class Transcriber {
 
     /// Starts recognizing the oldest queued block when models are ready and nothing else is being recognized. Each block starts the next when it finishes.
     func kick() {
-        guard service.lifecycle.phase == .ready, processing == nil, !jobs.isEmpty else { return }
+        guard lifecycle().phase == .ready, processing == nil, !jobs.isEmpty else { return }
         let job = jobs.removeFirst()
         let wholeUtterance = job.isFinal && lastJobWasFinal
         lastJobWasFinal = job.isFinal
         processingJob = job
-        let generation = service.lifecycle.generation
+        let generation = lifecycle().generation
         let began = ProcessInfo.processInfo.systemUptime
         let waitSeconds = max(0, began - job.submittedUptime)
         inFlightAudioSeconds = AudioClock.seconds(samples: job.samples.count)
-        let owner = service
+        let owner = owner
         processing = Task {
             defer { withExtendedLifetime(owner) {} }
             var outcome = PerformanceJob.Outcome.completed
             var inferenceSeconds: Double?
             var speechProbability: Double?
             do {
-                let output = try await service.dependencies.infer(service.pipeline, job, service.tuning)
+                let output = try await infer(pipeline, job, settings.tuning)
                 try Task.checkCancellation()
-                guard service.lifecycle.acceptsWork(generation) else { throw CancellationError() }
+                guard lifecycle().acceptsWork(generation) else { throw CancellationError() }
                 inferenceSeconds = output.processingSeconds
                 speechProbability = output.speechProbability.map(Double.init)
                 // A lone "Mm-hmm" or "Yeah" in a quiet room is usually a throat clear or a chair; it goes no further than recognition. A leading "Okay," of continuing speech is kept.
                 // A held dictation keeps its fillers only when the voice detector clearly heard them: a hold with nothing said decodes the cold microphone's first moments as "Yeah".
                 let unclear = job.keepsFillers ? (output.speechProbability ?? 1) < NoiseFillers.dictatedConfidence : wholeUtterance
-                let fillerOnly = unclear && service.settings.bool(JotSettings.dropFillerOnlyBlocks) && NoiseFillers.isFillerOnly(output.text)
+                let fillerOnly = unclear && settings.bool(JotSettings.dropFillerOnlyBlocks) && NoiseFillers.isFillerOnly(output.text)
                 outcome = fillerOnly ? .fillerOnly : output.text.isEmpty ? .noSpeech : .completed
                 lastInferenceSeconds = output.processingSeconds
                 processedAudioSeconds += AudioClock.seconds(samples: job.samples.count)
-                lagSeconds = max(0, service.dependencies.now().timeIntervalSince(job.startedAt) - job.offset - AudioClock.seconds(samples: job.samples.count))
+                lagSeconds = max(0, now().timeIntervalSince(job.startedAt) - job.offset - AudioClock.seconds(samples: job.samples.count))
                 // Persist recognition before awaiting optional cleanup. Capture keeps draining while we await.
                 let sources = fillerOnly ? [] : output.transcripts
                 // A quiet chunk has no rows, so it skips the store; cleanup below still gets its final boundary.
@@ -124,7 +141,7 @@ final class Transcriber {
                         library.didSave(result.rows)
                         if let failure = result.failure { throw JotError.message(failure) }
                         if !sources.isEmpty {
-                            lastTranscriptAt = service.dependencies.now()
+                            lastTranscriptAt = now()
                             recordedRows(job)
                         }
                     }
@@ -137,13 +154,13 @@ final class Transcriber {
                 outcome = error is CancellationError ? .cancelled : .failed
                 recognitionFailures += 1
                 recognitionFailed(job)
-                if !(error is CancellationError) { service.recordEvent(.processingError, error.localizedDescription, session: job.sessionID) }
-                if service.lifecycle.acceptsWork(generation) {
-                    service.notice = "Ambient: \(error.localizedDescription). Transcript insertion was not completed."
+                if !(error is CancellationError) { recordFailure(error.localizedDescription, job.sessionID) }
+                if lifecycle().acceptsWork(generation) {
+                    setNotice("Ambient: \(error.localizedDescription). Transcript insertion was not completed.")
                 }
             }
             // recordPerformance stamps the time the block finished.
-            service.recordPerformance(.init(elapsedSeconds: 0,
+            recordPerformance(.init(elapsedSeconds: 0,
                 mode: .ambient, outcome: outcome,
                 audioSeconds: AudioClock.seconds(samples: job.samples.count), queueWaitSeconds: waitSeconds,
                 inferenceSeconds: inferenceSeconds, completionSeconds: max(0, ProcessInfo.processInfo.systemUptime - job.submittedUptime),
@@ -154,8 +171,7 @@ final class Transcriber {
             // Only an idle app needs a redraw when recognition releases Install Update.
             // The recovery harness feeds ambient audio without starting a microphone, so
             // canInstallUpdate alone is true there even while listening is active.
-            if !service.ambientEnabled && service.canInstallUpdate { service.objectWillChange.send() }
-            service.samplePerformance()
+            recognitionEnded()
             kick()
         }
     }
