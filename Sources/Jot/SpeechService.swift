@@ -69,7 +69,10 @@ final class SpeechService: ObservableObject {
         notice: { [weak self] in self?.notice = $0 })
     lazy var timeline: ListeningTimeline = ListeningTimeline(service: self, library: library, speakers: speakers,
         transcriber: transcriber, markDictationGap: { [weak self] in self?.dictation.markGap($0) })
-    lazy var cleanup: LiveCleanup = LiveCleanup(service: self, library: library)
+    lazy var cleanup: LiveCleanup = LiveCleanup(owner: self, library: library, settings: settings,
+        clean: dependencies.cleanup, availability: dependencies.intelligenceAvailability,
+        activityChanged: { [unowned self] in refreshShortcutEligibility() },
+        workerFinished: { [unowned self] in if canInstallUpdate { objectWillChange.send() } })
     lazy var transcriber: Transcriber = Transcriber(service: self, library: library, cleanup: cleanup,
         recordedRows: { [weak self] job in
             guard let self else { return }
