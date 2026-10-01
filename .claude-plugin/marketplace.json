@@ -12,6 +12,13 @@
       "source": "./integrations/claude-code/jot-context",
       "category": "productivity",
       "homepage": "https://github.com/StoneHub/jot/tree/main/integrations/claude-code/jot-context"
+    },
+    {
+      "name": "jot-transcripts",
+      "description": "Let Claude Code find and read Jot's local transcripts: the MCP server plus a skill for locating a conversation by time.",
+      "source": "./integrations/claude-code/jot-transcripts",
+      "category": "productivity",
+      "homepage": "https://github.com/StoneHub/jot/tree/main/integrations/claude-code/jot-transcripts"
     }
   ]
 }

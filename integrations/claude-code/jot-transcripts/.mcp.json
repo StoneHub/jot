@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "jot": {
+      "command": "/Applications/Jot.app/Contents/Helpers/jot",
+      "args": ["mcp"]
+    }
+  }
+}
