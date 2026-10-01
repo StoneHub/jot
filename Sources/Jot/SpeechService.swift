@@ -48,7 +48,8 @@ final class SpeechService: ObservableObject {
         setNotice: { [unowned self] in notice = $0 }, relabelsWillChange: { [unowned self] in objectWillChange.send() },
         isSessionSettled: { [weak self] in self?.sessionIsSettled($0) ?? true },
         isApplyingPass: { [weak self] in self?.speakers.isApplyingPass($0) ?? false })
-    lazy var speakers: SpeakerRecognizer = SpeakerRecognizer(pass: pipeline.speakerPass, service: self, library: library)
+    lazy var speakers: SpeakerRecognizer = SpeakerRecognizer(pass: pipeline.speakerPass, owner: self, library: library, settings: settings,
+        recordEvent: { [unowned self] in recordEvent($0, $1, duration: $2, session: $3) }, setNotice: { [unowned self] in notice = $0 })
     lazy var dictation: DictationCoordinator = DictationCoordinator(owner: self, timeline: timeline, library: library,
         cleanup: cleanup, transcriber: transcriber, input: input, settings: settings,
         deliver: dependencies.deliver, now: dependencies.now,
