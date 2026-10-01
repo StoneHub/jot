@@ -146,7 +146,7 @@ jot --help
 
 `jot status` reports capture state, permissions, memory, CPU use, and processing delays. It does not measure GPU or Neural Engine utilization. `jot diagnostics` returns bounded memory samples, lifecycle markers, and job timings for external analysis. These stay in memory until Jot quits; save the JSON output to retain a report. Reports contain no audio, transcript text, vocabulary, target-app names, or session IDs. See [local performance investigation](docs/PERFORMANCE.md).
 
-Add this to your MCP client's configuration:
+In Claude Code, the [jot-transcripts plugin](integrations/claude-code/jot-transcripts/README.md) registers the server and adds a skill for finding a conversation by time. For any other MCP client, add this to its configuration:
 
 ```json
 {
