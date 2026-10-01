@@ -129,6 +129,7 @@ final class DictationCoordinator {
         closeChunk()
         isActive = false
         isPending = true
+        highlight.process()
         markPerformance(.dictationReleased)
         attempt.endedAt = max(attempt.startedAt, timeline.sessionStarted.addingTimeInterval(timeline.ambientOffset))
         attempt.state = .recognizing
@@ -248,7 +249,7 @@ final class DictationCoordinator {
                 recoveryTask = nil
             }
         }
-        defer { if !isActive { highlight.hide() } }
+        defer { if !isActive && currentAttempt?.id == id { highlight.hide() } }
         // Every released hold records one timing; one that never finishes is recorded as cancelled.
         var timing = Timing(released: released)
         defer { recordPerformance(timing.job) }

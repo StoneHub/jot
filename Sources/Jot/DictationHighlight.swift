@@ -45,11 +45,18 @@ final class DictationHighlight {
         }
     }
 
+    /// Key release keeps the existing wash moving until recognition, cleanup and insertion finish.
+    /// This also works before the asynchronous field lookup has supplied its frame.
+    func process(reduceMotion: Bool = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion) {
+        guard timer != nil, finishing == nil else { return }
+        (panel?.contentView as? OutlineView)?.process(reduceMotion: reduceMotion)
+    }
+
     /// Verified text lands under an accent sweep, then the outline fades; a hide() during the sweep waits for it.
     func finish(reduceMotion: Bool = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion) {
         timer?.invalidate(); timer = nil
         guard let panel, panel.isVisible, !reduceMotion, let outline = panel.contentView as? OutlineView else {
-            panel?.orderOut(nil); return
+            hide(); return
         }
         sweepCount += 1
         outline.sweep()
@@ -57,13 +64,14 @@ final class DictationHighlight {
             try? await Task.sleep(for: .seconds(OutlineView.sweepSeconds))
             guard !Task.isCancelled, let self else { return }
             self.finishing = nil
-            self.panel?.orderOut(nil)
+            self.hide()
         }
     }
 
     func hide() {
         timer?.invalidate(); timer = nil
         guard finishing == nil else { return }
+        (panel?.contentView as? OutlineView)?.stop()
         panel?.orderOut(nil)
     }
 
@@ -107,21 +115,44 @@ private final class OutlineView: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override func updateLayer() { layer?.borderColor = NSColor.controlAccentColor.cgColor }
 
-    /// The breathing stroke shown while the shortcut is held and the text is on its way.
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        band.frame = bounds
+        CATransaction.commit()
+    }
+
+    func stop() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer?.removeAllAnimations()
+        band.removeAllAnimations()
+        layer?.opacity = 1
+        band.opacity = 0
+        CATransaction.commit()
+    }
+
+    /// The breathing stroke shown while the shortcut is held.
     func pulse() {
         guard let layer else { return }
-        layer.removeAllAnimations(); band.removeAllAnimations()
-        layer.opacity = 1; band.opacity = 0
+        stop()
         let pulse = CABasicAnimation(keyPath: "opacity")
         pulse.fromValue = 1.0; pulse.toValue = 0.35
         pulse.duration = 0.9; pulse.autoreverses = true; pulse.repeatCount = .infinity
         layer.add(pulse, forKey: "pulse")
     }
 
+    func process(reduceMotion: Bool) {
+        stop()
+        if !reduceMotion { sweep(loop: true) }
+    }
+
     /// An accent band crosses the field left to right over the new text, then the outline fades out.
-    func sweep() {
+    /// Processing reuses the same band and path, reversing each crossing until delivery ends.
+    func sweep(loop: Bool = false) {
         guard let layer else { return }
-        layer.removeAnimation(forKey: "pulse")
+        stop()
         let accent = NSColor.controlAccentColor
         band.frame = layer.bounds
         band.colors = [accent.withAlphaComponent(0).cgColor, accent.withAlphaComponent(0.32).cgColor, accent.withAlphaComponent(0).cgColor]
@@ -129,8 +160,12 @@ private final class OutlineView: NSView {
         band.locations = [1, 1.2, 1.4]
         let move = CABasicAnimation(keyPath: "locations")
         move.fromValue = [-0.4, -0.2, 0]; move.toValue = [1, 1.2, 1.4]
-        move.duration = 0.4; move.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        move.duration = loop ? 0.9 : 0.4
+        move.autoreverses = loop
+        move.repeatCount = loop ? .infinity : 0
+        move.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
         band.add(move, forKey: "sweep")
+        if loop { return }
         layer.opacity = 0
         let fade = CABasicAnimation(keyPath: "opacity")
         fade.fromValue = 1.0; fade.toValue = 0.0
