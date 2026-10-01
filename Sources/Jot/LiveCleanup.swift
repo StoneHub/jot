@@ -21,14 +21,26 @@ final class LiveCleanup {
     private(set) var cleanupAppliedCount = 0
     private(set) var cleanupBypassedCount = 0
     private(set) var cleanupOutcomeCounts: [String: Int] = [:]
-    private unowned let service: SpeechService
+    /// Tasks retain the owner until they finish; no settings or actions are read through it.
+    private unowned let owner: AnyObject
     private let library: SessionLibrary
+    private let settings: JotSettings
+    private let clean: @MainActor (TranscriptCleanup, [String], Duration) async -> CleanupResult
+    private let activityChanged: () -> Void
+    private let workerFinished: () -> Void
 
-    init(service: SpeechService, library: SessionLibrary) {
-        self.service = service
+    init(owner: AnyObject, library: SessionLibrary, settings: JotSettings,
+         clean: @escaping @MainActor (TranscriptCleanup, [String], Duration) async -> CleanupResult,
+         availability: @escaping @MainActor () -> CleanupAvailability,
+         activityChanged: @escaping () -> Void, workerFinished: @escaping () -> Void) {
+        self.owner = owner
         self.library = library
-        liveTranscriptCleanup = TranscriptCleanup(settings: service.settings, availability: service.dependencies.intelligenceAvailability)
-        transcriptCleanup = TranscriptCleanup(settings: service.settings, purpose: .dictation, availability: service.dependencies.intelligenceAvailability)
+        self.settings = settings
+        self.clean = clean
+        self.activityChanged = activityChanged
+        self.workerFinished = workerFinished
+        liveTranscriptCleanup = TranscriptCleanup(settings: settings, availability: availability)
+        transcriptCleanup = TranscriptCleanup(settings: settings, purpose: .dictation, availability: availability)
     }
 
     /// A phrase worker is running; Install Update and the harness wait for it.
@@ -44,8 +56,7 @@ final class LiveCleanup {
     }
 
     func scheduleCleanup(sources: [Transcript], final: Bool) {
-        guard service.cleanUpTranscriptions else { phraseCleanup = PhraseCleanup(); return }
-        let settings = service.settings
+        guard settings.bool(JotDefaultsKey.cleanUpTranscriptions) else { phraseCleanup = PhraseCleanup(); return }
         phraseCleanup.limits.pauseSeconds = settings.double(JotSettings.phrasePause)
         phraseCleanup.limits.maximumSeconds = settings.double(JotSettings.phraseMaximumSeconds)
         phraseCleanup.limits.minimumSentenceWords = settings.int(JotSettings.phraseMinimumWords)
@@ -59,37 +70,37 @@ final class LiveCleanup {
         }
         guard cleanupTasks.isEmpty, !cleanupQueue.isEmpty else { return }
         let id = UUID()
-        let owner = service
+        let owner = owner
         cleanupTasks[id] = Task { [weak self] in
             defer { withExtendedLifetime(owner) {} }
             guard let self else { return }
             defer {
                 cleanupTasks[id] = nil
-                service.refreshShortcutEligibility()
+                activityChanged()
                 // Install Update waits for this worker, which can outlast Pause, and nothing else publishes when it ends. Only an ending that allows the update redraws, so listening never does; a cancelled worker is quitting.
-                if !Task.isCancelled, service.canInstallUpdate { service.objectWillChange.send() }
+                if !Task.isCancelled { workerFinished() }
             }
             while !Task.isCancelled, !cleanupQueue.isEmpty {
                 let phrase = cleanupQueue.removeFirst()
                 runningSession = phrase.sources.first?.sessionID
                 defer { runningSession = nil }
-                guard service.cleanUpTranscriptions, let session = phrase.sources.first?.sessionID,
+                guard settings.bool(JotDefaultsKey.cleanUpTranscriptions), let session = phrase.sources.first?.sessionID,
                       !library.sessionIsDeleted(session) else {
                     cleanupBypassedCount += 1; cleanupCompletedCount += 1; continue
                 }
                 if await library.waitForDeletion(session) {
                     cleanupBypassedCount += 1; cleanupCompletedCount += 1; continue
                 }
-                var cleanup = await service.dependencies.cleanup(liveTranscriptCleanup, [phrase.text], Self.livePhraseCleanupTimeout)
+                var cleanup = await clean(liveTranscriptCleanup, [phrase.text], Self.livePhraseCleanupTimeout)
                 // A timed-out generator may still be relinquishing the local model.
                 // Retain the phrase briefly instead of dropping the next request.
                 for _ in 0..<5 where cleanup.outcome == .busy && !Task.isCancelled {
                     try? await Task.sleep(for: .milliseconds(200))
-                    cleanup = await service.dependencies.cleanup(liveTranscriptCleanup, [phrase.text], Self.livePhraseCleanupTimeout)
+                    cleanup = await clean(liveTranscriptCleanup, [phrase.text], Self.livePhraseCleanupTimeout)
                 }
                 cleanupOutcomeCounts[cleanup.outcome.rawValue, default: 0] += 1
                 defer { cleanupCompletedCount += 1 }
-                guard !Task.isCancelled, service.cleanUpTranscriptions, !library.sessionIsDeleted(session),
+                guard !Task.isCancelled, settings.bool(JotDefaultsKey.cleanUpTranscriptions), !library.sessionIsDeleted(session),
                       let text = cleanup.texts.first, text != phrase.text else {
                     cleanupBypassedCount += 1; continue
                 }
@@ -108,13 +119,13 @@ final class LiveCleanup {
                 } catch { cleanupBypassedCount += 1 }
             }
         }
-        service.refreshShortcutEligibility()
+        activityChanged()
     }
 
     /// One dictation row through the on-device cleanup, counted with the live phrases in the recovery diagnostics.
     func cleanDictation(_ text: String) async -> (text: String, outcome: CleanupResult.Outcome) {
         cleanupRequestedCount += 1
-        let cleanup = await service.dependencies.cleanup(transcriptCleanup, [text], Self.dictationCleanupTimeout)
+        let cleanup = await clean(transcriptCleanup, [text], Self.dictationCleanupTimeout)
         cleanupCompletedCount += 1
         cleanupOutcomeCounts[cleanup.outcome.rawValue, default: 0] += 1
         if let first = cleanup.texts.first, first != text { cleanupAppliedCount += 1; return (first, cleanup.outcome) }
