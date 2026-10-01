@@ -67,8 +67,12 @@ final class SpeechService: ObservableObject {
         matchesHeardSpeech: { [weak self] in self?.suggestionHeardMatches == true },
         userVoice: { [weak self] in self?.speakers.userVoice },
         notice: { [weak self] in self?.notice = $0 })
-    lazy var timeline: ListeningTimeline = ListeningTimeline(service: self, library: library, speakers: speakers,
-        transcriber: transcriber, markDictationGap: { [weak self] in self?.dictation.markGap($0) })
+    lazy var timeline: ListeningTimeline = ListeningTimeline(settings: settings, library: library, speakers: speakers,
+        transcriber: transcriber, now: dependencies.now,
+        isListening: { [unowned self] in ambientEnabled }, isDictating: { [unowned self] in dictation.isActive },
+        receivedAudio: { [unowned self] in lastAudioAt = $0 }, droppedAudio: { [unowned self] in droppedSeconds += $0 },
+        recordEvent: { [unowned self] in recordEvent($0, $1, duration: $2, session: nil) },
+        setNotice: { [unowned self] in notice = $0 }, markDictationGap: { [weak self] in self?.dictation.markGap($0) })
     lazy var cleanup: LiveCleanup = LiveCleanup(owner: self, library: library, settings: settings,
         clean: dependencies.cleanup, availability: dependencies.intelligenceAvailability,
         activityChanged: { [unowned self] in refreshShortcutEligibility() },
