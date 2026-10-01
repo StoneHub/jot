@@ -8,7 +8,7 @@ public final class AgentContext: @unchecked Sendable {
     }
     public struct Match: Sendable {
         public let state: MatchState
-        public let sources: [Source]
+        public let sources: [SuggestionSource]
     }
     public static let kind = "agent-message"
     public static let roles = ["user", "assistant"]
@@ -80,11 +80,11 @@ public final class AgentContext: @unchecked Sendable {
     }
 
     /// The same messages as suggestion sources. The revision is the message id, since a message never changes.
-    public func sources(within window: TimeInterval, now: Date = Date()) -> [Source] {
+    public func sources(within window: TimeInterval, now: Date = Date()) -> [SuggestionSource] {
         let formatter = ISO8601DateFormatter()
         return messages(within: window, now: now).map { message in
-            Source(id: message.id, kind: Self.kind, role: message.role, origin: message.source,
-                   scope: Source.Scope(project: message.cwd, conversation: message.conversation),
+            SuggestionSource(id: message.id, kind: Self.kind, role: message.role, origin: message.source,
+                   scope: SuggestionSource.Scope(project: message.cwd, conversation: message.conversation),
                    timestamp: formatter.string(from: message.receivedAt),
                    revision: Int(message.id.dropFirst("agent-".count)) ?? 1, status: .current, text: message.text)
         }
@@ -93,7 +93,7 @@ public final class AgentContext: @unchecked Sendable {
     /// Agent text is used only when one conversation's assistant reply visibly matches this field's own window.
     /// A matching app alone is insufficient when several sessions are open.
     public func sources(within window: TimeInterval, now: Date = Date(),
-                        targetBundleID: String, visibleText: String?) -> [Source] {
+                        targetBundleID: String, visibleText: String?) -> [SuggestionSource] {
         match(within: window, now: now, targetBundleID: targetBundleID, visibleText: visibleText).sources
     }
 
@@ -145,7 +145,7 @@ public final class AgentContext: @unchecked Sendable {
 
     /// Selected sources must still exist, and the same conversation must have no newer message.
     /// Expiry of an unselected older message and other conversations do not dismiss a card.
-    public func matchesSnapshot(_ selected: [Source], latestID: String, within window: TimeInterval,
+    public func matchesSnapshot(_ selected: [SuggestionSource], latestID: String, within window: TimeInterval,
                                 now: Date = Date()) -> Bool {
         guard let first = selected.first, let conversation = first.scope.conversation else { return false }
         let current = sources(within: window, now: now).filter {

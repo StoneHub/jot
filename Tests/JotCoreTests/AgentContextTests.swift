@@ -28,12 +28,12 @@ final class AgentContextTests: XCTestCase {
         let agent = context.sources(within: 600, now: now)
         let formatter = ISO8601DateFormatter()
         let video = (0..<13).map { index in
-            Source(id: "video-\(index)", kind: "meeting-transcript", role: "unknown", origin: "jot", scope: Source.Scope(session: "s1"),
+            SuggestionSource(id: "video-\(index)", kind: "meeting-transcript", role: "unknown", origin: "jot", scope: SuggestionSource.Scope(session: "s1"),
                    timestamp: formatter.string(from: now.addingTimeInterval(Double(index) - 120)), revision: 1, status: .current,
                    text: "Video sentence \(index), about something else entirely.")
         }
-        let target = Target(app: "Codex", mode: .reply, purpose: "agent-prompt", conversation: "c1", before: "", after: "", requestedAt: "now")
-        var input = ScenarioInput(target: target, sources: video + agent)
+        let target = SuggestionTarget(app: "Codex", mode: .reply, purpose: "agent-prompt", conversation: "c1", before: "", after: "", requestedAt: "now")
+        var input = SuggestionRequest(target: target, sources: video + agent)
         input.association = .explicitRecentRequest
         let selected = SourceSelector.select(input, limits: .window).selected
         XCTAssertEqual(selected.count, SelectionLimits.window.maximumSources)

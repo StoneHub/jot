@@ -1,7 +1,7 @@
 import XCTest
 @testable import JotCore
 
-final class SuggestionEvaluationInteractionTests: XCTestCase {
+final class SuggestionInteractionTests: XCTestCase {
     // Recorded physical Fn sequence: macOS emits key 179 down/up immediately after release.
     func testFnReleaseCompanionEventsDoNotBreakDoubleTap() {
         let trace: [(ShortcutTracker.Event, UInt16, ShortcutModifiers, TimeInterval)] = [
@@ -268,8 +268,8 @@ final class SuggestionEvaluationInteractionTests: XCTestCase {
         XCTAssertEqual(context.sources.map(\.role), ["user", "unknown"], "An unnamed voice is not assumed to be someone else")
         XCTAssertNil(context.sources[1].speaker)
         XCTAssertFalse(context.sources.contains { $0.kind == "pinned-selection" })
-        let target = Target(app: "Codex", mode: .reply, purpose: "agent-prompt", before: "", after: "", requestedAt: "now")
-        XCTAssertTrue(SourceSelector.select(ScenarioInput(target: target, sources: context.sources)).selected.isEmpty)
+        let target = SuggestionTarget(app: "Codex", mode: .reply, purpose: "agent-prompt", before: "", after: "", requestedAt: "now")
+        XCTAssertTrue(SourceSelector.select(SuggestionRequest(target: target, sources: context.sources)).selected.isEmpty)
         XCTAssertEqual(SourceSelector.select(context.input(target: target)).selected.count, 2)
         XCTAssertEqual(SuggestionAttribution.line(plan: .reply, selected: context.sources, sessionTitle: "Standup"),
                        "Recent dictation + meeting ‘Standup’")

@@ -82,7 +82,7 @@ final class SuggestionHistoryTests: XCTestCase {
                                                selectionCharacters: 0,
                                                selected: [.init(kind: .screenText, count: 13, bytes: 6_001)])
         do { try await history.save(oversized); XCTFail("unbounded counts persisted") } catch { }
-        let source = Source(id: "secret-id", kind: HeardSpeech.kind, role: "unknown", origin: "jot",
+        let source = SuggestionSource(id: "secret-id", kind: HeardSpeech.kind, role: "unknown", origin: "jot",
                             scope: .init(conversation: privateText), timestamp: "2026-09-27T00:00:00Z",
                             revision: 1, status: .current, text: privateText)
         let usage = SuggestionHistoryEntry.usage(selected: [source], excluded: [])
@@ -112,7 +112,7 @@ final class SuggestionHistoryTests: XCTestCase {
 
     func testSelectedSourceUsageCountsActualUTF8BytesWithoutRetainingText() {
         let secret = "secret 🧪"
-        let source = Source(id: "one", kind: "agent-message", role: "user", origin: "codex",
+        let source = SuggestionSource(id: "one", kind: "agent-message", role: "user", origin: "codex",
                             scope: .init(conversation: "private-id"), timestamp: "2026-09-27T00:00:00Z",
                             revision: 1, status: .current, text: secret)
         let selection = SourceSelection(selected: [source], excluded: [.init(id: "other", reason: .otherConversation)])

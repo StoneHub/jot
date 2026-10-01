@@ -27,7 +27,7 @@ final class SuggestionCoordinator {
     private var ownsTarget = false
     private var field: DictationInput.SuggestionField?
     private var rows: [Transcript] = []
-    private var agentSnapshot: [Source] = []
+    private var agentSnapshot: [SuggestionSource] = []
     private var agentLatestID: String?
     private var candidate: String?
     private struct Receipt {
@@ -210,7 +210,7 @@ final class SuggestionCoordinator {
                 let screen = await screenTask.value
                 let heard = await heardTask.value
                 guard self.isCurrent(token, field: field) else { return }
-                var sources: [Source] = []
+                var sources: [SuggestionSource] = []
                 var excerpt: String?
                 if let screen, let text = ScreenContext.excerpt(screen.items, field: screen.field, visible: screen.visible) {
                     excerpt = text
@@ -259,14 +259,14 @@ final class SuggestionCoordinator {
                 self.lastMode = mode.rawValue
                 // The matched agent conversation is the field's own: naming it on the target puts its turns in the selector's
                 // conversation tier, above the room's speech, so a busy room cannot crowd them out of the bound.
-                let target = JotCore.Target(app: field.appName, mode: mode, purpose: Self.purpose(of: field),
+                let target = SuggestionTarget(app: field.appName, mode: mode, purpose: Self.purpose(of: field),
                                             conversation: agentSources.first?.scope.conversation,
                                             inputRevision: field.draft.revision, before: before, after: after,
                                             requestedAt: ISO8601DateFormatter().string(from: now),
                                             seed: self.seed?.text, window: screen?.window)
-                var scenario = ScenarioInput(target: target, sources: sources)
-                scenario.association = .explicitRecentRequest
-                let selection = SourceSelector.select(scenario, limits: .window)
+                var input = SuggestionRequest(target: target, sources: sources)
+                input.association = .explicitRecentRequest
+                let selection = SourceSelector.select(input, limits: .window)
                 let addition = HeardSpeech.addition(heard, to: selection.selected, members: { context?.rows(for: [$0]) ?? [] }, limits: .window)
                 let selected = addition.selected
                 let usage = SuggestionHistoryEntry.usage(selected: selected, excluded: selection.excluded)
@@ -308,7 +308,7 @@ final class SuggestionCoordinator {
                     }
                 }
                 // The conversation id ranked the sources; it is an opaque session id and says nothing to the model.
-                var prompted = scenario; prompted.target.conversation = nil
+                var prompted = input; prompted.target.conversation = nil
                 let request = SuggestionPrompt.request(for: prompted, sources: selected)
                 let deadline = Self.deadline(for: mode)
                 self.updateReceipt {
