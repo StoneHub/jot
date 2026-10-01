@@ -21,20 +21,29 @@ final class SpeakerRecognizer: ObservableObject {
     /// Sessions whose pass relabel failed partway, so some rows still carry live speaker ids. A successful Regroup rewrites them all.
     private var partlyRelabeled = Set<String>()
     private let pass: SpeakerPass
-    private unowned let service: SpeechService
+    /// Queued pass and People work retain the owner until completion; nothing is read through it.
+    private unowned let owner: AnyObject
     private let library: SessionLibrary
+    private let settings: JotSettings
+    private let recordEvent: (CaptureEventKind, String, Double?, String?) -> Void
+    private let setNotice: (String) -> Void
     private var peopleRevision = 0
     private var voiceRevision = 0
 
-    init(pass: SpeakerPass, service: SpeechService, library: SessionLibrary) {
+    init(pass: SpeakerPass, owner: AnyObject, library: SessionLibrary, settings: JotSettings,
+         recordEvent: @escaping (CaptureEventKind, String, Double?, String?) -> Void,
+         setNotice: @escaping (String) -> Void) {
         self.pass = pass
-        self.service = service
+        self.owner = owner
         self.library = library
+        self.settings = settings
+        self.recordEvent = recordEvent
+        self.setNotice = setNotice
     }
 
     func enqueuePass(_ file: SessionAudioFile) {
         let previous = passQueue
-        let owner = service
+        let owner = owner
         pendingPasses += 1
         // Deferred work that often starts after a quiet stretch; utility keeps it off the cores the foreground app is using.
         passQueue = Task(priority: .utility) {
@@ -78,8 +87,8 @@ final class SpeakerRecognizer: ObservableObject {
             guard !(await library.waitForDeletion(id)) else { return }
             let count = result.speakers.count
             let scope = truncated ? " (first two hours)" : ""
-            service.recordEvent(.speakerPass, "Speaker pass found \(count) speaker\(count == 1 ? "" : "s") in \(TranscriptExport.clock(result.durationSeconds)) of audio\(scope), \(String(format: "%.1f", result.processingSeconds)) s of processing.", duration: result.durationSeconds, session: id)
-            service.notice = "Speaker pass finished: \(count) speakers" + (recognized.isEmpty ? "." : ", recognized \(recognized.joined(separator: ", ")).")
+            recordEvent(.speakerPass, "Speaker pass found \(count) speaker\(count == 1 ? "" : "s") in \(TranscriptExport.clock(result.durationSeconds)) of audio\(scope), \(String(format: "%.1f", result.processingSeconds)) s of processing.", result.durationSeconds, id)
+            setNotice("Speaker pass finished: \(count) speakers" + (recognized.isEmpty ? "." : ", recognized \(recognized.joined(separator: ", "))."))
         } catch {
             if await library.waitForDeletion(id) { return }
             reportFailure(error, session: id)
@@ -89,7 +98,7 @@ final class SpeakerRecognizer: ObservableObject {
     /// Relabels the session's rows from the pass, moves the names given so far onto the voices they belong to and remembers those voices, then names the voices Jot remembers. All of it writes to the store, so Live and Sessions reload once they are done, even when one step fails partway. Returns the names recognized.
     private func relabelAndName(_ result: SpeakerPassResult, session id: String) async throws -> [String] {
         defer { library.didDeleteHistory() }
-        let tuning = service.tuning
+        let tuning = settings.tuning
         let segments = result.segments
         let store = library.store
         let carried = CarriedNames()
@@ -124,7 +133,7 @@ final class SpeakerRecognizer: ObservableObject {
                 guard let voice = result.speakers[speaker] else { continue }
                 // One voice that cannot be remembered, such as one saved by an older speaker model, leaves the rest of the pass alone.
                 do { try await remember(name, voice: voice) }
-                catch { service.recordEvent(.processingError, "Could not remember \(name)'s voice: \(error.localizedDescription)", duration: nil, session: id) }
+                catch { recordEvent(.processingError, "Could not remember \(name)'s voice: \(error.localizedDescription)", nil, id) }
             }
         }
         guard !(await library.waitForDeletion(id)) else { return [] }
@@ -154,13 +163,13 @@ final class SpeakerRecognizer: ObservableObject {
             if let learned, revision == voiceRevision { userVoice = learned }
         } catch {
             if await library.waitForDeletion(id) { return }
-            service.recordEvent(.processingError, "Could not learn your voice: \(error.localizedDescription)", duration: nil, session: id)
+            recordEvent(.processingError, "Could not learn your voice: \(error.localizedDescription)", nil, id)
         }
     }
 
     func loadUserVoice() {
         let store = userVoiceStore
-        let owner = service
+        let owner = owner
         voiceRevision &+= 1
         let revision = voiceRevision
         let operation = library.storeExecutor.submit { store?.load() }
@@ -175,7 +184,7 @@ final class SpeakerRecognizer: ObservableObject {
     /// Forgets the learned voice. Sessions already labeled You keep the label; the next dictations teach it again.
     func forgetUserVoice() {
         let store = userVoiceStore
-        let owner = service
+        let owner = owner
         voiceRevision &+= 1
         let revision = voiceRevision
         let operation = library.storeExecutor.submit { try store?.forget() }
@@ -185,14 +194,14 @@ final class SpeakerRecognizer: ObservableObject {
             do {
                 try await operation.value
                 if revision == voiceRevision { userVoice = nil }
-                service.notice = "Your voice is forgotten. Jot learns it again from your next dictations."
-            } catch { service.notice = error.localizedDescription }
+                setNotice("Your voice is forgotten. Jot learns it again from your next dictations.")
+            } catch { setNotice(error.localizedDescription) }
         }
     }
 
     private func reportFailure(_ error: Error, session id: String) {
-        service.recordEvent(.processingError, "Speaker pass: \(error.localizedDescription)", duration: nil, session: id)
-        service.notice = "Speaker pass failed: \(error.localizedDescription)"
+        recordEvent(.processingError, "Speaker pass: \(error.localizedDescription)", nil, id)
+        setNotice("Speaker pass failed: \(error.localizedDescription)")
     }
 
     /// Names each unnamed session speaker whose voice matches a remembered person, and folds the session's embedding into that person so the voice improves over time. A name someone gave stays, and a person already named in the session is not given to a second voice. Returns the names recognized.
@@ -281,7 +290,7 @@ final class SpeakerRecognizer: ObservableObject {
 
     func refreshPeople() {
         let store = peopleStore
-        let owner = service
+        let owner = owner
         peopleRevision &+= 1
         let revision = peopleRevision
         let operation = library.storeExecutor.submit { try store?.list() ?? [] }
@@ -291,13 +300,13 @@ final class SpeakerRecognizer: ObservableObject {
             do {
                 let next = try await operation.value
                 if revision == peopleRevision { people = next }
-            } catch { service.notice = error.localizedDescription }
+            } catch { setNotice(error.localizedDescription) }
         }
     }
 
     func renamePerson(_ id: String, name: String) {
         let store = peopleStore
-        let owner = service
+        let owner = owner
         peopleRevision &+= 1
         let revision = peopleRevision
         let operation = library.storeExecutor.submit { () -> [Person] in
@@ -310,14 +319,14 @@ final class SpeakerRecognizer: ObservableObject {
             do {
                 let next = try await operation.value
                 if revision == peopleRevision { people = next }
-            } catch { service.notice = error.localizedDescription }
+            } catch { setNotice(error.localizedDescription) }
         }
     }
 
     /// Forgets the voice only; names already written into sessions stay.
     func deletePerson(_ id: String) {
         let store = peopleStore
-        let owner = service
+        let owner = owner
         peopleRevision &+= 1
         let revision = peopleRevision
         let operation = library.storeExecutor.submit { () -> [Person] in
@@ -330,8 +339,8 @@ final class SpeakerRecognizer: ObservableObject {
             do {
                 let next = try await operation.value
                 if revision == peopleRevision { people = next }
-                service.notice = "Person deleted. Their voice is forgotten."
-            } catch { service.notice = error.localizedDescription }
+                setNotice("Person deleted. Their voice is forgotten.")
+            } catch { setNotice(error.localizedDescription) }
         }
     }
 }
