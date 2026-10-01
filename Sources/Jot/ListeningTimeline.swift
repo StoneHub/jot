@@ -19,21 +19,34 @@ final class ListeningTimeline: ObservableObject {
     private static let minimumJobSamples = AudioClock.samples(seconds: 0.2)
     /// Rebuilt from settings at each use, so a changed chunk length applies at the next drain.
     private var chunkScheduler: CaptureChunkScheduler {
-        CaptureChunkScheduler(sampleRate: AudioClock.sampleRate, maximumSeconds: service.settings.double(JotSettings.chunkMaximumSeconds),
-            minimumSeconds: CaptureChunkScheduler.defaultMinimumSeconds, silenceSeconds: service.settings.double(JotSettings.chunkSilenceSeconds))
+        CaptureChunkScheduler(sampleRate: AudioClock.sampleRate, maximumSeconds: settings.double(JotSettings.chunkMaximumSeconds),
+            minimumSeconds: CaptureChunkScheduler.defaultMinimumSeconds, silenceSeconds: settings.double(JotSettings.chunkSilenceSeconds))
     }
-    private unowned let service: SpeechService
+    private let settings: JotSettings
     private let library: SessionLibrary
     private let speakers: SpeakerRecognizer
     private let transcriber: Transcriber
+    private let now: @MainActor () -> Date
+    private let isListening: () -> Bool
+    private let isDictating: () -> Bool
+    private let receivedAudio: (Date) -> Void
+    private let droppedAudio: (Double) -> Void
+    private let recordEvent: (CaptureEventKind, String, Double?) -> Void
+    private let setNotice: (String) -> Void
     private let markDictationGap: (String) -> Void
 
-    init(service: SpeechService, library: SessionLibrary, speakers: SpeakerRecognizer,
-         transcriber: Transcriber, markDictationGap: @escaping (String) -> Void) {
-        self.service = service
+    init(settings: JotSettings, library: SessionLibrary, speakers: SpeakerRecognizer, transcriber: Transcriber,
+         now: @escaping @MainActor () -> Date, isListening: @escaping () -> Bool, isDictating: @escaping () -> Bool,
+         receivedAudio: @escaping (Date) -> Void, droppedAudio: @escaping (Double) -> Void,
+         recordEvent: @escaping (CaptureEventKind, String, Double?) -> Void, setNotice: @escaping (String) -> Void,
+         markDictationGap: @escaping (String) -> Void) {
+        self.settings = settings
         self.library = library
         self.speakers = speakers
         self.transcriber = transcriber
+        self.now = now; self.isListening = isListening; self.isDictating = isDictating
+        self.receivedAudio = receivedAudio; self.droppedAudio = droppedAudio
+        self.recordEvent = recordEvent; self.setNotice = setNotice
         self.markDictationGap = markDictationGap
     }
 
@@ -44,26 +57,26 @@ final class ListeningTimeline: ObservableObject {
     func beginSession(at start: Date, withAudio: Bool = true) {
         sessionID = UUID().uuidString; sessionStarted = start; ambientOffset = 0; activeSessionID = sessionID
         ambient = []; consecutiveSilentSamples = 0; lastAmbientRowAt = nil
-        if withAudio, service.keepAudioForSpeakerPass { sessionAudio = SessionAudioFile(sessionID: sessionID) }
+        if withAudio, settings.bool(JotDefaultsKey.keepAudioForSpeakerPass) { sessionAudio = SessionAudioFile(sessionID: sessionID) }
     }
 
     func ingestAudio(samples: [Float], dropped: Int, lastAudio: Date, rms: Float) {
         guard !samples.isEmpty || dropped > 0 else { return }
-        service.lastAudioAt = lastAudio
+        receivedAudio(lastAudio)
         if dropped > 0 {
             let lostSeconds = AudioClock.seconds(samples: dropped + ambient.count)
-            service.droppedSeconds += lostSeconds
-            service.recordEvent(.audioGap, "Capture queue overflow discarded audio.", duration: lostSeconds, session: nil)
+            droppedAudio(lostSeconds)
+            recordEvent(.audioGap, "Capture queue overflow discarded audio.", lostSeconds)
             // End attribution continuity rather than silently stitching across lost audio.
             ambientOffset += AudioClock.seconds(samples: ambient.count + dropped); ambient = []
             sessionAudio?.appendSilence(samples: dropped)
-            service.notice = "Audio backlog overflow: a gap was recorded."
+            setNotice("Audio backlog overflow: a gap was recorded.")
             markDictationGap("Some microphone audio was lost before recognition. Saved dictation remains available to retry.")
         }
-        if service.ambientEnabled {
+        if isListening() {
             ambient.append(contentsOf: samples)
             sessionAudio?.append(samples)
-            consecutiveSilentSamples = rms < Float(service.settings.double(JotSettings.silenceLevel)) ? consecutiveSilentSamples + samples.count : 0
+            consecutiveSilentSamples = rms < Float(settings.double(JotSettings.silenceLevel)) ? consecutiveSilentSamples + samples.count : 0
             // Enqueue every complete bounded block, retaining the tail. A silence can
             // close the tail early so sentence delivery usually beats the hard limit.
             while ambient.count >= chunkScheduler.maximumSamples {
@@ -79,9 +92,9 @@ final class ListeningTimeline: ObservableObject {
     func rotateSession() {
         let spoken = lastAmbientRowAt != nil
         flushAmbient(final: true)
-        if spoken { service.recordEvent(.sessionSplit, "New session started after \(service.newSessionAfterSilence) minutes of quiet.", duration: nil, session: nil) }
+        if spoken { recordEvent(.sessionSplit, "New session started after \(settings.int(JotDefaultsKey.newSessionAfterSilence)) minutes of quiet.", nil) }
         endSessionAudio(runPass: spoken)
-        beginSession(at: service.dependencies.now())
+        beginSession(at: now())
         library.refreshSessions()
     }
 
@@ -104,13 +117,13 @@ final class ListeningTimeline: ObservableObject {
         let start = ambientOffset; ambientOffset += AudioClock.seconds(samples: samples.count)
         guard final || samples.count >= Self.minimumJobSamples else { return }
         if transcriber.jobs.count >= 40 && !final {
-            service.droppedSeconds += AudioClock.seconds(samples: samples.count)
-            service.recordEvent(.audioGap, "Inference queue full; segment discarded.", duration: AudioClock.seconds(samples: samples.count), session: nil)
-            service.notice = "Inference fell behind; bounded audio queue dropped a segment."
+            droppedAudio(AudioClock.seconds(samples: samples.count))
+            recordEvent(.audioGap, "Inference queue full; segment discarded.", AudioClock.seconds(samples: samples.count))
+            setNotice("Inference fell behind; bounded audio queue dropped a segment.")
             markDictationGap("Dictation is partially saved, but an inference backlog caused an audio gap. Retry only after reviewing it.")
             return
         }
         transcriber.enqueue(AudioJob(sessionID: sessionID, startedAt: sessionStarted, offset: start, samples: samples, ticket: UUID(), isFinal: final,
-            keepsFillers: service.dictation.isActive))
+            keepsFillers: isDictating()))
     }
 }
