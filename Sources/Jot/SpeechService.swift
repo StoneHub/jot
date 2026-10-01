@@ -73,7 +73,14 @@ final class SpeechService: ObservableObject {
         clean: dependencies.cleanup, availability: dependencies.intelligenceAvailability,
         activityChanged: { [unowned self] in refreshShortcutEligibility() },
         workerFinished: { [unowned self] in if canInstallUpdate { objectWillChange.send() } })
-    lazy var transcriber: Transcriber = Transcriber(service: self, library: library, cleanup: cleanup,
+    lazy var transcriber: Transcriber = Transcriber(owner: self, library: library, cleanup: cleanup, pipeline: pipeline, settings: settings,
+        infer: dependencies.infer, now: dependencies.now, lifecycle: { [unowned self] in lifecycle },
+        recordFailure: { [unowned self] in recordEvent(.processingError, $0, session: $1) },
+        setNotice: { [unowned self] in notice = $0 }, recordPerformance: { [unowned self] in recordPerformance($0) },
+        recognitionEnded: { [unowned self] in
+            if !ambientEnabled && canInstallUpdate { objectWillChange.send() }
+            samplePerformance()
+        },
         recordedRows: { [weak self] job in
             guard let self else { return }
             if job.sessionID == self.timeline.sessionID { self.timeline.lastAmbientRowAt = self.dependencies.now() }
