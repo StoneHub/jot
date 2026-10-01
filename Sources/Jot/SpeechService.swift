@@ -44,7 +44,8 @@ final class SpeechService: ObservableObject {
     let dependencies: SpeechServiceDependencies
     let capture: CaptureController
     let storeExecutor = StoreExecutor()
-    lazy var library: SessionLibrary = SessionLibrary(service: self, executor: storeExecutor,
+    lazy var library: SessionLibrary = SessionLibrary(owner: self, settings: settings, executor: storeExecutor,
+        setNotice: { [unowned self] in notice = $0 }, relabelsWillChange: { [unowned self] in objectWillChange.send() },
         isSessionSettled: { [weak self] in self?.sessionIsSettled($0) ?? true },
         isApplyingPass: { [weak self] in self?.speakers.isApplyingPass($0) ?? false })
     lazy var speakers: SpeakerRecognizer = SpeakerRecognizer(pass: pipeline.speakerPass, service: self, library: library)
