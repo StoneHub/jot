@@ -9,7 +9,7 @@ import FoundationModels
 /// `complete` API is not used: it rejects blank input and serves a different purpose.
 public enum AppleFMGeneration {
     /// Keep equal to the Package.swift pin; a test checks it.
-    public static let revision = "bb7d0e84ef0e7aa04e3f521c61fe20e6dacb7f72"
+    public static let revision = "5b937241b0236f892af28588e75a78dd557acf21"
     public static let sampling = "greedy"
 
     public static var availability: String { AppleFMClient().modelAvailability.rawValue }

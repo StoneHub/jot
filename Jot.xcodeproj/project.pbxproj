@@ -162,6 +162,7 @@
 		B7C00EECBE6C6878B253E962 /* MicrophoneCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF1B77AE53082548A951DF56 /* MicrophoneCapture.swift */; };
 		B8375EF5701D6ACC915D64F2 /* AudioConfigurationChangeFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABF19F7C8406F23ECE65D4FB /* AudioConfigurationChangeFilter.swift */; };
 		B8963CAA9974229526F3C449 /* SpeakerPassRelabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAF736D13A8D0B0B5B88B3D6 /* SpeakerPassRelabel.swift */; };
+		BA04A620804A5D601D36540B /* WindowImageCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = F071532743028065D94AB99B /* WindowImageCapture.swift */; };
 		BAB3AC30EDE7DC1B06ABB0FB /* ReleaseInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 651850351DF0D76098A021B7 /* ReleaseInfo.swift */; };
 		BAE214D6953B9B468EA693C6 /* RecognitionCommitWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44E0895E441BAAD4EA6D5DB0 /* RecognitionCommitWindow.swift */; };
 		BB1B00EDC2CC0B7F551C8C00 /* TranscriptExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C7CFFD942425F7F2F26AD45 /* TranscriptExport.swift */; };
@@ -1146,6 +1147,7 @@
 				D936EC4E3C39B0433FAD884A /* TranscriptView+Settings.swift in Sources */,
 				E9E38C4FC8D532DE4542A9BE /* TranscriptView.swift in Sources */,
 				0648B6F2DC5F03CE16E5C2ED /* VocabularyView.swift in Sources */,
+				BA04A620804A5D601D36540B /* WindowImageCapture.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1522,7 +1524,7 @@
 			repositoryURL = "https://github.com/StoneHub/apple-fm-swift.git";
 			requirement = {
 				kind = revision;
-				revision = bb7d0e84ef0e7aa04e3f521c61fe20e6dacb7f72;
+				revision = 5b937241b0236f892af28588e75a78dd557acf21;
 			};
 		};
 		469DC1BBB30D99516E1567A4 /* XCRemoteSwiftPackageReference "FluidAudio" */ = {
