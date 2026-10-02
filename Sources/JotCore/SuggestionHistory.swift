@@ -88,6 +88,10 @@ public struct SuggestionHistoryEntry: Codable, Sendable, Equatable {
             }
         }
     }
+    /// What became of the optional window image. Nil when the setting is off; never the image or anything it shows.
+    public enum WindowImageOutcome: String, Codable, Sendable {
+        case attached, noPermission, unsupported, noWindow, captureFailed, captureTimedOut
+    }
     public struct SourceUsage: Codable, Sendable, Equatable {
         public let kind: SourceKind
         public let count: Int
@@ -121,6 +125,9 @@ public struct SuggestionHistoryEntry: Codable, Sendable, Equatable {
     public let deadlineMilliseconds: Int?
     public let generationMilliseconds: Int?
     public let previewMilliseconds: Int?
+    public let windowImage: WindowImageOutcome?
+    /// Finding and capturing the window, whether or not an image came of it.
+    public let windowImageMilliseconds: Int?
     public let outcome: Outcome
     public let reason: Reason?
     public let action: Action?
@@ -133,6 +140,7 @@ public struct SuggestionHistoryEntry: Codable, Sendable, Equatable {
                 excluded: [ExcludedUsage] = [], agentInput: AgentContext.MatchState = .noMessages,
                 deadlineMilliseconds: Int? = nil,
                 generationMilliseconds: Int? = nil, previewMilliseconds: Int? = nil,
+                windowImage: WindowImageOutcome? = nil, windowImageMilliseconds: Int? = nil,
                 outcome: Outcome = .requested, reason: Reason? = nil, action: Action? = nil,
                 complete: Bool = false) {
         self.id = id; self.revision = revision; self.startedAt = startedAt
@@ -140,10 +148,11 @@ public struct SuggestionHistoryEntry: Codable, Sendable, Equatable {
         self.plan = plan; self.mode = mode; self.beforeEndsSentence = beforeEndsSentence
         self.draftCharacters = draftCharacters; self.selectionCharacters = selectionCharacters
         self.selected = selected; self.excluded = excluded; self.agentInput = agentInput
-        self.templateID = SuggestionPrompt.templateID
+        self.templateID = windowImage == .attached ? SuggestionPrompt.windowImageTemplateID : SuggestionPrompt.templateID
         self.deadlineMilliseconds = deadlineMilliseconds
         self.generationMilliseconds = generationMilliseconds
         self.previewMilliseconds = previewMilliseconds
+        self.windowImage = windowImage; self.windowImageMilliseconds = windowImageMilliseconds
         self.outcome = outcome; self.reason = reason; self.action = action; self.complete = complete
     }
 
@@ -188,7 +197,7 @@ public struct SuggestionHistoryEntry: Codable, Sendable, Equatable {
               selected.reduce(0, { $0 + $1.count }) <= 12,
               selected.reduce(0, { $0 + $1.bytes }) <= 6_000,
               excluded.allSatisfy({ $0.count >= 0 && $0.count <= 1_000 }),
-              [deadlineMilliseconds, generationMilliseconds, previewMilliseconds]
+              [deadlineMilliseconds, generationMilliseconds, previewMilliseconds, windowImageMilliseconds]
                 .allSatisfy({ $0 == nil || (0...60_000).contains($0!) }) else {
             throw StoreError.invalid("Suggestion diagnostics exceed their bounds")
         }

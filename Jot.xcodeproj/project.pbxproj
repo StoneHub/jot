@@ -26,6 +26,7 @@
 		106BA473BF7AB2A72F82BFC5 /* LiveCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0481ADADD05BFA1A6D0E293C /* LiveCleanup.swift */; };
 		110EFAD8A2FA57FA074C9007 /* StoreError.swift in Sources */ = {isa = PBXBuildFile; fileRef = A111233DAECA1CB2FEEBD9A6 /* StoreError.swift */; };
 		11F6E0DAD2B030FF76E4E07B /* SuggestionGeneration.swift in Sources */ = {isa = PBXBuildFile; fileRef = C648CE26613197412F053214 /* SuggestionGeneration.swift */; };
+		12D63E8DA5C808A998A90FDA /* WindowImageCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = F071532743028065D94AB99B /* WindowImageCapture.swift */; };
 		132C26A14258A6D3C8F0920D /* JotDefaultsKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = B02C95F663096FB499C5FD80 /* JotDefaultsKey.swift */; };
 		13899AFFBA889828C7A0DC82 /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */; };
 		14DB46313AE88EC56854704C /* GlassStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6E751674ACDF9A0C12697CF /* GlassStyles.swift */; };
@@ -174,6 +175,7 @@
 		F23046D94524269DD88E6FC4 /* check-capture-flow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 843F15BB91A9B223CEA18CB9 /* check-capture-flow.swift */; };
 		F2920146F6F9706A4AC63E10 /* AgentContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CB952D28B1838EB34DA1960 /* AgentContext.swift */; };
 		F39E2781C6B2CA0959B89114 /* JotCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D2E098CDE7120087F5C947F0 /* JotCore.framework */; };
+		F3A5DDA2D07BE624C47FD821 /* WindowImageGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F839A8A3345995EC3FF4F95 /* WindowImageGeometry.swift */; };
 		F3DD0C31026B4C194DD8EE61 /* SemanticVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36EED2B8F9A3A149CE94E3D2 /* SemanticVersion.swift */; };
 		F7D748AD1AC16DAF351D647B /* DictationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A6943067E4E73D56E69890D /* DictationCoordinator.swift */; };
 		F7FA16DF2E81C2CF349A4C56 /* RecognitionCommitWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44E0895E441BAAD4EA6D5DB0 /* RecognitionCommitWindow.swift */; };
@@ -269,6 +271,7 @@
 		4C7CFFD942425F7F2F26AD45 /* TranscriptExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptExport.swift; sourceTree = "<group>"; };
 		4D040C78617B0A5778C7B180 /* CleanupValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupValidation.swift; sourceTree = "<group>"; };
 		4EE4608097824E7D439EA116 /* SelectionLimits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionLimits.swift; sourceTree = "<group>"; };
+		4F839A8A3345995EC3FF4F95 /* WindowImageGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowImageGeometry.swift; sourceTree = "<group>"; };
 		5A608DB6E5CA06D36C6CE0E6 /* LiveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveView.swift; sourceTree = "<group>"; };
 		5AD3D87777D81B2C449D6211 /* JotSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JotSettings.swift; sourceTree = "<group>"; };
 		5B47545FE3D4DC8AB5B511B7 /* StoredWord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoredWord.swift; sourceTree = "<group>"; };
@@ -366,6 +369,7 @@
 		EB3AB1D693CA7BEC64B47137 /* ExclusionReason.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExclusionReason.swift; sourceTree = "<group>"; };
 		EBA0F84BDC3CF425D094A331 /* JotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JotApp.swift; sourceTree = "<group>"; };
 		EDD68923576B49C8E0509214 /* SuggestionRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionRequest.swift; sourceTree = "<group>"; };
+		F071532743028065D94AB99B /* WindowImageCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowImageCapture.swift; sourceTree = "<group>"; };
 		F73AD2F430744CB727A9459D /* SessionAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionAudio.swift; sourceTree = "<group>"; };
 		FA2A22A40419F37191B20038 /* Transcriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transcriber.swift; sourceTree = "<group>"; };
 		FC7DF1EDFB214E0732B5272D /* TranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptView.swift; sourceTree = "<group>"; };
@@ -458,6 +462,7 @@
 				FC7DF1EDFB214E0732B5272D /* TranscriptView.swift */,
 				BA481F222D31A9389BA6E913 /* TranscriptView+Settings.swift */,
 				D61874EB855429080562675D /* VocabularyView.swift */,
+				F071532743028065D94AB99B /* WindowImageCapture.swift */,
 			);
 			name = Jot;
 			path = Sources/Jot;
@@ -600,6 +605,7 @@
 				CBDB9C8F81FE456A8328BCE4 /* TranscriptStore.swift */,
 				A6D0115D4240AC8B29E7BC2B /* UnicodeTyping.swift */,
 				97ADF09DB2276506706FA8DC /* UserVoice.swift */,
+				4F839A8A3345995EC3FF4F95 /* WindowImageGeometry.swift */,
 			);
 			name = JotCore;
 			path = Sources/JotCore;
@@ -849,6 +855,7 @@
 				7F828FD3D45CF68EC70CC124 /* TranscriptView+Settings.swift in Sources */,
 				D4E3CBFA39C405CBEA8684B2 /* TranscriptView.swift in Sources */,
 				00074A8DD9DA7968F26870BE /* VocabularyView.swift in Sources */,
+				12D63E8DA5C808A998A90FDA /* WindowImageCapture.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -947,6 +954,7 @@
 				289C368E513B52686DE68A8B /* TranscriptionTuning.swift in Sources */,
 				541DD1B47FDFBBCC96250CF7 /* UnicodeTyping.swift in Sources */,
 				99B7E9B2422CA6EB4177D456 /* UserVoice.swift in Sources */,
+				F3A5DDA2D07BE624C47FD821 /* WindowImageGeometry.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1322,7 +1330,7 @@
 			repositoryURL = "https://github.com/StoneHub/apple-fm-swift.git";
 			requirement = {
 				kind = revision;
-				revision = 737fac9e7147403f2777e0901f02452e8fc25ae7;
+				revision = bb7d0e84ef0e7aa04e3f521c61fe20e6dacb7f72;
 			};
 		};
 		469DC1BBB30D99516E1567A4 /* XCRemoteSwiftPackageReference "FluidAudio" */ = {
