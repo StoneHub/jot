@@ -56,6 +56,7 @@
 		3EE470210860C149E986B472 /* CaptureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C898180408412523C4E31E37 /* CaptureController.swift */; };
 		43ECAEC64D13D60A06F67C68 /* LiveFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83E9B4C4D2C753F1BDECE6F0 /* LiveFeed.swift */; };
 		44270DB6A337277CD915775F /* MeetingExportWait.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4D583EF07B940C30081D6E /* MeetingExportWait.swift */; };
+		4625284F0211955CD259AD96 /* WindowImageCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = F071532743028065D94AB99B /* WindowImageCapture.swift */; };
 		46763F17227E20457A2F24FC /* DictationInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82A3D8CCC3D071ABC0F5EE69 /* DictationInput.swift */; };
 		48A035BE8890396E0ED43AAE /* JotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBA0F84BDC3CF425D094A331 /* JotApp.swift */; };
 		4A683EECC9D93C309638A843 /* ScreenGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADA7E9C72BDB6EB8F6F5A74C /* ScreenGeometry.swift */; };
@@ -988,6 +989,7 @@
 				B33DD6B2558C8E7D3978BD2F /* SuggestionCard.swift in Sources */,
 				90B3AC7AC03EA1EA4CD1F8D8 /* SuggestionCoordinator.swift in Sources */,
 				4E9B9C9118924570FA2AEA13 /* Transcriber.swift in Sources */,
+				4625284F0211955CD259AD96 /* WindowImageCapture.swift in Sources */,
 				F23046D94524269DD88E6FC4 /* check-capture-flow.swift in Sources */,
 				31D0FBE140B2935F2B0A84CF /* check-recovery-flow.swift in Sources */,
 				26B1953847CF6326234E2950 /* check-shortcut-input.swift in Sources */,

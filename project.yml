@@ -72,6 +72,7 @@ targets:
       - Sources/Jot/SuggestionCard.swift
       - Sources/Jot/SuggestionCoordinator.swift
       - Sources/Jot/ScreenContextReader.swift
+      - Sources/Jot/WindowImageCapture.swift
       - Sources/Jot/SpeakerPass.swift
       - Sources/Jot/SpeakerRecognizer.swift
       - Sources/Jot/SpeechPipeline.swift
