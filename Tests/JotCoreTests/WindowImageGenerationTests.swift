@@ -53,6 +53,58 @@ final class WindowImageGenerationTests: XCTestCase {
         }
     }
 
+    private actor Rejections {
+        var count = 0
+        func record() { count += 1 }
+        func recorded() -> Int { count }
+    }
+
+    func testRejectionIsRecordedBeforeATextFallbackThatFails() async {
+        enum Failure: Error { case synthetic }
+        let rejections = Rejections()
+        do {
+            _ = try await WindowImageGeneration.run(allowsTextOnly: true, onRejected: { await rejections.record() },
+                image: { throw AppleFMError.unreadableImage }, text: {
+                    let recorded = await rejections.recorded()
+                    XCTAssertEqual(recorded, 1, "Image provenance must change before the text call starts")
+                    throw Failure.synthetic
+                })
+            XCTFail("The fallback error must propagate")
+        } catch {
+            XCTAssertTrue(error is Failure)
+        }
+        let recorded = await rejections.recorded()
+        XCTAssertEqual(recorded, 1, "A failed fallback still records rejection exactly once")
+    }
+
+    @MainActor
+    func testRejectionIsRecordedBeforeATextFallbackTimesOut() async {
+        actor Blocker {
+            var continuation: CheckedContinuation<String, Never>?
+            var released = false
+            func wait() async -> String {
+                if released { return "late text" }
+                return await withCheckedContinuation { continuation = $0 }
+            }
+            func release() { released = true; continuation?.resume(returning: "late text"); continuation = nil }
+        }
+        let rejections = Rejections(), blocker = Blocker()
+        let gate = ModelCallGate(deadline: .milliseconds(20))
+        let request = ModelRequest(instructions: "Synthetic", prompt: "Grounded text", maximumResponseTokens: 1)
+        let result = await gate.call(request) { _ in
+            let generated = try await WindowImageGeneration.run(allowsTextOnly: true,
+                onRejected: { await rejections.record() }, image: { throw AppleFMError.imageUnsupported(.visionUnsupported) },
+                text: { await blocker.wait() })
+            return generated.text ?? SuggestionPrompt.abstainMarker
+        }
+        XCTAssertEqual(result, .timedOut)
+        let recorded = await rejections.recorded()
+        XCTAssertEqual(recorded, 1, "Receipt provenance changes before the model gate's deadline, not after late completion")
+        await blocker.release()
+        let settled = await gate.settle(within: .seconds(1))
+        XCTAssertTrue(settled)
+    }
+
     func testOtherImageErrorsDoNotInvokeTextFallback() async {
         enum Failure: Error { case synthetic }
         do {

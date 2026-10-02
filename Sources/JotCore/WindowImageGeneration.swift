@@ -15,11 +15,13 @@ public enum WindowImageGeneration {
         }
     }
 
-    static func run(allowsTextOnly: Bool, image: @Sendable () async throws -> String,
+    static func run(allowsTextOnly: Bool, onRejected: @Sendable () async -> Void = {},
+                    image: @Sendable () async throws -> String,
                     text: @Sendable () async throws -> String) async throws -> Result {
         do {
             return .image(try await image())
         } catch AppleFMError.imageUnsupported, AppleFMError.unreadableImage {
+            await onRejected()
             try Task.checkCancellation()
             guard allowsTextOnly else { return .needsContext }
             return .text(try await text())

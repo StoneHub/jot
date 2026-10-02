@@ -347,8 +347,8 @@ final class SuggestionCoordinator {
                 if let image {
                     generator = {
                         let generated = try await AppleFMGeneration.generate($0, image: image, textOnly: textRequest,
-                            allowsTextOnly: !selected.isEmpty || mode == .draft)
-                        await self.recordImageGeneration(generated, token: token)
+                            allowsTextOnly: !selected.isEmpty || mode == .draft,
+                            onImageRejected: { await self.recordImageRejection(token: token) })
                         return generated.text ?? SuggestionPrompt.abstainMarker
                     }
                 } else {
@@ -447,9 +447,9 @@ final class SuggestionCoordinator {
         return false
     }
 
-    /// The receipt and source line describe the request that actually produced the result, including text fallback.
-    private func recordImageGeneration(_ result: WindowImageGeneration.Result, token: Int) {
-        guard token == generation, !result.usedImage else { return }
+    /// Record the transition before a text retry: even a failed or timed-out retry used the text template.
+    private func recordImageRejection(token: Int) {
+        guard token == generation else { return }
         windowImage = SuggestionHistoryEntry.WindowImageOutcome.unsupported.rawValue
         updateReceipt { $0.windowImage = .unsupported }
     }

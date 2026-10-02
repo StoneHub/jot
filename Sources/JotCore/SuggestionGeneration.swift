@@ -43,11 +43,11 @@ public enum AppleFMGeneration {
     /// The same request with one image of the window around the field. The image is used for this call only. When the
     /// model turns the image down, a grounded `textOnly` request can run within the same deadline; the result reports it.
     public static func generate(_ request: ModelRequest, image: CGImage, textOnly: ModelRequest,
-                                allowsTextOnly: Bool) async throws -> WindowImageGeneration.Result {
+                                allowsTextOnly: Bool, onImageRejected: @Sendable () async -> Void) async throws -> WindowImageGeneration.Result {
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
             do {
-                return try await WindowImageGeneration.run(allowsTextOnly: allowsTextOnly, image: {
+                return try await WindowImageGeneration.run(allowsTextOnly: allowsTextOnly, onRejected: onImageRejected, image: {
                     try await AppleFMClient().generate(instructions: request.instructions, prompt: request.prompt,
                         image: .cgImage(image), options: options(for: request))
                 }, text: { try await generate(textOnly) })
