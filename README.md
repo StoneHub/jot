@@ -84,6 +84,10 @@ Every draft draws on the same **context window**: the last ten minutes of what J
 
 Run `jot suggestions [--limit N]` to inspect recent request receipts. Each receipt shows source kinds and byte counts, why agent input did not match the visible conversation, the mode and template used, generation timing, outcome, and whether you accepted or dismissed the card. Jot keeps at most 200 receipts for 14 days in its local history. Receipts contain no field, screen, transcript, prompt, or generated text, conversation IDs, or working directories.
 
+<img src="docs/images/jot-general-settings.png" width="800" alt="Jot General settings in dark appearance, with listening paused and dictation and suggestion controls visible">
+
+*General settings for dictation and suggestions, shown in the installed app on October 2, 2026. The toggles show the options selected for that session.*
+
 ## Personal vocabulary
 
 Open **Vocabulary** to add a preferred spelling such as `SwiftUI`. If Jot mishears it, enter the phrase under **Heard as**, for example `swift you eye`. Leave that field empty to normalize capitalization only.
