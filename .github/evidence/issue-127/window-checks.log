@@ -1,0 +1,66 @@
+PASS: 719 × 760: confirm-model-download visible within viewport
+PASS: 920 × 760: fix-permissions visible within viewport
+PASS: 920 × 760: review-saved-dictation visible within viewport
+PASS: 920 × 760: dictation-recovery-notice visible within viewport
+PASS: 720 × 760: fix-permissions visible within viewport
+PASS: 720 × 760: review-saved-dictation visible within viewport
+PASS: 720 × 760: dictation-recovery-notice visible within viewport
+PASS: 719 × 760: fix-permissions visible within viewport
+PASS: 719 × 760: review-saved-dictation visible within viewport
+PASS: 719 × 760: dictation-recovery-notice visible within viewport
+PASS: 520 × 760: fix-permissions visible within viewport
+PASS: 520 × 760: review-saved-dictation visible within viewport
+PASS: 520 × 760: dictation-recovery-notice visible within viewport
+PASS: 520 × 420: confirm-model-download present
+PASS: 520 × 420: fix-permissions present
+PASS: 520 × 420: review-saved-dictation present
+PASS: 520 × 420: dictation-recovery-notice present
+PASS: 520 × 420: service-pause-resume visible within viewport
+PASS: 520 × 420: confirm-model-download present
+PASS: 520 × 420: fix-permissions present
+PASS: 520 × 420: confirm-model-download visible within viewport
+PASS: 520 × 420: fix-permissions visible within viewport
+PASS: 520 × 420: review-saved-dictation visible within viewport
+PASS: 720 × 760: confirm-model-download present
+PASS: 720 × 760: fix-permissions present
+PASS: 720 × 760: review-saved-dictation present
+PASS: 720 × 760: dictation-recovery-notice present
+PASS: 720 × 760: confirm-model-download visible within viewport
+PASS: 720 × 760: fix-permissions visible within viewport
+PASS: 720 × 760: review-saved-dictation visible within viewport
+PASS: 719 × 760: confirm-model-download present
+PASS: 719 × 760: fix-permissions present
+PASS: 719 × 760: review-saved-dictation present
+PASS: 719 × 760: dictation-recovery-notice present
+PASS: 719 × 760: confirm-model-download visible within viewport
+PASS: 719 × 760: fix-permissions visible within viewport
+PASS: 719 × 760: review-saved-dictation visible within viewport
+PASS: 920 × 760: confirm-model-download present
+PASS: 920 × 760: fix-permissions present
+PASS: 920 × 760: review-saved-dictation present
+PASS: 920 × 760: dictation-recovery-notice present
+PASS: 920 × 760: confirm-model-download visible within viewport
+PASS: 920 × 760: fix-permissions visible within viewport
+PASS: 920 × 760: review-saved-dictation visible within viewport
+PASS: 520 × 760: confirm-model-download present
+PASS: 520 × 760: fix-permissions present
+PASS: 520 × 760: review-saved-dictation present
+PASS: 520 × 760: dictation-recovery-notice present
+PASS: 520 × 760: confirm-model-download visible within viewport
+PASS: 520 × 760: fix-permissions visible within viewport
+PASS: 520 × 760: review-saved-dictation visible within viewport
+PASS: 720 × 760: confirm-model-download present
+PASS: 720 × 760: fix-permissions present
+PASS: 720 × 760: review-saved-dictation present
+PASS: 720 × 760: dictation-recovery-notice present
+PASS: 720 × 760: confirm-model-download visible within viewport
+PASS: 720 × 760: fix-permissions visible within viewport
+PASS: 720 × 760: review-saved-dictation visible within viewport
+PASS: 719 × 760: confirm-model-download present
+PASS: 719 × 760: fix-permissions present
+PASS: 719 × 760: review-saved-dictation present
+PASS: 719 × 760: dictation-recovery-notice present
+PASS: 719 × 760: confirm-model-download visible within viewport
+PASS: 719 × 760: fix-permissions visible within viewport
+PASS: 719 × 760: review-saved-dictation visible within viewport
+PASS: real TranscriptView keeps download, permission and recovery guidance reachable across 720 pt, at 520 × 420, and on another page.

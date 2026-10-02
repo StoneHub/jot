@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 
+#if !JOT_WINDOW_CHECKS
 @main
 struct JotApp: App {
     @NSApplicationDelegateAdaptor(JotDelegate.self) var delegate
@@ -24,6 +25,7 @@ struct JotApp: App {
         }.menuBarExtraStyle(.window)
     }
 }
+#endif
 
 private struct JotMenuIconLabel: View {
     @ObservedObject var service: SpeechService
