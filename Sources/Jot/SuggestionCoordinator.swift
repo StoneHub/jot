@@ -23,6 +23,7 @@ final class SuggestionCoordinator {
     private let card = SuggestionCard()
     private let gate = ModelCallGate()
     private var requestTask: Task<Void, Never>?
+    private var requestImageTask: Task<WindowImageCapture.Result, Never>?
     private var monitorTask: Task<Void, Never>?
     private var sourceObserver: NSObjectProtocol?
     private var generation = 0
@@ -110,7 +111,7 @@ final class SuggestionCoordinator {
         ) { [weak self] _ in MainActor.assumeIsolated { self?.refreshKeyboard(); self?.input.refreshShortcutState(); self?.dismiss(action: .keyboardSourceChanged) } }
     }
     deinit {
-        requestTask?.cancel(); monitorTask?.cancel()
+        requestTask?.cancel(); requestImageTask?.cancel(); monitorTask?.cancel()
         if let sourceObserver { DistributedNotificationCenter.default().removeObserver(sourceObserver) }
     }
     private func refreshKeyboard() {
@@ -146,6 +147,7 @@ final class SuggestionCoordinator {
         receipt = nil
         generation += 1
         requestTask?.cancel(); requestTask = nil
+        requestImageTask?.cancel(); requestImageTask = nil
         monitorTask?.cancel(); monitorTask = nil
         gate.cancel()
         card.hide(); input.dismissSuggestionKeys()
@@ -213,12 +215,16 @@ final class SuggestionCoordinator {
         let token = generation
         monitor(field: field, token: token)
         requestTask = Task { [weak self] in
-            guard let self else { return }
+            guard let self, self.stillWanted(token) else { return }
             do {
                 let now = Date()
                 let screenTask = Task.detached(priority: .userInitiated) { reader?.read() }
                 let imageTask = imageCapture.map { capture in Task { await capture.capture(within: Self.windowImageBudget) } }
-                defer { imageTask?.cancel() }
+                self.requestImageTask = imageTask
+                defer {
+                    imageTask?.cancel()
+                    if token == self.generation { self.requestImageTask = nil }
+                }
                 let heardTask = Task.detached(priority: .userInitiated) { Self.heardSpeech(matching: heardNotes, in: store, now: now, window: window) }
                 let context = try await Task.detached(priority: .userInitiated) { try store?.suggestionContext(window: window, now: now, userVoice: voice) }.value
                 let screen = await screenTask.value
@@ -327,13 +333,7 @@ final class SuggestionCoordinator {
                 self.rows = Array(Dictionary(uniqueKeysWithValues: ((context?.rows(for: selected) ?? []) + (self.usedHeard ? heard?.rows ?? [] : [])).map { ($0.id, $0) }).values)
                 // A reply needs something to answer. A continuation needs something to draw on: with only the user's text,
                 // the on-device model invents what comes next. The window image counts: it may show what Accessibility missed.
-                if selected.isEmpty && image == nil {
-                    if mode == .reply { self.showNotice(Self.needsNotes, reason: "no-context"); return }
-                    if mode == .continuation {
-                        self.showNotice("No suggestion: Jot has nothing from the last few minutes to continue from.", reason: "no-context")
-                        return
-                    }
-                }
+                if selected.isEmpty && image == nil && self.refuseMissingContext(for: mode) { return }
                 // The conversation id ranked the sources; it is an opaque session id and says nothing to the model.
                 var prompted = input; prompted.target.conversation = nil
                 let textRequest = SuggestionPrompt.request(for: prompted, sources: selected)
@@ -345,7 +345,12 @@ final class SuggestionCoordinator {
                 }
                 let generator: ModelCallGate.Generator
                 if let image {
-                    generator = { try await AppleFMGeneration.generate($0, image: image, textOnly: textRequest) }
+                    generator = {
+                        let generated = try await AppleFMGeneration.generate($0, image: image, textOnly: textRequest,
+                            allowsTextOnly: !selected.isEmpty || mode == .draft)
+                        await self.recordImageGeneration(generated, token: token)
+                        return generated.text ?? SuggestionPrompt.abstainMarker
+                    }
                 } else {
                     generator = { try await AppleFMGeneration.generate($0) }
                 }
@@ -365,6 +370,10 @@ final class SuggestionCoordinator {
                         self.dismiss(action: .sourcesChanged); self.reason = "sources-changed"; self.notice("Suggestion dismissed because its sources changed."); return
                     }
                 }
+                // Image support can change after preflight. If it was rejected, the text-only fallback must meet
+                // the same grounding requirement as a request that never had an image.
+                if image != nil && self.windowImage != SuggestionHistoryEntry.WindowImageOutcome.attached.rawValue && selected.isEmpty,
+                   self.refuseMissingContext(for: mode) { return }
                 switch result {
                 case .output(let raw):
                     switch SuggestionOutput.process(raw, mode: mode, singleLine: field.role != kAXTextAreaRole) {
@@ -402,7 +411,7 @@ final class SuggestionCoordinator {
                         self.card.show(text: text.trimmingCharacters(in: .whitespaces), title: title,
                                        sources: SuggestionAttribution.line(plan: plan, selected: selected,
                                                                            sessionTitle: context?.sessionTitle,
-                                                                           windowImage: image != nil),
+                                                                           windowImage: self.windowImage == SuggestionHistoryEntry.WindowImageOutcome.attached.rawValue),
                                        action: action, ready: true, at: frame)
                     case .abstained(let detail), .rejected(let detail):
                         let text: String
@@ -426,6 +435,24 @@ final class SuggestionCoordinator {
         }
     }
 
+
+    /// A selection rewrite is grounded in its seed. Replies and continuations need external context even when an
+    /// optional image was captured but the model rejected it before generation.
+    private func refuseMissingContext(for mode: SuggestionMode) -> Bool {
+        if mode == .reply { showNotice(Self.needsNotes, reason: "no-context"); return true }
+        if mode == .continuation {
+            showNotice("No suggestion: Jot has nothing from the last few minutes to continue from.", reason: "no-context")
+            return true
+        }
+        return false
+    }
+
+    /// The receipt and source line describe the request that actually produced the result, including text fallback.
+    private func recordImageGeneration(_ result: WindowImageGeneration.Result, token: Int) {
+        guard token == generation, !result.usedImage else { return }
+        windowImage = SuggestionHistoryEntry.WindowImageOutcome.unsupported.rawValue
+        updateReceipt { $0.windowImage = .unsupported }
+    }
 
     /// Where to take this request's window image, or nil with the reason recorded. The image is optional: without
     /// permission, image support or the field's window, the request goes on with text alone. Screen Recording is asked

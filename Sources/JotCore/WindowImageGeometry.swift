@@ -1,7 +1,7 @@
 import Foundation
 
 /// Which window a suggestion's optional image comes from, and which part of it. Like `ScreenContext`, the image keeps
-/// what is above the field in the field's column, so a sidebar of other chats stays out; the field itself is included.
+/// what is above the field in a widened column; the field itself is included. The widening can include adjacent content.
 /// Frames are global points from the top left of the primary display, as both Accessibility and ScreenCaptureKit report
 /// them. Pure, so it can be checked without a screen.
 public enum WindowImageGeometry {
