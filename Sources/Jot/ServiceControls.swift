@@ -67,12 +67,26 @@ struct ServiceControls: View {
                 Toggle("Keep Mac awake while listening", isOn: $service.keepMacAwakeWhileListening).labelsHidden().toggleStyle(.switch)
             }.help("Prevents idle sleep while listening. Closing the lid can still put the Mac to sleep; Jot resumes listening after wake if it was listening before sleep.")
             ReviewSavedDictationButton(service: service).modifier(GlassButton())
-            if !service.recoveryNotice.isEmpty {
-                Text(service.recoveryNotice).font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true).padding(.leading, 30)
-                    .accessibilityIdentifier("dictation-recovery-notice")
-            } else if service.isPaused {
+            if service.recoveryNotice.isEmpty && service.isPaused {
                 Text("Resume to listen and save speech.").font(.caption).foregroundStyle(.secondary).padding(.leading, 30)
+            }
+            ServiceGuidance(service: service)
+        }
+    }
+}
+
+/// The same first-run and recovery guidance stays available when navigation folds into an icon rail.
+struct ServiceGuidance: View {
+    @ObservedObject var service: SpeechService
+    var showRecoveryAction = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if !service.recoveryNotice.isEmpty {
+                if showRecoveryAction { ReviewSavedDictationButton(service: service).modifier(GlassButton()) }
+                Text(service.recoveryNotice).font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true).padding(.leading, showRecoveryAction ? 0 : 30)
+                    .accessibilityIdentifier("dictation-recovery-notice")
             }
             if let pending = service.downloadPrompt {
                 Divider()
@@ -234,7 +248,7 @@ private struct PermissionBanner: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-            Text(service.missingPermissionText).font(.callout)
+            Text(service.missingPermissionText).font(.callout).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             Button("Fix") { service.fixPermissions() }.modifier(PrimaryGlassButton())
                 .accessibilityIdentifier("fix-permissions")
