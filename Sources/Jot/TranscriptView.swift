@@ -83,6 +83,16 @@ struct TranscriptView: View {
             HStack(spacing: 14) {
                 if narrow { rail } else { sidebar }
                 VStack(alignment: .leading, spacing: 18) {
+                    if narrow && (service.downloadPrompt != nil || service.permissionsMissing || !service.recoveryNotice.isEmpty) {
+                        ScrollView {
+                            ServiceGuidance(service: service, showRecoveryAction: true)
+                                .padding(14)
+                        }
+                        .frame(maxHeight: window.size.height * 0.45)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .modifier(GlassSurface(tint: Color(nsColor: .controlAccentColor).opacity(0.04)))
+                        .clipped()
+                    }
                     // Live draws its own title row so the recording chips sit beside it.
                     if section != .live { titleRow }
                     switch section {
@@ -153,7 +163,7 @@ struct TranscriptView: View {
         }.padding(8).frame(width: 282)
     }
 
-    /// The sidebar in a narrow window: Pause or Resume, then one icon per page. The menu bar keeps the full controls.
+    /// The sidebar in a narrow window: Pause or Resume, then one icon per page. Guidance stays in the content pane.
     private var rail: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 6) {
