@@ -127,6 +127,20 @@ targets:
           - $(BUILT_PRODUCTS_DIR)/jot
         outputFiles:
           - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/jot
+  JotWindowChecks:
+    type: tool
+    platform: macOS
+    sources:
+      - Sources/Jot
+      - Tests/JotWindowChecks
+    settings:
+      base:
+        PRODUCT_NAME: JotWindowChecks
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: '$(inherited) JOT_WINDOW_CHECKS'
+        LD_RUNPATH_SEARCH_PATHS: '@executable_path'
+    dependencies:
+      - target: JotCore
+      - package: FluidAudio
 schemes:
   Jot:
     build:
@@ -136,3 +150,7 @@ schemes:
     build:
       targets:
         JotRecoveryChecks: all
+  JotWindowChecks:
+    build:
+      targets:
+        JotWindowChecks: all
