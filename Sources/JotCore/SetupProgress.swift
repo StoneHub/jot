@@ -1,45 +1,5 @@
 import Foundation
 
-/// First-run setup's pages, in order. Microphone access is asked on the microphone page and Accessibility on the dictation page, where each is needed.
-public enum SetupStep: Int, CaseIterable, Comparable, Sendable {
-    case welcome, models, microphone, dictation, intelligence, summary
-
-    public var title: String {
-        switch self {
-        case .welcome: "Welcome to Jot"
-        case .models: "Speech models"
-        case .microphone: "Microphone"
-        case .dictation: "Try dictation"
-        case .intelligence: "Apple Intelligence"
-        case .summary: "Summary"
-        }
-    }
-
-    public var next: SetupStep? { SetupStep(rawValue: rawValue + 1) }
-    public var previous: SetupStep? { SetupStep(rawValue: rawValue - 1) }
-
-    public static func < (lhs: SetupStep, rhs: SetupStep) -> Bool { lhs.rawValue < rhs.rawValue }
-}
-
-/// The live state behind the pages that have a requirement. Setup keeps no copy of it: the window reads the service each time.
-public struct SetupReadiness: Equatable, Sendable {
-    public var modelsReady: Bool
-    public var microphoneAllowed: Bool
-    public var accessibilityAllowed: Bool
-
-    public init(modelsReady: Bool, microphoneAllowed: Bool, accessibilityAllowed: Bool) {
-        self.modelsReady = modelsReady; self.microphoneAllowed = microphoneAllowed; self.accessibilityAllowed = accessibilityAllowed
-    }
-
-    /// The earliest page whose requirement is unmet now, such as a permission revoked since setup or a download that stopped.
-    public var firstUnmet: SetupStep? {
-        if !modelsReady { return .models }
-        if !microphoneAllowed { return .microphone }
-        if !accessibilityAllowed { return .dictation }
-        return nil
-    }
-}
-
 /// Whether launch offers setup, and where setup opens. Two UserDefaults keys hold it; models, permissions and settings stay where they already live.
 public struct SetupProgress: Equatable, Sendable {
     public enum Status: String, Sendable {
@@ -94,7 +54,7 @@ public struct SetupProgress: Equatable, Sendable {
     }
 
     /// Keys only an earlier run of Jot writes: loaded models, a Pause, the Dictation switch, a shortcut, a microphone or vocabulary.
-    static let earlierUseKeys = [JotDefaultsKey.modelsPrepared, JotDefaultsKey.servicePaused, JotDefaultsKey.fnRequested,
+    static let earlierUseKeys = [JotDefaultsKey.modelsPrepared, JotDefaultsKey.servicePaused, JotDefaultsKey.dictationRequested,
                                  JotDefaultsKey.dictationShortcut, JotDefaultsKey.selectedInputUID, JotDefaultsKey.personalVocabulary]
 
     /// TranscriptStore's database in Jot's directory, or a preference an earlier run saved. The shared FluidAudio model cache is not

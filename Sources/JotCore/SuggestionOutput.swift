@@ -27,7 +27,6 @@ public enum SuggestionOutput {
         if text.unicodeScalars.contains(where: { ($0.value < 32 && $0 != "\n" && $0 != "\t") || $0.value == 127 }) {
             return .rejected("control-characters")
         }
-        if mode == .shellCommand && text.contains("\n") { return .rejected("multiline-shell-command") }
         if singleLine && text.contains("\n") { return .rejected("multiline-single-line-field") }
         // A finished draft may have paragraphs, such as an email body; the other modes insert one.
         if mode != .draft && text.contains("\n\n") { return .rejected("multiple-paragraphs") }

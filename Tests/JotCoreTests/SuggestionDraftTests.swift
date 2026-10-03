@@ -214,7 +214,7 @@ final class SuggestionDraftTests: XCTestCase {
             try await Task.sleep(for: .seconds(2)); return "late"
         }
         XCTAssertEqual(result, .timedOut)
-        let settled = await gate.settle(within: .seconds(3))
+        let settled = await waitForModelGate(gate, within: .seconds(3))
         XCTAssertTrue(settled)
     }
 }

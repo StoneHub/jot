@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
 let package = Package(name: "JotCore", platforms: [.macOS(.v14)], products: [
     .library(name: "JotCore", targets: ["JotCore"]),
@@ -13,4 +13,4 @@ let package = Package(name: "JotCore", platforms: [.macOS(.v14)], products: [
     .executableTarget(name: "JotSuggestionEvaluation", dependencies: ["JotCore"]),
     .testTarget(name: "JotCoreTests", dependencies: ["JotCore"]),
     .testTarget(name: "JotSuggestionEvaluationTests", dependencies: ["JotSuggestionEvaluation"])
-])
+], swiftLanguageModes: [.v6])

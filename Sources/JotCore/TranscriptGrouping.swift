@@ -1,0 +1,137 @@
+import Foundation
+
+public enum TranscriptGrouping {
+    public static func isFillerOnly(_ text: String) -> Bool {
+        let words = text.lowercased().split { !$0.isLetter }
+        let fillers: Set<String> = ["um", "umm", "uh", "uhh", "erm", "er", "hmm", "hm"]
+        return !words.isEmpty && words.allSatisfy { fillers.contains(String($0)) }
+    }
+
+    /// Confirm a new speaker only after sustained evidence. Short replies can stay with
+    /// the preceding speaker; this is an explicit user-adjustable stability tradeoff.
+    public static func turns(_ words: [AttributedWord], tuning raw: TranscriptionTuning, continuing initialSpeaker: String? = nil) -> [SpeechTurn] {
+        guard !words.isEmpty else { return [] }
+        let tuning = raw.bounded
+        var candidates: [String?] = words.map { word in
+            let active = word.probabilities.prefix(4).enumerated().filter { Double($0.element) >= tuning.speakerConfidence }
+            return active.count == 1 ? "speaker-\(active[0].offset + 1)" : (active.count > 1 ? "overlap" : nil)
+        }
+        // Seeded from the previous audio block so a sentence that spans a block boundary keeps its speaker.
+        var stable: String? = initialSpeaker
+        var runStart = 0
+        while runStart < words.count {
+            var runEnd = runStart + 1
+            while runEnd < words.count && candidates[runEnd] == candidates[runStart]
+                && words[runEnd].start - words[runEnd - 1].end < tuning.paragraphPause { runEnd += 1 }
+            let duration = words[runEnd - 1].end - words[runStart].start
+            let onlyFillers = isFillerOnly(words[runStart..<runEnd].map(\.text).joined(separator: " "))
+            if runStart > 0 && words[runStart].start - words[runStart - 1].end >= tuning.paragraphPause { stable = nil }
+            // Brief missing/uncertain evidence is not evidence of a new speaker.
+            // A longer uncertain run still becomes unattributed.
+            var confirmation = candidates[runStart] == nil ? max(2, tuning.minimumSpeakerTurn) : tuning.minimumSpeakerTurn
+            // A short reply ("Yeah.", "Good man.") from a clearly different voice counts sooner than the minimum turn.
+            if let candidate = candidates[runStart], candidate != "overlap", candidate != stable, confident(words[runStart..<runEnd], speaker: candidate, tuning: tuning) {
+                confirmation = min(confirmation, Self.confidentReplyTurn)
+            }
+            if duration >= confirmation && !onlyFillers { stable = candidates[runStart] }
+            for index in runStart..<runEnd { candidates[index] = stable }
+            runStart = runEnd
+        }
+        // Fold a short leading hesitation into its first confirmed turn, not a separate row.
+        if let first = candidates.firstIndex(where: { $0 != nil }), first > 0,
+           words[first].start - words[0].start < tuning.minimumSpeakerTurn + tuning.paragraphPause {
+            for index in 0..<first { candidates[index] = candidates[first] }
+        }
+        var result: [SpeechTurn] = []
+        for (index, word) in words.enumerated() {
+            if let last = result.last, last.speaker == candidates[index], word.start - last.end < tuning.paragraphPause {
+                result[result.count - 1].text += " " + word.text
+                result[result.count - 1].end = word.end
+                result[result.count - 1].wordRange = last.wordRange.lowerBound..<index + 1
+            } else { result.append(SpeechTurn(text: word.text, start: word.start, end: word.end, speaker: candidates[index], wordRange: index..<index + 1)) }
+        }
+        return result
+    }
+
+    /// One speaker per stored word, from the live probabilities under the tuning: each word takes the speaker of the turn it falls in. The words are grouped in one pass over the whole session: the original block boundaries and carried speaker are not recoverable, and a gap of at least the paragraph pause resets the speaker as it does during capture.
+    public static func speakers(words: [StoredWord], tuning: TranscriptionTuning) -> [String?] {
+        let attributed = words.map { AttributedWord(text: $0.word, start: $0.startSeconds, end: $0.endSeconds, probabilities: $0.probabilities) }
+        var result = [String?](repeating: nil, count: words.count)
+        for turn in turns(attributed, tuning: tuning) {
+            for index in turn.wordRange {
+                result[index] = turn.speaker
+            }
+        }
+        return result
+    }
+
+    /// Seconds of clearly attributed speech that confirm a speaker change ahead of the minimum turn.
+    static let confidentReplyTurn = 0.3
+    /// True when every word gives this speaker a probability well above the tuned threshold and the others none.
+    private static func confident(_ words: ArraySlice<AttributedWord>, speaker: String, tuning: TranscriptionTuning) -> Bool {
+        guard let index = Int(speaker.dropFirst("speaker-".count)).map({ $0 - 1 }) else { return false }
+        let floor = max(0.85, tuning.speakerConfidence + 0.15)
+        return words.allSatisfy { word in
+            let p = word.probabilities.prefix(4)
+            guard p.indices.contains(index), Double(p[index]) >= floor else { return false }
+            return p.enumerated().allSatisfy { $0.offset == index || Double($0.element) < tuning.speakerConfidence }
+        }
+    }
+
+    /// Export-time repair: an unattributed ambient row that picks up a speaker's unfinished sentence within `gap` seconds inherits that speaker. Stored rows are unchanged.
+    public static func foldContinuations(_ source: [Transcript], gap: Double = 1.5) -> [Transcript] {
+        var result = source.sorted { $0.startedAt.addingTimeInterval($0.startSeconds) < $1.startedAt.addingTimeInterval($1.startSeconds) }
+        for index in result.indices.dropFirst() {
+            result[index] = foldContinuation(result[index], after: result[index - 1], gap: gap)
+        }
+        return result
+    }
+
+    /// One row of foldContinuations: the row with the previous row's speaker when it picks up that speaker's unfinished sentence, otherwise the row as it is. `previous` is already folded.
+    public static func foldContinuation(_ row: Transcript, after previous: Transcript, gap: Double) -> Transcript {
+        guard row.speakerID == nil, row.mode == "ambient", previous.mode == "ambient",
+              previous.sessionID == row.sessionID,
+              let speaker = previous.speakerID, speaker != "overlap",
+              row.startSeconds - previous.endSeconds >= -0.1,
+              row.startSeconds - previous.endSeconds < gap,
+              !endsSentence(previous.text) else { return row }
+        var folded = row
+        folded.speakerID = speaker
+        folded.speakerLabel = previous.speakerLabel
+        return folded
+    }
+
+    static func endsSentence(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let last = trimmed.last(where: { !"\"')]".contains($0) }) else { return false }
+        return ".!?".contains(last)
+    }
+
+    /// Presentation only: source rows and words remain in SQLite for inspection/export.
+    public struct HistoryGroup {
+        public var transcript: Transcript
+        public var sourceIDs: [String]
+    }
+
+    public static func history(_ source: [Transcript], tuning: TranscriptionTuning) -> [Transcript] {
+        historyGroups(source, tuning: tuning).map(\.transcript)
+    }
+
+    public static func historyGroups(_ source: [Transcript], tuning: TranscriptionTuning) -> [HistoryGroup] {
+        let sorted = foldContinuations(source, gap: tuning.bounded.paragraphPause)
+        var result: [HistoryGroup] = []
+        for item in sorted {
+            if tuning.hideFillerRows && isFillerOnly(item.text) { continue }
+            if let previous = result.last?.transcript, item.mode == "ambient", previous.mode == "ambient",
+               item.sessionID == previous.sessionID, item.speakerID == previous.speakerID,
+               item.speakerLabel == previous.speakerLabel,
+               item.startSeconds >= previous.endSeconds - 0.1,
+               item.startSeconds - previous.endSeconds < tuning.bounded.paragraphPause {
+                result[result.count - 1].transcript.text += " " + item.text
+                result[result.count - 1].transcript.endSeconds = max(previous.endSeconds, item.endSeconds)
+                result[result.count - 1].sourceIDs.append(item.id)
+            } else { result.append(HistoryGroup(transcript: item, sourceIDs: [item.id])) }
+        }
+        return result.reversed()
+    }
+}

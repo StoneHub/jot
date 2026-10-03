@@ -33,7 +33,7 @@ final class JotSettingsTests: XCTestCase {
         defaults.set(true, forKey: JotDefaultsKey.cleanUpDictation)           // changed
         defaults.set(30, forKey: JotDefaultsKey.newSessionAfterSilence)       // changed
         defaults.set(true, forKey: JotDefaultsKey.suggestionScreenContext)    // the default
-        defaults.set(true, forKey: JotDefaultsKey.fnRequested)                // not a setting; untouched
+        defaults.set(true, forKey: JotDefaultsKey.dictationRequested)                // not a setting; untouched
 
         let settings = JotSettings(defaults: defaults)
         XCTAssertNil(defaults.data(forKey: JotDefaultsKey.transcriptionTuning), "The blob is gone")
@@ -47,7 +47,7 @@ final class JotSettingsTests: XCTestCase {
         XCTAssertFalse(settings.isChanged(JotDefaultsKey.suggestionScreenContext))
         XCTAssertTrue(settings.bool(JotDefaultsKey.cleanUpDictation))
         XCTAssertEqual(settings.int(JotDefaultsKey.newSessionAfterSilence), 30)
-        XCTAssertTrue(defaults.bool(forKey: JotDefaultsKey.fnRequested))
+        XCTAssertTrue(defaults.bool(forKey: JotDefaultsKey.dictationRequested))
         XCTAssertEqual(defaults.integer(forKey: JotSettings.revisionKey), JotSettings.revision)
 
         // A second launch changes nothing, including a default a user set on purpose afterwards.

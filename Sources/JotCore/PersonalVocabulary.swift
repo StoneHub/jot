@@ -1,19 +1,5 @@
 import Foundation
 
-public struct VocabularyEntry: Codable, Identifiable, Equatable, Sendable {
-    public let id: UUID
-    public var preferred: String
-    public var heard: String
-    public var enabled: Bool
-
-    public init(id: UUID = UUID(), preferred: String = "", heard: String = "", enabled: Bool = true) {
-        self.id = id; self.preferred = preferred; self.heard = heard; self.enabled = enabled
-    }
-
-    /// An empty heard phrase normalizes capitalization of the preferred spelling.
-    public var matchPhrase: String { heard.isEmpty ? preferred : heard }
-}
-
 public struct PersonalVocabulary: Codable, Equatable, Sendable {
     public private(set) var entries: [VocabularyEntry] = []
     public init() {}
@@ -41,7 +27,7 @@ public struct PersonalVocabulary: Codable, Equatable, Sendable {
     }
 
     /// Compiled patterns keyed by matching phrase; NSCache is thread-safe and evicts on its own, so the Codable form stays as it is.
-    private static let patterns: NSCache<NSString, NSRegularExpression> = { let cache = NSCache<NSString, NSRegularExpression>(); cache.countLimit = 512; return cache }()
+    private static let patterns = VocabularyPatternCache()
 
     private static func pattern(for matchPhrase: String) -> NSRegularExpression? {
         if let cached = patterns.object(forKey: matchPhrase as NSString) { return cached }
@@ -82,72 +68,5 @@ public struct PersonalVocabulary: Codable, Equatable, Sendable {
     /// Converts spoken symbol names for insertion, then applies personal vocabulary.
     public func applyingToDictation(_ text: String) -> String {
         applying(to: SpokenSymbols.applying(to: text))
-    }
-}
-
-/// Converts explicit spoken symbol names into the characters a person intended to type.
-public enum SpokenSymbols {
-    private static let word = "[\\p{L}\\p{M}\\p{N}_]"
-    private static let replacements: [(phrase: String, symbol: String)] = [
-        ("open square bracket", "["), ("close square bracket", "]"),
-        ("open curly brace", "{"), ("close curly brace", "}"),
-        ("left parenthesis", "("), ("right parenthesis", ")"),
-        ("open parenthesis", "("), ("close parenthesis", ")"),
-        ("left angle bracket", "<"), ("right angle bracket", ">"),
-        ("less than sign", "<"), ("greater than sign", ">"),
-        ("exclamation point", "!"), ("exclamation mark", "!"),
-        ("quotation mark", "\""), ("double quote", "\""),
-        ("vertical bar", "|"), ("pipe symbol", "|"),
-        ("forward slash", "/"), ("backward slash", "\\"),
-        ("back slash", "\\"), ("at sign", "@"), ("hash sign", "#"),
-        ("pound sign", "#"), ("dollar sign", "$"), ("percent sign", "%"),
-        ("plus sign", "+"), ("minus sign", "-"), ("equals sign", "="),
-        ("question mark", "?"), ("open bracket", "["), ("close bracket", "]"),
-        ("ampersand", "&"), ("asterisk", "*"), ("underscore", "_"),
-        ("backslash", "\\"), ("slash", "/"), ("colon", ":"),
-        ("semicolon", ";"), ("comma", ","), ("period", "."),
-        ("dot", "."), ("apostrophe", "'"), ("tilde", "~"),
-        ("caret", "^"), ("backtick", "`")
-    ]
-
-    private static let patterns: [(regex: NSRegularExpression, symbol: String)] = replacements.compactMap { replacement in
-        let phrase = replacement.phrase.split(whereSeparator: \.isWhitespace)
-            .map { NSRegularExpression.escapedPattern(for: String($0)) }
-            .joined(separator: "\\s+")
-        let pattern = "[ \\t]*(?<!" + word + ")(?:(" + phrase + "))(?!" + word + ")(?:[.!?](?=[ \\t]*$))?[ \\t]*"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return nil }
-        return (regex, replacement.symbol)
-    }
-
-    public static func applying(to text: String) -> String {
-        var result = text
-        for (regex, symbol) in patterns {
-            let range = NSRange(result.startIndex..., in: result)
-            result = regex.stringByReplacingMatches(in: result, range: range, withTemplate: NSRegularExpression.escapedTemplate(for: symbol))
-        }
-        return result
-    }
-
-}
-
-public enum VocabularyError: LocalizedError {
-    case invalid(String)
-    public var errorDescription: String? { if case let .invalid(message) = self { return message }; return nil }
-}
-
-/// A separate preference leaves transcript storage and recognition models untouched.
-public final class VocabularyPreferences {
-    private let defaults: UserDefaults
-    private let key = JotDefaultsKey.personalVocabulary
-    public init(defaults: UserDefaults = .standard) { self.defaults = defaults }
-    public func load() throws -> PersonalVocabulary {
-        guard let data = defaults.data(forKey: key) else { return PersonalVocabulary() }
-        let decoded = try JSONDecoder().decode(PersonalVocabulary.self, from: data)
-        var validated = PersonalVocabulary()
-        for entry in decoded.entries { try validated.save(entry) }
-        return validated
-    }
-    public func save(_ vocabulary: PersonalVocabulary) throws {
-        defaults.set(try JSONEncoder().encode(vocabulary), forKey: key)
     }
 }

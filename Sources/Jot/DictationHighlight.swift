@@ -16,7 +16,7 @@ final class DictationHighlight {
 
     /// The shortcut finds its field off the main thread, so the frame is often nil at the press. The outline appears once it is known,
     /// and stops looking after `waitTicks` so a target app that never answers does not keep stalling the main thread.
-    func show(follow frame: @escaping () -> CGRect?) {
+    func show(follow frame: @escaping @MainActor @Sendable () -> CGRect?) {
         finishing?.cancel(); finishing = nil
         let panel = self.panel ?? makePanel()
         self.panel = panel

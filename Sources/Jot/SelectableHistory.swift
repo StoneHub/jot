@@ -44,6 +44,7 @@ struct SelectableHistory: NSViewRepresentable {
         context.coordinator.receive(output, search: search)
     }
 
+    @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
         weak var textView: NSTextView?
         private var pending: NSAttributedString?

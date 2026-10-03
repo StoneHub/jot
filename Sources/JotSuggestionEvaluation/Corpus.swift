@@ -41,14 +41,14 @@ struct Corpus: Decodable {
 /// Titles and coverage tags describe the expected behavior, so they are not decoded at all.
 struct CorpusScenario: Decodable {
     let id: String
-    let target: SuggestionTarget
+    let target: EvaluationTarget
     let sources: [SuggestionSource]
     let pendingSuggestion: AuthoredPreview?
     let change: Change?
     let expected: Expected
     let scoring: Scoring
 
-    var input: SuggestionRequest { SuggestionRequest(target: target, sources: sources) }
+    var input: SuggestionRequest { SuggestionRequest(target: target.value, sources: sources) }
     var oracle: ScenarioOracle { ScenarioOracle(expected: expected, scoring: scoring) }
 }
 

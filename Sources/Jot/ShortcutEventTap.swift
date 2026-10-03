@@ -4,7 +4,7 @@ import JotCore
 /// The tap and its key state live together on a dedicated run loop. The lock protects
 /// configuration supplied by the main actor and the small amount of state it reads.
 /// No AppKit, Accessibility, or owner callback runs in the event-tap callback.
-final class ShortcutEventTap {
+final class ShortcutEventTap: @unchecked Sendable {
     struct Configuration {
         var shortcut: DictationShortcut = .fn
         var suggestionShortcut: DictationShortcut?

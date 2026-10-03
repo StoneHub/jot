@@ -379,7 +379,7 @@ struct SetupView: View {
                     Button("Allow Accessibility") { service.fixAccessibilityPermission() }.modifier(PrimaryGlassButton())
                 }
             }
-            SetupRow(state: service.fnEnabled ? .done : .needed, title: "Dictation shortcut", detail: shortcutDetail) { shortcutAction }
+            SetupRow(state: service.dictationEnabled ? .done : .needed, title: "Dictation shortcut", detail: shortcutDetail) { shortcutAction }
             SetupRow(state: trialSucceeded ? .done : .optional, title: "Try it", detail: trialDetail) { trialAction }
             VStack(alignment: .leading, spacing: 8) {
                 tip("pause.circle", "Pause stops listening. Holding the shortcut still works while paused: the microphone turns on for the hold only.")
@@ -397,10 +397,10 @@ struct SetupView: View {
     }
 
     /// The shortcut tap runs only with the models loaded and both permissions granted.
-    private var dictationReady: Bool { service.fnEnabled && service.accessibilityGranted }
+    private var dictationReady: Bool { service.dictationEnabled && service.accessibilityGranted }
 
     private var shortcutDetail: String {
-        if service.fnEnabled { return "On. Hold \(service.shortcut.displayName) to dictate, whether Jot is listening or paused. Click the key to change it." }
+        if service.dictationEnabled { return "On. Hold \(service.shortcut.displayName) to dictate, whether Jot is listening or paused. Click the key to change it." }
         if !service.modelsLoaded { return "Needs the speech models first." }
         if !microphoneAllowed { return "Needs microphone access first." }
         if !service.accessibilityGranted { return "Needs Accessibility access first." }
@@ -408,14 +408,14 @@ struct SetupView: View {
     }
 
     @ViewBuilder private var shortcutAction: some View {
-        if service.fnEnabled {
+        if service.dictationEnabled {
             ShortcutSettings(service: service)
         } else if !service.modelsLoaded {
             Button("Speech Models") { flow.go(to: .models) }.modifier(GlassButton())
         } else if !microphoneAllowed {
             Button("Microphone") { flow.go(to: .microphone) }.modifier(GlassButton())
         } else if service.accessibilityGranted {
-            Button("Turn On") { Task { await service.enableFn() } }.modifier(PrimaryGlassButton())
+            Button("Turn On") { Task { await service.enableDictation() } }.modifier(PrimaryGlassButton())
         }
     }
 
@@ -423,14 +423,14 @@ struct SetupView: View {
 
     private var trialDetail: String {
         if trialSucceeded { return "Jot saved your dictation. If the words did not appear in the field, Review saved dictation shows them to copy." }
-        if !service.fnEnabled { return "Turn on the dictation shortcut first." }
+        if !service.dictationEnabled { return "Turn on the dictation shortcut first." }
         return "Click into a text field in another app, such as a new TextEdit document, then hold \(service.shortcut.displayName), speak and release."
     }
 
     @ViewBuilder private var trialAction: some View {
         if trialSucceeded {
             ReviewSavedDictationButton(service: service).modifier(GlassButton())
-        } else if service.fnEnabled {
+        } else if service.dictationEnabled {
             Button("Open TextEdit") {
                 if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.TextEdit") { _ = NSWorkspace.shared.open(app) }
             }.modifier(GlassButton())

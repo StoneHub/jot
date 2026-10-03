@@ -52,6 +52,7 @@ struct LiveTranscriptText: NSViewRepresentable {
         return CGSize(width: width, height: max(17, ceil(layout.usedRect(for: container).height)))
     }
 
+    @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
         weak var textView: NSTextView?
         var selectionChanged: ((Bool) -> Void)?

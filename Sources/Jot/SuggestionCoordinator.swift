@@ -21,7 +21,7 @@ final class SuggestionCoordinator {
     private let window: () -> TimeInterval
     private let notice: (String) -> Void
     private let card = SuggestionCard()
-    private let gate = ModelCallGate()
+    private let gate = ModelCallGate(deadline: .seconds(3))
     private var requestTask: Task<Void, Never>?
     private var requestImageTask: Task<WindowImageCapture.Result, Never>?
     private var monitorTask: Task<Void, Never>?
@@ -110,7 +110,7 @@ final class SuggestionCoordinator {
             forName: Notification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String), object: nil, queue: .main
         ) { [weak self] _ in MainActor.assumeIsolated { self?.refreshKeyboard(); self?.input.refreshShortcutState(); self?.dismiss(action: .keyboardSourceChanged) } }
     }
-    deinit {
+    isolated deinit {
         requestTask?.cancel(); requestImageTask?.cancel(); monitorTask?.cancel()
         if let sourceObserver { DistributedNotificationCenter.default().removeObserver(sourceObserver) }
     }
@@ -169,7 +169,7 @@ final class SuggestionCoordinator {
         requests += 1; outcome = "loading"; reason = "none"; lastMode = "none"; usedScreen = false; usedSpeech = false; usedAgent = false; usedHeard = false
         windowImage = "off"
         updateReceipt { $0.outcome = .loading }
-        do { try input.captureTarget(wakeRetry: false) }
+        do { try input.captureTarget() }
         catch {
             outcome = "unsupported-field"; reason = "unsupported-field"
             updateReceipt { $0.outcome = .noSuggestion; $0.reason = .unsupportedField }
@@ -177,7 +177,17 @@ final class SuggestionCoordinator {
             notice("No suggestion: focus an ordinary editable text field."); return
         }
         ownsTarget = true
-        guard let field = input.readSuggestionField(), let frame = input.targetFrame(timeout: 0.005) else {
+        let token = generation
+        requestTask = Task { [weak self] in
+            guard let self, self.stillWanted(token) else { return }
+            await self.prepareRequest(token: token)
+        }
+    }
+
+    private func prepareRequest(token: Int) async {
+        let readField = await input.readSuggestionField()
+        guard stillWanted(token) else { return }
+        guard let field = readField, let frame = input.targetFrame(timeout: 0.005) else {
             updateReceipt { $0.outcome = .noSuggestion; $0.reason = .unreadableField }
             dismiss(); reason = "unreadable-field"; notice("No suggestion: this field cannot be read safely."); return
         }
@@ -212,7 +222,6 @@ final class SuggestionCoordinator {
         }
         input.showSuggestionKeys(.loading)
         card.show(text: loading, loading: true, at: frame)
-        let token = generation
         monitor(field: field, token: token)
         requestTask = Task { [weak self] in
             guard let self, self.stillWanted(token) else { return }
@@ -234,7 +243,7 @@ final class SuggestionCoordinator {
                 } onCancel: {
                     imageTask?.cancel()
                 }
-                guard self.isCurrent(token, field: field) else { return }
+                guard await self.isCurrent(token, field: field) else { return }
                 // Taken for this field and this request only; a later request or a focus change never sees it.
                 let image = captured?.image
                 if let captured {
@@ -285,7 +294,6 @@ final class SuggestionCoordinator {
                     case .reply: receipt.mode = .reply
                     case .continuation: receipt.mode = .continuation
                     case .draft: receipt.mode = .draft
-                    case .shellCommand: receipt.mode = .none
                     }
                     receipt.beforeEndsSentence = SuggestionPrompt.endsSentence(before)
                 }
@@ -355,7 +363,7 @@ final class SuggestionCoordinator {
                     generator = { try await AppleFMGeneration.generate($0) }
                 }
                 let result = await self.gate.call(request, deadline: deadline, generator: generator)
-                guard self.isCurrent(token, field: field) else { return }
+                guard await self.isCurrent(token, field: field) else { return }
                 self.updateReceipt { receipt in
                     if let began = receipt.generationStartedAt {
                         receipt.generationMilliseconds = min(60_000, max(0, Int(Date().timeIntervalSince(began) * 1_000)))
@@ -364,7 +372,7 @@ final class SuggestionCoordinator {
                 let expectedRows = self.rows
                 if !expectedRows.isEmpty, let store {
                     let current = try await Task.detached { try store.suggestionRowsUnchanged(expectedRows) }.value
-                    guard self.isCurrent(token, field: field) else { return }
+                    guard await self.isCurrent(token, field: field) else { return }
                     guard current else {
                         self.updateReceipt { $0.reason = .sourcesChanged }
                         self.dismiss(action: .sourcesChanged); self.reason = "sources-changed"; self.notice("Suggestion dismissed because its sources changed."); return
@@ -418,7 +426,7 @@ final class SuggestionCoordinator {
                         switch mode {
                         case .draft: text = "No suggestion for this selection."
                         case .continuation: text = "No suggestion: nothing to add from your text and this context."
-                        case .reply, .shellCommand: text = "No suggestion from this context."
+                        case .reply: text = "No suggestion from this context."
                         }
                         self.showNotice(text, reason: detail)
                     }
@@ -495,9 +503,11 @@ final class SuggestionCoordinator {
     }
 
     /// `stillWanted`, then the field itself, read on the main actor. The request and acceptance paths use this once each.
-    private func isCurrent(_ token: Int, field: DictationInput.SuggestionField) -> Bool {
+    private func isCurrent(_ token: Int, field: DictationInput.SuggestionField) async -> Bool {
         guard stillWanted(token) else { return false }
-        guard input.suggestionFieldIsCurrent(field) else { dismiss(action: .focusChanged); return false }
+        let current = await input.suggestionFieldIsCurrent(field)
+        guard stillWanted(token) else { return false }
+        guard current else { dismiss(action: .focusChanged); return false }
         return true
     }
 
@@ -553,7 +563,7 @@ final class SuggestionCoordinator {
             notice(text)
             return
         }
-        do { try input.captureTarget(wakeRetry: false) } catch { dismiss(action: .focusChanged); notice(text); return }
+        do { try input.captureTarget() } catch { dismiss(action: .focusChanged); notice(text); return }
         ownsTarget = true
         showNotice(text, reason: "refused")
         updateReceipt { $0.outcome = .blocked }
@@ -589,7 +599,7 @@ final class SuggestionCoordinator {
                 guard !expectedRows.isEmpty else { return true }
                 return (try? store?.suggestionRowsUnchanged(expectedRows)) == true
             }.value
-            guard self.isCurrent(token, field: field), current else {
+            guard await self.isCurrent(token, field: field), current else {
                 if token == self.generation { self.dismiss(action: current ? .focusChanged : .sourcesChanged) }
                 self.notice("Nothing inserted: the field or its sources changed."); return
             }

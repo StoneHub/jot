@@ -110,7 +110,7 @@ struct VocabularyView: View {
 private struct VocabularyRow: View {
     let entry: VocabularyEntry
     let edit: () -> Void
-    let toggle: (Bool) -> Void
+    let toggle: @MainActor @Sendable (Bool) -> Void
     let remove: () -> Void
 
     var body: some View {

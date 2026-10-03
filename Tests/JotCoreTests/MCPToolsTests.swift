@@ -60,4 +60,9 @@ final class MCPToolsTests: XCTestCase {
         XCTAssertEqual(MCPTool.catalog.filter(\.readOnly).map(\.name), ["speech_status", "transcripts_search", "transcripts_recent",
                                                                         "transcripts_since", "transcripts_read", "transcripts_sessions", "transcripts_export", "transcripts_events", "people_list"])
     }
+    func testForgetUsesTheCanonicalSocketMethod() throws {
+        let tool = try XCTUnwrap(MCPTool.catalog.first { $0.name == "people_forget" })
+        XCTAssertEqual(tool.method, "people.forget")
+    }
+
 }

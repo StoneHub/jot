@@ -10,7 +10,7 @@ final class SuggestionEvaluationSelectionTests: XCTestCase {
         XCTAssertEqual(corpus.version, 1)
         XCTAssertTrue(corpus.synthetic)
         XCTAssertEqual(corpus.scenarios.count, (json["scenarios"] as? [Any])?.count)
-        XCTAssertEqual(Set(corpus.scenarios.map(\.input.target.mode)), [.reply, .continuation, .shellCommand, .draft])
+        XCTAssertEqual(Set(corpus.scenarios.map(\.target.mode)), [.reply, .continuation, .shellCommand, .draft])
         for scenario in corpus.scenarios {
             if scenario.input.target.mode == .draft {
                 XCTAssertFalse(scenario.input.target.seed?.isEmpty ?? true, "A draft carries the notes it rewrites: \(scenario.id)")
@@ -101,7 +101,7 @@ final class SuggestionEvaluationSelectionTests: XCTestCase {
         }
         // The expected selection drives this mode even where retrieval would exclude the source.
         let scenario = try EvaluationFixture.scenario("agent-unknown-preference")
-        XCTAssertEqual(SourceSelector.oracleContext(scenario.input, included: ["s3"]).selected.map(\.id), ["s3"])
+        XCTAssertEqual(OracleSelection.select(scenario.input, included: ["s3"]).selected.map(\.id), ["s3"])
         XCTAssertFalse(SourceSelector.select(scenario.input).selected.map(\.id).contains("s3"))
     }
 
@@ -198,17 +198,17 @@ final class SuggestionEvaluationSelectionTests: XCTestCase {
     }
 
     func testPresentationProcessingKeepsAbstentionAndRejectionDistinct() {
-        XCTAssertEqual(SuggestionOutput.process("  `make test-export`\n", mode: .shellCommand), .suggestion("make test-export"))
-        XCTAssertEqual(SuggestionOutput.process("NO_SUGGESTION", mode: .reply), .abstained("model-abstained"))
-        XCTAssertEqual(SuggestionOutput.process(" NO_SUGGESTION.\n", mode: .reply), .abstained("model-abstained"))
-        XCTAssertEqual(SuggestionOutput.process(" \n", mode: .reply), .abstained("empty-output"))
-        XCTAssertEqual(SuggestionOutput.process("\"\"", mode: .reply), .abstained("empty-output"))
-        XCTAssertEqual(SuggestionOutput.process("``", mode: .continuation), .abstained("empty-output"))
-        XCTAssertEqual(SuggestionOutput.process("Sure. NO_SUGGESTION", mode: .reply), .rejected("mixed-abstain-marker"))
-        XCTAssertEqual(SuggestionOutput.process("make a\nmake b", mode: .shellCommand), .rejected("multiline-shell-command"))
-        XCTAssertEqual(SuggestionOutput.process("First line\nsecond line", mode: .reply), .suggestion("First line\nsecond line"))
-        XCTAssertEqual(SuggestionOutput.process("One.\n\nTwo.", mode: .continuation), .rejected("multiple-paragraphs"))
-        XCTAssertEqual(SuggestionOutput.process("make \u{1B}[31mtest", mode: .shellCommand), .rejected("control-characters"))
+        XCTAssertEqual(EvaluationSuggestionOutput.process("  `make test-export`\n", mode: .shellCommand), .suggestion("make test-export"))
+        XCTAssertEqual(EvaluationSuggestionOutput.process("NO_SUGGESTION", mode: .reply), .abstained("model-abstained"))
+        XCTAssertEqual(EvaluationSuggestionOutput.process(" NO_SUGGESTION.\n", mode: .reply), .abstained("model-abstained"))
+        XCTAssertEqual(EvaluationSuggestionOutput.process(" \n", mode: .reply), .abstained("empty-output"))
+        XCTAssertEqual(EvaluationSuggestionOutput.process("\"\"", mode: .reply), .abstained("empty-output"))
+        XCTAssertEqual(EvaluationSuggestionOutput.process("``", mode: .continuation), .abstained("empty-output"))
+        XCTAssertEqual(EvaluationSuggestionOutput.process("Sure. NO_SUGGESTION", mode: .reply), .rejected("mixed-abstain-marker"))
+        XCTAssertEqual(EvaluationSuggestionOutput.process("make a\nmake b", mode: .shellCommand), .rejected("multiline-shell-command"))
+        XCTAssertEqual(EvaluationSuggestionOutput.process("First line\nsecond line", mode: .reply), .suggestion("First line\nsecond line"))
+        XCTAssertEqual(EvaluationSuggestionOutput.process("One.\n\nTwo.", mode: .continuation), .rejected("multiple-paragraphs"))
+        XCTAssertEqual(EvaluationSuggestionOutput.process("make \u{1B}[31mtest", mode: .shellCommand), .rejected("control-characters"))
     }
 
     func testSameLengthEditsAndChangedSourcesWithdrawAPreview() throws {

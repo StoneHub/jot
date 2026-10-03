@@ -2,7 +2,8 @@
 public enum JotDefaultsKey {
     public static let cleanUpDictation = "cleanUpDictation"
     public static let cleanUpTranscriptions = "cleanUpTranscriptions"
-    public static let fnRequested = "fnRequested"
+    /// Historical storage key: keep its value so custom-shortcut preferences survive.
+    public static let dictationRequested = "fnRequested"
     public static let highlightTargetField = "highlightTargetField"
     public static let muteSpeakersDuringDictation = "muteSpeakersDuringDictation"
     public static let keepMacAwakeWhileListening = "keepMacAwakeWhileListening"

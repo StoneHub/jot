@@ -437,7 +437,7 @@ struct RecoveryFlowChecks {
         let partial = try store.latestRecoverableDictationAttempt()
         precondition(probe.delivered.isEmpty && partial?.hasGap == true && partial?.text == "segment1 segment3",
             "Recognition failure inserted a partial dictation as complete")
-        service.disableFn()
+        service.disableDictation()
         let afterDisable = try store.latestRecoverableDictationAttempt()
         precondition(afterDisable == partial, "Disabling shortcut deleted retained speech")
 
