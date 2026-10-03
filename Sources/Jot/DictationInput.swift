@@ -330,6 +330,7 @@ final class DictationInput {
             // Prefer direct text events. Clipboard fallback is safe only if no direct events were sent.
             path = try await ClipboardInsertion.deliver(paste: {
                 path = "clipboard_hid"
+                try validateTransaction(target, generation: generation)
                 try paste(text, into: target)
             }, type: {
                 path = "unicode_hid"

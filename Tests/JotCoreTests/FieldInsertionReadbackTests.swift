@@ -45,4 +45,23 @@ final class FieldInsertionReadbackTests: XCTestCase {
         XCTAssertEqual(fallback, "clipboard_hid")
         XCTAssertTrue(pasted)
     }
+    @MainActor func testCancelledPreparationFailureDoesNotPaste() async throws {
+        var preparing = false
+        var pasted = false
+        let request = Task {
+            try await ClipboardInsertion.deliver(paste: { await Task.yield(); pasted = true }, type: {
+                preparing = true
+                try? await Task.sleep(for: .seconds(10))
+                throw ClipboardInsertion.Failure.directUnavailable
+            })
+        }
+        while !preparing { await Task.yield() }
+        request.cancel()
+        do {
+            _ = try await request.value
+            XCTFail("A cancelled request must not fall back")
+        } catch is CancellationError {}
+        XCTAssertFalse(pasted)
+    }
+
 }
