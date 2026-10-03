@@ -38,17 +38,50 @@ final class WindowImageTests: XCTestCase {
 
     func testRegionRunsFromTheWindowTopToTheFieldInItsColumn() throws {
         let region = try XCTUnwrap(WindowImageGeometry.region(window: chat, field: composer))
-        // 1.3 × 400 = 520 points wide, centred on the field, from the window's top to the field's bottom.
-        XCTAssertEqual(region, CGRect(x: 140, y: 0, width: 520, height: 690))
+        XCTAssertEqual(region, CGRect(x: 200, y: 0, width: 400, height: 690))
     }
 
-    func testANarrowFieldStillGetsHalfTheWindowWithinItsEdges() throws {
+    func testANarrowFieldKeepsOnlyItsActualColumn() throws {
         let window = CGRect(x: 0, y: 0, width: 1000, height: 800)
         let region = try XCTUnwrap(WindowImageGeometry.region(window: window, field: CGRect(x: 10, y: 700, width: 100, height: 30)))
-        XCTAssertEqual(region, CGRect(x: 0, y: 0, width: 500, height: 730))
+        XCTAssertEqual(region, CGRect(x: 10, y: 0, width: 100, height: 730))
         let right = try XCTUnwrap(WindowImageGeometry.region(window: window, field: CGRect(x: 950, y: 100, width: 40, height: 20)))
-        XCTAssertEqual(right, CGRect(x: 500, y: 0, width: 500, height: 120))
+        XCTAssertEqual(right, CGRect(x: 950, y: 0, width: 40, height: 120))
         XCTAssertNil(WindowImageGeometry.region(window: window, field: CGRect(x: 1200, y: 100, width: 40, height: 20)))
+    }
+
+    func testReviewedComposerDoesNotExpandIntoTheAdjacentSidebar() throws {
+        let window = CGRect(x: 0, y: 0, width: 1000, height: 800)
+        let field = CGRect(x: 300, y: 700, width: 700, height: 40)
+        let region = try XCTUnwrap(WindowImageGeometry.region(window: window, field: field))
+        XCTAssertEqual(region, CGRect(x: 300, y: 0, width: 700, height: 740))
+    }
+
+    func testAFieldCrossingWindowEdgesIsIntersectedWithoutShiftingItsColumn() throws {
+        let left = try XCTUnwrap(WindowImageGeometry.region(window: chat,
+            field: CGRect(x: 80, y: 700, width: 100, height: 40)))
+        XCTAssertEqual(left, CGRect(x: 0, y: 0, width: 80, height: 690))
+        let right = try XCTUnwrap(WindowImageGeometry.region(window: chat,
+            field: CGRect(x: 1050, y: 700, width: 100, height: 40)))
+        XCTAssertEqual(right, CGRect(x: 950, y: 0, width: 50, height: 690))
+    }
+
+    func testTheVerticalRegionStillEndsAtTheFieldBottomClippedToTheWindow() throws {
+        let region = try XCTUnwrap(WindowImageGeometry.region(window: chat,
+            field: CGRect(x: 300, y: 830, width: 400, height: 50)))
+        XCTAssertEqual(region, CGRect(x: 200, y: 0, width: 400, height: 800))
+        XCTAssertNil(WindowImageGeometry.region(window: chat,
+            field: CGRect(x: 300, y: 0, width: 400, height: 40)))
+    }
+
+    func testTooLittleHorizontalOverlapSkipsTheImageRatherThanWideningIt() {
+        XCTAssertNil(WindowImageGeometry.region(window: chat,
+            field: CGRect(x: 300, y: 700, width: 15, height: 40)))
+        XCTAssertNil(WindowImageGeometry.region(window: chat,
+            field: CGRect(x: 1090, y: 700, width: 40, height: 40)))
+        XCTAssertEqual(WindowImageGeometry.region(window: chat,
+            field: CGRect(x: 300, y: 700, width: 16, height: 40)),
+            CGRect(x: 200, y: 0, width: 16, height: 690))
     }
 
     func testCaptureSizeKeepsTheLongerSideWithinTheLimit() {
@@ -61,14 +94,24 @@ final class WindowImageTests: XCTestCase {
     }
 
     func testRegionMapsIntoTheCapturedImage() {
-        let region = CGRect(x: 140, y: 0, width: 520, height: 690)
+        let region = CGRect(x: 200, y: 0, width: 400, height: 690)
         XCTAssertEqual(WindowImageGeometry.pixelRegion(region, window: chat.size, image: (width: 2000, height: 1600)),
-                       CGRect(x: 280, y: 0, width: 1040, height: 1380))
+                       CGRect(x: 400, y: 0, width: 800, height: 1380))
         // A smaller image scales the region down with it.
         XCTAssertEqual(WindowImageGeometry.pixelRegion(region, window: chat.size, image: (width: 1000, height: 800)),
-                       CGRect(x: 140, y: 0, width: 520, height: 690))
+                       CGRect(x: 200, y: 0, width: 400, height: 690))
         XCTAssertNil(WindowImageGeometry.pixelRegion(CGRect(x: 2000, y: 0, width: 10, height: 10), window: chat.size,
                                                      image: (width: 1000, height: 800)))
+    }
+
+    func testFractionalPixelEdgesRoundInsideTheHorizontalColumnOnly() {
+        let region = CGRect(x: 200.25, y: 0, width: 400.5, height: 690.25)
+        XCTAssertEqual(WindowImageGeometry.pixelRegion(region, window: chat.size, image: (width: 2000, height: 1600)),
+                       CGRect(x: 401, y: 0, width: 800, height: 1381))
+        XCTAssertEqual(WindowImageGeometry.pixelRegion(region, window: chat.size, image: (width: 1000, height: 800)),
+                       CGRect(x: 201, y: 0, width: 399, height: 691))
+        XCTAssertNil(WindowImageGeometry.pixelRegion(CGRect(x: 40.1, y: 0, width: 0.3, height: 20),
+                                                     window: chat.size, image: (width: 1000, height: 800)))
     }
 
     @MainActor

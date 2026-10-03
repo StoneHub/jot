@@ -1,7 +1,7 @@
 import Foundation
 
-/// Which window a suggestion's optional image comes from, and which part of it. Like `ScreenContext`, the image keeps
-/// what is above the field in a widened column; the field itself is included. The widening can include adjacent content.
+/// Which window a suggestion's optional image comes from, and which part of it. The image keeps the field's actual
+/// horizontal column, from the window's top to the field's bottom, intersected with the matched window.
 /// Frames are global points from the top left of the primary display, as both Accessibility and ScreenCaptureKit report
 /// them. Pure, so it can be checked without a screen.
 public enum WindowImageGeometry {
@@ -34,12 +34,10 @@ public enum WindowImageGeometry {
     }
 
     /// The part of the window to keep, in points from its top left: from the top of the window to the bottom of the
-    /// field, across the field's column widened to at least half the window. Nil when the field is not in the window.
+    /// field, across the field's actual horizontal column. Nil when the intersection is too small or the field is outside.
     public static func region(window: CGRect, field: CGRect) -> CGRect? {
         guard window.intersects(field) else { return nil }
-        let width = min(window.width, max(field.width * 1.3, window.width * 0.5))
-        var column = CGRect(x: field.midX - width / 2, y: window.minY, width: width, height: field.maxY - window.minY)
-        column.origin.x += max(0, window.minX - column.minX) - max(0, column.maxX - window.maxX)
+        let column = CGRect(x: field.minX, y: window.minY, width: field.width, height: field.maxY - window.minY)
         let region = column.intersection(window)
         guard !region.isNull, region.width >= 16, region.height >= 16 else { return nil }
         return region.offsetBy(dx: -window.minX, dy: -window.minY)
@@ -55,13 +53,16 @@ public enum WindowImageGeometry {
     }
 
     /// `region` in the pixels of an image of the whole window, whose top-left pixel is the window's top left. A
-    /// single-window capture ignores a source rectangle, so the region is cut from the image afterwards.
+    /// single-window capture ignores a source rectangle, so the region is cut from the image afterwards. Horizontal
+    /// edges round inward to keep complete pixels inside the column; vertical edges retain their outward rounding.
     public static func pixelRegion(_ region: CGRect, window: CGSize, image: (width: Int, height: Int)) -> CGRect? {
         guard window.width > 0, window.height > 0 else { return nil }
         let scaleX = CGFloat(image.width) / window.width, scaleY = CGFloat(image.height) / window.height
-        let pixels = CGRect(x: region.minX * scaleX, y: region.minY * scaleY,
-                            width: region.width * scaleX, height: region.height * scaleY)
-            .integral.intersection(CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        let left = (region.minX * scaleX).rounded(.up), right = (region.maxX * scaleX).rounded(.down)
+        let top = (region.minY * scaleY).rounded(.down), bottom = (region.maxY * scaleY).rounded(.up)
+        guard right > left else { return nil }
+        let pixels = CGRect(x: left, y: top, width: right - left, height: bottom - top)
+            .intersection(CGRect(x: 0, y: 0, width: image.width, height: image.height))
         return pixels.isNull || pixels.width < 1 || pixels.height < 1 ? nil : pixels
     }
 
