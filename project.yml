@@ -62,6 +62,7 @@ targets:
       - Sources/Jot/AudioClock.swift
       - Sources/Jot/SpeechOutput.swift
       - Sources/Jot/JotError.swift
+      - Sources/Jot/KeyboardTextEvents.swift
       - Sources/Jot/CaptureController.swift
       - Sources/Jot/DictationCoordinator.swift
       - Sources/Jot/DictationHighlight.swift

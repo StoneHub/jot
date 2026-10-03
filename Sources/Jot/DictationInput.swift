@@ -289,21 +289,23 @@ final class DictationInput {
             if let expected, !(await suggestionFieldIsCurrent(expected)) { throw InputError.targetChanged }
             let before = await snapshot(target, forSuggestion: expected != nil)
             try validateTransaction(target, generation: generation)
-            if let expected, !matches(before, expected: expected) { throw InputError.targetChanged }
+            if let expected, !(await matches(before, expected: expected)) { throw InputError.targetChanged }
+            try validateTransaction(target, generation: generation)
             var writable = DarwinBoolean(false)
-            var attemptedAX = false
+            var accessibilityResult: AXError?
             let selectionAttribute = kAXSelectedTextAttribute as CFString
             if AXUIElementIsAttributeSettable(target.field, selectionAttribute, &writable) == .success,
                writable.boolValue {
-                attemptedAX = true
                 let result = AXUIElementSetAttributeValue(target.field, selectionAttribute, text as CFString)
+                accessibilityResult = result
                 // Electron may report AX success while ignoring the setter. Give its
                 // accessibility tree a turn, then inspect what actually changed.
                 try await Task.sleep(nanoseconds: 70_000_000)
                 try validateTransaction(target, generation: generation)
                 let after = await snapshot(target, forSuggestion: expected != nil)
                 try validateTransaction(target, generation: generation)
-                let readback = FieldInsertionReadback.compare(before, after, inserted: text, requireValue: expected != nil)
+                let readback = await compare(before, after, inserted: text, requireValue: expected != nil)
+                try validateTransaction(target, generation: generation)
                 if readback == .verified { return delivery(target, path: path, outcome: "verified", verified: true) }
                 if !readback.allowsAccessibilityRetry(after: result) {
                     return delivery(target, path: path, outcome: "ambiguous_ax_write_no_retry", verified: false)
@@ -315,12 +317,14 @@ final class DictationInput {
             if let expected, !(await suggestionFieldIsCurrent(expected)) { throw InputError.targetChanged }
             let pasteBefore = await snapshot(target, forSuggestion: expected != nil)
             try validateTransaction(target, generation: generation)
-            if let expected, !matches(pasteBefore, expected: expected) { throw InputError.targetChanged }
-            if attemptedAX {
-                switch FieldInsertionReadback.compare(before, pasteBefore, inserted: text, requireValue: expected != nil) {
-                case .verified: return delivery(target, path: "accessibility", outcome: "verified", verified: true)
-                case .changed: return delivery(target, path: "accessibility", outcome: "changed_unverified_no_retry", verified: false)
-                default: break
+            if let expected, !(await matches(pasteBefore, expected: expected)) { throw InputError.targetChanged }
+            try validateTransaction(target, generation: generation)
+            if let accessibilityResult {
+                let readback = await compare(before, pasteBefore, inserted: text, requireValue: expected != nil)
+                try validateTransaction(target, generation: generation)
+                if readback == .verified { return delivery(target, path: "accessibility", outcome: "verified", verified: true) }
+                if !readback.allowsAccessibilityRetry(after: accessibilityResult) {
+                    return delivery(target, path: "accessibility", outcome: "ambiguous_ax_write_no_retry", verified: false)
                 }
             }
             // Prefer direct text events. Clipboard fallback is safe only if no direct events were sent.
@@ -336,7 +340,9 @@ final class DictationInput {
                 try validateTransaction(target, generation: generation)
                 let after = await snapshot(target, forSuggestion: expected != nil)
                 try validateTransaction(target, generation: generation)
-                switch FieldInsertionReadback.compare(pasteBefore, after, inserted: text, requireValue: expected != nil) {
+                let readback = await compare(pasteBefore, after, inserted: text, requireValue: expected != nil)
+                try validateTransaction(target, generation: generation)
+                switch readback {
                 case .verified: return delivery(target, path: path, outcome: "verified", verified: true)
                 case .changed: return delivery(target, path: path, outcome: "changed_unverified_no_retry", verified: false)
                 case .unchanged, .unknown: break
@@ -349,7 +355,7 @@ final class DictationInput {
         }
     }
 
-    struct SuggestionField {
+    struct SuggestionField: Sendable {
         let draft: SuggestionDraftSnapshot
         let bundleID: String
         let appName: String
@@ -547,10 +553,19 @@ final class DictationInput {
         }.value
     }
 
-    private func matches(_ snapshot: FieldInsertionSnapshot, expected: SuggestionField) -> Bool {
-        snapshot.value == expected.draft.value
-            && snapshot.selection?.location == expected.draft.location
-            && snapshot.selection?.length == expected.draft.length
+    private func matches(_ snapshot: FieldInsertionSnapshot, expected: SuggestionField) async -> Bool {
+        await Task.detached(priority: .userInitiated) {
+            snapshot.value == expected.draft.value
+                && snapshot.selection?.location == expected.draft.location
+                && snapshot.selection?.length == expected.draft.length
+        }.value
+    }
+
+    private func compare(_ before: FieldInsertionSnapshot, _ after: FieldInsertionSnapshot,
+                         inserted text: String, requireValue: Bool) async -> FieldInsertionReadback {
+        await Task.detached(priority: .userInitiated) {
+            FieldInsertionReadback.compare(before, after, inserted: text, requireValue: requireValue)
+        }.value
     }
 
     private func validateTransaction(_ target: Target, generation: Int) throws {
@@ -820,22 +835,11 @@ final class DictationInput {
     }
 
     private func typeUnicode(_ text: String, into target: Target, generation: Int) async throws {
-        guard let source = CGEventSource(stateID: .privateState) else { throw ClipboardInsertion.Failure.directUnavailable }
-        // Construct everything before dispatch: allocation failure must not leave partial text.
-        let events = try UnicodeTyping.chunks(text).map { chunk -> (CGEvent, CGEvent) in
-            guard let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
-                  let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else { throw ClipboardInsertion.Failure.directUnavailable }
-            down.flags = []; up.flags = []
-            down.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: chunk)
-            down.setIntegerValueField(.eventSourceUserData, value: Self.pasteEventMarker)
-            up.setIntegerValueField(.eventSourceUserData, value: Self.pasteEventMarker)
-            return (down, up)
-        }
-        for (down, up) in events {
-            await Task.yield()
-            try validateTransaction(target, generation: generation)
-            down.post(tap: .cghidEventTap); up.post(tap: .cghidEventTap)
-        }
+        let marker = Self.pasteEventMarker
+        let events = try await Task.detached(priority: .userInitiated) {
+            try KeyboardTextEvents.make(text, marker: marker)
+        }.value
+        try await events.dispatch { try self.validateTransaction(target, generation: generation) }
     }
 
     private func paste(_ text: String, into target: Target) throws {

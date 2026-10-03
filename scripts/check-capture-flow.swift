@@ -33,6 +33,13 @@ enum CaptureFlowChecks {
         }
     }
 
+    /// Device connection changes are confined to the fixture's main actor,
+    /// matching CaptureController's hardware callbacks without a captured var.
+    @MainActor final class ConnectedInputs {
+        var values: [AudioInputDevice]
+        init(_ values: [AudioInputDevice]) { self.values = values }
+    }
+
     @MainActor static func run() async throws {
         let microphone = FakeMicrophone()
         var dependencies = SpeechServiceDependencies(
@@ -45,8 +52,8 @@ enum CaptureFlowChecks {
             deliver: { _, _ in throw DictationInput.InputError.targetChanged },
             now: Date.init)
         dependencies.makeMicrophone = { microphone }
-        var connectedInputs: [AudioInputDevice] = [.init(id: "built-in", name: "Built-in"), .init(id: "verification-hub", name: "Hub")]
-        dependencies.availableInputs = { connectedInputs }
+        let connectedInputs = ConnectedInputs([.init(id: "built-in", name: "Built-in"), .init(id: "verification-hub", name: "Hub")])
+        dependencies.availableInputs = { connectedInputs.values }
         dependencies.defaultInputUID = { "built-in" }
         dependencies.microphoneRetry = MicrophoneStartRetry(delays: [0.01, 0.01])
         dependencies.prepareModels = { _ in }
@@ -94,7 +101,7 @@ enum CaptureFlowChecks {
         await service.waitForInputChange()
         precondition(service.capture.selectedInputUID == "verification-hub" && service.capture.findingInput,
                      "Silent default input did not try the connected hub")
-        connectedInputs.append(.init(id: "temporary-aggregate", name: "Aggregate", automaticCandidate: false))
+        connectedInputs.values.append(.init(id: "temporary-aggregate", name: "Aggregate", automaticCandidate: false))
         service.capture.refreshInputDevices()
         precondition(service.capture.findingInput, "A temporary aggregate device reset the microphone search")
         microphone.pendingSamples = [Float](repeating: 0.01, count: 48_000)
