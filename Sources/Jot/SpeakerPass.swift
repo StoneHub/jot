@@ -5,7 +5,7 @@ import JotCore
 
 /// The offline speaker pass: pyannote segmentation, WeSpeaker embeddings, and VBx clustering over a whole session. Its own actor, so a pass over a two-hour file never holds up live inference.
 actor SpeakerPass {
-    private var manager: OfflineDiarizerManager?
+    private var manager: PreparedSpeakerModels?
 
     /// Downloads the models once, then loads them from the same FluidAudio cache as the live models.
     func prepare() async throws { _ = try await loadedManager() }
@@ -23,7 +23,7 @@ actor SpeakerPass {
         let durationSeconds = AudioClock.seconds(samples: source.sampleCount)
         let began = Date()
         do {
-            let result = try await manager.process(audioSource: source, audioLoadingSeconds: 0)
+            let result = try await manager.value.process(audioSource: source, audioLoadingSeconds: 0)
             var speakers = result.speakerDatabase ?? [:]
             for segment in result.segments where speakers[segment.speakerId] == nil { speakers[segment.speakerId] = segment.embedding }
             return SpeakerPassResult(segments: result.segments.map { ($0.speakerId, Double($0.startTimeSeconds), Double($0.endTimeSeconds)) },
@@ -33,30 +33,14 @@ actor SpeakerPass {
         }
     }
 
-    private func loadedManager() async throws -> OfflineDiarizerManager {
+    private func loadedManager() async throws -> PreparedSpeakerModels {
         if let manager { return manager }
         let configuration = MLModelConfiguration()
         configuration.computeUnits = .cpuAndNeuralEngine
         let loaded = OfflineDiarizerManager()
         try await loaded.prepareModels(configuration: configuration)
-        manager = loaded
-        return loaded
-    }
-}
-
-/// A session file mapped into memory. It is already the Float32 layout FluidAudio streams for its own file input, so no converted copy is written anywhere.
-struct MappedFloat32Source: AudioSampleSource {
-    private let data: Data
-    let sampleCount: Int
-
-    init(url: URL) throws {
-        data = try Data(contentsOf: url, options: .mappedIfSafe)
-        sampleCount = data.count / MemoryLayout<Float>.stride
-    }
-
-    func copySamples(into destination: UnsafeMutablePointer<Float>, offset: Int, count: Int) throws {
-        guard count > 0, offset >= 0, offset < sampleCount else { return }
-        let available = min(sampleCount - offset, count)
-        data.withUnsafeBytes { destination.update(from: $0.bindMemory(to: Float.self).baseAddress!.advanced(by: offset), count: available) }
+        let prepared = PreparedSpeakerModels(manager: loaded)
+        manager = prepared
+        return prepared
     }
 }

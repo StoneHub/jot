@@ -62,7 +62,7 @@ public enum AppleFMGeneration {
     #if canImport(FoundationModels)
     @available(macOS 26.0, *)
     private static func options(for request: ModelRequest) -> GenerationOptions {
-        GenerationOptions(sampling: .greedy, maximumResponseTokens: request.maximumResponseTokens)
+        GenerationOptions(samplingMode: .greedy, maximumResponseTokens: request.maximumResponseTokens)
     }
     #endif
 }

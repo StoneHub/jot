@@ -58,8 +58,8 @@ struct ServiceControls: View {
             Divider()
             MicrophoneRow(service: service, capture: service.capture)
             ControlRow(symbol: "keyboard", title: "Dictation") {
-                Toggle("Dictation", isOn: Binding(get: { service.fnRequested }, set: { enabled in
-                    if enabled { Task { await service.enableFn() } } else { service.disableFn() }
+                Toggle("Dictation", isOn: Binding(get: { service.dictationRequested }, set: { enabled in
+                    if enabled { Task { await service.enableDictation() } } else { service.disableDictation() }
                 })).labelsHidden().toggleStyle(.switch)
             }.help("Hold \(service.shortcut.displayName) to dictate, while listening or paused. Double-tap Fn only requests suggestions when enabled.")
             ControlRow(title: "Hold to talk", secondary: true) { ShortcutSettings(service: service) }

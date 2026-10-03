@@ -78,3 +78,15 @@ Jot stores the Codable vocabulary separately in its `personalVocabulary` prefere
 `PerformanceDiagnostics` in JotCore keeps bounded numeric samples, typed lifecycle events, and per-job timings. SpeechService feeds it from the existing sampler, captures lifecycle transitions, and measures job queue/inference/completion time using monotonic uptime. Reports are exposed through `jot diagnostics` and `speech_diagnostics`; they have no SwiftUI view or published view model. See [local performance investigation](PERFORMANCE.md) for limits and measurement semantics.
 
 Debug and Release use the same product UI, with no DevFeedback picker, overlay, feedback tags, or generated row keys.
+
+## Concurrency, delivery and evaluation
+
+Jot, its recovery/window checks, CLI and JotCore compile in Swift 6 mode with complete strict concurrency. Xcode treats warnings as errors. UI delegates and lifecycle cleanup are isolated to the main actor; store execution and shortcut classification remain on their existing workers. A prepared offline speaker manager is immutable after loading, and its retained owner keeps an in-flight pass valid when the service unloads its reference.
+
+Accessibility identities cross workers through `AccessibilityElement`. Workers use fresh references before setting timeouts. Captured field references keep a 5 ms timeout for focus checks and setters. Field-value and hint reads run off the main actor; every await is followed by request/focus validation before a write or a result is accepted. Unicode dispatch yields between its 20-unit events. A timed-out or ambiguous AX write never triggers another insertion. `FieldInsertionReadback` decides verification and retry eligibility from transient snapshots without persisting text.
+
+Production suggestions expose reply, continuation and selection drafting. `JotSuggestionEvaluation` owns the corpus's historical shell mode, authored oracle selection, the two-second experiment deadline and cancellation grace waiting. Production retrieval and oracle evaluation share deterministic ranking and whole-source bounds. The committed corpus parity test checks selected sources, exclusions and exact model-request hashes across all four experiment/production selection configurations.
+
+Use dictation for the configured shortcut feature; Fn names only its physical gesture. `dictationRequested` and `dictationEnabled` are the canonical status fields. The old `fnRequested` and `fnEnabled` status fields remain compatibility aliases, and the existing `fnRequested` preference key is retained. Forgetting a remembered voice uses `people.forget`; `people.delete` remains a socket alias for existing clients. Capture means microphone intake; listening is the user's continuous-capture intent; an ambient session is the persisted session rather than held dictation. Raw transcripts and readable cleanup are distinct stored representations.
+
+Public types and independent production owners have named files. Nested types and related view helpers remain with their owner. Existing transcript schema, history, user voice and preference values are preserved.

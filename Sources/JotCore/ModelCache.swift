@@ -1,16 +1,5 @@
 import Foundation
 
-/// One speech model Jot downloads the first time it loads.
-public struct ModelDownload: Sendable, Identifiable, Equatable {
-    public let name: String
-    public let purpose: String
-    public let bytes: Int64
-    public var id: String { name }
-    public init(name: String, purpose: String, bytes: Int64) {
-        self.name = name; self.purpose = purpose; self.bytes = bytes
-    }
-}
-
 /// The on-disk cache FluidAudio fills the first time Jot prepares models.
 public enum ModelCache {
     public static var directory: URL {

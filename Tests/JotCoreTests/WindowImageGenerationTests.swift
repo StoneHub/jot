@@ -101,7 +101,7 @@ final class WindowImageGenerationTests: XCTestCase {
         let recorded = await rejections.recorded()
         XCTAssertEqual(recorded, 1, "Receipt provenance changes before the model gate's deadline, not after late completion")
         await blocker.release()
-        let settled = await gate.settle(within: .seconds(1))
+        let settled = await waitForModelGate(gate, within: .seconds(1))
         XCTAssertTrue(settled)
     }
 

@@ -5,40 +5,6 @@ import Foundation
 import JotCore
 import FluidAudio
 
-/// The raw values are stored in the capture_events table and shown in History.
-enum CaptureEventKind: String {
-    case started, paused, stopped, sleep
-    case deviceChange = "device_change", inputStalled = "input_stalled"
-    case audioGap = "audio_gap", audioDiscarded = "audio_discarded", processingError = "processing_error"
-    case speakerPass = "speaker_pass", sessionSplit = "session_split", databaseReplaced = "database_replaced"
-}
-
-/// Injectable seams for the agent-runnable recovery harness. Production still uses
-/// the real local pipeline and accessibility delivery; no socket or product UI is
-/// involved in synthetic verification.
-struct SpeechServiceDependencies {
-    var infer: @MainActor (SpeechPipeline, AudioJob, TranscriptionTuning) async throws -> SpeechOutput
-    var deliver: @MainActor (DictationInput, String) async throws -> DictationInput.DeliveryResult
-    var now: @MainActor () -> Date
-    var cleanup: @MainActor (TranscriptCleanup, [String], Duration) async -> CleanupResult = { cleaner, texts, timeout in
-        await cleaner.cleanWithOutcome(texts, timeout: timeout)
-    }
-    var intelligenceAvailability: @MainActor () -> CleanupAvailability = { TranscriptCleanup.availability }
-    var makeMicrophone: @MainActor () -> MicrophoneSource = { MicrophoneCapture() }
-    var microphoneRetry = MicrophoneStartRetry()
-    var availableInputs: () -> [AudioInputDevice] = AudioInputDevice.available
-    var defaultInputUID: () -> String? = AudioInputDevice.defaultUID
-    var prepareModels: @MainActor (SpeechPipeline) async throws -> Void = { try await $0.prepare() }
-    var unloadModels: @MainActor (SpeechPipeline) async -> Void = { await $0.unload() }
-    var microphoneAuthorization: @MainActor () -> AVAuthorizationStatus = { AVCaptureDevice.authorizationStatus(for: .audio) }
-    var requestMicrophoneAccess: @MainActor () async -> Bool = { await AVCaptureDevice.requestAccess(for: .audio) }
-
-    static let live = SpeechServiceDependencies(
-        infer: { pipeline, job, tuning in try await pipeline.infer(job, tuning: tuning) },
-        deliver: { input, text in try await input.insert(text) },
-        now: Date.init)
-}
-
 @MainActor
 final class SpeechService: ObservableObject {
     let dependencies: SpeechServiceDependencies
@@ -228,7 +194,7 @@ final class SpeechService: ObservableObject {
     }
 
     @Published var lifecycle = ServiceLifecycle()
-    @Published var fnRequested = UserDefaults.standard.bool(forKey: JotDefaultsKey.fnRequested)
+    @Published var dictationRequested = UserDefaults.standard.bool(forKey: JotDefaultsKey.dictationRequested)
     @Published private(set) var shortcut = ShortcutPreferences().load()
     @Published private(set) var suggestionShortcut = SuggestionShortcutPreferences().load()
     var canRequestSuggestion: Bool { suggestionBlocker == nil }
@@ -253,8 +219,8 @@ final class SpeechService: ObservableObject {
     }
     private func updateSuggestionMonitoring() {
         suggestions.dismiss(action: .settingsChanged)
-        input.dictationEnabled = fnEnabled
-        if fnEnabled || (suggestionsEnabled && DictationInput.accessibilityGranted) {
+        input.dictationEnabled = dictationEnabled
+        if dictationEnabled || (suggestionsEnabled && DictationInput.accessibilityGranted) {
             _ = input.enable()
         } else { input.disable() }
         input.fnSuggestionsEnabled = suggestionsEnabled
@@ -363,7 +329,7 @@ final class SpeechService: ObservableObject {
         diagnostics.record(job)
     }
 
-    @Published var fnEnabled = false
+    @Published var dictationEnabled = false
     @Published var droppedSeconds = 0.0
     /// Not published: it changes on every audio drain, and each published assignment tells the window to redraw.
     var lastAudioAt: Date?
@@ -580,7 +546,7 @@ final class SpeechService: ObservableObject {
                 markPerformance(.modelsReady)
                 UserDefaults.standard.set(true, forKey: JotDefaultsKey.modelsPrepared)
                 cachedModelBytes = ModelCache.bytesOnDisk()
-                if fnRequested { await enableFn() }
+                if dictationRequested { await enableDictation() }
                 if ambientRequested { try await activateAmbient(); try await continueMeeting() }
                 if lifecycle.acceptsWork(token) { notice = "" }
             } catch {
@@ -601,7 +567,7 @@ final class SpeechService: ObservableObject {
     private func restartMicrophone() {
         preparation = Task {
             do {
-                if fnRequested { await enableFn() }
+                if dictationRequested { await enableDictation() }
                 try await activateAmbient(); try await continueMeeting()
             } catch { notice = error.localizedDescription }
             preparation = nil; scheduleTimer()
@@ -691,22 +657,22 @@ final class SpeechService: ObservableObject {
         NSWorkspace.shared.open(url)
     }
 
-    func enableFn() async {
-        fnRequested = true; UserDefaults.standard.set(true, forKey: JotDefaultsKey.fnRequested)
+    func enableDictation() async {
+        dictationRequested = true; UserDefaults.standard.set(true, forKey: JotDefaultsKey.dictationRequested)
         let token = lifecycle.generation
         guard lifecycle.acceptsWork(token) else { return }
-        guard await requestMic(), lifecycle.acceptsWork(token), fnRequested else { return }
+        guard await requestMic(), lifecycle.acceptsWork(token), dictationRequested else { return }
         if !DictationInput.accessibilityGranted { input.requestAccessibility() }
-        fnEnabled = input.enable()
-        input.dictationEnabled = fnEnabled
-        if !fnEnabled { notice = "Enable Accessibility access in System Settings, then switch dictation on again." }
+        dictationEnabled = input.enable()
+        input.dictationEnabled = dictationEnabled
+        if !dictationEnabled { notice = "Enable Accessibility access in System Settings, then switch dictation on again." }
     }
 
-    func disableFn() {
-        fnRequested = false; UserDefaults.standard.set(false, forKey: JotDefaultsKey.fnRequested)
+    func disableDictation() {
+        dictationRequested = false; UserDefaults.standard.set(false, forKey: JotDefaultsKey.dictationRequested)
         if dictation.isActive { dictation.end() }
         suggestions.dismiss(action: .settingsChanged)
-        input.disable(); fnEnabled = false
+        input.disable(); dictationEnabled = false
         updateSuggestionMonitoring()
     }
 
@@ -990,7 +956,7 @@ final class SpeechService: ObservableObject {
             if lifecycle.finishPause(token) {
                 preparation = nil; notice = ""
                 // No models, no dictation: the tap stays on only for suggestions.
-                fnEnabled = false; updateSuggestionMonitoring()
+                dictationEnabled = false; updateSuggestionMonitoring()
                 markPerformance(.modelsUnloaded); scheduleTimer()
             }
             unloading = nil

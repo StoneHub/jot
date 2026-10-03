@@ -101,7 +101,7 @@ public final class TranscriptCleanup {
             let input = String(decoding: try JSONEncoder().encode(texts), as: UTF8.self)
             return try await AppleFMClient().generate(instructions: instructions, prompt: input,
                 generating: CleanedTranscripts.self,
-                options: GenerationOptions(sampling: .greedy, maximumResponseTokens: settings.int(JotSettings.cleanupMaximumTokens))).texts
+                options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: settings.int(JotSettings.cleanupMaximumTokens))).texts
         }
         #endif
         return texts

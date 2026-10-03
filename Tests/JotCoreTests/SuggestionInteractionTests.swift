@@ -365,7 +365,7 @@ final class SuggestionInteractionTests: XCTestCase {
         let blocked = await gate.call(request) { _ in XCTFail("overlap"); return "bad" }
         XCTAssertEqual(blocked, .blocked)
         await blocker.release()
-        let settled = await gate.settle(within: .seconds(1))
+        let settled = await waitForModelGate(gate, within: .seconds(1))
         XCTAssertTrue(settled)
     }
 }

@@ -43,7 +43,7 @@ enum EvaluationFixture {
     }
 
     static func syntheticScenario(sources: [SuggestionSource]) -> CorpusScenario {
-        CorpusScenario(id: "test-scenario", target: EvaluationFixture.target(), sources: sources, pendingSuggestion: nil,
+        CorpusScenario(id: "test-scenario", target: EvaluationTarget(EvaluationFixture.target()), sources: sources, pendingSuggestion: nil,
                        change: nil, expected: Expected(outcome: "abstain", includedSources: [], excludedSources: []),
                        scoring: Scoring(criteria: ["outcome"]))
     }

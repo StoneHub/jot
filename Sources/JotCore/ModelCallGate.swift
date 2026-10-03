@@ -8,13 +8,12 @@ public final class ModelCallGate {
 
     public let deadline: Duration
     public private(set) var outstanding = false
-    private var waiters: [OneShotCompletion<Bool>] = []
     private var interrupt: (() -> Void)?
 
     /// Dismissal releases the caller immediately, but retains the gate until generation actually ends.
     public func cancel() { interrupt?() }
 
-    public init(deadline: Duration = .seconds(2)) {
+    public init(deadline: Duration) {
         self.deadline = deadline
     }
 
@@ -35,9 +34,6 @@ public final class ModelCallGate {
                 outstanding = false
                 interrupt = nil
                 completion.finish(result)
-                let settled = waiters
-                waiters = []
-                for waiter in settled { waiter.finish(true) }
             }
             interrupt = {
                 completion.finish(.cancelled)
@@ -51,18 +47,7 @@ public final class ModelCallGate {
         }
     }
 
-    /// Waits up to `limit` for an outstanding request to return. False means it is still running.
-    public func settle(within limit: Duration) async -> Bool {
-        guard outstanding else { return true }
-        return await withCheckedContinuation { continuation in
-            let completion = OneShotCompletion(continuation)
-            waiters.append(completion)
-            Task {
-                try? await Task.sleep(for: limit)
-                completion.finish(false)
-            }
-        }
-    }
+
 }
 extension ModelCallGate {
     /// A task's value, or nil once the deadline passes or the caller is cancelled. Optional context never keeps a

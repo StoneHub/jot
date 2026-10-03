@@ -14,7 +14,7 @@ extension SpeechService {
 
     /// A store read and its JSON encoding, off the main actor: a follower paging through history must not stall the screens
     /// or the recognition that shares the store lock with it. The store serializes its own SQLite access.
-    private func readOffMain<T: Encodable>(_ read: @escaping @Sendable () throws -> T) async throws -> Any {
+    private func readOffMain<T: Encodable & Sendable>(_ read: @escaping @Sendable () throws -> T) async throws -> Any {
         try await Task.detached(priority: .userInitiated) {
             let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
             return JSONValue(value: try JSONSerialization.jsonObject(with: encoder.encode(try read())))
@@ -32,8 +32,8 @@ extension SpeechService {
         var result: [String: Any] = ["mode": mode, "models": modelState.rawValue, "microphoneRunning": capture.running,
             "microphonePermission": AVCaptureDevice.authorizationStatus(for: .audio).rawValue,
             "suggestions": suggestions.diagnostics,
-            "accessibilityGranted": DictationInput.accessibilityGranted, "fnEnabled": fnEnabled,
-            "dictationShortcut": shortcut.displayName, "fnRequested": fnRequested, "ambientRequested": ambientRequested, "ambientEnabled": ambientEnabled, "keepMacAwakeWhileListening": keepMacAwakeWhileListening, "keepAwakeActive": keepAwakeActive, "servicePhase": lifecycle.phase.rawValue,
+            "accessibilityGranted": DictationInput.accessibilityGranted, "dictationEnabled": dictationEnabled, "fnEnabled": dictationEnabled,
+            "dictationShortcut": shortcut.displayName, "dictationRequested": dictationRequested, "fnRequested": dictationRequested, "ambientRequested": ambientRequested, "ambientEnabled": ambientEnabled, "keepMacAwakeWhileListening": keepMacAwakeWhileListening, "keepAwakeActive": keepAwakeActive, "servicePhase": lifecycle.phase.rawValue,
             "notice": notice, "sessionID": timeline.sessionID, "inferenceRunning": transcriber.processing != nil || diagnosticActive, "speakerPassRunning": speakers.passRunning, "resources": try object(resources),
             "droppedAudioSeconds": droppedSeconds, "queuedAudioSeconds": pendingAudioSeconds, "processingLagSeconds": transcriber.lagSeconds,
             "lastInferenceSeconds": transcriber.lastInferenceSeconds, "processedAudioSeconds": transcriber.processedAudioSeconds,
@@ -183,7 +183,7 @@ extension SpeechService {
                 let iso = ISO8601DateFormatter()
                 var rows: [[String: Any]] = []
                 if let you = speakers.userVoice {
-                    // The user's own voice, learned from dictation holds; "you" is its id for people.delete.
+                    // The user's own voice, learned from dictation holds; "you" is its id for people.forget.
                     rows.append(["id": "you", "name": UserVoice.label, "sampleCount": you.sampleCount, "heldSeconds": you.heldSeconds,
                                  "trusted": you.trusted, "updatedAt": iso.string(from: you.updatedAt)])
                 }
@@ -191,7 +191,7 @@ extension SpeechService {
                 let people = try await storeExecutor.perform { try peopleStore?.list() ?? [] }
                 rows += people.map { ["id": $0.id, "name": $0.name, "sampleCount": $0.sampleCount, "createdAt": iso.string(from: $0.createdAt), "updatedAt": iso.string(from: $0.updatedAt)] }
                 result = rows
-            case "people.delete":
+            case "people.forget", "people.delete":
                 guard let id = params["id"] as? String else { throw JotError.message("id is required") }
                 if id == "you" { speakers.forgetUserVoice() } else { let store = speakers.peopleStore; try await storeExecutor.submit { try store?.delete(id: id) }.value; speakers.refreshPeople() }
                 result = ["deleted": true]

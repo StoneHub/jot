@@ -27,4 +27,11 @@ public enum ClipboardInsertion {
         do { try type(); return "unicode_hid" }
         catch Failure.directUnavailable { try paste(); return "clipboard_hid" }
     }
+    /// Async direct typing yields between bounded UTF-16 events. Allocation failures
+    /// can still fall back; cancellation/partial dispatch must never paste again.
+    public static func deliver(paste: () async throws -> Void, type: () async throws -> Void) async throws -> String {
+        do { try await type(); return "unicode_hid" }
+        catch Failure.directUnavailable { try await paste(); return "clipboard_hid" }
+    }
+
 }

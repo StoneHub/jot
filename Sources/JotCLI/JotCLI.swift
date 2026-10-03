@@ -162,7 +162,7 @@ struct JotCLI {
             return ("people.list", [:])
         case "forget":
             guard args.count == 2 else { throw CLIError.usage("Use: jot forget <person-id>") }
-            return ("people.delete", ["id": args[1]])
+            return ("people.forget", ["id": args[1]])
         case "label":
             guard args.count >= 4 else { throw CLIError.usage("Use: jot label <session-id> <speaker-id> <name>") }
             return ("speakers.label", ["sessionID": args[1], "speakerID": args[2], "name": args.dropFirst(3).joined(separator: " ")])
@@ -256,7 +256,7 @@ private struct MCPServer {
         case "ping": try emit(result(id: id, value: [:]))
         case "tools/list":
             let list: [[String: Any]] = MCPTool.catalog.map { tool in
-                ["name": tool.name, "description": tool.description, "inputSchema": ["type": "object", "properties": tool.properties, "required": tool.required, "additionalProperties": false], "annotations": ["readOnlyHint": tool.readOnly, "destructiveHint": tool.method == "people.delete", "openWorldHint": tool.method == "models.prepare"]]
+                ["name": tool.name, "description": tool.description, "inputSchema": ["type": "object", "properties": tool.properties, "required": tool.required, "additionalProperties": false], "annotations": ["readOnlyHint": tool.readOnly, "destructiveHint": tool.method == "people.forget", "openWorldHint": tool.method == "models.prepare"]]
             }
             try emit(result(id: id, value: ["tools": list]))
         case "tools/call":

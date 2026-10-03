@@ -150,7 +150,7 @@ func milliseconds(_ duration: Duration) -> Int { Int((duration / Duration.millis
 @MainActor
 final class SuggestionEvaluation {
     let configuration: EvaluationConfiguration
-    let gate: ModelCallGate
+    let gate: EvaluationModelGate
     private let generator: ModelCallGate.Generator
     private var coldCallMade = false
     /// Set when a request cannot be shown to have finished; nothing further is started.
@@ -159,7 +159,7 @@ final class SuggestionEvaluation {
     init(configuration: EvaluationConfiguration, generator: @escaping ModelCallGate.Generator) {
         self.configuration = configuration
         self.generator = generator
-        gate = ModelCallGate(deadline: configuration.deadline)
+        gate = EvaluationModelGate(deadline: configuration.deadline)
     }
 
     func run(_ corpus: Corpus, emit: (EvaluationRecord) throws -> Void) async throws {
@@ -181,7 +181,7 @@ final class SuggestionEvaluation {
         case .normal:
             selection = SourceSelector.select(input, limits: configuration.limits.limits)
         case .oracleContext:
-            selection = SourceSelector.oracleContext(input, included: scenario.oracle.expected.includedSources,
+            selection = OracleSelection.select(input, included: scenario.oracle.expected.includedSources,
                                                      limits: configuration.limits.limits)
         }
         var record = EvaluationRecord(scenarioID: scenario.id, iteration: iteration, configuration: configuration,
@@ -191,7 +191,7 @@ final class SuggestionEvaluation {
         if selection.selected.isEmpty && input.target.mode != .draft {
             record.detail = "no-selected-source"
         } else {
-            await generate(SuggestionPrompt.request(for: input, sources: selection.selected), mode: input.target.mode,
+            await generate(EvaluationSuggestionPrompt.request(for: input, mode: scenario.target.mode, sources: selection.selected), mode: scenario.target.mode,
                            began: began, into: &record)
         }
         if let change = scenario.change {
@@ -210,7 +210,7 @@ final class SuggestionEvaluation {
         return record
     }
 
-    private func generate(_ request: ModelRequest, mode: SuggestionMode, began: ContinuousClock.Instant,
+    private func generate(_ request: ModelRequest, mode: EvaluationSuggestionMode, began: ContinuousClock.Instant,
                           into record: inout EvaluationRecord) async {
         record.request = request
         let callBegan = ContinuousClock.now
@@ -226,7 +226,7 @@ final class SuggestionEvaluation {
         switch result {
         case .output(let raw):
             record.rawOutput = raw
-            switch SuggestionOutput.process(raw, mode: mode) {
+            switch EvaluationSuggestionOutput.process(raw, mode: mode) {
             case .suggestion(let text):
                 record.outcome = .suggest
                 record.outputText = text

@@ -1,25 +1,5 @@
 import Foundation
 
-/// A sleep interruption resumes only the listening session that sleep interrupted.
-public struct SleepResumePolicy: Sendable {
-    private var sleeping = false
-    private var pending = false
-    public init() {}
-    public mutating func willSleep(ambientRunning: Bool) {
-        guard !sleeping else { return }
-        sleeping = true
-        pending = ambientRunning
-    }
-    public mutating func didWake() { sleeping = false }
-    public mutating func cancel() { pending = false }
-    /// `paused`: the microphone is off and neither a pause nor a start is under way. The models may still be loaded.
-    public mutating func takeResume(paused: Bool) -> Bool {
-        guard pending, !sleeping, paused else { return false }
-        pending = false
-        return true
-    }
-}
-
 /// Generation checks prevent work that started before Pause from reactivating capture.
 public struct ServiceLifecycle: Sendable {
     public enum Phase: String, Codable, Sendable { case paused, starting, ready, pausing, failed }
@@ -46,18 +26,4 @@ public struct ServiceLifecycle: Sendable {
         phase = .paused; return true
     }
     public func acceptsWork(_ token: UInt64) -> Bool { phase == .ready && token == generation }
-}
-
-/// What a pause leaves for Resume. Sleep, an input change, and stalled input pause
-/// automatically and keep listening intent; the Pause button clears it and ends a meeting.
-public struct PauseOutcome: Equatable, Sendable {
-    public let ambientRequested: Bool
-    public let meetingTitle: String?
-    /// True when the Pause button ended a running meeting, so the notice can say where its transcript went.
-    public let endedMeeting: Bool
-    public init(automatic: Bool, ambientRequested: Bool, meetingTitle: String?) {
-        self.ambientRequested = automatic && ambientRequested
-        self.meetingTitle = automatic ? meetingTitle : nil
-        endedMeeting = !automatic && meetingTitle != nil
-    }
 }

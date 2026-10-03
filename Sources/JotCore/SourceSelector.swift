@@ -16,14 +16,7 @@ public enum SourceSelector {
                 candidates.append(source)
             }
         }
-        return bounded(candidates, reasons: reasons, input: input, limits: limits)
-    }
-
-    /// Oracle-context mode: exactly the authored included sources, to isolate generation from retrieval.
-    public static func oracleContext(_ input: SuggestionRequest, included: [String], limits: SelectionLimits = .experiment) -> SourceSelection {
-        var reasons: [String: ExclusionReason] = [:]
-        for source in input.sources where !included.contains(source.id) { reasons[source.id] = .notInOracleContext }
-        return bounded(input.sources.filter { included.contains($0.id) }, reasons: reasons, input: input, limits: limits)
+        return bound(candidates, reasons: reasons, input: input, limits: limits)
     }
 
     public static func ineligibility(of source: SuggestionSource, among sources: [SuggestionSource], for target: SuggestionTarget, association: ContextAssociation = .scoped) -> ExclusionReason? {
@@ -60,7 +53,7 @@ public enum SourceSelector {
     /// Within a tier the user's own words come first, then the sources that share the most distinctive words and
     /// three-word runs with the field's text, notes and own context; newer wins a tie. So a video playing after the
     /// user's spoken reply, or a phone call after a dictated note, fills what room is left rather than taking theirs.
-    private static func bounded(_ candidates: [SuggestionSource], reasons: [String: ExclusionReason], input: SuggestionRequest,
+    public static func bound(_ candidates: [SuggestionSource], reasons: [String: ExclusionReason] = [:], input: SuggestionRequest,
                                 limits: SelectionLimits) -> SourceSelection {
         func ownContext(_ source: SuggestionSource) -> Bool {
             source.kind == ScreenContext.kind

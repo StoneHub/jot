@@ -15,7 +15,7 @@ public struct MCPTool {
     }
 
     /// tools/list reports the tools in this order.
-    public static let catalog: [MCPTool] = [
+    public static var catalog: [MCPTool] { [
         MCPTool("speech_status", "speech.status", "Get capture state, model state, and current system impact statistics.", [:], []),
         MCPTool("speech_diagnostics", "speech.diagnostics", "Read bounded local memory, lifecycle, and latency diagnostics without audio, transcripts, vocabulary, or app identities.", [:], []),
         MCPTool("speech_start", "speech.start", "Resume continuous microphone transcription when the user explicitly requests listening.", [:], []),
@@ -38,9 +38,9 @@ public struct MCPTool {
         MCPTool("context_add", "context.add", "Give Jot one message from the current agent conversation, so a suggestion the user requests can draw on it. Kept in memory for the suggestion window only, never saved. Role is user or assistant; source names the app.", ["role": ["type": "string", "maxLength": 9], "source": ["type": "string", "maxLength": 64], "conversation": ["type": "string", "maxLength": 200], "text": ["type": "string", "maxLength": 8192]], ["role", "source", "text"]),
         MCPTool("context_clear", "context.clear", "Forget every agent message Jot is holding for suggestions.", [:], []),
         MCPTool("people_list", "people.list", "List the voices Jot remembers: id, name, and how many voice samples each holds. The first row, id \"you\", is the user's own voice learned from dictation once Jot has learned it. Embeddings are not returned.", [:], []),
-        MCPTool("people_forget", "people.delete", "Forget one remembered voice by id when the user asks; id \"you\" forgets the user's own learned voice. Names already written into sessions stay.", ["id": ["type": "string"]], ["id"])
-    ]
-    public static let limitSchema: [String: Any] = ["type": "integer", "minimum": 1, "maximum": 200, "default": 50]
+        MCPTool("people_forget", "people.forget", "Forget one remembered voice by id when the user asks; id \"you\" forgets the user's own learned voice. Names already written into sessions stay.", ["id": ["type": "string"]], ["id"])
+    ] }
+    public static var limitSchema: [String: Any] { ["type": "integer", "minimum": 1, "maximum": 200, "default": 50] }
 
     /// Runs before any socket call; `jot mcp` returns the thrown message as the tool result text.
     public func validate(arguments: [String: Any]) throws {
@@ -60,9 +60,4 @@ public struct MCPTool {
             }
         }
     }
-}
-
-public enum MCPToolError: Error, LocalizedError {
-    case invalid(String)
-    public var errorDescription: String? { switch self { case .invalid(let message): return message } }
 }
