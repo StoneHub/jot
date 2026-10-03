@@ -65,6 +65,7 @@ final class SpeechService: ObservableObject {
         agentContext: agentContext,
         allowed: { [weak self] in self?.canRequestSuggestion == true },
         readsScreen: { [weak self] in self?.suggestionScreenContext == true },
+        includesWindowImage: { [weak self] in self?.suggestionWindowImage == true },
         window: { [weak self] in TimeInterval((self?.suggestionWindowMinutes ?? 10) * 60) },
         matchesHeardSpeech: { [weak self] in self?.suggestionHeardMatches == true },
         userVoice: { [weak self] in self?.speakers.userVoice },
@@ -126,6 +127,10 @@ final class SpeechService: ObservableObject {
             updateSuggestionMonitoring()
         case JotDefaultsKey.suggestionScreenContext, JotDefaultsKey.suggestionHeardMatches, JotDefaultsKey.suggestionWindowMinutes:
             suggestions.dismiss(action: .settingsChanged)
+        case JotDefaultsKey.suggestionWindowImage:
+            // The one place Screen Recording is asked for: turning the image on, never a request.
+            if suggestionWindowImage && !WindowImageCapture.permitted { WindowImageCapture.requestPermission() }
+            suggestions.dismiss(action: .settingsChanged)
         case JotDefaultsKey.highlightTargetField:
             if !highlightTargetField { dictation.hideHighlight() }
         case JotDefaultsKey.muteSpeakersDuringDictation:
@@ -160,6 +165,14 @@ final class SpeechService: ObservableObject {
         get { settings.bool(JotDefaultsKey.suggestionScreenContext) }
         set { save(JotDefaultsKey.suggestionScreenContext, newValue) }
     }
+    /// Add one image of the window around the field to a request. Local, in memory for that request, never stored.
+    var suggestionWindowImage: Bool {
+        get { settings.bool(JotDefaultsKey.suggestionWindowImage) }
+        set { save(JotDefaultsKey.suggestionWindowImage, newValue) }
+    }
+    /// The model is ready and takes images: macOS 27 or later with a model that has vision.
+    var windowImageSupported: Bool { AppleFMGeneration.acceptsImages }
+    func openScreenRecordingSettings() { openSettings("Privacy_ScreenCapture") }
     /// A selection rewrite can restore quoted words from matching speech within the context window.
     var suggestionHeardMatches: Bool {
         get { settings.bool(JotDefaultsKey.suggestionHeardMatches) }
@@ -288,6 +301,8 @@ final class SpeechService: ObservableObject {
     @Published var checkingModels = false
     @Published var micPermission = AVCaptureDevice.authorizationStatus(for: .audio)
     @Published var accessibilityGranted = DictationInput.accessibilityGranted
+    /// Screen Recording, for the optional window image. macOS may need Jot reopened before a new permission applies.
+    @Published private(set) var screenRecordingAllowed = WindowImageCapture.permitted
     @Published private(set) var cachedModelBytes = ModelCache.bytesOnDisk()
     /// Set when a resume would download models that are not cached yet. The view asks before any download starts.
     @Published var downloadPrompt: Int64?
@@ -630,6 +645,8 @@ final class SpeechService: ObservableObject {
         if micPermission != microphone { micPermission = microphone }
         let accessibility = DictationInput.accessibilityGranted
         if accessibilityGranted != accessibility { accessibilityGranted = accessibility }
+        let screen = WindowImageCapture.permitted
+        if screenRecordingAllowed != screen { screenRecordingAllowed = screen }
     }
 
     var permissionsMissing: Bool { micPermission != .authorized || !accessibilityGranted }

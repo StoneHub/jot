@@ -22,7 +22,7 @@ The product remains a general solution for compatible computer text fields; Code
 - Tab accepts a ready card and Escape cancels a loading or ready one; both keys are then kept from the app. Any other key dismisses the card and reaches the app. A "No suggestion" notice is dismissed by any key, including Escape, without keeping it from the app.
 - Acceptance inserts into the unchanged field or shell buffer. Sending a message and executing a command remain separate user actions. A grounded “Yes, fix X” is a valid draft; the suggestion itself is not authorization to perform the fix.
 - Keep ordinary Tab behavior when no valid suggestion is being accepted. Native/browser integrations need collision and composition checks before consuming Tab; the shell bridge can use the existing ZLE acceptance behavior.
-- Let the user see why a suggestion appeared, with concise source attribution such as “Recent dictation + meeting ‘Standup’” on the card. Excluding individual sources, apps or sites is not built; the controls that exist are the General toggles for screen context, matching speech and the window length, and `jot context clear` for agent messages.
+- Let the user see why a suggestion appeared, with concise source attribution such as “Recent dictation + meeting ‘Standup’” on the card. Excluding individual sources, apps or sites is not built; the controls that exist are the General toggles for screen context, the optional window image, matching speech and the window length, and `jot context clear` for agent messages.
 
 ## Existing foundation and evidence
 

@@ -64,3 +64,18 @@ public final class ModelCallGate {
         }
     }
 }
+extension ModelCallGate {
+    /// A task's value, or nil once the deadline passes or the caller is cancelled. Optional context never keeps a
+    /// dismissed request alive, and a native capture that ignores cancellation cannot deliver a late image.
+    public static func value<Value: Sendable>(of task: Task<Value, Never>, within limit: Duration) async -> Value? {
+        guard !Task.isCancelled else { task.cancel(); return nil }
+        let wait = OptionalContextWait<Value>()
+        let value = await withTaskCancellationHandler {
+            await wait.value(of: task, within: limit)
+        } onCancel: {
+            task.cancel()
+            Task { @MainActor in wait.cancel() }
+        }
+        return Task.isCancelled ? nil : value
+    }
+}
