@@ -1,12 +1,13 @@
 # Jot agreements
 
-Jot is a personal Mac app, and Monroe is its only user. Follow Fleet's development guidance for Mac apps: ship fixes and features fast, with evidence for the exact revision. Native-unvalidated app changes stay unmerged. Monroe's end-to-end use complements native build and test validation.
+Jot is a personal Mac app, and Monroe is its only user. Ship fixes and features fast: a change merges once a Mac run of `local-pr-check` passes the gates its diff needs, and Monroe's end-to-end use is the acceptance test.
 
 ## Delivery
 
-- Publish authorized fixes and features as draft PRs after the available checks and independent review pass. Merge only with merge authorization and the required validation for the current head and base. GitHub Actions stays manual-only; a portable pass is not a native pass.
-- On the Mac, `python3 scripts/local-pr-check.py <PR>` picks diagnostic checks from the diff. The opt-in `--publish-status` mode runs all four gates and publishes `jot/local-macos-validation` using existing `gh` credentials, with explicit SHA/base-bound manual attestations when required (see the cloud guide). It never installs, approves or merges. Only after an authorized merge, install with `python3 scripts/build-install.py --configuration Release` and verify it. The installer is capture-safe and needs Jot paused and idle. Ask only if replacing the running app would interrupt Monroe's capture.
-- In a cloud session, follow [docs/CLOUD-WORK.md](docs/CLOUD-WORK.md): run the portable checks, say plainly what remains uncompiled or untested, and leave native-unvalidated changes unmerged with a specific Mac validation list in the PR.
+- Open a PR per issue once the checks you can run and one independent review pass. Merge on a Mac when `python3 scripts/local-pr-check.py <PR>` reports `PASS` on the PR head with current `main` merged in. Manual attestations are not merge gates: list them as a short test-when-you-sit-down list in the PR, and fix forward what Monroe finds. GitHub Actions stays manual-only; a portable pass is not a native pass.
+- On the Mac, `python3 scripts/local-pr-check.py <PR>` picks diagnostic checks from the diff. The opt-in `--publish-status` mode runs all four gates and publishes `jot/local-macos-validation` using existing `gh` credentials, with explicit SHA/base-bound manual attestations when required (see the cloud guide). It never installs, approves or merges. After a merge, install with `python3 scripts/build-install.py --configuration Release` and verify it. The installer is capture-safe and needs Jot paused and idle. Ask only if replacing the running app would interrupt Monroe's capture.
+- In a cloud session, follow [docs/CLOUD-WORK.md](docs/CLOUD-WORK.md): run the portable checks, say plainly what remains uncompiled or untested, and leave the merge to a Mac session, with a specific Mac validation list in the PR.
+- **Swarm:** when you lead or work the swarm queue (claiming an issue, running a tick, a hand-off), follow [docs/SWARM.md](docs/SWARM.md).
 - Fix forward. When `main` fails to build or the installed app misbehaves, fixing that comes before new work. A small revert is acceptable when the fix is not obvious.
 - For pipeline changes, run the real-model `JotRecoveryChecks --audio` path by hand. `local-pr-check` does not cover it.
 - For a CPU problem, export `jot diagnostics` before relaunching Jot. Its buffer clears on quit.
