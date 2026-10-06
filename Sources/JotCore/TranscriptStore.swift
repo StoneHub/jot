@@ -84,19 +84,20 @@ public final class TranscriptStore: @unchecked Sendable {
         CREATE TABLE IF NOT EXISTS people (id TEXT PRIMARY KEY, name TEXT NOT NULL, embedding BLOB NOT NULL, sample_count INTEGER NOT NULL CHECK(sample_count >= 1), created_at REAL NOT NULL, updated_at REAL NOT NULL);
         """
 
-    /// One latest entry per live row, plus ID-only tombstones. A deletion allocates its sequence while the parent still exists, then the foreign-key cascade removes the temporary live entry. Both streams share the existing AUTOINCREMENT counter; no source rows or old cursors are rewritten.
+    /// One latest entry per live row, plus ID-only tombstones keyed by id and session. Reusing an id in another session must keep the old session's deletion. A deletion allocates its sequence while the parent still exists, then the foreign-key cascade removes the temporary live entry. Both streams share the existing AUTOINCREMENT counter; no source rows or old cursors are rewritten.
     private static let changeSchema = """
         CREATE TABLE IF NOT EXISTS transcript_changes (seq INTEGER PRIMARY KEY AUTOINCREMENT, transcript_id TEXT NOT NULL UNIQUE REFERENCES transcripts(id) ON DELETE CASCADE ON UPDATE CASCADE);
-        CREATE TABLE IF NOT EXISTS transcript_deletions (seq INTEGER PRIMARY KEY, transcript_id TEXT NOT NULL UNIQUE, session_id TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS transcript_deletions (seq INTEGER PRIMARY KEY, transcript_id TEXT NOT NULL, session_id TEXT NOT NULL, UNIQUE(transcript_id,session_id));
+        CREATE INDEX IF NOT EXISTS transcript_deletion_id_sequence ON transcript_deletions(transcript_id,seq DESC);
         CREATE TABLE IF NOT EXISTS transcript_feed_identity (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), generation TEXT NOT NULL);
         INSERT OR IGNORE INTO transcript_feed_identity VALUES(1, lower(hex(randomblob(16))));
         CREATE TRIGGER IF NOT EXISTS transcript_change_delete BEFORE DELETE ON transcripts BEGIN
           DELETE FROM transcript_changes WHERE transcript_id = OLD.id;
           INSERT INTO transcript_changes(transcript_id) VALUES(OLD.id);
           INSERT INTO transcript_deletions(seq,transcript_id,session_id) SELECT seq,transcript_id,OLD.session_id FROM transcript_changes WHERE transcript_id = OLD.id
-            ON CONFLICT(transcript_id) DO UPDATE SET seq=excluded.seq,session_id=excluded.session_id; END;
+            ON CONFLICT(transcript_id,session_id) DO UPDATE SET seq=excluded.seq; END;
         CREATE TRIGGER IF NOT EXISTS transcript_change_restore AFTER INSERT ON transcripts BEGIN
-          DELETE FROM transcript_deletions WHERE transcript_id = NEW.id; END;
+          DELETE FROM transcript_deletions WHERE transcript_id = NEW.id AND session_id = NEW.session_id; END;
         CREATE TRIGGER IF NOT EXISTS transcript_change_label_insert AFTER INSERT ON speaker_labels BEGIN
           DELETE FROM transcript_changes WHERE transcript_id IN (SELECT id FROM transcripts WHERE session_id=NEW.session_id AND speaker_id=NEW.speaker_id);
           INSERT INTO transcript_changes(transcript_id) SELECT id FROM transcripts WHERE session_id=NEW.session_id AND speaker_id=NEW.speaker_id ORDER BY id; END;
@@ -128,6 +129,8 @@ public final class TranscriptStore: @unchecked Sendable {
             let start = reset ? 0 : cursor ?? head
             guard start < head else { return TranscriptChanges(rows: [], cursor: head, hasMore: false, reset: reset, generation: generation) }
             let size = clamp(limit)
+            // A filtered follower needs its session's last deletion. A global follower needs only the id's latest state:
+            // suppress old-session tombstones while that id is live, or retain just its newest deletion when it is gone.
             let stmt = try db.prepare("""
                 SELECT c.seq,t.id,t.session_id,t.started_at,t.start_seconds,t.end_seconds,COALESCE(r.text,t.text),t.speaker_id,t.mode,l.name,0
                 FROM transcript_changes c JOIN transcripts t ON t.id=c.transcript_id LEFT JOIN transcript_readable r ON r.transcript_id=t.id
@@ -136,6 +139,9 @@ public final class TranscriptStore: @unchecked Sendable {
                 UNION ALL
                 SELECT d.seq,d.transcript_id,d.session_id,NULL,NULL,NULL,NULL,NULL,NULL,NULL,1 FROM transcript_deletions d
                 WHERE d.seq > ?1 AND d.seq <= ?2 AND (?3 IS NULL OR d.session_id = ?3)
+                  AND NOT EXISTS (SELECT 1 FROM transcripts live WHERE live.id = d.transcript_id AND (?3 IS NULL OR live.session_id = ?3))
+                  AND NOT EXISTS (SELECT 1 FROM transcript_deletions newer WHERE newer.transcript_id = d.transcript_id AND newer.seq > d.seq
+                    AND (?3 IS NULL OR newer.session_id = ?3))
                 ORDER BY 1 LIMIT ?4
                 """)
             defer { sqlite3_finalize(stmt) }

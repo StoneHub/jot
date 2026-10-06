@@ -349,6 +349,77 @@ final class TranscriptChangesTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(TranscriptChanges.self, from: JSONEncoder().encode(page)), page)
     }
 
+    func testCrossSessionReinsertionRetainsTheOldSessionsDeletion() throws {
+        let store = try TranscriptStore(directory: directory)
+        try store.append(row("same-id", session: "A", seconds: 0))
+        let cursor = try store.changes(since: 0, sessionID: "A").cursor
+        try store.deleteTranscripts(ids: ["same-id"])
+        try store.append(row("same-id", session: "B", seconds: 0))
+        let oldSession = try store.changes(since: cursor, sessionID: "A", limit: 1)
+        XCTAssertEqual(oldSession.deleted, [.init(id: "same-id", sessionID: "A", sequence: 2)])
+        XCTAssertTrue(oldSession.rows.isEmpty)
+        XCTAssertEqual(oldSession.cursor, 3)
+        let global = try store.changes(since: cursor, limit: 1)
+        XCTAssertEqual(global.rows.map(\.transcript.sessionID), ["B"])
+        XCTAssertTrue(global.deleted.isEmpty, "The global follower replaces the id with its latest live row")
+        XCTAssertFalse(global.hasMore)
+    }
+
+    func testRepeatedCrossSessionReuseConvergesWithMixedPagesAndNoDuplicateIDs() throws {
+        let store = try TranscriptStore(directory: directory)
+        var cursors: [String: Int64] = [:]
+        var copies: [String: [String: String]] = [:]
+        func poll() throws {
+            for key in ["all", "A", "B", "C"] {
+                let sessionID = key == "all" ? nil : key
+                var seen = Set<String>()
+                var copy = copies[key] ?? [:]
+                repeat {
+                    let cursor = cursors[key] ?? 0
+                    let page = try store.changes(since: cursor, generation: store.generation, sessionID: sessionID, limit: 1)
+                    XCTAssertFalse(page.reset)
+                    XCTAssertLessThanOrEqual(page.rows.count + page.deleted.count, 1)
+                    XCTAssertGreaterThanOrEqual(page.cursor, cursor)
+                    for deletion in page.deleted {
+                        XCTAssertTrue(seen.insert(deletion.id).inserted, "One latest change per id, across all pages")
+                        copy.removeValue(forKey: deletion.id)
+                    }
+                    for change in page.rows {
+                        XCTAssertTrue(seen.insert(change.transcript.id).inserted)
+                        copy[change.transcript.id] = change.transcript.text
+                    }
+                    cursors[key] = page.cursor
+                    if !page.hasMore { break }
+                } while true
+                copies[key] = copy
+                let source = try sessionID.map { try store.session(id: $0) } ?? store.recent(limit: 200)
+                XCTAssertEqual(copy, Dictionary(uniqueKeysWithValues: source.map { ($0.id, $0.text) }), key)
+            }
+        }
+        try store.append(row("same-id", session: "A", seconds: 0, text: "first A"))
+        try store.append(row("keep-A", session: "A", seconds: 1))
+        try store.append(row("remove-B", session: "B", seconds: 1))
+        try poll()
+        for session in ["B", "C", "B"] {
+            try store.deleteTranscripts(ids: ["same-id"])
+            try store.append(row("same-id", session: session, seconds: 0, text: "now \(session)"))
+        }
+        try store.append(row("new-A", session: "A", seconds: 2))
+        try store.deleteTranscripts(ids: ["remove-B"])
+        try poll()
+        try store.deleteTranscripts(ids: ["same-id"])
+        try poll()
+        try store.append(row("same-id", session: "A", seconds: 3, text: "returned A"))
+        try poll()
+        try store.deleteTranscripts(ids: ["same-id"])
+        try poll()
+        let replay = try store.changes(since: 0, limit: 200)
+        XCTAssertEqual(replay.deleted.filter { $0.id == "same-id" }.count, 1, "Global history replay coalesces deletions across sessions")
+        for session in ["A", "B", "C"] {
+            XCTAssertEqual(try store.changes(since: 0, sessionID: session).deleted.filter { $0.id == "same-id" }.count, 1)
+        }
+    }
+
     private func count(_ sql: String) throws -> Int {
         var db: OpaquePointer?; var stmt: OpaquePointer?
         defer { sqlite3_finalize(stmt); sqlite3_close(db) }
