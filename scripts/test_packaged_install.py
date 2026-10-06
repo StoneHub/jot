@@ -123,6 +123,35 @@ class PackagedInstallTests(unittest.TestCase):
             self.install()
         self.assert_previous()
 
+    def test_product_cli_rejects_root_symlink_before_resolving_it(self):
+        alias = self.base / 'alias/Jot.app'
+        alias.parent.mkdir()
+        alias.symlink_to(self.app, target_is_directory=True)
+        args = list(self.args)
+        args[args.index('--product') + 1] = str(alias)
+        with self.assertRaises(SystemExit), patch('os.kill') as kill:
+            self.installer.main(args)
+        kill.assert_not_called()
+        self.assert_previous()
+
+    def test_internal_symlink_to_external_file_is_rejected_before_runtime_changes(self):
+        external = self.base / 'external-resource'
+        external.write_bytes(b'not from the package')
+        (self.app / 'Contents/Resource').symlink_to(external)
+        with self.assertRaises(SystemExit), patch('os.kill', side_effect=lambda pid, sig: (_ for _ in ()).throw(ProcessLookupError()) if sig == 0 else None) as kill:
+            self.install()
+        kill.assert_not_called()
+        self.assert_previous()
+
+    def test_framework_symlinks_with_contained_targets_remain_valid(self):
+        versions = self.app / 'Contents/Frameworks/Test.framework/Versions'
+        (versions / 'A/Resources').mkdir(parents=True)
+        (versions / 'A/Test').write_bytes(b'synthetic framework')
+        (versions / 'Current').symlink_to('A', target_is_directory=True)
+        (versions.parent / 'Test').symlink_to('Versions/Current/Test')
+        (versions.parent / 'Resources').symlink_to('Versions/Current/Resources', target_is_directory=True)
+        self.installer.verify_product(self.app, 'Release', 'FIXTURETEAM', self.expected)
+
     def test_team_and_signature_failures_refuse_before_stopping_runtime(self):
         for failure in ('team', 'signature', 'entitlements'):
             with self.subTest(failure=failure), patch('os.kill') as kill:

@@ -13,6 +13,7 @@ import signal
 import subprocess
 import time
 from signing import local_signing_configuration, verify_signing_team
+from packaged_product import validate_product_paths
 
 root = Path(__file__).resolve().parents[1]
 work = root / 'build'
@@ -23,6 +24,7 @@ def digest(path):
 
 
 def product_info(source):
+    validate_product_paths(source)
     info = plistlib.loads((source / 'Contents/Info.plist').read_bytes())
     if (source.name != 'Jot.app' or info.get('CFBundleIdentifier') != 'space.jot.app'
             or info.get('CFBundleExecutable') != 'Jot'
@@ -187,7 +189,8 @@ def main(argv=None):
             parser.error('--expected-sha256 must be a lowercase SHA-256 digest')
     elif any(expected_fields):
         parser.error('--expected-* requires --product')
-    product = options.product.resolve() if options.product else None
+    # Preserve the supplied path until containment checks reject a root symlink.
+    product = options.product.absolute() if options.product else None
     os.chdir(root)
     work.mkdir(exist_ok=True)
     expected = None

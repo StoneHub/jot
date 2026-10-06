@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 from signing import local_signing_configuration, official_signing_configuration
+from packaged_product import validate_product_paths
 
 def install_packaged_product(installer, archive, checksum, team, version, build_number, executable_sha256, environment):
     """Install from the final published ZIP, using the original verified executable hash."""
@@ -19,8 +20,9 @@ def install_packaged_product(installer, archive, checksum, team, version, build_
         raise SystemExit('Release ZIP checksum or asset name differs; product not installed.')
     with tempfile.TemporaryDirectory(prefix='jot-release-product-') as directory:
         subprocess.run(['ditto', '-x', '-k', str(archive), directory], check=True)
+        product = validate_product_paths(Path(directory) / 'Jot.app', container=directory)
         subprocess.run([sys.executable, str(installer), '--configuration', 'Release',
-                        '--product', str(Path(directory) / 'Jot.app'),
+                        '--product', str(product),
                         '--expected-team', team, '--expected-version', version,
                         '--expected-build', build_number, '--expected-sha256', executable_sha256],
                        env=environment, check=True)

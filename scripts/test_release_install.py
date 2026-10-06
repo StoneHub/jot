@@ -8,10 +8,12 @@ import os
 from pathlib import Path
 import plistlib
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from unittest.mock import patch
 
 
@@ -41,7 +43,12 @@ class ReleaseInstallTests(unittest.TestCase):
                                              'FIXTURETEAM', '0.2.14', '21', 'a' * 64, {'FIXTURE': 'true'})
 
     def test_final_zip_handoff_pins_team_version_build_and_executable_hash(self):
-        with patch('subprocess.run') as run:
+        def extract(command, **kwargs):
+            if command[0] == 'ditto':
+                (Path(command[4]) / 'Jot.app').mkdir()
+            return subprocess.CompletedProcess(command, 0)
+
+        with patch('subprocess.run', side_effect=extract) as run:
             self.install()
         extract, install = run.call_args_list
         self.assertEqual(extract.args[0][:4], ['ditto', '-x', '-k', str(self.archive)])
@@ -76,11 +83,45 @@ class ReleaseInstallTests(unittest.TestCase):
         self.assertFalse(Path(run.call_args.args[0][4]).exists())
 
     @unittest.skipUnless(sys.platform == 'darwin' and shutil.which('ditto'), 'native ditto requires macOS')
+    def test_native_zip_with_external_app_symlink_is_rejected_before_installer(self):
+        outside = self.root / 'outside/Jot.app'
+        (outside / 'Contents/MacOS').mkdir(parents=True)
+        (outside / 'Contents/MacOS/Jot').write_bytes(b'outside the ZIP')
+        link = zipfile.ZipInfo('Jot.app')
+        link.create_system = 3
+        link.external_attr = (stat.S_IFLNK | 0o777) << 16
+        with zipfile.ZipFile(self.archive, 'w') as archive:
+            archive.writestr(link, str(outside))
+        self.checksum.write_text(f'{hashlib.sha256(self.archive.read_bytes()).hexdigest()}  {self.archive.name}\n')
+        original = subprocess.run
+        installer_calls = []
+
+        def run(command, **kwargs):
+            if command[0] == 'ditto':
+                result = original(command, **kwargs)
+                extracted = Path(command[4]) / 'Jot.app'
+                self.assertTrue(extracted.is_symlink())
+                self.assertEqual(extracted.resolve(), outside.resolve())
+                return result
+            installer_calls.append(command)
+            return subprocess.CompletedProcess(command, 0)
+
+        with patch('subprocess.run', side_effect=run), self.assertRaises(SystemExit):
+            self.install()
+        self.assertEqual(installer_calls, [])
+
+    @unittest.skipUnless(sys.platform == 'darwin' and shutil.which('ditto'), 'native ditto requires macOS')
     def test_native_ditto_handoff_uses_archived_bytes_after_source_changes(self):
         product = self.root / 'product/Jot.app/Contents/MacOS'
         product.mkdir(parents=True)
         executable = product / 'Jot'
         executable.write_bytes(b'synthetic packaged bytes')
+        versions = product.parent / 'Frameworks/Test.framework/Versions'
+        (versions / 'A/Resources').mkdir(parents=True)
+        (versions / 'A/Test').write_bytes(b'synthetic framework')
+        (versions / 'Current').symlink_to('A', target_is_directory=True)
+        (versions.parent / 'Test').symlink_to('Versions/Current/Test')
+        (versions.parent / 'Resources').symlink_to('Versions/Current/Resources', target_is_directory=True)
         original = subprocess.run
         original(['ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', str(product.parents[1]), str(self.archive)], check=True)
         self.checksum.write_text(f'{hashlib.sha256(self.archive.read_bytes()).hexdigest()}  {self.archive.name}\n')
@@ -93,11 +134,36 @@ class ReleaseInstallTests(unittest.TestCase):
             installer_calls.append(command)
             extracted = Path(command[command.index('--product') + 1]) / 'Contents/MacOS/Jot'
             self.assertEqual(extracted.read_bytes(), b'synthetic packaged bytes')
+            framework = extracted.parent.parent / 'Frameworks/Test.framework'
+            self.assertTrue((framework / 'Versions/Current').is_symlink())
+            self.assertEqual((framework / 'Test').read_bytes(), b'synthetic framework')
             return subprocess.CompletedProcess(command, 0)
 
         with patch('subprocess.run', side_effect=run):
             self.install()
         self.assertEqual(len(installer_calls), 1)
+
+    @unittest.skipUnless(sys.platform == 'darwin' and shutil.which('ditto'), 'native ditto requires macOS')
+    def test_native_zip_with_escaping_internal_symlink_is_rejected(self):
+        product = self.root / 'product/Jot.app'
+        (product / 'Contents').mkdir(parents=True)
+        outside = self.root / 'external-resource'
+        outside.write_bytes(b'outside the ZIP')
+        (product / 'Contents/Resource').symlink_to(outside)
+        original = subprocess.run
+        original(['ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', str(product), str(self.archive)], check=True)
+        self.checksum.write_text(f'{hashlib.sha256(self.archive.read_bytes()).hexdigest()}  {self.archive.name}\n')
+        installer_calls = []
+
+        def run(command, **kwargs):
+            if command[0] == 'ditto':
+                return original(command, **kwargs)
+            installer_calls.append(command)
+            return subprocess.CompletedProcess(command, 0)
+
+        with patch('subprocess.run', side_effect=run), self.assertRaises(SystemExit):
+            self.install()
+        self.assertEqual(installer_calls, [])
 
     def test_fixture_release_builds_once_and_installs_from_the_final_zip(self):
         for directory in ('scripts', 'docs', 'Sources/JotCore', 'Resources', 'build/product/Jot.app/Contents/MacOS'):
