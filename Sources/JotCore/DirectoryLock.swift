@@ -1,9 +1,8 @@
 import Foundation
 
 /// An advisory lock on Jot's directory, held for the life of the process that opened the store. Debug, worktree and
-/// Xcode builds all share `~/Library/Application Support/Jot`, and opening an older-format database rebuilds the file;
-/// with the lock, a second Jot launched while the installed app runs finds it held and leaves the database alone, so a
-/// rebuild can never unlink the file under a running writer. `flock` locks the open file description, so a second lock
+/// Xcode builds all share `~/Library/Application Support/Jot`; with the lock, a second Jot launched while the installed
+/// app runs finds it held and leaves the database, microphone and socket alone. `flock` locks the open file description, so a second lock
 /// in the same process fails the same way, which the test relies on. Releasing the lock closes the descriptor.
 public final class DirectoryLock {
     public enum Failure: Error, LocalizedError, Equatable {
