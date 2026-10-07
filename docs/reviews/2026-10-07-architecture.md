@@ -28,7 +28,7 @@ Some repeated work is intentional:
 | Focused field / visible window | `SuggestionFieldReader`, `ScreenContextReader`, optional `WindowImageCapture` | Bind data to the target/request; invalidate after edits/focus changes. Images stay request-local. |
 | Consumer APIs | `JotCLI` / MCP catalog → local socket → `SpeechServiceIPC` | Add pure folding/filtering types for consumers; avoid another capture, model instance or generic event bus. |
 
-These are appropriate boundaries for current features. The protocol boundary is less strongly typed than the in-process pipeline: socket methods/JSON and some source kinds are strings, so catalog/decoder tests remain important. A universal input-stream framework would add indirection without solving the known defects. PR #203 completed the change feed (#122). The next consumer capabilities are wake filtering (#192) and a bounded cancellable wait with speech timing (#194).
+These are appropriate boundaries for current features. The protocol boundary is less strongly typed than the in-process pipeline: socket methods/JSON and some source kinds are strings, so catalog/decoder tests remain important. A universal input-stream framework would add indirection without solving the known defects. PR #203 completed the change feed (#122), and #192 wake filtering shipped in #212. The opt-in agent skill (#193) and blocking MCP listener (#198) follow; #194 adds a bounded cancellable wait with speech timing.
 
 ## Quality through a reviewer's eyes
 
@@ -36,7 +36,7 @@ Strengths: Swift 6 with complete strict concurrency and warnings treated as erro
 
 Risks: `@unchecked Sendable` owners depend on lock/queue discipline; large coordinators mix wiring, projections, state and effects; some file comments describe the older incremental path rather than today's asynchronous commit path; stateful callbacks require readers to follow lifetime and cancellation ownership. Manual cross-app keyboard, field and model-output acceptance cannot be inferred from compiler success.
 
-The serious persistence defect found in this audit is automatic deletion of unsupported older schemas. #205 implements a fix using a read-only compatibility refusal before a mutable SQLite connection changes journal state. Supporting formats 7/8 and adding feed metadata need no history reset.
+The serious persistence defect found in this audit was automatic deletion of unsupported older schemas. #205 is fixed and shipped in #211: a read-only compatibility refusal runs before a mutable SQLite connection can change journal state. Supporting formats 7/8 and adding feed metadata need no history reset.
 
 ## Large files
 
@@ -55,9 +55,9 @@ The earlier one-type-per-file work largely shipped; creating dozens more files i
 
 ## Avoidable work and bounds
 
-These are source-backed risks requiring measurements, not claimed observed slowdowns:
+The audit identified these source-backed bounds and work-growth issues; current status is below. The remaining performance risks require measurements, not assumed speedup claims:
 
-1. **Pending audio writes (#207):** `SessionAudioFile.append` queues closures retaining packets without admission accounting. Its two-hour file cap is checked later in the writer and does not bound pending memory. Bound pending work and make unavailable/truncated audio explicit so the speaker pass cannot use a discontinuous timeline.
+1. **Pending audio writes (#207), fixed in #213:** the audit found queued closures retaining packets without admission accounting; the two-hour file cap did not bound pending memory. `SessionAudioWriter` now admits at most eight seconds / 40 packets of pending audio. Admission overflow or write failures invalidate and remove the offline file, so the speaker pass cannot use a discontinuous timeline; the file-size cap retains a continuous two-hour prefix marked truncated. Live capture and recognition continue independently.
 2. **Long held dictation (#208):** `updateAttemptText` calls `recoveryText` across the entire hold for every recognized block, then rebuilds/upserts the full text. The recovery query also reads evidence/words per candidate row. Measure and incrementally update or coalesce without weakening crash recovery and cancellation.
 3. **Long active sessions (#209):** `LibraryRows.addCommitted` calls the full `sessionSummary` aggregate each block. That rescans the growing session. The older `add` path is incremental but cannot simply replace it: asynchronous snapshots may already include the same rows. Preserve identity/revision correctness while bounding new-block work.
 4. **Model lifecycle:** offline speaker models prepare with live models even when no pass is needed yet. Lazy preparation is a candidate after measuring startup latency and memory against first-pass cost.
