@@ -116,12 +116,15 @@ extension SpeechService {
                 let store = library.store
                 result = try await readOffMain { try store?.sessions(limit: limit) ?? [] }
             case "transcripts.since":
-                guard let cursor = params["cursor"] as? Int ?? (params["cursor"] == nil ? 0 : nil), cursor >= 0 else { throw JotError.message("cursor must be a nonnegative integer") }
+                let cursor = params["cursor"] as? Int
+                guard params["cursor"] == nil || (cursor != nil && cursor! >= 0) else { throw JotError.message("cursor must be a nonnegative integer") }
+                let generation = params["generation"] as? String
+                guard params["generation"] == nil || generation?.isEmpty == false else { throw JotError.message("generation must be a nonempty string") }
                 let sessionID = params["sessionID"] as? String
                 guard params["sessionID"] == nil || sessionID?.isEmpty == false else { throw JotError.message("sessionID must be a nonempty string") }
                 let store = library.store
                 result = try await readOffMain {
-                    try store?.changes(since: Int64(cursor), sessionID: sessionID, limit: limit) ?? TranscriptChanges(rows: [], cursor: Int64(cursor), hasMore: false)
+                    try store?.changes(since: cursor.map(Int64.init), generation: generation, sessionID: sessionID, limit: limit) ?? TranscriptChanges(rows: [], cursor: Int64(cursor ?? 0), hasMore: false)
                 }
             case "transcripts.read":
                 guard let id = params["id"] as? String else { throw JotError.message("id is required") }
