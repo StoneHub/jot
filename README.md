@@ -19,6 +19,10 @@ Jot listens while resumed and saves a searchable transcript locally. Hold **Fn**
 
 *Screenshot shows an earlier Jot build with a harmless test dictation. The current app also includes Live, Sessions, Vocabulary, and configurable dictation controls.*
 
+## Android
+
+The Android app lives in [jot-android](https://github.com/StoneHub/jot-android), a standalone repository and Android Studio project. Its current **Jot Model Lab** compares local NPU speech recognition and cleanup before cross-app integration. Clone that repository for Android development; see its [device requirements](https://github.com/StoneHub/jot-android#hardware-contract-and-current-limits) and [maintenance roadmap](https://github.com/StoneHub/jot-android/issues/1).
+
 ## Get started
 
 **Download status:** a public notarized app download is not available yet. Existing GitHub assets are prerelease builds for local testing. The first supported public release is being prepared; see the [release checklist](docs/RELEASING.md).
