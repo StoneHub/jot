@@ -1,7 +1,7 @@
 import Foundation
 import JotCore
 
-/// One ambient session's audio on disk, kept only until the speaker pass has read it. Writes run on a utility queue; the controller hands over each drained packet and moves on.
+/// One ambient session's audio for the offline speaker pass. The shared writer owns file I/O and bounded admission.
 final class SessionAudioFile: @unchecked Sendable {
     struct Outcome: Sendable {
         let url: URL
@@ -12,64 +12,25 @@ final class SessionAudioFile: @unchecked Sendable {
     static let byteLimit = AudioClock.samples(seconds: 7200) * MemoryLayout<Float>.size
     let sessionID: String
     let url: URL
-    private let queue = DispatchQueue(label: "space.jot.session-audio", qos: .utility)
-    private var handle: FileHandle?
-    private var bytes = 0
-    private var truncated = false
-    private var failure: Error?
+    private let writer: SessionAudioWriter
 
     init(sessionID: String) {
         self.sessionID = sessionID
         url = SessionAudioPaths.url(sessionID: sessionID)
+        writer = SessionAudioWriter(url: url, byteLimit: Self.byteLimit)
     }
 
-    func append(_ samples: [Float]) {
-        guard !samples.isEmpty else { return }
-        queue.async { self.write(samples.withUnsafeBufferPointer { Data(buffer: $0) }) }
-    }
+    func append(_ samples: [Float]) { writer.append(samples) }
+    func appendSilence(samples count: Int) { writer.appendSilence(samples: count) }
 
-    /// Zeros stand in for samples the capture queue dropped, so a position in the file stays equal to a session offset.
-    func appendSilence(samples count: Int) {
-        guard count > 0 else { return }
-        queue.async { self.write(Data(count: count * MemoryLayout<Float>.size)) }
-    }
-
-    private func write(_ data: Data) {
-        guard failure == nil, !truncated else { return }
-        do {
-            if handle == nil {
-                try SessionAudioPaths.prepareDirectory()
-                guard FileManager.default.createFile(atPath: url.path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
-                    throw JotError.message("Could not create the session audio file.")
-                }
-                handle = try FileHandle(forWritingTo: url)
-            }
-            let room = Self.byteLimit - bytes
-            if data.count > room { truncated = true }
-            let chunk = data.count > room ? data.prefix(room) : data
-            try handle?.write(contentsOf: chunk)
-            bytes += chunk.count
-        } catch { failure = error; remove() }
-    }
-
-    /// Closes the file once every queued write is on disk. Nil when no audio arrived; throws the first write error, and nothing is left on disk then.
+    /// Throws instead of offering a discontinuous file to the pass when writes overflow or fail.
     func finish() async throws -> Outcome? {
-        try await withCheckedThrowingContinuation { continuation in
-            queue.async {
-                try? self.handle?.close(); self.handle = nil
-                if let failure = self.failure { continuation.resume(throwing: failure); return }
-                guard self.bytes > 0 else { self.remove(); continuation.resume(returning: nil); return }
-                continuation.resume(returning: Outcome(url: self.url, durationSeconds: AudioClock.seconds(samples: self.bytes / MemoryLayout<Float>.size), truncated: self.truncated))
-            }
-        }
+        guard let result = try await writer.finish() else { return nil }
+        return Outcome(url: url, durationSeconds: AudioClock.seconds(samples: result.bytes / MemoryLayout<Float>.size),
+                       truncated: result.truncated)
     }
 
-    /// Deletes the file after any queued write, for a session that gets no pass.
-    func discard() {
-        queue.async { try? self.handle?.close(); self.handle = nil; self.remove() }
-    }
-
-    private func remove() { try? FileManager.default.removeItem(at: url) }
+    func discard() { writer.discard() }
 
     /// Deletes the files an earlier run left behind and returns their session ids so each deletion is logged.
     static func discardStale(except sessionID: String) -> [String] {
