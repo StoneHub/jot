@@ -416,10 +416,6 @@ final class SpeechService: ObservableObject {
             library.store = opened
             // Diagnostics are best effort; a telemetry schema failure must not stop capture or history access.
             suggestionHistory = try? await storeExecutor.perform { try SuggestionHistory(sharing: opened) }
-            if opened.replacedDatabase {
-                recordEvent(.databaseReplaced, "Saved history was in a format this version does not read; it was deleted and an empty database created.")
-                notice = "Saved history was in a format this version does not read, so it was replaced with an empty history."
-            }
             // Converts interrupted holds with the vocabulary loaded above.
             try await dictation.finalizeInterruptedAttempts()
             speakers.speakerStore = try await storeExecutor.perform { try SpeakerPassStore(sharing: opened) }

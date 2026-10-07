@@ -2,7 +2,7 @@ import XCTest
 import SQLite3
 @testable import JotCore
 
-/// Opening the database: format 8, and format 7 that 0.2.5 and 0.2.6 wrote, open with every row; any other format is replaced by an empty database, and nothing else in the directory is touched.
+/// Supported formats open with every row; unsupported databases are refused and their history is preserved.
 final class DatabaseFormatTests: XCTestCase {
     private var directory: URL!
     override func setUpWithError() throws {
@@ -168,44 +168,60 @@ final class DatabaseFormatTests: XCTestCase {
         XCTAssertEqual(try dump().first, "9")
     }
 
-    func testAnOlderFormatIsReplacedWithAnEmptyDatabaseAndNothingElseIsTouched() throws {
-        for version in [0, 6] {
+    func testUnsupportedFormatsAreRefusedWithoutChangingHistoryOrNeighbors() throws {
+        for version in [0, 6, 9] {
             try FileManager.default.removeItem(at: directory)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let neighbors: [String: Data] = ["audio/s1.f32": Data([1, 2, 3, 4]), "service.sock": Data("socket".utf8),
-                "transcripts.sqlite3.bak": Data("backup".utf8), "other.sqlite3": Data("other".utf8), "other.sqlite3-wal": Data("other wal".utf8),
-                "notes.txt": Data("notes".utf8)]
+            writeFormerDatabase(version: version)
+            // The refusal must precede switching an existing rollback-journal database to WAL.
+            var db: OpaquePointer?
+            XCTAssertEqual(sqlite3_open(databaseURL.path, &db), SQLITE_OK)
+            XCTAssertEqual(sqlite3_exec(db, "PRAGMA journal_mode=DELETE", nil, nil, nil), SQLITE_OK)
+            sqlite3_close(db)
+            let neighbors = ["audio/s1.f32": Data("synthetic audio".utf8), "you.json": Data("synthetic voice".utf8),
+                             "transcripts.sqlite3.bak": Data("backup".utf8), "notes.txt": Data("notes".utf8)]
             for (path, data) in neighbors {
                 let url = directory.appendingPathComponent(path)
                 try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try data.write(to: url)
             }
-            writeFormerDatabase(version: version)
-            do {
-                let store = try TranscriptStore(directory: directory)
-                XCTAssertTrue(store.replacedDatabase, "format \(version)")
-                XCTAssertEqual(try store.count(), 0)
-                XCTAssertTrue(try store.sessions().isEmpty)
-                XCTAssertNil(try store.latestRecoverableDictationAttempt())
-                XCTAssertTrue(try PeopleStore(sharing: store).list().isEmpty)
-                XCTAssertTrue(try SpeakerPassStore(sharing: store).segments(sessionID: "s1").isEmpty)
+            let before = try dump()
+            let bytes = try Data(contentsOf: databaseURL)
+            let names = Set(try FileManager.default.subpathsOfDirectory(atPath: directory.path))
+            XCTAssertThrowsError(try TranscriptStore(directory: directory)) { error in
+                XCTAssertTrue(error.localizedDescription.contains("format \(version)"), error.localizedDescription)
+                XCTAssertTrue(error.localizedDescription.contains("preserved"), error.localizedDescription)
             }
-            XCTAssertEqual(try dump().first, "8")
-            let fresh = directory.appendingPathComponent("fresh")
-            try FileManager.default.createDirectory(at: fresh, withIntermediateDirectories: true)
-            _ = try TranscriptStore(directory: fresh)
-            XCTAssertEqual(try dump(), try dump(fresh.appendingPathComponent("transcripts.sqlite3")), "The replacement is a new, empty database")
-            try FileManager.default.removeItem(at: fresh)
+            XCTAssertEqual(try Data(contentsOf: databaseURL), bytes, "Refusal must not rewrite the format or journal mode")
+            XCTAssertEqual(Set(try FileManager.default.subpathsOfDirectory(atPath: directory.path)), names)
+            XCTAssertEqual(try dump(), before, "Every source row and schema object survives refusal")
             for (path, data) in neighbors {
-                XCTAssertEqual(try Data(contentsOf: directory.appendingPathComponent(path)), data, "\(path) at format \(version)")
+                XCTAssertEqual(try Data(contentsOf: directory.appendingPathComponent(path)), data)
             }
-            let left = Set(try FileManager.default.subpathsOfDirectory(atPath: directory.path)).subtracting(TranscriptStore.files(of: databaseURL).map { ($0 as NSString).lastPathComponent })
-            XCTAssertEqual(left, Set(neighbors.keys).union(["audio"]), "format \(version)")
-            XCTAssertFalse(try TranscriptStore(directory: directory).replacedDatabase, "A replaced database opens as it is from then on")
         }
     }
 
-    /// Only a format the store could read is ever replaced: a file it cannot open or read fails to open, and stays as it was.
+    func testUnsupportedFormatWithCommittedWALIsRefusedWithoutCheckpointingOrDeletingIt() throws {
+        writeFormerDatabase(version: 6)
+        var holder: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(databaseURL.path, &holder), SQLITE_OK)
+        defer { sqlite3_close(holder) }
+        XCTAssertEqual(sqlite3_exec(holder, "PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; INSERT INTO transcripts VALUES('wal-only','s1',100,6,7,'synthetic WAL words',NULL,'ambient'); PRAGMA user_version=0;", nil, nil, nil), SQLITE_OK)
+        let wal = URL(fileURLWithPath: databaseURL.path + "-wal")
+        let shm = URL(fileURLWithPath: databaseURL.path + "-shm")
+        let mainBytes = try Data(contentsOf: databaseURL)
+        let walBytes = try Data(contentsOf: wal)
+        XCTAssertFalse(walBytes.isEmpty)
+        XCTAssertThrowsError(try TranscriptStore(directory: directory)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("format 0"), "Read the current format from WAL: \(error.localizedDescription)")
+        }
+        XCTAssertEqual(try Data(contentsOf: databaseURL), mainBytes)
+        XCTAssertEqual(try Data(contentsOf: wal), walBytes, "Committed WAL history must not be checkpointed, rewritten or deleted")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: shm.path))
+        XCTAssertTrue(try dump().contains("transcripts|wal-only|s1|100.0|6.0|7.0|synthetic WAL words|NULL|ambient"))
+    }
+
+    /// An unreadable or locked file also fails to open without deleting history.
     func testAFileThatCannotBeReadIsNeverDeleted() throws {
         let garbage = Data("not a database, but maybe someone's history".utf8)
         try garbage.write(to: databaseURL)
@@ -225,18 +241,4 @@ final class DatabaseFormatTests: XCTestCase {
         XCTAssertEqual(try dump(), before, "A store that could not read the format deleted nothing")
     }
 
-    func testDeletingTheDatabaseRemovesOnlyItsOwnFilesAndNeverADirectory() throws {
-        let names = ["transcripts.sqlite3", "transcripts.sqlite3-wal", "transcripts.sqlite3-shm", "transcripts.sqlite3-journal",
-                     "transcripts.sqlite3.bak", "transcripts.sqlite3-wal.keep", "other.sqlite3-shm"]
-        for name in names { try Data(name.utf8).write(to: directory.appendingPathComponent(name)) }
-        try TranscriptStore.deleteFiles(of: databaseURL)
-        XCTAssertEqual(Set(try FileManager.default.contentsOfDirectory(atPath: directory.path)), Set(names.dropFirst(3)))
-        try TranscriptStore.deleteFiles(of: databaseURL)
-
-        let walDirectory = directory.appendingPathComponent("transcripts.sqlite3-wal")
-        try FileManager.default.createDirectory(at: walDirectory, withIntermediateDirectories: false)
-        try Data("kept".utf8).write(to: walDirectory.appendingPathComponent("inside"))
-        XCTAssertThrowsError(try TranscriptStore.deleteFiles(of: databaseURL))
-        XCTAssertEqual(try Data(contentsOf: walDirectory.appendingPathComponent("inside")), Data("kept".utf8))
-    }
 }

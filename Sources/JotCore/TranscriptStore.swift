@@ -7,8 +7,8 @@ public final class TranscriptStore: @unchecked Sendable {
     static let format: Int64 = 8
     private let db: SQLiteConnection
     let databaseURL: URL
-    /// True when the file held a format this build does not read, and opening replaced it with an empty database.
-    public let replacedDatabase: Bool
+    /// Retained for source compatibility. Opening never replaces saved history.
+    public let replacedDatabase = false
 
     public init(directory: URL = JotPaths.directory) throws {
         try preparePrivateDirectory(directory)
@@ -20,42 +20,34 @@ public final class TranscriptStore: @unchecked Sendable {
                 throw StoreError.invalid("Transcript database must be a regular file owned by this user")
             }
         }
-        var connection = try SQLiteConnection(url: databaseURL)
-        let version = try connection.integer("PRAGMA user_version")
-        let empty = try connection.integer("SELECT COUNT(*) FROM sqlite_master") == 0
-        // A newer format is refused, never deleted: a reverted or older build must not throw away the history a newer one wrote.
-        if !empty && version > Self.format {
-            connection.close()
-            throw StoreError.invalid("Saved history is in format \(version), newer than this version of Jot reads (\(Self.format)). Update Jot, or move transcripts.sqlite3 aside.")
-        }
-        // Format 7 is the one older format still opened: 0.2.5 and 0.2.6 wrote it, so an installed database may still hold it. Format 8 only added the change feed, which the schema below creates and the backfill fills. Any other older format is deleted and recreated empty.
-        replacedDatabase = !empty && version != Self.format && version != 7
-        if replacedDatabase {
-            connection.close()
-            try Self.deleteFiles(of: databaseURL)
-            connection = try SQLiteConnection(url: databaseURL)
-        }
+        // Inspect an existing file before chmod, WAL setup, schema writes, or a checkpoint.
+        // SQLite's read-only connection includes committed WAL frames; reading just the
+        // main file's header could mistake an older header for the current format.
+        let version: Int64
+        if FileManager.default.fileExists(atPath: databaseURL.path) {
+            let inspection = try SQLiteConnection(url: databaseURL, readOnly: true)
+            defer { inspection.close() }
+            version = try inspection.integer("PRAGMA user_version")
+            let empty = try inspection.integer("SELECT COUNT(*) FROM sqlite_master") == 0
+            guard empty || version == Self.format || version == 7 else {
+                throw StoreError.invalid("Saved history is in unsupported format \(version). This version of Jot reads formats 7 and \(Self.format). Your history has been preserved; open it with a compatible version of Jot.")
+            }
+        } else { version = 0 }
+        let connection = try SQLiteConnection(url: databaseURL)
         db = connection
         try db.execute("PRAGMA foreign_keys=ON")
         try db.execute(Self.schema)
         try db.execute(Self.changeSchema)
-        if version == 7 && !replacedDatabase {
+        if version == 7 {
             // Rows saved at format 7 join the change feed once, in spoken order. The triggers keep it current from then on.
             try db.transaction { try db.execute("INSERT INTO transcript_changes(transcript_id) SELECT t.id FROM transcripts t WHERE NOT EXISTS (SELECT 1 FROM transcript_changes c WHERE c.transcript_id = t.id) ORDER BY (t.started_at + t.start_seconds), t.id") }
         }
         try db.execute("PRAGMA user_version=\(Self.format)")
     }
 
-    /// The WAL and shared-memory files SQLite keeps beside the database, then the database itself: deleting in this order never leaves an old WAL next to a new, empty database.
+    /// The files whose sizes contribute to local storage diagnostics.
     static func files(of databaseURL: URL) -> [String] {
         [databaseURL.path + "-wal", databaseURL.path + "-shm", databaseURL.path]
-    }
-
-    /// Deletes this store's own files and nothing else: the paths come from its location, never a pattern, and unlink removes one file, never a directory.
-    static func deleteFiles(of databaseURL: URL) throws {
-        for path in files(of: databaseURL) where unlink(path) != 0 && errno != ENOENT {
-            throw StoreError.database("Could not delete \((path as NSString).lastPathComponent): \(String(cString: strerror(errno)))")
-        }
     }
 
     /// Every table and index. Opening an existing database changes nothing, since each statement is IF NOT EXISTS. SpeakerPassStore and PeopleStore use their tables over connections of their own.
