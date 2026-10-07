@@ -1,88 +1,42 @@
 # Plan
 
-## Goal
+## Goal and current state
 
 Say it once. Jot types it where you are and remembers who said it, all on your Mac.
 
-The current delivery priority is solid context and inputs. Dictation and ambient capture are working well enough to keep using; the old Fn recovery work is not the next feature. Finish shared Claude/Codex hook ingress with conversation association (#134, #139), then observe and improve source selection (#135, #140). The broader refactor chain below does not block this bounded slice. See the [September 27 review](reviews/2026-09-27-context-and-state.md) for the complete open-issue map and ranked recommendations.
+Updated October 7, 2026. The [architecture review](reviews/2026-10-07-architecture.md) records the source evidence, remaining large files and performance risks. [AGENTS.md](../AGENTS.md) governs delivery and preservation; [SWARM.md](SWARM.md) governs claims and integration. GitHub issues hold the work; this page orders it.
 
-Jot is judged by three numbers:
+The main architecture chain has shipped: direct owners, one continuous capture/recognition timeline, off-main store execution and keyboard classification, shared live settings, named production types, separated suggestion evaluation, and Swift 6 complete strict concurrency. Do not repeat that work because an old issue description still describes the previous implementation. #63, #65 and #128 need the remaining scope stated explicitly; physical acceptance is a test-when-you-sit-down list, not a merge gate.
 
-- **Dictation latency:** key release to text in the field, median and p95.
-- **Transcript quality on real multi-speaker audio:** word errors, speaker-turn errors, and how much cleanup helps.
-- **Nothing dropped, nothing frozen:** zero audio gaps and no main-thread stall over 50 ms while listening.
+## Next work, in order
 
-## How we build
+| Priority | Work | Reason and boundary |
+| --- | --- | --- |
+| 1 | #205 preserve unsupported databases | #122 change-feed correctness shipped in #203. Opening a history file must never destroy it; finish the format-preservation fix before further storage work. |
+| 2 | #192 `jot listen`, then #193 skill and #198 MCP listener | Filter commands locally over the saved feed; one event per command. No extra capture or recognition. Start with an honest arrival-gap heuristic. |
+| 3 | #207 bound pending audio writes; #208 incremental held recovery; #209 active-session summaries | Fix boundedness and measure work that grows with session/hold length. Core changes run one at a time. |
+| 4 | #194 wait for speech / end-of-speech signal | Reduce listener polling and command latency after the listener's semantics are stable. Use a cancellable bounded wait off the main actor. |
+| 5 | #59 tuning lab | CLI first, real pipeline, reuse recognition for grouping/cleanup-only variants. This supplies evidence for subsequent model and speaker changes. |
+| 6 | #150 short search terms; #39 field-aware dictation style; #37 live speaker naming | Bounded product features with focused acceptance. Live naming depends on measured speaker quality and the lab. |
+| 7 | #38 meeting notes; #42 vocabulary suggestions | Preserve source facts and distinguish recognition, cleanup and generated output. |
 
-1. **Measure, then tune.** A quality or speed question is answered by a number from the tuning lab or `jot diagnostics`, not by feel.
-2. **Recorded conversations are the test set.** Debates with two to four known speakers, crosstalk, and applause run through the real pipeline. Audio stays outside the repository.
-3. **Settings are live, saved, and yours.** A change applies right away. Only values you change are saved, and they survive restarts, reboots, and updates. A new default reaches everyone who has not changed that setting. An update overrides a saved value only when it lists that setting on purpose.
-4. **Fail fast, no history.** Main is the current state; git and the issue tracker are the only history. No migrations, legacy names, or compatibility aliases. When the database format changes, the database is rebuilt and old sessions are deleted. Settings are the one thing that carries over.
-5. **The main thread is for the UI.** Nothing that grows with your data or waits on another app runs there.
-6. **Readable over clever.** One type per file, named after the type. One word per concept across code, UI, and the socket API. One statement per line. Code calls the real object, not a protocol with one conformer.
-7. **Ship daily.** Merge to main, install, and cut a pre-release at the end of the day. Each PR carries its own verification.
+Agent-listening parallel work: #196 opt-in prompt context can proceed independently; #195 first verifies the actual async hook wake behavior before implementation; #197 is a prototype and design choice, not authorization to ship a settings pane. #199 documentation/promotion waits for #192/#193 and recorded evidence. #200 is the umbrella.
 
-## Phases
+Suggestion work: #139 conversation association and #140 relevance ranking have implementations and synthetic coverage; their remaining tasks are realistic multi-session/quality/latency evidence and fixes found by use. #162 optional request-bound screenshots shipped off by default; permission/revocation, multiple displays and request-frequency energy still need user acceptance. #90 drafting is implemented but useful-output and native/browser behavior remain an ongoing quality task. #79 remains open for the Jot-managed Terminal bridge and broader acceptance; it is not an unimplemented suggestions engine.
 
-### 0. Stop the freezes and the data loss
+Deferred: #40 calendar meeting names, then #33 microphone proximity. Public distribution is separate work under [RELEASING.md](RELEASING.md), not an automatic daily output.
 
-- [#54](https://github.com/StoneHub/jot/issues/54) Convert spoken symbols only in dictation, and compile the patterns once
-- [#55](https://github.com/StoneHub/jot/issues/55) Keep cleaned text through the speaker pass and Regroup, and run both off the main thread
-- [#56](https://github.com/StoneHub/jot/issues/56) Read the Live session in one query and add new rows without re-reading
-- [#57](https://github.com/StoneHub/jot/issues/57) Fix the CPU readout and stop re-rendering the window for meters nobody sees
-- [#71](https://github.com/StoneHub/jot/issues/71) Stop re-reading recent rows and the session list on every recognition block
-- [#75](https://github.com/StoneHub/jot/issues/75) Read the speaker pass segments after Regroup waits, so the pass cannot be overwritten
+## Refactor only the next responsibility being changed
 
-### 1. Settings and the tuning lab
+`SpeechService`, `DictationInput`, `TranscriptStore` and `SuggestionCoordinator` remain large. Prefer coherent owners over moving arbitrary extensions to satisfy a line count:
 
-- [#58](https://github.com/StoneHub/jot/issues/58) One settings model that saves only what you change and applies live
-- [#59](https://github.com/StoneHub/jot/issues/59) A tuning lab that runs recorded audio through the real pipeline
-- [#60](https://github.com/StoneHub/jot/issues/60) Dictation latency and cleanup time in diagnostics
-- [#72](https://github.com/StoneHub/jot/issues/72) Make jot diagnostics CPU samples cover the whole interval
-- [#73](https://github.com/StoneHub/jot/issues/73) Use the tuned paragraph pause in Markdown exports
+- Extract database opening/schema/feed ownership when changing those contracts, keeping one serialized connection and atomic transactions.
+- Separate focus/target lifecycle from delivery transactions when adding insertion behavior. Keep generation and cancellation checks together with the write they protect.
+- Separate suggestion source preparation from receipt/card orchestration when adding context sources. Preserve request, field and source revision validation across every suspension.
+- Move settings/status projection out of service lifecycle orchestration when changing those surfaces; avoid a new layer of forwarding protocols.
 
-### 2. An architecture you can follow
+## Evidence and delivery
 
-- [#61](https://github.com/StoneHub/jot/issues/61) Replace the Host protocols and forwarders with direct references
-- [#62](https://github.com/StoneHub/jot/issues/62) Move the recognition worker into Transcriber and fold listening state into one enum
-- [#63](https://github.com/StoneHub/jot/issues/63) Take the store and the dictation shortcut off the main thread
-- [#64](https://github.com/StoneHub/jot/issues/64) Delete legacy code and rebuild the database on format changes
-- [#65](https://github.com/StoneHub/jot/issues/65) One type per file, one word per concept, and Swift 6 strict concurrency
+Judge Jot by release-to-field median/p95, transcript and speaker quality on known audio, no lost audio, and no main-thread stall over 50 ms while listening. Compare the same configuration, models and workload; export `jot diagnostics` before restarting. Static work-growth findings are not measured speedups.
 
-### 3. Features
-
-Monroe's decisions of September 27, 2026 set the order: finish the refactor chain first (#61, #62, #58, #63, #65, one at a time), then build the tuning lab, then the features it helps tune. Each issue carries its decisions in a comment.
-
-| Order | Issue | Decided | Depends on |
-| --- | --- | --- | --- |
-| 1 | [#59](https://github.com/StoneHub/jot/issues/59) Tuning lab | Build it, CLI first | #58 |
-| 2 | [#39](https://github.com/StoneHub/jot/issues/39) Dictation style per app | The field's role beats the app; built-in rules plus a short override list in General | #58, #60 |
-| 3 | [#37](https://github.com/StoneHub/jot/issues/37) Name speakers in Live | Pass every ~30 s; remembered voices named automatically; names follow the voice; the final pass still runs | #55, #59 |
-| 4 | [#38](https://github.com/StoneHub/jot/issues/38) Meeting notes | Top of the Markdown at End meeting; summary, decisions, action items with who, open questions; named meetings only | #59 |
-| 5 | [#42](https://github.com/StoneHub/jot/issues/42) Vocabulary suggestions | Learn from cleanup changes only, not edits after insertion | #55 |
-| Deferred | [#40](https://github.com/StoneHub/jot/issues/40) Meeting names from the calendar | Not now; when built, auto-name only when a remembered voice matches an attendee | #37 |
-| Parked | [#33](https://github.com/StoneHub/jot/issues/33) Microphone proximity | Low-priority idea; no work until the rest ships | #59 |
-
-## Contextual suggestions and managed integrations
-
-The agreed direction is [contextual suggestions in Jot](CONTEXTUAL-SUGGESTIONS.md): one local engine uses relevant transcripts, meetings, summaries and contributed agent context across input surfaces, including blank fields. Codex is the first and primary use case; browser/native fields are part of the design. Move Terminal completion ownership, setup and updates into Jot while retaining a thin shell bridge for native buffer and Tab behavior.
-
-The first slice shipped in #89 and #91: double-tap Fn requests a suggestion or a draft from notes in the field, Tab accepts, and the setting is on by default. Suggestion quality is not yet acceptable, and the Terminal bridge is not built; #79 and #90 track the rest. Its delivery sequence and acceptance scenarios preserve the capture, history and responsiveness work above.
-
-## Architecture target
-
-```
-JotApp ── views observe the object they show
-   │
-SpeechService: listening state machine and wiring
-   ├─ CaptureController ─ MicrophoneCapture (audio thread)
-   ├─ ListeningTimeline: session, chunks, session audio
-   ├─ Transcriber: chunk → recognition → rows (SpeechPipeline actor)
-   ├─ LiveCleanup: Apple on-device model
-   ├─ SpeakerRecognizer: speaker pass (SpeakerPass actor), People
-   ├─ DictationCoordinator ─ DictationInput (tap on its own thread)
-   ├─ SessionLibrary: what the screens read
-   └─ JotSettings: live values, saved overrides
-TranscriptStore: SQLite, called off the main thread
-JotCLI / MCP ─ socket ─ SpeechServiceIPC
-```
+A worker owns one ready issue and one worktree. Open one reviewed PR per issue. Integrate only after the trusted Mac `local-pr-check` passes on the current PR head with current main included. For pipeline changes also run generated or authorized local audio through the real-model recovery path. Install the checked Release build when capture is paused and work is idle; preserve transcript selection, history and preferences. Never rebuild/delete a database as a compatibility shortcut. Unsupported formats should be refused intact.
