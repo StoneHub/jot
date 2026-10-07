@@ -128,14 +128,16 @@ final class TranscriptChangesTests: XCTestCase {
         XCTAssertThrowsError(try store.changes(since: -1))
     }
 
-    func testDeletedRowsLeaveTheFeedAndNumbersAreNeverReused() throws {
+    func testDeletedRowsLeaveLiveRowsAndNumbersAreNeverReused() throws {
         let store = try TranscriptStore(directory: directory)
         try store.append(row("a1", session: "A", seconds: 0))
         try store.append(row("b1", session: "B", seconds: 10))
         try store.deleteSession(id: "A")
         XCTAssertEqual(try store.changes(since: 0).rows.map(\.transcript.id), ["b1"])
         try store.append(row("c1", session: "C", seconds: 20))
-        XCTAssertEqual(try store.changes(since: 2).rows.map(\.sequence), [3])
+        let page = try store.changes(since: 2)
+        XCTAssertEqual(page.deleted.map(\.sequence), [3])
+        XCTAssertEqual(page.rows.map(\.sequence), [4])
         XCTAssertEqual(try count("SELECT COUNT(*) FROM transcript_changes"), 2, "A deleted row keeps no entry")
     }
 
@@ -154,7 +156,6 @@ final class TranscriptChangesTests: XCTestCase {
         sqlite3_close(db)
         do {
             let store = try TranscriptStore(directory: directory)
-            XCTAssertFalse(store.replacedDatabase, "Format 7 is kept and upgraded, not rebuilt")
             let page = try store.changes(since: 0)
             XCTAssertEqual(page.rows.map(\.transcript.id), ["earlier", "later"])
             XCTAssertEqual(page.rows.map(\.transcript.text), ["First.", "second"])
@@ -179,6 +180,243 @@ final class TranscriptChangesTests: XCTestCase {
         XCTAssertEqual(first["sequence"] as? Int, 7)
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
         XCTAssertEqual(try decoder.decode(TranscriptChanges.self, from: data).rows, [change])
+    }
+
+    private func object(_ page: TranscriptChanges) throws -> [String: Any] {
+        try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(page)) as? [String: Any])
+    }
+
+    func testDeleteSessionReportsAnIDOnlyTombstoneAfterTheFollowersCursor() throws {
+        let store = try TranscriptStore(directory: directory)
+        try store.append(row("a1", session: "A", seconds: 0, text: "private synthetic text"))
+        let cursor = try store.changes(since: 0).cursor
+        try store.deleteSession(id: "A")
+        let page = try store.changes(since: cursor, sessionID: "A", limit: 1)
+        let deleted = try XCTUnwrap(try object(page)["deleted"] as? [[String: Any]])
+        XCTAssertEqual(deleted.count, 1)
+        XCTAssertEqual(deleted.first?["id"] as? String, "a1")
+        XCTAssertEqual(deleted.first?["sessionID"] as? String, "A")
+        XCTAssertNil(deleted.first?["text"])
+        XCTAssertGreaterThan(page.cursor, cursor)
+        XCTAssertTrue(page.rows.isEmpty)
+    }
+
+    func testSpeakerNamingRenamingAndRemovingNamesRedeliversOnlyAffectedRows() throws {
+        let store = try TranscriptStore(directory: directory)
+        try store.append(row("a1", session: "A", seconds: 0))
+        try store.append(row("a2", session: "A", seconds: 1, speaker: "speaker-2"))
+        try store.append(row("b1", session: "B", seconds: 0))
+        var cursor = try store.changes(since: 0).cursor
+        for name in ["Gina", "Ada"] {
+            try store.label(sessionID: "A", speakerID: "speaker-1", name: name)
+            let page = try store.changes(since: cursor)
+            XCTAssertEqual(page.rows.map(\.transcript.id), ["a1"])
+            XCTAssertEqual(page.rows.first?.transcript.speakerLabel, name)
+            cursor = page.cursor
+            try store.label(sessionID: "A", speakerID: "speaker-1", name: name)
+            XCTAssertTrue(try store.changes(since: cursor).rows.isEmpty)
+        }
+        try store.replaceLabels(sessionID: "A", ["speaker-1": "Ada"])
+        XCTAssertTrue(try store.changes(since: cursor).rows.isEmpty, "Replacing unchanged names must not redeliver rows")
+        try store.replaceLabels(sessionID: "A", [:])
+        let removed = try store.changes(since: cursor)
+        XCTAssertEqual(removed.rows.map(\.transcript.id), ["a1"])
+        XCTAssertNil(removed.rows.first?.transcript.speakerLabel)
+    }
+
+    func testSplitRemovesTheParentFromAPagedFollowersCopy() throws {
+        let store = try TranscriptStore(directory: directory)
+        try store.append(row("parent", session: "A", seconds: 0, text: "one two"))
+        try store.appendWords([
+            StoredWord(transcriptID: "parent", position: 0, word: "one", startSeconds: 0, endSeconds: 0.4, probabilities: []),
+            StoredWord(transcriptID: "parent", position: 1, word: "two", startSeconds: 0.5, endSeconds: 1, probabilities: [])
+        ])
+        var copy = ["parent": "one two"]
+        var cursor = try store.changes(since: 0).cursor
+        XCTAssertTrue(try store.relabelSession("A") { _ in ["speaker-1", "speaker-2"] })
+        repeat {
+            let page = try store.changes(since: cursor, sessionID: "A", limit: 1)
+            for deletion in try object(page)["deleted"] as? [[String: Any]] ?? [] {
+                if let id = deletion["id"] as? String { copy.removeValue(forKey: id) }
+            }
+            for change in page.rows { copy[change.transcript.id] = change.transcript.text }
+            cursor = page.cursor
+            if !page.hasMore { break }
+        } while true
+        let source = try store.session(id: "A")
+        XCTAssertEqual(copy, Dictionary(uniqueKeysWithValues: source.map { ($0.id, $0.text) }))
+        XCTAssertNil(copy["parent"], "A split must remove the old text before delivering its pieces")
+    }
+
+    func testOmittingTheCursorSubscribesAtHeadWhileExplicitZeroReplaysHistory() throws {
+        let store = try TranscriptStore(directory: directory)
+        for index in 0..<6 { try store.append(row("a\(index)", session: "A", seconds: Double(index))) }
+        let subscribed = try store.changes(limit: 1)
+        XCTAssertTrue(subscribed.rows.isEmpty)
+        XCTAssertFalse(subscribed.hasMore)
+        XCTAssertEqual(subscribed.cursor, 6)
+        XCTAssertEqual(try store.changes(since: 0, limit: 1).rows.map(\.transcript.id), ["a0"])
+    }
+
+    func testGenerationPersistsAcrossReopenAndChangesWithARecreatedStore() throws {
+        let first = try TranscriptStore(directory: directory)
+        let generation = try XCTUnwrap(try object(first.changes(since: 0))["generation"] as? String)
+        let reopened = try TranscriptStore(directory: directory)
+        XCTAssertEqual(try object(reopened.changes(since: 0))["generation"] as? String, generation)
+        let other = try TranscriptStore(directory: directory.appendingPathComponent("new-store"))
+        XCTAssertNotEqual(try object(other.changes(since: 0))["generation"] as? String, generation)
+    }
+
+    func testGenerationResetsEvenWhenTheNewHeadHasPassedTheOldCursor() throws {
+        let old = try TranscriptStore(directory: directory)
+        try old.append(row("old", session: "A", seconds: 0))
+        let previous = try old.changes(since: 0)
+        let replacement = try TranscriptStore(directory: directory.appendingPathComponent("replacement"))
+        for index in 0..<3 { try replacement.append(row("new\(index)", session: "A", seconds: Double(index))) }
+        let reset = try replacement.changes(since: previous.cursor, generation: previous.generation, limit: 1)
+        XCTAssertTrue(reset.reset)
+        XCTAssertTrue(reset.hasMore)
+        XCTAssertEqual(reset.rows.map(\.transcript.id), ["new0"])
+        let next = try replacement.changes(since: reset.cursor, generation: reset.generation)
+        XCTAssertFalse(next.reset)
+        XCTAssertEqual(next.rows.map(\.transcript.id), ["new1", "new2"])
+        XCTAssertFalse(try replacement.changes(since: previous.cursor).reset, "Legacy numeric-only polling keeps its behavior")
+        XCTAssertThrowsError(try replacement.changes(since: 0, generation: ""))
+
+        let empty = try TranscriptStore(directory: directory.appendingPathComponent("empty"))
+        let emptyReset = try empty.changes(since: 0, generation: previous.generation)
+        XCTAssertTrue(emptyReset.reset)
+        XCTAssertEqual(emptyReset.cursor, 0)
+        XCTAssertTrue(emptyReset.rows.isEmpty)
+    }
+
+    func testClearAndIndividualDeletionSharePaginationWithLiveRowsAndSurviveReopen() throws {
+        var store = try TranscriptStore(directory: directory)
+        try store.append(row("ambient", session: "A", seconds: 0))
+        var dictation = row("dictation", session: "D", seconds: 0)
+        dictation.mode = "dictation"
+        try store.append(dictation)
+        var cursor = try store.changes(since: 0).cursor
+        try store.clearHistory()
+        try store.append(row("later", session: "B", seconds: 0))
+        try store.deleteTranscripts(ids: ["ambient", "ambient", "missing"])
+        let generation = store.generation
+        store = try TranscriptStore(directory: directory)
+        XCTAssertEqual(store.generation, generation)
+        var deleted: [String] = []
+        var live: [String] = []
+        repeat {
+            let page = try store.changes(since: cursor, generation: generation, limit: 1)
+            XCTAssertEqual(page.rows.count + page.deleted.count, 1)
+            XCTAssertGreaterThan(page.cursor, cursor)
+            deleted += page.deleted.map(\.id)
+            live += page.rows.map(\.transcript.id)
+            cursor = page.cursor
+            if !page.hasMore { break }
+        } while true
+        XCTAssertEqual(deleted, ["dictation", "ambient"])
+        XCTAssertEqual(live, ["later"])
+        let unrelated = try store.changes(since: 0, sessionID: "unrelated", limit: 1)
+        XCTAssertEqual(unrelated.cursor, cursor)
+        XCTAssertTrue(unrelated.rows.isEmpty && unrelated.deleted.isEmpty)
+        XCTAssertFalse(unrelated.hasMore)
+        try store.deleteTranscripts(ids: ["missing"])
+        XCTAssertEqual(try store.changes(since: cursor).cursor, cursor)
+    }
+
+    func testReinsertingAnIDCoalescesItsTombstoneIntoTheLatestLiveChange() throws {
+        let store = try TranscriptStore(directory: directory)
+        let original = row("a1", session: "A", seconds: 0)
+        try store.append(original)
+        let cursor = try store.changes(since: 0).cursor
+        try store.deleteTranscripts(ids: [original.id])
+        try store.append(original)
+        let page = try store.changes(since: cursor, limit: 1)
+        XCTAssertTrue(page.deleted.isEmpty)
+        XCTAssertEqual(page.rows.map(\.transcript.id), [original.id])
+        XCTAssertFalse(page.hasMore)
+    }
+
+    func testOldWirePagesStillDecodeAndNewFieldsRoundTrip() throws {
+        let legacy = Data(#"{"rows":[],"cursor":4,"hasMore":false,"reset":false,"pollAfterSeconds":2}"#.utf8)
+        let decoded = try JSONDecoder().decode(TranscriptChanges.self, from: legacy)
+        XCTAssertEqual(decoded.cursor, 4)
+        XCTAssertTrue(decoded.deleted.isEmpty)
+        XCTAssertNil(decoded.generation)
+        let page = TranscriptChanges(rows: [], cursor: 5, hasMore: false,
+            deleted: [.init(id: "a1", sessionID: "A", sequence: 5)], generation: "generation")
+        XCTAssertEqual(try JSONDecoder().decode(TranscriptChanges.self, from: JSONEncoder().encode(page)), page)
+    }
+
+    func testCrossSessionReinsertionRetainsTheOldSessionsDeletion() throws {
+        let store = try TranscriptStore(directory: directory)
+        try store.append(row("same-id", session: "A", seconds: 0))
+        let cursor = try store.changes(since: 0, sessionID: "A").cursor
+        try store.deleteTranscripts(ids: ["same-id"])
+        try store.append(row("same-id", session: "B", seconds: 0))
+        let oldSession = try store.changes(since: cursor, sessionID: "A", limit: 1)
+        XCTAssertEqual(oldSession.deleted, [.init(id: "same-id", sessionID: "A", sequence: 2)])
+        XCTAssertTrue(oldSession.rows.isEmpty)
+        XCTAssertEqual(oldSession.cursor, 3)
+        let global = try store.changes(since: cursor, limit: 1)
+        XCTAssertEqual(global.rows.map(\.transcript.sessionID), ["B"])
+        XCTAssertTrue(global.deleted.isEmpty, "The global follower replaces the id with its latest live row")
+        XCTAssertFalse(global.hasMore)
+    }
+
+    func testRepeatedCrossSessionReuseConvergesWithMixedPagesAndNoDuplicateIDs() throws {
+        let store = try TranscriptStore(directory: directory)
+        var cursors: [String: Int64] = [:]
+        var copies: [String: [String: String]] = [:]
+        func poll() throws {
+            for key in ["all", "A", "B", "C"] {
+                let sessionID = key == "all" ? nil : key
+                var seen = Set<String>()
+                var copy = copies[key] ?? [:]
+                repeat {
+                    let cursor = cursors[key] ?? 0
+                    let page = try store.changes(since: cursor, generation: store.generation, sessionID: sessionID, limit: 1)
+                    XCTAssertFalse(page.reset)
+                    XCTAssertLessThanOrEqual(page.rows.count + page.deleted.count, 1)
+                    XCTAssertGreaterThanOrEqual(page.cursor, cursor)
+                    for deletion in page.deleted {
+                        XCTAssertTrue(seen.insert(deletion.id).inserted, "One latest change per id, across all pages")
+                        copy.removeValue(forKey: deletion.id)
+                    }
+                    for change in page.rows {
+                        XCTAssertTrue(seen.insert(change.transcript.id).inserted)
+                        copy[change.transcript.id] = change.transcript.text
+                    }
+                    cursors[key] = page.cursor
+                    if !page.hasMore { break }
+                } while true
+                copies[key] = copy
+                let source = try sessionID.map { try store.session(id: $0) } ?? store.recent(limit: 200)
+                XCTAssertEqual(copy, Dictionary(uniqueKeysWithValues: source.map { ($0.id, $0.text) }), key)
+            }
+        }
+        try store.append(row("same-id", session: "A", seconds: 0, text: "first A"))
+        try store.append(row("keep-A", session: "A", seconds: 1))
+        try store.append(row("remove-B", session: "B", seconds: 1))
+        try poll()
+        for session in ["B", "C", "B"] {
+            try store.deleteTranscripts(ids: ["same-id"])
+            try store.append(row("same-id", session: session, seconds: 0, text: "now \(session)"))
+        }
+        try store.append(row("new-A", session: "A", seconds: 2))
+        try store.deleteTranscripts(ids: ["remove-B"])
+        try poll()
+        try store.deleteTranscripts(ids: ["same-id"])
+        try poll()
+        try store.append(row("same-id", session: "A", seconds: 3, text: "returned A"))
+        try poll()
+        try store.deleteTranscripts(ids: ["same-id"])
+        try poll()
+        let replay = try store.changes(since: 0, limit: 200)
+        XCTAssertEqual(replay.deleted.filter { $0.id == "same-id" }.count, 1, "Global history replay coalesces deletions across sessions")
+        for session in ["A", "B", "C"] {
+            XCTAssertEqual(try store.changes(since: 0, sessionID: session).deleted.filter { $0.id == "same-id" }.count, 1)
+        }
     }
 
     private func count(_ sql: String) throws -> Int {

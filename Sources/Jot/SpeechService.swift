@@ -410,7 +410,7 @@ final class SpeechService: ObservableObject {
         do { vocabulary = try vocabularyPreferences.load() }
         catch { vocabularyLoadError = "Could not load vocabulary. Saved entries were preserved. " + error.localizedDescription }
         do {
-            // The lock comes before the store: opening an older format rebuilds the file, which must never happen under a running Jot.
+            // The lock comes before the store: only one Jot may open writable history and own capture.
             directoryLock = try DirectoryLock(directory: JotPaths.directory)
             let opened = try await storeExecutor.perform { try TranscriptStore() }
             library.store = opened
@@ -420,7 +420,7 @@ final class SpeechService: ObservableObject {
             try await dictation.finalizeInterruptedAttempts()
             speakers.speakerStore = try await storeExecutor.perform { try SpeakerPassStore(sharing: opened) }
             speakers.peopleStore = try await storeExecutor.perform { try PeopleStore(sharing: opened) }; speakers.refreshPeople()
-            // Outside the database on purpose: a format rebuild keeps the user's voice.
+            // The user's voice is kept independently from transcript schema changes.
             speakers.userVoiceStore = UserVoiceStore(directory: JotPaths.directory); speakers.loadUserVoice()
             let service = LocalServiceServer { [weak self] data in
                 guard let self else { return Data("{\"ok\":false,\"error\":\"Service unavailable\"}".utf8) }

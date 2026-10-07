@@ -7,8 +7,7 @@ public final class TranscriptStore: @unchecked Sendable {
     static let format: Int64 = 8
     private let db: SQLiteConnection
     let databaseURL: URL
-    /// Retained for source compatibility. Opening never replaces saved history.
-    public let replacedDatabase = false
+    public let generation: String
 
     public init(directory: URL = JotPaths.directory) throws {
         try preparePrivateDirectory(directory)
@@ -38,6 +37,10 @@ public final class TranscriptStore: @unchecked Sendable {
         try db.execute("PRAGMA foreign_keys=ON")
         try db.execute(Self.schema)
         try db.execute(Self.changeSchema)
+        let identity = try connection.prepare("SELECT generation FROM transcript_feed_identity WHERE singleton = 1")
+        defer { sqlite3_finalize(identity) }
+        guard sqlite3_step(identity) == SQLITE_ROW, let generation = connection.column(identity, 0) else { throw connection.error() }
+        self.generation = generation
         if version == 7 {
             // Rows saved at format 7 join the change feed once, in spoken order. The triggers keep it current from then on.
             try db.transaction { try db.execute("INSERT INTO transcript_changes(transcript_id) SELECT t.id FROM transcripts t WHERE NOT EXISTS (SELECT 1 FROM transcript_changes c WHERE c.transcript_id = t.id) ORDER BY (t.started_at + t.start_seconds), t.id") }
@@ -71,9 +74,29 @@ public final class TranscriptStore: @unchecked Sendable {
         CREATE TABLE IF NOT EXISTS people (id TEXT PRIMARY KEY, name TEXT NOT NULL, embedding BLOB NOT NULL, sample_count INTEGER NOT NULL CHECK(sample_count >= 1), created_at REAL NOT NULL, updated_at REAL NOT NULL);
         """
 
-    /// The change feed behind `transcripts.since`: one entry per row, holding the sequence number of the row's latest visible change. AUTOINCREMENT never reuses a number, so a row that is added, cleaned, or relabeled moves past every cursor already handed out, and its entry goes when the row is deleted. Entries hold ids and numbers only, no text.
+    /// One latest entry per live row, plus ID-only tombstones keyed by id and session. Reusing an id in another session must keep the old session's deletion. A deletion allocates its sequence while the parent still exists, then the foreign-key cascade removes the temporary live entry. Both streams share the existing AUTOINCREMENT counter; no source rows or old cursors are rewritten.
     private static let changeSchema = """
         CREATE TABLE IF NOT EXISTS transcript_changes (seq INTEGER PRIMARY KEY AUTOINCREMENT, transcript_id TEXT NOT NULL UNIQUE REFERENCES transcripts(id) ON DELETE CASCADE ON UPDATE CASCADE);
+        CREATE TABLE IF NOT EXISTS transcript_deletions (seq INTEGER PRIMARY KEY, transcript_id TEXT NOT NULL, session_id TEXT NOT NULL, UNIQUE(transcript_id,session_id));
+        CREATE INDEX IF NOT EXISTS transcript_deletion_id_sequence ON transcript_deletions(transcript_id,seq DESC);
+        CREATE TABLE IF NOT EXISTS transcript_feed_identity (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), generation TEXT NOT NULL);
+        INSERT OR IGNORE INTO transcript_feed_identity VALUES(1, lower(hex(randomblob(16))));
+        CREATE TRIGGER IF NOT EXISTS transcript_change_delete BEFORE DELETE ON transcripts BEGIN
+          DELETE FROM transcript_changes WHERE transcript_id = OLD.id;
+          INSERT INTO transcript_changes(transcript_id) VALUES(OLD.id);
+          INSERT INTO transcript_deletions(seq,transcript_id,session_id) SELECT seq,transcript_id,OLD.session_id FROM transcript_changes WHERE transcript_id = OLD.id
+            ON CONFLICT(transcript_id,session_id) DO UPDATE SET seq=excluded.seq; END;
+        CREATE TRIGGER IF NOT EXISTS transcript_change_restore AFTER INSERT ON transcripts BEGIN
+          DELETE FROM transcript_deletions WHERE transcript_id = NEW.id AND session_id = NEW.session_id; END;
+        CREATE TRIGGER IF NOT EXISTS transcript_change_label_insert AFTER INSERT ON speaker_labels BEGIN
+          DELETE FROM transcript_changes WHERE transcript_id IN (SELECT id FROM transcripts WHERE session_id=NEW.session_id AND speaker_id=NEW.speaker_id);
+          INSERT INTO transcript_changes(transcript_id) SELECT id FROM transcripts WHERE session_id=NEW.session_id AND speaker_id=NEW.speaker_id ORDER BY id; END;
+        CREATE TRIGGER IF NOT EXISTS transcript_change_label_update AFTER UPDATE ON speaker_labels WHEN OLD.name IS NOT NEW.name BEGIN
+          DELETE FROM transcript_changes WHERE transcript_id IN (SELECT id FROM transcripts WHERE session_id=NEW.session_id AND speaker_id=NEW.speaker_id);
+          INSERT INTO transcript_changes(transcript_id) SELECT id FROM transcripts WHERE session_id=NEW.session_id AND speaker_id=NEW.speaker_id ORDER BY id; END;
+        CREATE TRIGGER IF NOT EXISTS transcript_change_label_delete AFTER DELETE ON speaker_labels BEGIN
+          DELETE FROM transcript_changes WHERE transcript_id IN (SELECT id FROM transcripts WHERE session_id=OLD.session_id AND speaker_id=OLD.speaker_id);
+          INSERT INTO transcript_changes(transcript_id) SELECT id FROM transcripts WHERE session_id=OLD.session_id AND speaker_id=OLD.speaker_id ORDER BY id; END;
         CREATE TRIGGER IF NOT EXISTS transcript_change_insert AFTER INSERT ON transcripts BEGIN
           DELETE FROM transcript_changes WHERE transcript_id = NEW.id; INSERT INTO transcript_changes(transcript_id) VALUES(NEW.id); END;
         CREATE TRIGGER IF NOT EXISTS transcript_change_update AFTER UPDATE ON transcripts
@@ -86,32 +109,57 @@ public final class TranscriptStore: @unchecked Sendable {
           DELETE FROM transcript_changes WHERE transcript_id = NEW.transcript_id; INSERT INTO transcript_changes(transcript_id) VALUES(NEW.transcript_id); END;
         """
 
-    /// Rows added or changed after `cursor`, oldest change first, each row at most once with its current text. A cleanup rewrite or speaker relabel returns the same row id again with the new text; it is never a second row. The cursor is a change sequence, not a row id or time, so it survives cleanup rewrites and session rotation, and a session filter only narrows what is returned. A cursor ahead of this store (a recreated database) restarts from the beginning and sets `reset`. A caught-up poll reads one counter row and returns without a query.
-    public func changes(since cursor: Int64 = 0, sessionID: String? = nil, limit: Int = 50) throws -> TranscriptChanges {
-        guard cursor >= 0 else { throw StoreError.invalid("Cursor must be a nonnegative integer") }
+    /// Omit the cursor to subscribe at the current head; explicit 0 replays retained history. Pass the returned generation alongside the numeric cursor to detect a rebuilt database even after its new head passes the old cursor. Legacy numeric cursors retain their behavior. Rows and tombstones share the page limit and sequence order; a session filter still advances over unrelated changes.
+    public func changes(since cursor: Int64? = nil, generation expectedGeneration: String? = nil, sessionID: String? = nil, limit: Int = 50) throws -> TranscriptChanges {
+        guard cursor == nil || cursor! >= 0 else { throw StoreError.invalid("Cursor must be a nonnegative integer") }
+        guard expectedGeneration == nil || expectedGeneration?.isEmpty == false else { throw StoreError.invalid("Generation must be a nonempty string") }
         return try db.locked {
             let head = try changeHead()
-            let reset = cursor > head
-            let start = reset ? 0 : cursor
-            guard start < head else { return TranscriptChanges(rows: [], cursor: head, hasMore: false, reset: reset) }
+            let reset = (expectedGeneration != nil && expectedGeneration != generation) || (cursor ?? head) > head
+            let start = reset ? 0 : cursor ?? head
+            guard start < head else { return TranscriptChanges(rows: [], cursor: head, hasMore: false, reset: reset, generation: generation) }
             let size = clamp(limit)
-            let stmt = try db.prepare("SELECT c.seq,t.id,t.session_id,t.started_at,t.start_seconds,t.end_seconds,COALESCE(r.text,t.text),t.speaker_id,t.mode,l.name FROM transcript_changes c JOIN transcripts t ON t.id=c.transcript_id LEFT JOIN transcript_readable r ON r.transcript_id=t.id LEFT JOIN speaker_labels l ON t.session_id=l.session_id AND t.speaker_id=l.speaker_id WHERE c.seq > ? AND c.seq <= ?\(sessionID == nil ? "" : " AND t.session_id = ?") ORDER BY c.seq LIMIT ?")
+            // A filtered follower needs its session's last deletion. A global follower needs only the id's latest state:
+            // suppress old-session tombstones while that id is live, or retain just its newest deletion when it is gone.
+            let stmt = try db.prepare("""
+                SELECT c.seq,t.id,t.session_id,t.started_at,t.start_seconds,t.end_seconds,COALESCE(r.text,t.text),t.speaker_id,t.mode,l.name,0
+                FROM transcript_changes c JOIN transcripts t ON t.id=c.transcript_id LEFT JOIN transcript_readable r ON r.transcript_id=t.id
+                LEFT JOIN speaker_labels l ON t.session_id=l.session_id AND t.speaker_id=l.speaker_id
+                WHERE c.seq > ?1 AND c.seq <= ?2 AND (?3 IS NULL OR t.session_id = ?3)
+                UNION ALL
+                SELECT d.seq,d.transcript_id,d.session_id,NULL,NULL,NULL,NULL,NULL,NULL,NULL,1 FROM transcript_deletions d
+                WHERE d.seq > ?1 AND d.seq <= ?2 AND (?3 IS NULL OR d.session_id = ?3)
+                  AND NOT EXISTS (SELECT 1 FROM transcripts live WHERE live.id = d.transcript_id AND (?3 IS NULL OR live.session_id = ?3))
+                  AND NOT EXISTS (SELECT 1 FROM transcript_deletions newer WHERE newer.transcript_id = d.transcript_id AND newer.seq > d.seq
+                    AND (?3 IS NULL OR newer.session_id = ?3))
+                ORDER BY 1 LIMIT ?4
+                """)
             defer { sqlite3_finalize(stmt) }
             sqlite3_bind_int64(stmt, 1, start)
             sqlite3_bind_int64(stmt, 2, head)
-            var index: Int32 = 3
-            if let sessionID { db.bind(sessionID, to: index, in: stmt); index += 1 }
-            sqlite3_bind_int(stmt, index, Int32(size + 1))
+            db.bind(sessionID, to: 3, in: stmt)
+            sqlite3_bind_int(stmt, 4, Int32(size + 1))
             var rows: [TranscriptChange] = []
+            var deleted: [TranscriptDeletion] = []
+            var sequences: [Int64] = []
             while true {
                 let status = sqlite3_step(stmt)
                 if status == SQLITE_DONE { break }
                 guard status == SQLITE_ROW else { throw db.error() }
-                rows.append(TranscriptChange(Transcript(id: db.column(stmt, 1)!, sessionID: db.column(stmt, 2)!, startedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 3)), startSeconds: sqlite3_column_double(stmt, 4), endSeconds: sqlite3_column_double(stmt, 5), text: db.column(stmt, 6)!, speakerID: db.column(stmt, 7), mode: db.column(stmt, 8)!, speakerLabel: db.column(stmt, 9)), sequence: sqlite3_column_int64(stmt, 0)))
+                let sequence = sqlite3_column_int64(stmt, 0)
+                sequences.append(sequence)
+                if sqlite3_column_int(stmt, 10) == 1 {
+                    deleted.append(TranscriptDeletion(id: db.column(stmt, 1)!, sessionID: db.column(stmt, 2)!, sequence: sequence))
+                } else {
+                    rows.append(TranscriptChange(Transcript(id: db.column(stmt, 1)!, sessionID: db.column(stmt, 2)!, startedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 3)), startSeconds: sqlite3_column_double(stmt, 4), endSeconds: sqlite3_column_double(stmt, 5), text: db.column(stmt, 6)!, speakerID: db.column(stmt, 7), mode: db.column(stmt, 8)!, speakerLabel: db.column(stmt, 9)), sequence: sequence))
+                }
             }
-            let hasMore = rows.count > size
-            if hasMore { rows.removeLast(rows.count - size) }
-            return TranscriptChanges(rows: rows, cursor: hasMore ? rows[rows.count - 1].sequence : head, hasMore: hasMore, reset: reset)
+            let hasMore = sequences.count > size
+            if hasMore {
+                let extra = sequences.removeLast()
+                if rows.last?.sequence == extra { rows.removeLast() } else { deleted.removeLast() }
+            }
+            return TranscriptChanges(rows: rows, cursor: hasMore ? sequences.last! : head, hasMore: hasMore, reset: reset, deleted: deleted, generation: generation)
         }
     }
 
@@ -685,12 +733,26 @@ public final class TranscriptStore: @unchecked Sendable {
     public func replaceLabels(sessionID: String, _ labels: [String: String]) throws {
         try db.locked {
             try db.transaction {
-                let clear = try db.prepare("DELETE FROM speaker_labels WHERE session_id = ?")
-                defer { sqlite3_finalize(clear) }
-                db.bind(sessionID, to: 1, in: clear)
-                try db.finish(clear)
+                let existing = try db.prepare("SELECT speaker_id FROM speaker_labels WHERE session_id = ?")
+                defer { sqlite3_finalize(existing) }
+                db.bind(sessionID, to: 1, in: existing)
+                var removed: [String] = []
+                while true {
+                    let status = sqlite3_step(existing)
+                    if status == SQLITE_DONE { break }
+                    guard status == SQLITE_ROW else { throw db.error() }
+                    let speaker = db.column(existing, 0)!
+                    if labels[speaker] == nil { removed.append(speaker) }
+                }
+                for speaker in removed {
+                    let delete = try db.prepare("DELETE FROM speaker_labels WHERE session_id = ? AND speaker_id = ?")
+                    defer { sqlite3_finalize(delete) }
+                    db.bind(sessionID, to: 1, in: delete)
+                    db.bind(speaker, to: 2, in: delete)
+                    try db.finish(delete)
+                }
                 for (speakerID, name) in labels {
-                    let insert = try db.prepare("INSERT INTO speaker_labels(session_id,speaker_id,name) VALUES(?,?,?)")
+                    let insert = try db.prepare("INSERT INTO speaker_labels(session_id,speaker_id,name) VALUES(?,?,?) ON CONFLICT(session_id,speaker_id) DO UPDATE SET name=excluded.name")
                     defer { sqlite3_finalize(insert) }
                     db.bind(sessionID, to: 1, in: insert); db.bind(speakerID, to: 2, in: insert); db.bind(name, to: 3, in: insert)
                     try db.finish(insert)

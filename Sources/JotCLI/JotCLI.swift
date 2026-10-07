@@ -35,8 +35,8 @@ struct JotCLI {
     jot sessions [--limit N]
     jot events [--session ID] [--limit N] [--offset N]
     jot suggestions [--limit N]         Local text-free suggestion request history
-    jot since [--cursor N] [--session ID] [--limit N]
-                                       Rows added or changed after a cursor, plus the next cursor
+    jot since [--cursor N] [--generation ID] [--session ID] [--limit N]
+                                       Subscribe now; --cursor 0 replays history. Pass back cursor and generation
     jot clear-history                  Delete all saved dictations; sessions are kept
     jot delete-session <session-id>     Delete one saved session
     jot read <transcript-id>
@@ -125,8 +125,13 @@ struct JotCLI {
                 guard index + 1 < rest.count, let cursor = Int(rest[index + 1]), cursor >= 0 else { throw CLIError.usage("--cursor needs a nonnegative integer") }
                 params["cursor"] = cursor; rest.removeSubrange(index...(index + 1))
             }
+            if let index = rest.firstIndex(of: "--generation") {
+                guard index + 1 < rest.count, !rest[index + 1].hasPrefix("--"), !rest[index + 1].isEmpty else { throw CLIError.usage("--generation requires a database generation") }
+                params["generation"] = rest[index + 1]
+                rest.removeSubrange(index...(index + 1))
+            }
             let parsed = try pagination(rest)
-            guard parsed.words.isEmpty, parsed.params["offset"] == nil else { throw CLIError.usage("Use: jot since [--cursor N] [--session ID] [--limit N]") }
+            guard parsed.words.isEmpty, parsed.params["offset"] == nil else { throw CLIError.usage("Use: jot since [--cursor N] [--generation ID] [--session ID] [--limit N]") }
             params.merge(parsed.params) { current, _ in current }
             return ("transcripts.since", params)
         case "read":

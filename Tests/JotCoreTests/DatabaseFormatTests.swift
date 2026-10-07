@@ -76,7 +76,9 @@ final class DatabaseFormatTests: XCTestCase {
         var result = try rows("PRAGMA user_version")
         result += try rows("SELECT type, name, tbl_name, sql FROM sqlite_master ORDER BY type, name")
         for table in try rows("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name") {
-            result += try rows("SELECT '\(table)', * FROM \"\(table)\" ORDER BY rowid")
+            // Compare independently created stores without depending on their random identities.
+            let columns = table == "transcript_feed_identity" ? "singleton, '<generation>'" : "*"
+            result += try rows("SELECT '\(table)', \(columns) FROM \"\(table)\" ORDER BY rowid")
         }
         return result
     }
@@ -87,7 +89,6 @@ final class DatabaseFormatTests: XCTestCase {
         XCTAssertEqual(before.first, "8")
         do {
             let store = try TranscriptStore(directory: directory)
-            XCTAssertFalse(store.replacedDatabase)
             let pass = try SpeakerPassStore(sharing: store)
             let people = try PeopleStore(sharing: store)
             XCTAssertEqual(try store.session(id: "s1").map(\.text), ["Hello there.", "general kenobi"])
@@ -106,7 +107,10 @@ final class DatabaseFormatTests: XCTestCase {
             XCTAssertEqual(try people.list().map(\.name), ["Ada"])
             XCTAssertEqual(try people.list().first?.sampleCount, 3)
         }
-        XCTAssertEqual(try dump(), before, "Opening changed no object, row, or format")
+        let after = try dump()
+        XCTAssertEqual(Set(before).subtracting(after), [], "Opening preserves every existing object, source row, feed sequence and format")
+        _ = try TranscriptStore(directory: directory)
+        XCTAssertEqual(try dump(), after, "Reopening adds no metadata twice and changes no source rows")
     }
 
     /// What 0.2.6 ran, copied verbatim from its TranscriptStore, SpeakerPassStore and PeopleStore: format 7 has no change feed and still has the older session index.
@@ -128,7 +132,6 @@ final class DatabaseFormatTests: XCTestCase {
         XCTAssertEqual(before.first, "7")
         do {
             let store = try TranscriptStore(directory: directory)
-            XCTAssertFalse(store.replacedDatabase)
             let pass = try SpeakerPassStore(sharing: store)
             let people = try PeopleStore(sharing: store)
             XCTAssertEqual(try store.session(id: "s1").map(\.text), ["Hello there.", "general kenobi"])
@@ -146,16 +149,15 @@ final class DatabaseFormatTests: XCTestCase {
         let after = try dump()
         XCTAssertEqual(after.first, "8")
         XCTAssertEqual(Set(before.dropFirst()).subtracting(after), [], "Every object and row 0.2.6 wrote is still there, unchanged")
-        XCTAssertFalse(try TranscriptStore(directory: directory).replacedDatabase)
+        _ = try TranscriptStore(directory: directory)
         XCTAssertEqual(try dump(), after, "Reopening changes nothing and enqueues no row twice")
     }
 
-    func testNewDatabaseHasExactlyTheFormerSchema() throws {
+    func testNewDatabasePreservesTheFormerSchemaAndAddsFeedMetadata() throws {
         let former = directory.appendingPathComponent("former.sqlite3")
         writeFormerDatabase(version: 8, rows: "", at: former)
-        let store = try TranscriptStore(directory: directory)
-        XCTAssertFalse(store.replacedDatabase, "An empty directory is a new database, not a replaced one")
-        XCTAssertEqual(try dump(), try dump(former))
+        _ = try TranscriptStore(directory: directory)
+        XCTAssertEqual(Set(try dump(former)).subtracting(try dump()), [], "The source schema and original live feed remain intact")
     }
 
     func testANewerFormatIsRefusedAndLeftAsItIs() throws {
