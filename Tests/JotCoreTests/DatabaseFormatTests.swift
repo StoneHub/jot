@@ -188,6 +188,8 @@ final class DatabaseFormatTests: XCTestCase {
                 try data.write(to: url)
             }
             let before = try dump()
+            try FileManager.default.setAttributes([.posixPermissions: 0o640], ofItemAtPath: databaseURL.path)
+            let permissions = try FileManager.default.attributesOfItem(atPath: databaseURL.path)[.posixPermissions] as? NSNumber
             let bytes = try Data(contentsOf: databaseURL)
             let names = Set(try FileManager.default.subpathsOfDirectory(atPath: directory.path))
             XCTAssertThrowsError(try TranscriptStore(directory: directory)) { error in
@@ -195,6 +197,7 @@ final class DatabaseFormatTests: XCTestCase {
                 XCTAssertTrue(error.localizedDescription.contains("preserved"), error.localizedDescription)
             }
             XCTAssertEqual(try Data(contentsOf: databaseURL), bytes, "Refusal must not rewrite the format or journal mode")
+            XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: databaseURL.path)[.posixPermissions] as? NSNumber, permissions)
             XCTAssertEqual(Set(try FileManager.default.subpathsOfDirectory(atPath: directory.path)), names)
             XCTAssertEqual(try dump(), before, "Every source row and schema object survives refusal")
             for (path, data) in neighbors {
