@@ -16,7 +16,7 @@ python3 scripts/release.py patch --notes "What changed" --install
 4. Zips the product, submits it to Apple with `notarytool`, and waits for `Accepted` before continuing.
 5. Staples and validates the notarization ticket, verifies the signature and Gatekeeper assessment, then recreates `build/Jot-<version>.zip` and its checksum from the stapled app.
 6. Commits `Release <version>`, creates the annotated tag `v<version>` with the notes as its message, pushes `main --follow-tags`, and runs `gh release create` with the zip and checksum. The asset must be named `Jot-<version>.zip`; the updater asks for exactly that name.
-7. With `--install`, runs `build-install.py --configuration Release` so the same product lands in `/Applications`.
+7. With `--install`, verifies the final ZIP checksum, extracts it into a temporary directory, and runs `build-install.py --configuration Release --product <extracted Jot.app>` with the expected signing team, version, build number and original executable SHA-256. This installs the packaged product into `/Applications` without a second build or another signing-identity lookup.
 
 ## Local pre-releases
 
@@ -29,6 +29,12 @@ python3 scripts/release.py patch --notes "What changed" --local --install
 It runs the same steps without notarization and marks the GitHub release as a pre-release. The in-app updater accepts it: it strips the quarantine flag and requires the download's TeamIdentifier to match the running app, so the build installs on Macs that trust that development certificate and nowhere else.
 
 `--dry-run` verifies the owner certificate, tests and builds the app, creates an unstapled candidate ZIP, prints the remaining notarization and publication work, and restores the tree without submitting or publishing.
+
+The packaged-product installer requires all four `--expected-team`, `--expected-version`, `--expected-build` and `--expected-sha256` arguments, plus `--configuration Release`. The extracted Jot.app must be a real directory directly inside the extraction directory. Every bundle entry must resolve within that app; contained framework symlinks remain valid, while external, dangling and cyclic symlink targets are refused. The installer repeats these checks on the supplied path before reading metadata, then checks Jot's bundle identifier, executable, bundled CLI, signature, team, release entitlements and feedback exclusion before stopping any runtime. `--build-only` verifies a supplied product without installing it. The ordinary source-build command still builds and resolves its product through Xcode build settings.
+
+Both install paths refuse active capture, inference, model transitions, pending storage, dictation recovery or speaker work. They confirm the installed runtime's executable path before stopping it, copy into an empty destination, and verify the copied product against the expected identity and executable hash. Failed copying or verification restores the previous bundle. Failed launch verification retains the backup and does not write a success proof; capture and history are never reset. A successful install records the executable hash, version, build, signing team and launched runtime in `build/install-proof.json`.
+
+Synthetic regressions run with `python3 -m unittest discover -s scripts -p 'test_*install.py'`. They mock signing, builds, runtime control and publication, and use temporary fixture bundles. They do not establish live-install, notarization or Gatekeeper acceptance.
 
 Local source builds use the developer's own installed signing identity. On Monroe's Mac they prefer his Apple Development identity. `JOT_SIGN_IDENTITY` and `JOT_SIGN_TEAM` select another installed identity. Build and install proof record the verified team.
 
