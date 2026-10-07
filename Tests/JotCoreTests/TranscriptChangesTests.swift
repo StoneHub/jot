@@ -156,7 +156,6 @@ final class TranscriptChangesTests: XCTestCase {
         sqlite3_close(db)
         do {
             let store = try TranscriptStore(directory: directory)
-            XCTAssertFalse(store.replacedDatabase, "Format 7 is kept and upgraded, not rebuilt")
             let page = try store.changes(since: 0)
             XCTAssertEqual(page.rows.map(\.transcript.id), ["earlier", "later"])
             XCTAssertEqual(page.rows.map(\.transcript.text), ["First.", "second"])

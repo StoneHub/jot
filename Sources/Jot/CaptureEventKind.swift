@@ -10,5 +10,5 @@ enum CaptureEventKind: String {
     case started, paused, stopped, sleep
     case deviceChange = "device_change", inputStalled = "input_stalled"
     case audioGap = "audio_gap", audioDiscarded = "audio_discarded", processingError = "processing_error"
-    case speakerPass = "speaker_pass", sessionSplit = "session_split", databaseReplaced = "database_replaced"
+    case speakerPass = "speaker_pass", sessionSplit = "session_split"
 }

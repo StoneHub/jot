@@ -7,19 +7,23 @@ final class SQLiteConnection: @unchecked Sendable {
     private var handle: OpaquePointer?
     private let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-    /// Opens or creates the file, readable by this user only.
-    init(url: URL) throws {
+    /// Mutable connections create a user-only file and enable WAL. Inspection connections
+    /// read the current database, including committed WAL frames, without writable pragmas.
+    init(url: URL, readOnly: Bool = false) throws {
         var db: OpaquePointer?
-        guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK, let db else {
+        let access = readOnly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
+        guard sqlite3_open_v2(url.path, &db, access | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK, let db else {
             let message = db.map { String(cString: sqlite3_errmsg($0)) } ?? "Could not open transcript database"
             sqlite3_close(db)
             throw StoreError.database(message)
         }
         handle = db
         do {
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
             sqlite3_busy_timeout(db, 5_000)
-            try execute("PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON")
+            if !readOnly {
+                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+                try execute("PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON")
+            }
         } catch {
             close()
             throw error
