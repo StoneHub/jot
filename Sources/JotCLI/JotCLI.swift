@@ -7,6 +7,7 @@ struct JotCLI {
         do {
             let args = Array(CommandLine.arguments.dropFirst())
             if args.first == "agent-context" { AgentContextCommand.run(Array(args.dropFirst())); return }
+            if args.first == "listen" { try ListenCommand().run(Array(args.dropFirst())); return }
             if args.first == "mcp" { try MCPServer().run(); return }
             if args.isEmpty || ["help", "--help", "-h"].contains(args[0]) { print(usage); return }
             let (method, params) = try command(args)
@@ -37,6 +38,9 @@ struct JotCLI {
     jot suggestions [--limit N]         Local text-free suggestion request history
     jot since [--cursor N] [--generation ID] [--session ID] [--limit N]
                                        Subscribe now; --cursor 0 replays history. Pass back cursor and generation
+    jot listen [--mode fast|command|context|all] [--wake phrase[,alias]]
+               [--quiet-gap S] [--lookback-minutes N] [--once] [--timeout S]
+                                       One line per addressed command; no capture is started
     jot clear-history                  Delete all saved dictations; sessions are kept
     jot delete-session <session-id>     Delete one saved session
     jot read <transcript-id>

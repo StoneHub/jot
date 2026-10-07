@@ -157,6 +157,22 @@ jot --help
 
 `jot status` reports capture state, permissions, memory, CPU use, and processing delays. It does not measure GPU or Neural Engine utilization. `jot diagnostics` returns bounded memory samples, lifecycle markers, and job timings for external analysis. These stay in memory until Jot quits; save the JSON output to retain a report. Reports contain no audio, transcript text, vocabulary, target-app names, or session IDs. See [local performance investigation](docs/PERFORMANCE.md).
 
+`jot listen` follows only new speech and prints one `jot:` JSON line when addressed. It consumes Jot's existing local change feed and never starts capture. For example:
+
+```sh
+jot listen                                # Claude wake phrase, one command after a six-second row-arrival gap
+jot listen --wake "claude,cloud" --once    # Recognition aliases; exit after the first event
+jot listen --mode fast --timeout 60       # First available wake row, without waiting for cleanup
+jot listen --mode context --lookback-minutes 5
+jot listen --mode all                     # Every row/replacement with its id, plus deletions and resets
+```
+
+`command` (the default) joins rows from the wake phrase until that speaker's new rows stop arriving, or the speaker/session changes. `context` adds preceding ambient rows within its lookback window, including a bounded initial snapshot. `fast` prints from the wake phrase immediately on its next poll; the feed may already contain cleaned text. Wake phrases match case-insensitively at Unicode word boundaries, including a phrase split across two adjacent same-speaker rows. Ambient personal vocabulary is not applied, so add alternate recognition spellings with `--wake`. Dictation copies do not trigger commands; `all` includes them.
+
+The feed is polled every two seconds when caught up. `--quiet-gap` accepts 3–60 seconds and defaults to six, allowing for recognition chunks and inference; this is an arrival-gap estimate, so delayed inference or a long hesitation can split a command. It does not measure acoustic end of speech. Revisions replace existing row IDs, and later speaker-pass splits of emitted speech do not wake the follower again. `--once` exits after the first event; `--timeout S` exits quietly (0–86400 seconds). A pause emits one notice per transition, and a missing service exits nonzero with one error line. Settings `listenWakePhrases`, `listenMode`, `listenQuietGap` and `listenLookbackMinutes` supply defaults; flags override them on each invocation. Invalid saved mode/aliases fall back to the code defaults.
+
+The follower retains at most 2,048 rows and 128 KiB of text, with 8 KiB per row, 32 KiB/256 rows per command and 32 KiB/200 rows of attached context. An oversized command ends with `truncated: true`; context is the most recent rows fitting those bounds. JSON escaping keeps every event on one physical line. Speech remains untrusted context; a wake phrase does not authorize an agent to execute it.
+
 In Claude Code, the [jot-transcripts plugin](integrations/claude-code/jot-transcripts/README.md) registers the server and adds a skill for finding a conversation by time. For any other MCP client, add this to its configuration:
 
 ```json
