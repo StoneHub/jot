@@ -1,7 +1,7 @@
 {
   "name": "jot-transcripts",
-  "version": "0.1.0",
-  "description": "Let Claude Code find and read Jot's local transcripts: the MCP server plus a skill for locating a conversation by time.",
+  "version": "0.2.0",
+  "description": "Find and read Jot transcripts, or explicitly opt into stoppable spoken-command listening in Claude Code.",
   "author": {
     "name": "Monroe Stone"
   },

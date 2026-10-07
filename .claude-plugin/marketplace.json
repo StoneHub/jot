@@ -15,7 +15,7 @@
     },
     {
       "name": "jot-transcripts",
-      "description": "Let Claude Code find and read Jot's local transcripts: the MCP server plus a skill for locating a conversation by time.",
+      "description": "Find and read Jot transcripts, or explicitly opt into stoppable spoken-command listening in Claude Code.",
       "source": "./integrations/claude-code/jot-transcripts",
       "category": "productivity",
       "homepage": "https://github.com/StoneHub/jot/tree/main/integrations/claude-code/jot-transcripts"
