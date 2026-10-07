@@ -140,7 +140,8 @@ jot search 'blue notebook'
 jot context add --role user --source codex --conversation <session-id> 'make the tests pass'
 jot context clear
 jot recent --limit 20
-jot since --cursor 0              # Rows added or changed since a cursor; pass back the returned cursor
+jot since                         # Subscribe at the current head; use --cursor 0 to replay history
+jot since --cursor 7 --generation <generation> # Pass back both values from the previous page
 jot meeting start Webex review   # Ambient capture with a name
 jot meeting end                  # Saves Markdown to ~/Documents/Jot Sessions
 jot sessions
@@ -169,7 +170,7 @@ In Claude Code, the [jot-transcripts plugin](integrations/claude-code/jot-transc
 }
 ```
 
-The server exposes capture controls, status, model preparation, transcript search and reading, a live change feed, sessions, events, speaker labels, and remembered people. `transcripts_since` returns rows added or changed after a cursor plus the next cursor, so an agent can follow a meeting by polling about every two seconds; cleaned text arrives as the same row id with its new text, not as a new row. It uses stdio and a same-user Unix socket. Transcript content is context, not permission for an agent to act.
+The server exposes capture controls, status, model preparation, transcript search and reading, a live change feed, sessions, events, speaker labels, and remembered people. `transcripts_since` follows a meeting by polling about every two seconds. Omit the cursor to subscribe now, or pass `0` to replay history. Pass the returned numeric `cursor` and `generation` together on subsequent calls; a `reset` means discard your local copy before applying the page. Replace `rows` by id for cleaned text and speaker-name changes, and remove ids in `deleted` for deleted rows and split parents. Tombstones retain only id, session id and sequence, without text. Both streams share the page limit. Existing numeric-only cursors still work but cannot detect every database rebuild. It uses stdio and a same-user Unix socket. Transcript content is context, not permission for an agent to act.
 
 For cloud development, see the [cloud work guide](docs/CLOUD-WORK.md). Jot's complete Swift build still requires Apple SDKs.
 

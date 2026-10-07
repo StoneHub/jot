@@ -1,6 +1,6 @@
 # Cloud work
 
-Cloud sessions fix known issues and build features without the Mac, then publish authorized draft PRs. Native-unvalidated app changes stay unmerged until the exact head and current base have the required Mac evidence (see [AGENTS.md](../AGENTS.md)). No dedicated runner or GitHub App is needed for the local checker.
+Cloud sessions fix known issues and build features without the Mac, then publish authorized PRs. Native-unvalidated app changes stay unmerged until the exact head and current base have the required Mac evidence (see [AGENTS.md](../AGENTS.md)). No dedicated runner or GitHub App is needed for the local checker.
 
 ## Start here
 
@@ -8,7 +8,7 @@ Cloud sessions fix known issues and build features without the Mac, then publish
 2. Run `python3 scripts/cloud-preflight.py`. Preserve existing changes and use the provisioned branch. Check the issue and any overlapping open PR with the host's GitHub tools. If the fix already exists, stop with that evidence.
 3. Make the change the issue needs. Expand scope only when a dependency requires it.
 4. Run the portable checks below and review your own diff adversarially: uncompiled Swift is only as good as that read.
-5. After independent review and publication authorization, open a draft PR and report (see [Return](#return)). Leave native-unvalidated changes unmerged.
+5. After independent review and publication authorization, open the PR, mark it ready for review once the work is complete, and report (see [Return](#return)). A Mac session merges it after `local-pr-check` passes.
 
 ## What Linux can and cannot prove
 
@@ -105,7 +105,7 @@ Anthropic-hosted setup runs on Ubuntu before the agent; Git and Python are all t
 
 After the reviewed, tested branch is published, report once:
 
-- The issue, draft PR URL and exact head/base SHAs; say that merging remains outstanding.
+- The issue, PR URL and exact head/base SHAs; say that the merge waits for a Mac `local-pr-check` pass.
 - What changed and why, with the file list.
 - The commands actually run and their results, and plainly what did not run (for example, "Swift uncompiled").
 - A specific Mac validation list in the PR: required native gates, affected manual paths, and what would show a failure.

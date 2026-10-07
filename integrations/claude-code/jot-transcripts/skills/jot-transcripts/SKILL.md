@@ -34,7 +34,7 @@ Report what the user can act on: decisions, action items with owner and deadline
 
 ## Follow a meeting live
 
-Poll `jot since --cursor <n>` (`transcripts_since`) about every two seconds, passing back the cursor each call returns. Cleaned-up text arrives as the same row id with new text, not as a new row.
+Start with `jot since` (`transcripts_since`) to subscribe at the current head, or explicitly pass `--cursor 0` to replay history. Poll about every two seconds with `jot since --cursor <n> --generation <generation>`, passing back both values from the previous page. On `reset`, discard the local copy before applying the page. Replace `rows` by id for cleaned text and speaker-name changes; remove ids in `deleted` for deleted rows and split parents. Both streams share the page limit. Numeric-only cursors still work but cannot detect every database rebuild.
 
 ## Rules
 
