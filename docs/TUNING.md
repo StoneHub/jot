@@ -20,6 +20,42 @@ Speaker settings apply to new audio and to any session you regroup. Dictations p
 
 Jot keeps each ambient row's words with their timings and speaker probabilities. **Regroup** in Sessions runs the current speaker settings over those words and relabels the session's rows; a row whose speaker changes inside it splits there. Rows keep their cleaned text, and speaker names, the title, and capture events stay. Right after a session ends, Regroup waits for its last phrase to be cleaned before it changes any row. A session recorded before words were kept cannot be regrouped, and a session that is still recording must be stopped first.
 
+## Compare settings with jot lab
+
+`jot lab` runs a recording through the real pipeline once per settings variant and compares the results. That covers capture chunking, recognition, live speakers, cleanup and the speaker pass. It runs in its own process with its own settings and a temporary store, so Jot keeps listening and history and preferences are untouched.
+
+```
+jot lab debate.wav --variants variants.json --out ~/Documents/jot-lab/debate-1 --captions debate.srt
+```
+
+`variants.json` lists named variants. Each one changes settings from Jot's current values, using the keys `jot settings` lists:
+
+```json
+[
+  {"name": "current", "settings": {}},
+  {"name": "steadier speakers", "settings": {"minimumSpeakerTurn": 2.0, "paragraphPause": 2.0}},
+  {"name": "no cleanup", "settings": {"cleanUpTranscriptions": false}}
+]
+```
+
+- Grouping settings (`speakerConfidence`, `minimumSpeakerTurn`, `paragraphPause`) reuse one recognition run. That run records under your current grouping, and each variant then regroups the stored words, the same way Regroup does in Sessions.
+- Capture, recognition and cleanup settings each need their own run. Cleanup gets its own run too, so phrases are assembled exactly as they are live. Settings that don't change transcription are refused.
+- The speaker pass runs once per recording.
+- `--captions` takes SubRip (`.srt`) or WebVTT (`.vtt`). Each variant gets a word error rate for its recognized words and for its cleaned text.
+
+The output folder must be new and outside any git repository: the recording's transcript is private. It holds two files:
+- `variants.json`: each variant's stored rows (times, live speaker, pass speaker, raw and cleaned text, cleanup outcome), its paragraphs as Sessions shows them, its timings and its score.
+- `report.html`: the variants side by side.
+
+Limits:
+- The lab feeds audio as fast as recognition and cleanup keep up, so it never shows the cleanup skips a busy Mac can produce live.
+- It shares the Neural Engine and the on-device cleanup model with Jot. While a lab runs, live recognition can fall behind and live phrases can go uncleaned.
+- YouTube's auto-generated captions repeat each line in the next cue, and the lab hasn't been checked against one yet. Use uploaded captions or a hand-made SRT.
+
+A row with no cleaned text was left alone by cleanup. That covers cleanup off or failing, and also cleanup returning the words unchanged, which Jot doesn't save. The run's phrase outcomes in the report tell these apart.
+
+Apply the variant you choose with `jot settings import variants.json "steadier speakers"`. It sets each of that variant's settings on the running app, as `jot settings set` would.
+
 ## A short comparison
 
 1. Choose 30–60 seconds with a clear speaker change and a hesitation. Keep microphone position, playback volume, and source fixed.
