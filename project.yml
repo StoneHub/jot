@@ -102,6 +102,59 @@ targets:
     dependencies:
       - target: JotCore
       - package: FluidAudio
+  JotLab:
+    type: tool
+    platform: macOS
+    sources:
+      - Sources/JotLab
+      - Sources/Jot/AccessibilityElement.swift
+      - Sources/Jot/PreparedSpeakerModels.swift
+      - Sources/Jot/AudioInputDevice.swift
+      - Sources/Jot/AudioInputDeviceWatcher.swift
+      - Sources/Jot/AudioJob.swift
+      - Sources/Jot/AudioClock.swift
+      - Sources/Jot/SpeechOutput.swift
+      - Sources/Jot/JotError.swift
+      - Sources/Jot/KeyboardTextEvents.swift
+      - Sources/Jot/CaptureController.swift
+      - Sources/Jot/DictationCoordinator.swift
+      - Sources/Jot/DictationHighlight.swift
+      - Sources/Jot/DictationInput.swift
+      - Sources/Jot/SuggestionFieldReadback.swift
+      - Sources/Jot/SuggestionFieldReader.swift
+      - Sources/Jot/ShortcutEventTap.swift
+      - Sources/Jot/ShortcutTargetTicket.swift
+      - Sources/Jot/ShortcutTargetAcquisition.swift
+      - Sources/Jot/KeepAwakeAssertion.swift
+      - Sources/Jot/ListeningTimeline.swift
+      - Sources/Jot/LiveCleanup.swift
+      - Sources/Jot/MicrophoneCapture.swift
+      - Sources/Jot/RecognitionCommitWindow.swift
+      - Sources/Jot/ResourceSnapshot.swift
+      - Sources/Jot/ResourceSampler.swift
+      - Sources/Jot/SessionAudioFile.swift
+      - Sources/Jot/SessionLibrary.swift
+      - Sources/Jot/ShortcutSettings.swift
+      - Sources/Jot/SuggestionCard.swift
+      - Sources/Jot/SuggestionCoordinator.swift
+      - Sources/Jot/ScreenContextReader.swift
+      - Sources/Jot/WindowImageCapture.swift
+      - Sources/Jot/SpeakerPass.swift
+      - Sources/Jot/MappedFloat32Source.swift
+      - Sources/Jot/SpeakerRecognizer.swift
+      - Sources/Jot/SpeechPipeline.swift
+      - Sources/Jot/CaptureEventKind.swift
+      - Sources/Jot/SpeechServiceDependencies.swift
+      - Sources/Jot/SpeechService.swift
+      - Sources/Jot/SpeechServiceIPC.swift
+      - Sources/Jot/Transcriber.swift
+    settings:
+      base:
+        PRODUCT_NAME: jot-lab
+        LD_RUNPATH_SEARCH_PATHS: '@executable_path/../Frameworks @executable_path'
+    dependencies:
+      - target: JotCore
+      - package: FluidAudio
   Jot:
     type: application
     platform: macOS
@@ -134,15 +187,20 @@ targets:
       - package: FluidAudio
       - target: JotCLI
         embed: false
+      - target: JotLab
+        embed: false
     postBuildScripts:
       - name: Bundle agent CLI
         script: |
           mkdir -p "$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers"
           cp "$BUILT_PRODUCTS_DIR/jot" "$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/jot"
+          cp "$BUILT_PRODUCTS_DIR/jot-lab" "$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/jot-lab"
         inputFiles:
           - $(BUILT_PRODUCTS_DIR)/jot
+          - $(BUILT_PRODUCTS_DIR)/jot-lab
         outputFiles:
           - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/jot
+          - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/jot-lab
   JotWindowChecks:
     type: tool
     platform: macOS
