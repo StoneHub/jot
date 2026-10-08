@@ -83,6 +83,7 @@ struct RecoveryFlowChecks {
         if CommandLine.arguments.contains("--dictation-model") { try await checkDictationProse(); return }
         if CommandLine.arguments.contains("--capture") { try await CaptureFlowChecks.run(); return }
         checkRecognitionCommitWindow()
+        checkRecognitionCommitSeamFallback()
         checkShortFinalRecognition()
         checkCPUReadout()
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("jot-recovery-checks-\(UUID().uuidString)")
@@ -331,6 +332,74 @@ struct RecoveryFlowChecks {
         precondition(afterError.samples.count == 30 && afterError.bufferOffset == 23,
             "An abandoned recognition plan retained failed audio")
         print("PASS: recognition windows retain bounded context, flush tails, deduplicate seams, preserve repeats, and reset at boundaries.")
+    }
+
+    /// #215: a decode can miss words at the start of the interval it owns that the previous decode heard in its uncommitted tail.
+    static func checkRecognitionCommitSeamFallback() {
+        var window = RecognitionCommitWindow(contextSeconds: 2, sampleRate: 10)
+        let first = window.plan(sessionID: "a", offset: 0, newSamples: Array(repeating: 1, count: 30), isFinal: false)
+        let firstWords = window.newWords(from: [
+            WordTiming(word: "alpha", startTime: 0.2, endTime: 0.5),
+            WordTiming(word: "bravo", startTime: 1.2, endTime: 1.5),
+            WordTiming(word: "charlie", startTime: 2.2, endTime: 2.6)
+        ], for: first)
+        precondition(firstWords.map(\.word) == ["alpha"], "Tail words were committed before their interval")
+        window.commit(first, words: firstWords)
+
+        // The owning decode returns nothing before its own tail.
+        let second = window.plan(sessionID: "a", offset: 3, newSamples: Array(repeating: 2, count: 30), isFinal: false)
+        let secondWords = window.newWords(from: [
+            WordTiming(word: "delta", startTime: 4.3, endTime: 4.6),
+            WordTiming(word: "kilo", startTime: 5.6, endTime: 5.8),
+            WordTiming(word: "the", startTime: 6.34, endTime: 6.42)
+        ], for: second)
+        precondition(secondWords.map(\.word) == ["bravo", "charlie"]
+            && secondWords.map(\.startTime) == [1.2, 2.2].map { $0 - second.bufferOffset },
+            "Words the previous decode heard in its tail were dropped when the owning decode missed them: \(secondWords.map(\.word))")
+        window.commit(second, words: secondWords)
+
+        // Where the owning decode has a word at that time, or the same word moved a little, it wins: no duplicate of the held word.
+        let third = window.plan(sessionID: "a", offset: 6, newSamples: Array(repeating: 3, count: 30), isFinal: false)
+        let thirdWords = window.newWords(from: [
+            WordTiming(word: "delta", startTime: 4.25 - third.bufferOffset, endTime: 4.6 - third.bufferOffset),
+            WordTiming(word: "echo", startTime: 5.0 - third.bufferOffset, endTime: 5.3 - third.bufferOffset),
+            WordTiming(word: "kilo", startTime: 5.9 - third.bufferOffset, endTime: 6.1 - third.bufferOffset),
+            // The same sound read as another word, with no real gap around the held one.
+            WordTiming(word: "carved", startTime: 6.1 - third.bufferOffset, endTime: 6.3 - third.bufferOffset),
+            WordTiming(word: "a", startTime: 6.46 - third.bufferOffset, endTime: 6.54 - third.bufferOffset),
+            WordTiming(word: "golf", startTime: 7.5 - third.bufferOffset, endTime: 7.8 - third.bufferOffset)
+        ], for: third)
+        precondition(thirdWords.map(\.word) == ["delta", "echo", "kilo", "carved", "a"] && abs(thirdWords[0].startTime + third.bufferOffset - 4.25) < 1e-9,
+            "A held tail word duplicated or replaced the owning decode's word: \(thirdWords.map(\.word))")
+        window.commit(third, words: thirdWords)
+
+        // A final decode that misses the held tail still commits it, then nothing is held past the reset.
+        let final = window.plan(sessionID: "a", offset: 9, newSamples: [], isFinal: true)
+        let finalWords = window.newWords(from: [], for: final)
+        precondition(finalWords.map(\.word) == ["golf"], "A final decode dropped the held tail: \(finalWords.map(\.word))")
+        window.commit(final, words: finalWords)
+        // A word that moves across the cursor between decodes: the previous decode held it just after, the owning decode heard it
+        // just before, where it doesn't own it. It is committed once, after equal-time words that keep the decoder's order.
+        var jitter = RecognitionCommitWindow(contextSeconds: 2, sampleRate: 10)
+        let early = jitter.plan(sessionID: "j", offset: 0, newSamples: Array(repeating: 1, count: 30), isFinal: false)
+        jitter.commit(early, words: jitter.newWords(from: [WordTiming(word: "bravo", startTime: 0.95, endTime: 1.25)], for: early))
+        let owning = jitter.plan(sessionID: "j", offset: 3, newSamples: Array(repeating: 2, count: 30), isFinal: false)
+        let owningWords = jitter.newWords(from: [
+            WordTiming(word: "bravo", startTime: 0.8, endTime: 1.1),
+            WordTiming(word: "of", startTime: 2.0, endTime: 2.1),
+            WordTiming(word: "the", startTime: 2.0, endTime: 2.1),
+            WordTiming(word: "zulu", startTime: 4.5, endTime: 4.8)
+        ], for: owning)
+        precondition(owningWords.map(\.word) == ["bravo", "of", "the"],
+            "A word that moved across the cursor was lost, or equal-time words changed order: \(owningWords.map(\.word))")
+        jitter.commit(owning, words: owningWords)
+        // A new session starts its clock at zero; nothing held from the old one may fill it.
+        let rotated = jitter.plan(sessionID: "k", offset: 0, newSamples: Array(repeating: 3, count: 90), isFinal: false)
+        precondition(jitter.newWords(from: [], for: rotated).isEmpty, "A held word crossed into a new session")
+
+        let afterFinal = window.plan(sessionID: "a", offset: 9, newSamples: Array(repeating: 4, count: 30), isFinal: true)
+        precondition(window.newWords(from: [], for: afterFinal).isEmpty, "A held word outlived the final reset")
+        print("PASS: words the previous decode heard in its tail are committed where the owning decode missed them, without duplicates.")
     }
 
     /// A boundary right after a final job closes a chunk with no context before it. Under the recognizer's 0.3-second minimum,
