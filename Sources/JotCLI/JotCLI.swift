@@ -10,6 +10,7 @@ struct JotCLI {
             if args.first == "listen" { try ListenCommand().run(Array(args.dropFirst())); return }
             if args.first == "mcp" { try MCPServer().run(); return }
             if args.first == "lab" { try LabCommand.run(Array(args.dropFirst())) }
+            if args.count >= 2, args[0] == "settings", args[1] == "import" { try SettingsImport.run(Array(args.dropFirst(2))); return }
             if args.isEmpty || ["help", "--help", "-h"].contains(args[0]) { print(usage); return }
             let (method, params) = try command(args)
             let data = try LocalServiceClient().request(method: method, params: params)
@@ -61,6 +62,8 @@ struct JotCLI {
     jot settings                       Every setting: value, default, whether you changed it
     jot settings set <key> <value>     Change one setting; it applies at once
     jot settings reset <key>           Back to the default, and follow it in later versions
+    jot settings import <variants.json> <name>
+                                       Apply one jot lab variant's settings to the running app
     jot models prepare                 Download/prepare local speech models
     jot models check                   Check published model revisions (no download)
     jot models unload                  Free the speech models' memory; listening stops first
