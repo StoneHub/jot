@@ -29,7 +29,7 @@ Done when the PR is open and marked ready for review, and the claim comment link
 
 ## Merge rule
 
-The lead on duty merges, one PR at a time, when `python3 scripts/local-pr-check.py <PR> --post` reports `PASS` on the PR head with current `main` merged in. A PASS covers the gates the diff needs: portable checks, Swift tests, the app build and the recovery checks.
+The lead on duty merges, one PR at a time, when `python3 scripts/local-pr-check.py <PR> --post` reports `PASS` on the PR head with current `main` merged in. `--post` also publishes the verdict as the `jot/local-pr-check` status on the PR head. A PASS covers the gates the diff needs: portable checks, Swift tests, the app build and the recovery checks.
 
 The `app-behavior` and real-model-audio attestations aren't merge gates. They go on Monroe's daily test list, and a failure he finds is fixed forward. Workers, cloud ones included, open PRs and leave merging to the lead.
 

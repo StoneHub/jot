@@ -300,7 +300,7 @@ class WorktreeTests(unittest.TestCase):
         report = next((self.clone / 'work/pr-checks').glob('current-*/report.json'))
         self.assertEqual(json.loads(report.read_text())['verdict'], 'INCOMPLETE')
 
-    def simulated_status_run(self, number, *args, run_gate=None, info_change=None, system='Darwin', publisher=None):
+    def simulated_status_run(self, number, *args, run_gate=None, info_change=None, system='Darwin', publisher=None, publish=True):
         """Exercise real git snapshots and main orchestration, but never execute native commands or post status."""
         head = self.git('rev-parse', f'refs/heads/topic-{number}')
         base = self.git('rev-parse', 'refs/heads/main')
@@ -324,7 +324,7 @@ class WorktreeTests(unittest.TestCase):
                 stack.enter_context(redirect_stdout(io.StringIO()))
                 stack.enter_context(redirect_stderr(io.StringIO()))
                 try:
-                    result = check.main([str(number), '--publish-status', *args])
+                    result = check.main([str(number), *(['--publish-status'] if publish else []), *args])
                 except (SystemExit, KeyboardInterrupt) as error:
                     result = error
                 return result, [call.args[2] for call in publication.call_args_list]
@@ -539,6 +539,39 @@ class WorktreeTests(unittest.TestCase):
         self.assertIsInstance(result, SystemExit)
         self.assertEqual(events, ['pending', 'success', 'error'])
         self.assert_local_report_incomplete(34)
+
+    def test_posted_check_publishes_its_gate_verdict_as_a_status_before_the_comment(self):
+        self.open_pull_request(35, 'base\nchange\n')
+        events = []
+        real_run = subprocess.run
+        def subprocess_with_comment(command, **kwargs):
+            if command[:3] == ['gh', 'pr', 'comment']:
+                events.append('comment')
+                return subprocess.CompletedProcess(command, 0)
+            return real_run(command, **kwargs)
+        def record(root, context, state, status_context=check.STATUS_CONTEXT):
+            events.append((state, status_context))
+        with patch.object(check.subprocess, 'run', side_effect=subprocess_with_comment):
+            result, _ = self.simulated_status_run(35, '--post', publisher=record, publish=False)
+        self.assertEqual(result, 0)
+        self.assertEqual(events, [('success', check.GATE_STATUS_CONTEXT), 'comment'])
+        events.clear()
+        def failed(gate, tree, logs, expected_head=None):
+            gate.status = 'failed' if gate.name == 'portable' else 'passed'
+        with patch.object(check.subprocess, 'run', side_effect=subprocess_with_comment):
+            result, _ = self.simulated_status_run(35, '--post', publisher=record, publish=False, run_gate=failed)
+        self.assertEqual(result, 1)
+        self.assertEqual(events, [('failure', check.GATE_STATUS_CONTEXT), 'comment'])
+
+    @patch.object(check.subprocess, 'run')
+    def test_gate_status_names_its_own_context_and_never_claims_attestations(self, run):
+        run.return_value = subprocess.CompletedProcess([], 0)
+        context = {'url': 'https://github.com/StoneHub/jot/pull/5', 'head': 'a' * 40, 'baseHead': 'b' * 40}
+        check.publish_status(Path('/tmp'), context, 'success', check.GATE_STATUS_CONTEXT)
+        command = run.call_args.args[0]
+        self.assertIn('context=jot/local-pr-check', command)
+        self.assertIn(f'description=Mac gates passed; manual checks are the PR test list; base {"b" * 40}', command)
+        self.assertFalse(any('attestation' in part for part in command))
 
     def advance_base(self, number, from_pr=False):
         self.git('switch', '--quiet', '-c', f'advanced-{number}', f'topic-{number}' if from_pr else 'main')
