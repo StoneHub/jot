@@ -1,12 +1,14 @@
 import Foundation
 
-/// Caption files a lab run is scored against: SubRip (.srt) and WebVTT (.vtt). Only the cue text and times are read;
-/// styling, positions, speaker voice tags and notes are dropped.
+/// Caption files a lab run is scored against: SubRip (.srt) and WebVTT (.vtt). The cue text and times are read, and the
+/// speaker a WebVTT voice tag (`<v Name>`) names, in either format; styling, positions and notes are dropped.
 public enum LabCaptions {
     public struct Cue: Sendable, Equatable {
         public var start: Double
         public var end: Double
         public var text: String
+        /// The voice the cue's tags name. Nil when it has no voice tag, or names two voices whose words can't be placed in time.
+        public var speaker: String?
     }
 
     public static func parse(_ contents: String) throws -> [Cue] {
@@ -23,12 +25,14 @@ public enum LabCaptions {
             guard sides.count == 2, let start = seconds(sides[0]),
                   let end = seconds(sides[1].trimmingCharacters(in: .whitespaces).components(separatedBy: " ")[0]) else { continue }
             var text: [String] = []
+            var voices: Set<String> = []
             while index < lines.count, !lines[index].trimmingCharacters(in: .whitespaces).isEmpty {
+                voices.formUnion(self.voices(lines[index]))
                 text.append(clean(lines[index]))
                 index += 1
             }
             let joined = text.filter { !$0.isEmpty }.joined(separator: " ")
-            if !joined.isEmpty { cues.append(Cue(start: start, end: end, text: joined)) }
+            if !joined.isEmpty { cues.append(Cue(start: start, end: end, text: joined, speaker: voices.count == 1 ? voices.first : nil)) }
         }
         guard !cues.isEmpty else { throw LabError.invalid("The caption file has no timed cues; use SubRip (.srt) or WebVTT (.vtt).") }
         return cues
@@ -53,5 +57,10 @@ public enum LabCaptions {
             text = text.replacingOccurrences(of: entity, with: character)
         }
         return text.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// The names a line's voice tags give: `<v Kim>`, or `<v.loud Kim>` with a class.
+    private static func voices(_ line: String) -> [String] {
+        line.matches(of: #/<v(?:\.[^\s>]*)?\s+([^>]+)>/#).map { clean(String($0.output.1)) }.filter { !$0.isEmpty }
     }
 }

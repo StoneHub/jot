@@ -38,10 +38,17 @@ struct TuningLab {
                 let passSpeakers = pass.segments.isEmpty ? nil : SpeakerPassRelabel.speakers(words: recognized.words, segments: pass.segments, tuning: tuning)
                 let rows = try LabRows.rows(rows: recognized.rows, words: recognized.words, readable: recognized.readable,
                     liveSpeakers: live, passSpeakers: passSpeakers)
+                var score = captions.map { LabScore(rows: rows, captions: $0) }
+                if let captions {
+                    score?.liveSpeakers = try LabSpeakerScore(words: recognized.words, speakers: live, captions: captions)
+                    if let passSpeakers {
+                        score?.passSpeakers = try LabSpeakerScore(words: recognized.words, speakers: passSpeakers, captions: captions)
+                    }
+                }
                 results.append(LabVariantResult(name: variant.name, settings: variant.settings, recognitionRun: number + 1, rows: rows,
                     paragraphs: LabRows.paragraphs(rows, tuning: tuning),
                     timings: .init(audioSeconds: audioSeconds, recognitionSeconds: recognized.seconds, speakerPassSeconds: pass.processingSeconds),
-                    score: captions.map { LabScore(rows: rows, captions: $0) }, cleanupOutcomes: recognized.cleanupOutcomes))
+                    score: score, cleanupOutcomes: recognized.cleanupOutcomes))
             }
         }
         return results
