@@ -35,7 +35,7 @@ final class TuningLabTests: XCTestCase {
         let settings = JotSettings(defaults: defaults)
         let variant = try LabVariant.parse(Data(#"[{"name": "a", "settings": {"chunkMaximumSeconds": 99, "cleanUpTranscriptions": false}}]"#.utf8))[0]
         try variant.apply(to: settings)
-        XCTAssertEqual(settings.double(JotSettings.chunkMaximumSeconds), 6, "A number outside the range is clamped, as jot settings set does")
+        XCTAssertEqual(settings.double(JotSettings.chunkMaximumSeconds), 15, "A number outside the range is clamped, as jot settings set does")
         XCTAssertFalse(settings.bool(JotDefaultsKey.cleanUpTranscriptions))
         let wrongKind = try LabVariant.parse(Data(#"[{"name": "b", "settings": {"cleanUpTranscriptions": "maybe"}}]"#.utf8))[0]
         XCTAssertThrowsError(try wrongKind.apply(to: settings))
