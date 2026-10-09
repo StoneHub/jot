@@ -81,9 +81,7 @@ final class PersonalVocabularyTests: XCTestCase {
     }
 
     func testPreferencesPersistWithoutTouchingTranscriptPreferencesAndKeepBadData() throws {
-        let suite = "jot-vocabulary-tests-" + UUID().uuidString
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = MemoryDefaults()
         defaults.set(true, forKey: "historyTextView")
         let preferences = VocabularyPreferences(defaults: defaults)
         XCTAssertTrue(try preferences.load().entries.isEmpty)

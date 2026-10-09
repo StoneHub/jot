@@ -3,7 +3,7 @@ import XCTest
 
 final class TranscriptCleanupTests: XCTestCase {
     @MainActor func testDictationInstructionsDistinguishFragmentsFromCompleteSentences() throws {
-        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let defaults = MemoryDefaults()
         let settings = JotSettings(defaults: defaults)
         let transcript = TranscriptCleanup(settings: settings)
         let dictation = TranscriptCleanup(settings: settings, purpose: .dictation)

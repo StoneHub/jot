@@ -237,9 +237,7 @@ final class SuggestionHeardSpeechTests: XCTestCase {
     }
 
     func testSettingIsOnByDefaultAndSettable() throws {
-        let suite = "SuggestionHeardSpeechTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = MemoryDefaults()
         let settings = JotSettings(defaults: defaults)
         XCTAssertTrue(settings.bool(JotDefaultsKey.suggestionHeardMatches))
         try settings.set(JotDefaultsKey.suggestionHeardMatches, raw: "off")

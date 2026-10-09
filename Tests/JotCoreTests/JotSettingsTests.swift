@@ -1,18 +1,12 @@
 import XCTest
 @testable import JotCore
 
-/// Every test runs against its own UserDefaults suite, never the app's.
+/// Every test runs against its own in-memory preferences, never the app's.
 final class JotSettingsTests: XCTestCase {
-    private var suiteName = ""
     private var defaults: UserDefaults!
 
     override func setUp() {
-        suiteName = "JotSettingsTests.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)
-    }
-
-    override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
+        defaults = MemoryDefaults()
     }
 
     private func legacyTuning(_ json: String) { defaults.set(Data(json.utf8), forKey: JotDefaultsKey.transcriptionTuning) }
