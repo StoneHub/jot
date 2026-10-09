@@ -84,11 +84,21 @@ final class TuningAudioTests: XCTestCase {
             file("fresh.wav", day),
             file("edge.wav", 30 * day),                 // exactly thirty days old: kept
             file("late.wav", 30 * day + 1),
-            file("crashed.wav.partial", 31 * day),      // a copy a crash left half-written
             file("captions.srt", 90 * day),             // not written by Jot
             file("ahead.wav", -2 * day),                // the clock went back
         ]
-        XCTAssertEqual(TuningAudio.expired(files, now: now).map(\.name), ["late.wav", "crashed.wav.partial"])
+        XCTAssertEqual(TuningAudio.expired(files, now: now).map(\.name), ["late.wav"])
+    }
+
+    /// A copy writes its .partial file as it goes, so one untouched for a day was left by a crash.
+    func testHalfWrittenCopiesExpireAfterADay() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let files = [
+            TuningAudio.File(name: "copying.wav.partial", written: now - 23 * 60 * 60, bytes: 1),
+            TuningAudio.File(name: "crashed.wav.partial", written: now - day - 1, bytes: 1),
+        ]
+        XCTAssertEqual(TuningAudio.expired(files, now: now).map(\.name), ["crashed.wav.partial"])
+        XCTAssertEqual(TuningAudio.summary(files), .init(count: 0, bytes: 0, oldest: nil), "jot status counts finished WAVs only")
     }
 
     func testPruneDeletesExpiredFilesAndNamesTheirSessions() throws {

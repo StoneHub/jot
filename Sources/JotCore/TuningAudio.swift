@@ -20,6 +20,7 @@ public enum TuningAudio {
     }
 
     static let maximumAge: TimeInterval = 30 * 24 * 60 * 60
+    static let partialMaximumAge: TimeInterval = 24 * 60 * 60
     static let sampleRate: UInt32 = 16_000
     /// The header bytes the RIFF size counts: all 58 but the RIFF tag and the size itself.
     private static let headerBytesAfterRIFFSize: UInt32 = 50
@@ -94,10 +95,15 @@ public enum TuningAudio {
         return target
     }
 
-    /// The kept files to delete at `now`: WAVs, and copies a crash left half-written, written more than 30 days earlier.
-    /// Anything else in the folder is not Jot's and stays.
+    /// The kept files to delete at `now`: WAVs written more than 30 days earlier, and copies a crash left half-written a day
+    /// or more ago. Anything else in the folder is not Jot's and stays.
     static func expired(_ files: [File], now: Date) -> [File] {
-        files.filter { ($0.name.hasSuffix(".wav") || $0.name.hasSuffix(".wav.partial")) && now.timeIntervalSince($0.written) > maximumAge }
+        files.filter { file in
+            let age = now.timeIntervalSince(file.written)
+            // A copy writes its .partial file as it goes, so one untouched for a day was left by a crash.
+            if file.name.hasSuffix(".wav.partial") { return age > partialMaximumAge }
+            return file.name.hasSuffix(".wav") && age > maximumAge
+        }
     }
 
     /// Deletes the kept files more than 30 days old and returns their session ids, so each deletion is logged.
