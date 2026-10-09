@@ -85,6 +85,34 @@ final class TuningLabTests: XCTestCase {
         XCTAssertThrowsError(try LabCaptions.parse("just some words with no timings"))
     }
 
+    func testVoiceTagsGiveACueItsSpeakerInWebVTTAndSRT() throws {
+        let vtt = """
+        WEBVTT
+
+        00:01.000 --> 00:02.000
+        <v Kim>First line</v>
+
+        00:02.500 --> 00:04.000
+        <v.loud Lee &amp; Co>Second</v>
+        line
+
+        00:04.500 --> 00:05.000
+        <v Kim>Yes.</v> <v Lee>No.</v>
+
+        00:05.500 --> 00:06.000
+        <v Kim>Still</v>
+        <v Kim>me</v>
+
+        00:07.000 --> 00:08.000
+        Nobody tagged this
+        """
+        let cues = try LabCaptions.parse(vtt)
+        XCTAssertEqual(cues.map(\.speaker), ["Kim", "Lee & Co", nil, "Kim", nil], "Two voices in one cue can't be placed in time, so it names none")
+        XCTAssertEqual(cues.map(\.text), ["First line", "Second line", "Yes. No.", "Still me", "Nobody tagged this"])
+        let srt = try LabCaptions.parse("1\n00:00:00,000 --> 00:00:02,050\n<v Daniel>No, the deadline is Friday.\n")
+        XCTAssertEqual(srt, [LabCaptions.Cue(start: 0, end: 2.05, text: "No, the deadline is Friday.", speaker: "Daniel")])
+    }
+
     // MARK: Word error rate
 
     func testWordErrorRateCountsSubstitutionsDeletionsAndInsertionsIgnoringCaseAndPunctuation() {
