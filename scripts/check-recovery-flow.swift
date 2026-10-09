@@ -1553,6 +1553,14 @@ struct RecoveryFlowChecks {
         let pruned = try store.events(sessionID: "old")
         precondition(pruned.contains { $0.kind == "audio_discarded" }, "Deleting the 31-day-old file was not logged: \(pruned.map(\.detail))")
 
+        // Deleting a session deletes its kept WAV, and a session deleted before its pass keeps nothing.
+        try await service.deleteSession("on")
+        precondition(names(kept).isEmpty, "Deleting the session left its WAV: \(names(kept))")
+        try await service.deleteSession("gone")
+        try await endSession("gone")
+        precondition(passes.entries.last == "gone: 40000 samples, WAV before the pass: false" && names(kept).isEmpty,
+                     "A session deleted before its pass still kept its audio: \(names(kept)), \(passes.entries)")
+
         // A copy that cannot be written leaves the pass as it was.
         let blocked = folder.appendingPathComponent("not-a-folder")
         try Data().write(to: blocked)
@@ -1562,7 +1570,7 @@ struct RecoveryFlowChecks {
         let events = try store.events(sessionID: "blocked")
         precondition(events.contains { $0.kind == "processing_error" && $0.detail.contains("for tuning") }, "The failed copy was not logged: \(events.map(\.detail))")
         precondition(events.contains { $0.kind == "speaker_pass" }, "The pass did not finish after the copy failed: \(events.map(\.detail))")
-        print("PASS: with keepTuningAudio off the pass gets the session's file and nothing is kept; on, a 16 kHz mono 16-bit WAV of the same length is written before the pass reads and deletes its file, a kept file past 30 days goes, and a failed copy is logged without changing the pass.")
+        print("PASS: with keepTuningAudio off the pass gets the session's file and nothing is kept; on, a 16 kHz mono 16-bit WAV of the same length is written before the pass reads and deletes its file, a kept file past 30 days goes, deleting a session deletes its WAV, and a failed copy is logged without changing the pass.")
     }
 
     @MainActor static func checkRealRecognition(_ file: URL) async throws {

@@ -751,6 +751,7 @@ final class SpeechService: ObservableObject {
     func deleteSession(_ id: String) async throws {
         guard canDeleteSession(id) else { throw JotError.message("Stop recording this session before deleting it.") }
         try await library.deleteSession(id)
+        await speakers.deleteTuningAudio(session: id)
     }
 
     func regroupSession(_ id: String) async throws {

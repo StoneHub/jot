@@ -67,7 +67,7 @@ final class SpeakerRecognizer: ObservableObject {
         defer { passRunning = false }
         do {
             guard let audio = try await file.finish() else { return }
-            if settings.bool(JotSettings.keepTuningAudio) { await keepForTuning(audio.url, session: id) }
+            if settings.bool(JotSettings.keepTuningAudio), !(await library.waitForDeletion(id)) { await keepForTuning(audio.url, session: id) }
             let raw = try await runPass(audio.url)
             await apply(raw, session: id, truncated: audio.truncated)
         } catch {
@@ -85,7 +85,15 @@ final class SpeakerRecognizer: ObservableObject {
             recordEvent(.processingError, "Could not keep session audio for tuning: \(error.localizedDescription)", nil, id)
             return
         }
+        // Deleted while it was copied: the delete may have run before the WAV existed.
+        if await library.waitForDeletion(id) { await deleteTuningAudio(session: id); return }
         await pruneTuningAudio()
+    }
+
+    /// A deleted session's kept tuning audio goes with it, off the main actor.
+    func deleteTuningAudio(session id: String) async {
+        let url = TuningAudio.url(sessionID: id, in: tuningAudioDirectory)
+        _ = await Task.detached(priority: .utility) { try? FileManager.default.removeItem(at: url) }.value
     }
 
     /// Deletes kept tuning audio past 30 days or 10 GB, off the main actor, and logs each deletion. Runs at launch and after each kept file.
