@@ -20,6 +20,9 @@ from urllib.parse import urlparse
 
 MARKER = 'jot-local-check'
 STATUS_CONTEXT = 'jot/local-macos-validation'
+# Every posted check also reports its gate verdict here. Manual attestations are not merge gates, so this
+# context never claims them; STATUS_CONTEXT stays the stricter, attested one.
+GATE_STATUS_CONTEXT = 'jot/local-pr-check'
 SWIFT_TRIGGERS = ('Sources/', 'Tests/', 'Package.swift', 'Package.resolved')
 APP_TRIGGERS = ('Sources/', 'Resources/', 'project.yml', 'Jot.xcodeproj/', 'Package.swift', 'Package.resolved',
                 'LICENSE', 'scripts/build-install.py', 'scripts/signing.py', 'scripts/check-no-feedback.py')
@@ -338,7 +341,7 @@ def native_verdict(gates, context, attestation):
     return 'PASS'
 
 
-def publish_status(root, context, state):
+def publish_status(root, context, state, status_context=STATUS_CONTEXT):
     """Use existing gh credentials only. Do not set up credentials or retry uncertain writes."""
     url = urlparse(context['url'])
     match = re.fullmatch(r'/([^/]+)/([^/]+)/pull/[0-9]+', url.path)
@@ -346,12 +349,16 @@ def publish_status(root, context, state):
             or not SHA.fullmatch(context['head']) or not SHA.fullmatch(context['baseHead'])):
         raise SystemExit('Cannot publish: unverified GitHub PR URL or commit SHA.')
     repository = '/'.join(match.groups())
-    description = {'pending': 'Native validation running', 'success': 'All native gates and required attestations passed',
-                   'failure': 'Native validation failed', 'error': 'Native validation incomplete'}[state]
+    if status_context == STATUS_CONTEXT:
+        description = {'pending': 'Native validation running', 'success': 'All native gates and required attestations passed',
+                       'failure': 'Native validation failed', 'error': 'Native validation incomplete'}[state]
+    else:
+        description = {'success': 'Mac gates passed; manual checks are the PR test list', 'failure': 'Mac gates failed',
+                       'error': 'Mac gates incomplete'}[state]
     description += f'; base {context["baseHead"]}'
     try:
         result = subprocess.run(['gh', 'api', '--method', 'POST', f'repos/{repository}/statuses/{context["head"]}',
-                                 '-f', f'state={state}', '-f', f'context={STATUS_CONTEXT}',
+                                 '-f', f'state={state}', '-f', f'context={status_context}',
                                  '-f', f'description={description}', '-f', f'target_url={context["url"]}'],
                                 cwd=root, capture_output=True, text=True)
     except OSError:
@@ -395,7 +402,7 @@ def main(argv=None):
     parser.add_argument('--all', action='store_true', help='run every gate whatever the diff touches')
     parser.add_argument('--skip', action='append', default=[], choices=GATES, help='skip a gate (verdict INCOMPLETE)')
     parser.add_argument('--dry-run', action='store_true', help='print the plan without running it')
-    parser.add_argument('--post', action='store_true', help='post the report as a PR comment with gh')
+    parser.add_argument('--post', action='store_true', help='post the report as a PR comment and its verdict as the jot/local-pr-check status with gh')
     parser.add_argument('--publish-status', action='store_true',
                         help=f'run all gates on macOS and publish {STATUS_CONTEXT} with existing gh credentials')
     parser.add_argument('--ui-attestation', type=Path, help='local JSON recording SHA/base-bound manual checks')
@@ -537,6 +544,13 @@ def main(argv=None):
             if args.publish_status:
                 publish_status(root, context, 'error')
             raise
+        if not args.publish_status:
+            try:
+                publish_status(root, context, {'PASS': 'success', 'FAIL': 'failure', 'INCOMPLETE': 'error'}[result],
+                               GATE_STATUS_CONTEXT)
+            except (SystemExit, KeyboardInterrupt):
+                save_report(logs, context, gates, 'INCOMPLETE', args.note)
+                raise
         summary = logs / 'public-report.md'
         summary.write_text(public_report(context, gates, result))
         subprocess.run(['gh', 'pr', 'comment', str(args.pr), '--body-file', str(summary)], cwd=root, check=True)

@@ -27,7 +27,7 @@ Suggestion work: #79, #90, #139, #140, #150 and #162 are parked for about a mont
 
 Deferred: #40 calendar meeting names, then #33 microphone proximity. Public distribution is separate work under [RELEASING.md](RELEASING.md), not an automatic daily output.
 
-Releases go out weekly rather than per merge, until a second user exists.
+A release goes out after each merged batch, so Monroe's other Mac updates in-app.
 
 ## Refactor only the next responsibility being changed
 
