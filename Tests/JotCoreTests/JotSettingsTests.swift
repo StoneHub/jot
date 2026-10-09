@@ -206,6 +206,22 @@ final class JotSettingsTests: XCTestCase {
         XCTAssertEqual(settings.int(JotSettings.cleanupMaximumTokens), 1200)
     }
 
+    /// The lab compares chunk lengths up to 15 seconds, the recognizer's input limit, so the setting accepts them and stops there.
+    func testChunkLengthReachesTheRecognizersWindowAndNoFurther() throws {
+        let settings = JotSettings(defaults: defaults)
+        for seconds in [6.0, 10.0, 15.0] {
+            try settings.set(JotSettings.chunkMaximumSeconds, raw: seconds)
+            XCTAssertEqual(settings.double(JotSettings.chunkMaximumSeconds), seconds, accuracy: 0.0001, "\(seconds) s is kept as set")
+        }
+        try settings.set(JotSettings.chunkMaximumSeconds, raw: "99")
+        XCTAssertEqual(settings.double(JotSettings.chunkMaximumSeconds), 15, accuracy: 0.0001, "Above the window is clamped to it")
+        try settings.set(JotSettings.chunkMaximumSeconds, raw: "0")
+        XCTAssertEqual(settings.double(JotSettings.chunkMaximumSeconds), 1, accuracy: 0.0001)
+        XCTAssertEqual(CaptureChunkScheduler(maximumSeconds: 15).maximumSamples, 240_000)
+        settings.set(JotSettings.chunkMaximumSeconds, CaptureChunkScheduler.defaultMaximumSeconds)
+        XCTAssertFalse(settings.isChanged(JotSettings.chunkMaximumSeconds), "The default stays 3 s")
+    }
+
     func testReportListsEverySettingOnce() {
         let report = JotSettings(defaults: defaults).report()
         let keys = report.compactMap { $0["key"] as? String }
