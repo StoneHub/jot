@@ -41,7 +41,7 @@ public final class JotSettings: @unchecked Sendable {
     public static let listenMode = "listenMode"
     public static let listenQuietGap = "listenQuietGap"
     public static let listenLookbackMinutes = "listenLookbackMinutes"
-    static let revisionKey = "settingsRevision"
+    public static let revisionKey = "settingsRevision"
 
     /// The code defaults the definitions below point at, so each lives in the type that uses it.
     private static let tuningDefaults = TranscriptionTuning()

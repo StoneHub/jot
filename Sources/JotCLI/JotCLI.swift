@@ -9,6 +9,8 @@ struct JotCLI {
             if args.first == "agent-context" { AgentContextCommand.run(Array(args.dropFirst())); return }
             if args.first == "listen" { try ListenCommand().run(Array(args.dropFirst())); return }
             if args.first == "mcp" { try MCPServer().run(); return }
+            if args.first == "lab" { try LabCommand.run(Array(args.dropFirst())) }
+            if args.count >= 2, args[0] == "settings", args[1] == "import" { try SettingsImport.run(Array(args.dropFirst(2))); return }
             if args.isEmpty || ["help", "--help", "-h"].contains(args[0]) { print(usage); return }
             let (method, params) = try command(args)
             let data = try LocalServiceClient().request(method: method, params: params)
@@ -54,9 +56,14 @@ struct JotCLI {
     jot people                         Voices Jot remembers
     jot forget <person-id>             Forget one remembered voice; session names stay
     jot diagnostics                    Bounded performance report; no captured content
+    jot lab <audio> --variants <file.json> --out <dir> [--captions <file.srt|.vtt>]
+                                       Run a recording through the real pipeline once per settings variant
+                                       and compare them; capture keeps running, output stays outside git
     jot settings                       Every setting: value, default, whether you changed it
     jot settings set <key> <value>     Change one setting; it applies at once
     jot settings reset <key>           Back to the default, and follow it in later versions
+    jot settings import <variants.json> <name>
+                                       Apply one jot lab variant's settings to the running app
     jot models prepare                 Download/prepare local speech models
     jot models check                   Check published model revisions (no download)
     jot models unload                  Free the speech models' memory; listening stops first

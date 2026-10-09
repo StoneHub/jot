@@ -60,8 +60,9 @@ final class SpeechService: ObservableObject {
         }, recognitionCompleted: { [weak self] in self?.dictation.updateAttemptText(for: $0) },
         recognitionFailed: { [weak self] in self?.dictation.noteRecognitionFailure(for: $0) })
 
-    init(dependencies: SpeechServiceDependencies = .live) {
+    init(dependencies: SpeechServiceDependencies = .live, settings: JotSettings = .standard) {
         self.dependencies = dependencies
+        self.settings = settings
         cleanupAvailability = dependencies.intelligenceAvailability()
         capture = CaptureController(microphone: dependencies.makeMicrophone(), retry: dependencies.microphoneRetry,
             availableDevices: dependencies.availableInputs, defaultDeviceUID: dependencies.defaultInputUID)
@@ -80,7 +81,8 @@ final class SpeechService: ObservableObject {
     /// The one store. Nothing here copies a value out of it: each property below reads it, and each setter writes it and
     /// then calls `settingChanged`, which applies the side effect the setting has and redraws the screens. `jot settings`
     /// writes the same store over the socket and calls `settingChanged` too, so a change applies at once either way.
-    let settings = JotSettings.standard
+    /// `jot lab` passes a store of its own, so a lab run never reads or writes the app's settings.
+    let settings: JotSettings
 
     /// After the store took a new value for `key`, from a screen or from `jot settings`: the side effect that setting has,
     /// then a redraw. The store already holds the value, so a setting with no side effect only redraws.
