@@ -4,7 +4,7 @@
 
 Say it once. Jot types it where you are and remembers who said it, all on your Mac.
 
-Updated October 7, 2026. The [architecture review](reviews/2026-10-07-architecture.md) records the source evidence, remaining large files and performance risks. [AGENTS.md](../AGENTS.md) governs delivery and preservation; [SWARM.md](SWARM.md) governs claims and integration. GitHub issues hold the work; this page orders it. Unsupported database preservation (#205 via #211) and the bounded `jot listen` CLI (#192 via #212) have shipped; #193 adds its opt-in agent skill and matching instructions. Pending session-audio writes are bounded (#207 via #213).
+Updated October 9, 2026. The order now puts speaker and recognition accuracy first; the tuning lab (#59 via #217) and the dropped-words fix (#215 via #216) have shipped. The [architecture review](reviews/2026-10-07-architecture.md) records the source evidence, remaining large files and performance risks. [AGENTS.md](../AGENTS.md) governs delivery and preservation; [SWARM.md](SWARM.md) governs claims and integration. GitHub issues hold the work; this page orders it. Unsupported database preservation (#205 via #211) and the bounded `jot listen` CLI (#192 via #212) have shipped; #193 adds its opt-in agent skill and matching instructions. Pending session-audio writes are bounded (#207 via #213).
 
 The main architecture chain has shipped: direct owners, one continuous capture/recognition timeline, off-main store execution and keyboard classification, shared live settings, named production types, separated suggestion evaluation, and Swift 6 complete strict concurrency. Do not repeat that work because an old issue description still describes the previous implementation. #63, #65 and #128 need the remaining scope stated explicitly; physical acceptance is a test-when-you-sit-down list, not a merge gate.
 
@@ -12,18 +12,21 @@ The main architecture chain has shipped: direct owners, one continuous capture/r
 
 | Priority | Work | Reason and boundary |
 | --- | --- | --- |
-| 1 | #198 MCP listener | #192 is shipped and unblocks this ready issue. Reuse the bounded listener over the saved feed; one response per command, no extra capture or recognition. |
-| 2 | #208 incremental held recovery; #209 active-session summaries | Reduce work that grows with session/hold length. Core changes run one at a time; #207 audio-write bounds are shipped. |
-| 3 | #194 wait for speech / end-of-speech signal | Reduce listener polling and command latency after the listener's semantics are stable. Use a cancellable bounded wait off the main actor. |
-| 4 | #59 tuning lab | CLI first, real pipeline, reuse recognition for grouping/cleanup-only variants. Include very-short-tail accuracy checks: the operational 0.25-second test produced an unrelated phrase. This supplies evidence for subsequent model and speaker changes. |
-| 5 | #150 short search terms; #39 field-aware dictation style; #37 live speaker naming | Bounded product features with focused acceptance. Live naming depends on measured speaker quality and the lab. |
-| 6 | #38 meeting notes; #42 vocabulary suggestions | Preserve source facts and distinguish recognition, cleanup and generated output. |
+| 1 | #218 speaker scoring in jot lab | The lab cannot score speakers yet, though the live speaker was right for about 73% of words on synthetic speech and the speaker pass for about 92%; this adds scoring only, and no speaker setting changes. |
+| 2 | #219 recognition window-length experiment | 30 s windows kept 89% of words on the reverb and room fixtures, against 84–85% chunked, so this compares 3, 6, 10 and 15 s chunks and leaves the default to Monroe. |
+| 3 | #220 JotEngine package target | The engine is reachable only through the app target, so this moves it into a `JotEngine` package target that `swift test` runs, with app and lab output unchanged. |
+| 4 | #37 speaker pass during a session | Live speakers stay unnamed until the session ends, so this runs the speaker pass during the session, and its CPU cost must stay under a few percent. |
+| 5 | #221 per-row speaker correction, with opt-in kept audio (30-day limit) | Nothing records which rows were wrong, so real audio cannot score speakers; this adds per-row corrections in Sessions, with tuning audio off by default and deleted within 30 days at most. |
+| 6 | #222 accuracy gate (blocked by #218 and #220) | The four `local-pr-check` gates stayed green while #215 dropped words, so recognition and speaker PRs get a `jot lab` comparison against main that fails past a set tolerance. |
+| 7 | Then the earlier ready work: #198 MCP listener; #208/#209 storage scaling; #194 wait for speech | These stay ready and rank below the list: #198 gives MCP clients the `jot listen` wait, #208/#209 bound work that grows with session length, and #194 cuts listener polling and command latency. |
 
 Agent-listening parallel work: #196 opt-in prompt context can proceed independently; #195 first verifies the actual async hook wake behavior before implementation; #197 is a prototype and design choice, not authorization to ship a settings pane. #199 documentation/promotion follows #193 and recorded live acceptance evidence. #200 is the umbrella.
 
-Suggestion work: #139 conversation association and #140 relevance ranking have implementations and synthetic coverage; their remaining tasks are realistic multi-session/quality/latency evidence and fixes found by use. #162 optional request-bound screenshots shipped off by default; permission/revocation, multiple displays and request-frequency energy still need user acceptance. #90 drafting is implemented but useful-output and native/browser behavior remain an ongoing quality task. #79 remains open for the Jot-managed Terminal bridge and broader acceptance; it is not an unimplemented suggestions engine.
+Suggestion work: #79, #90, #139, #140, #150 and #162 are parked for about a month; nothing is deleted. Status while parked: #139 conversation association and #140 relevance ranking have implementations and synthetic coverage; their remaining tasks are realistic multi-session/quality/latency evidence and fixes found by use. #162 optional request-bound screenshots shipped off by default; permission/revocation, multiple displays and request-frequency energy still need user acceptance. #90 drafting is implemented but useful-output and native/browser behavior remain an ongoing quality task. #79 remains open for the Jot-managed Terminal bridge and broader acceptance; it is not an unimplemented suggestions engine.
 
 Deferred: #40 calendar meeting names, then #33 microphone proximity. Public distribution is separate work under [RELEASING.md](RELEASING.md), not an automatic daily output.
+
+Releases go out weekly rather than per merge, until a second user exists.
 
 ## Refactor only the next responsibility being changed
 
