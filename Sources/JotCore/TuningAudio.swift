@@ -1,7 +1,7 @@
 import Foundation
 
 /// Session audio kept to tune recognition while `keepTuningAudio` is on. Before the speaker pass reads and deletes a
-/// session's file, a copy goes to `tuning-audio/<sessionID>.wav` in the Jot directory, as a 16 kHz mono 32-bit float WAV that
+/// session's file, a copy goes to `tuning-audio/<sessionID>.wav` in the Jot directory, as a 16 kHz mono 16-bit PCM WAV that
 /// `jot lab` and other tools open directly. The folder is outside `audio/`, so the launch cleanup of stale session files
 /// leaves it alone. A kept file is deleted once it is more than 30 days old, at launch and each time a file is added.
 public enum TuningAudio {
@@ -22,11 +22,11 @@ public enum TuningAudio {
     static let maximumAge: TimeInterval = 30 * 24 * 60 * 60
     static let partialMaximumAge: TimeInterval = 24 * 60 * 60
     static let sampleRate: UInt32 = 16_000
-    /// The header bytes the RIFF size counts: all 58 but the RIFF tag and the size itself.
-    private static let headerBytesAfterRIFFSize: UInt32 = 50
+    /// The header bytes the RIFF size counts: all 44 but the RIFF tag and the size itself.
+    private static let headerBytesAfterRIFFSize: UInt32 = 36
     /// The most samples a WAV's 32-bit sizes can describe. A session file holds at most two hours, far fewer.
-    static let maximumSamples = Int(UInt32.max - headerBytesAfterRIFFSize) / MemoryLayout<Float>.size
-    /// A copy reads and writes a megabyte at a time, so a two-hour session never sits in memory whole.
+    static let maximumSamples = Int(UInt32.max - headerBytesAfterRIFFSize) / MemoryLayout<Int16>.size
+    /// A copy reads a megabyte of the session file at a time, so a two-hour session never sits in memory whole.
     static let chunkBytes = 1 << 20
 
     public static var directory: URL { JotPaths.directory.appendingPathComponent("tuning-audio", isDirectory: true) }
@@ -35,26 +35,30 @@ public enum TuningAudio {
         directory.appendingPathComponent(sessionID + ".wav", isDirectory: false)
     }
 
-    /// The header of a mono 16 kHz 32-bit float WAV of `sampleCount` samples, little-endian. Float is not PCM, so the fmt chunk
-    /// is format 3 with its empty 2-byte extension and a fact chunk gives the sample count, as the WAVE format asks of non-PCM data.
+    /// The 44-byte header of a mono 16 kHz 16-bit PCM WAV of `sampleCount` samples, little-endian.
     static func header(sampleCount: Int) -> Data {
         precondition(sampleCount >= 0 && sampleCount <= maximumSamples)
-        let dataBytes = UInt32(sampleCount * MemoryLayout<Float>.size)
+        let dataBytes = UInt32(sampleCount * MemoryLayout<Int16>.size)
         var header = Data()
         func text(_ value: String) { header.append(contentsOf: Array(value.utf8)) }
         func u16(_ value: UInt16) { withUnsafeBytes(of: value.littleEndian) { header.append(contentsOf: $0) } }
         func u32(_ value: UInt32) { withUnsafeBytes(of: value.littleEndian) { header.append(contentsOf: $0) } }
         text("RIFF"); u32(headerBytesAfterRIFFSize + dataBytes); text("WAVE")
-        text("fmt "); u32(18)
-        u16(3); u16(1); u32(sampleRate); u32(sampleRate * 4); u16(4); u16(32); u16(0)
-        text("fact"); u32(4); u32(UInt32(sampleCount))
+        text("fmt "); u32(16)
+        u16(1); u16(1); u32(sampleRate); u32(sampleRate * 2); u16(2); u16(16)
         text("data"); u32(dataBytes)
         return header
     }
 
-    /// Copies a finished session file, mono 16 kHz Float32 with no header as SessionAudioWriter writes it, into the WAV for
-    /// `sessionID`. The Mac is little-endian like WAV, so the samples go across byte for byte. The copy is written as
-    /// `<sessionID>.wav.partial` and renamed once complete, so a failure leaves no WAV. The session file is only read.
+    /// One Float32 sample as 16-bit PCM: clamped to -1...1 so a loud peak saturates rather than wraps, and a NaN is silence.
+    static func pcm16(_ sample: Float) -> Int16 {
+        guard !sample.isNaN else { return 0 }
+        return Int16((max(-1, min(1, sample)) * Float(Int16.max)).rounded())
+    }
+
+    /// Copies a finished session file, mono 16 kHz Float32 with no header as SessionAudioWriter writes it, into a 16-bit PCM
+    /// WAV for `sessionID`, converting a chunk at a time. The copy is written as `<sessionID>.wav.partial` and renamed once
+    /// complete, so a failure leaves no WAV. The session file is only read.
     @discardableResult
     public static func keep(_ sessionFile: URL, sessionID: String, in directory: URL = Self.directory) throws -> URL {
         let input = try FileHandle(forReadingFrom: sessionFile)
@@ -76,12 +80,23 @@ public enum TuningAudio {
                 try output.seekToEnd()
                 var remaining = sampleCount * MemoryLayout<Float>.size
                 while remaining > 0 {
-                    // Each chunk's buffer is released before the next is read.
+                    // Each chunk's buffers are released before the next is read.
                     try autoreleasepool {
-                        guard let chunk = try input.read(upToCount: min(remaining, chunkBytes)), !chunk.isEmpty else {
+                        guard let chunk = try input.read(upToCount: min(remaining, chunkBytes)), !chunk.isEmpty,
+                              chunk.count % MemoryLayout<Float>.size == 0 else {
                             throw StoreError.database("Session audio ended before its copy was complete.")
                         }
-                        try output.write(contentsOf: chunk)
+                        let count = chunk.count / MemoryLayout<Float>.size
+                        var converted = Data(count: count * MemoryLayout<Int16>.size)
+                        chunk.withUnsafeBytes { floats in
+                            converted.withUnsafeMutableBytes { pcm in
+                                for index in 0..<count {
+                                    let sample = floats.loadUnaligned(fromByteOffset: index * MemoryLayout<Float>.size, as: Float.self)
+                                    pcm.storeBytes(of: pcm16(sample).littleEndian, toByteOffset: index * MemoryLayout<Int16>.size, as: Int16.self)
+                                }
+                            }
+                        }
+                        try output.write(contentsOf: converted)
                         remaining -= chunk.count
                     }
                 }

@@ -1547,11 +1547,9 @@ struct RecoveryFlowChecks {
         precondition(passes.entries.last == "on: 40000 samples, WAV before the pass: true", "The WAV was not written before the pass read its file: \(passes.entries)")
         precondition(names(audio).isEmpty, "The pass did not delete its file: \(names(audio))")
         precondition(names(kept) == ["on.wav"], "Kept files after the pass: \(names(kept))")
-        // TuningAudioTests reads this layout back with AVAudioFile; here the bytes after its 58-byte header must be the session's samples.
+        // TuningAudioTests reads the samples back with AVAudioFile; here a 44-byte header and two bytes a sample give the session's length.
         let wav = try Data(contentsOf: TuningAudio.url(sessionID: "on", in: kept))
-        let session = samples.withUnsafeBufferPointer { Data(buffer: $0) }
-        precondition(wav.prefix(4) == Data("RIFF".utf8) && wav.count == 58 + session.count && wav.suffix(session.count) == session,
-                     "The WAV does not hold the session's samples: \(wav.count) bytes")
+        precondition(wav.prefix(4) == Data("RIFF".utf8) && wav.count == 44 + 2 * samples.count, "The WAV is not the session's length: \(wav.count) bytes")
         let pruned = try store.events(sessionID: "old")
         precondition(pruned.contains { $0.kind == "audio_discarded" }, "Deleting the 31-day-old file was not logged: \(pruned.map(\.detail))")
 
@@ -1564,7 +1562,7 @@ struct RecoveryFlowChecks {
         let events = try store.events(sessionID: "blocked")
         precondition(events.contains { $0.kind == "processing_error" && $0.detail.contains("for tuning") }, "The failed copy was not logged: \(events.map(\.detail))")
         precondition(events.contains { $0.kind == "speaker_pass" }, "The pass did not finish after the copy failed: \(events.map(\.detail))")
-        print("PASS: with keepTuningAudio off the pass gets the session's file and nothing is kept; on, a 16 kHz mono float WAV of the same samples is written before the pass reads and deletes its file, a kept file past 30 days goes, and a failed copy is logged without changing the pass.")
+        print("PASS: with keepTuningAudio off the pass gets the session's file and nothing is kept; on, a 16 kHz mono 16-bit WAV of the same length is written before the pass reads and deletes its file, a kept file past 30 days goes, and a failed copy is logged without changing the pass.")
     }
 
     @MainActor static func checkRealRecognition(_ file: URL) async throws {

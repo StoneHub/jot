@@ -28,23 +28,21 @@ final class TuningAudioTests: XCTestCase {
         try FileManager.default.setAttributes([.modificationDate: written], ofItemAtPath: url.path)
     }
 
-    func testHeaderDescribesMonoSixteenKilohertzFloat() {
+    func testHeaderDescribesMonoSixteenKilohertz16BitPCM() {
         let expected: [UInt8] = [
-            0x52, 0x49, 0x46, 0x46, 0x3e, 0x00, 0x00, 0x00,  // "RIFF", 62 bytes follow: 50 of header and 12 of samples
+            0x52, 0x49, 0x46, 0x46, 0x2a, 0x00, 0x00, 0x00,  // "RIFF", 42 bytes follow: 36 of header and 6 of samples
             0x57, 0x41, 0x56, 0x45,                          // "WAVE"
-            0x66, 0x6d, 0x74, 0x20, 0x12, 0x00, 0x00, 0x00,  // "fmt ", 18 bytes
-            0x03, 0x00, 0x01, 0x00,                          // IEEE float, one channel
+            0x66, 0x6d, 0x74, 0x20, 0x10, 0x00, 0x00, 0x00,  // "fmt ", 16 bytes
+            0x01, 0x00, 0x01, 0x00,                          // PCM, one channel
             0x80, 0x3e, 0x00, 0x00,                          // 16,000 samples a second
-            0x00, 0xfa, 0x00, 0x00,                          // 64,000 bytes a second
-            0x04, 0x00, 0x20, 0x00, 0x00, 0x00,              // 4 bytes a frame, 32 bits a sample, no extension
-            0x66, 0x61, 0x63, 0x74, 0x04, 0x00, 0x00, 0x00,  // "fact", 4 bytes
-            0x03, 0x00, 0x00, 0x00,                          // 3 samples
-            0x64, 0x61, 0x74, 0x61, 0x0c, 0x00, 0x00, 0x00,  // "data", 12 bytes
+            0x00, 0x7d, 0x00, 0x00,                          // 32,000 bytes a second
+            0x02, 0x00, 0x10, 0x00,                          // 2 bytes a frame, 16 bits a sample
+            0x64, 0x61, 0x74, 0x61, 0x06, 0x00, 0x00, 0x00,  // "data", 6 bytes
         ]
         XCTAssertEqual(Array(TuningAudio.header(sampleCount: 3)), expected)
     }
 
-    /// More than one copy chunk of audio comes out whole, in a WAV AVAudioFile reads, and the pass still gets its file as it was.
+    /// More than one copy chunk of audio comes out whole, in a 16-bit WAV AVAudioFile reads, and the pass still gets its file as it was.
     func testKeepWritesAWAVOfTheSessionAndLeavesTheSessionFile() throws {
         let samples = (0..<300_000).map { Float($0 % 1_000) / 1_000 - 0.5 }
         let session = try sessionFile(samples)
@@ -58,13 +56,25 @@ final class TuningAudioTests: XCTestCase {
         XCTAssertEqual(file.length, 300_000)
         XCTAssertEqual(file.fileFormat.sampleRate, 16_000)
         XCTAssertEqual(file.fileFormat.channelCount, 1)
-        XCTAssertEqual(file.fileFormat.commonFormat, .pcmFormatFloat32)
+        XCTAssertEqual(file.fileFormat.commonFormat, .pcmFormatInt16)
         let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 300_000))
         try file.read(into: buffer)
         let read = Array(UnsafeBufferPointer(start: try XCTUnwrap(buffer.floatChannelData)[0], count: Int(buffer.frameLength)))
-        XCTAssertTrue(read == samples, "The WAV holds the session's samples")
+        XCTAssertEqual(read.count, samples.count)
+        XCTAssertTrue(zip(read, samples).allSatisfy { abs($0 - $1) <= 2 / 32_768 }, "The WAV holds the session's samples to 16 bits")
         XCTAssertEqual(permissions(url), 0o600)
         XCTAssertEqual(permissions(kept), 0o700)
+    }
+
+    /// Samples outside -1...1 are clamped rather than wrapped, and a NaN becomes silence.
+    func testSamplesAreClampedTo16Bits() throws {
+        let url = try TuningAudio.keep(try sessionFile([2, -2, 1, -1, 0.5, -0.5, 0, .nan]), sessionID: "loud", in: kept)
+        let data = try Data(contentsOf: url)
+        XCTAssertEqual(data.count, 44 + 8 * 2)
+        let values = stride(from: 44, to: data.count, by: 2).map { offset in
+            Int16(littleEndian: data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: offset, as: Int16.self) })
+        }
+        XCTAssertEqual(values, [32_767, -32_767, 32_767, -32_767, 16_384, -16_384, 0, 0])
     }
 
     func testAFailedCopyLeavesNoHalfWrittenFile() throws {
