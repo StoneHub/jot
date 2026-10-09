@@ -49,7 +49,7 @@ Done when every non-draft PR is merged, handed back with a comment, or waiting o
 ## Daily and weekly jobs
 
 - **08:15 brief:** one comment on #201 listing what merged since the last brief, the `needs-monroe` items, the test-when-you-sit-down lists from merged PRs, and today's dispatch plan.
-- **18:30 integration:** run `python3 scripts/local-pr-check.py --current --all` on a clean checkout of `main`. On PASS, install with `python3 scripts/build-install.py --configuration Release`, but only when Jot on the host is paused and idle. Otherwise skip the install and say so in the next brief.
+- **18:30 integration:** run `python3 scripts/local-pr-check.py --current --all` on a clean checkout of `main`. On PASS, if anything merged since the last release, cut one with `python3 scripts/release.py patch --local --install`; this installs it too, so it needs Jot on the host paused and idle. Otherwise skip the release and say so in the next brief.
 - **Friday 18:00 hand-off (Codex):** push every claimed branch, comment each claim's next step, and write the weekend queue in #201.
 - **Sunday 18:00 hand-off (Claude):** the same, plus the weekly replan: re-rank `ready` work, refresh PLAN.md by PR, and report the week's numbers in #201. Those numbers are issues closed, PRs merged, fix-forwards and reverts, and Monroe's open `needs-monroe` items. Leave no Claude worker running into Monday.
 
