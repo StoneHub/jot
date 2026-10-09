@@ -3,7 +3,7 @@ import AVFoundation
 import Combine
 import Foundation
 import JotCore
-import FluidAudio
+import JotEngine
 
 /// Injectable seams for the agent-runnable recovery harness. Production still uses
 /// the real local pipeline and accessibility delivery; no socket or product UI is

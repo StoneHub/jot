@@ -36,6 +36,17 @@ targets:
     dependencies:
       - package: AppleFM
       - sdk: libsqlite3.tbd
+  JotEngine:
+    type: framework
+    platform: macOS
+    sources: [Sources/JotEngine]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: space.jot.engine
+    dependencies:
+      - target: JotCore
+      - package: FluidAudio
   JotCLI:
     type: tool
     platform: macOS
@@ -55,13 +66,8 @@ targets:
       - scripts/check-store-responsiveness.swift
       - scripts/check-shortcut-input.swift
       - Sources/Jot/AccessibilityElement.swift
-      - Sources/Jot/PreparedSpeakerModels.swift
       - Sources/Jot/AudioInputDevice.swift
       - Sources/Jot/AudioInputDeviceWatcher.swift
-      - Sources/Jot/AudioJob.swift
-      - Sources/Jot/AudioClock.swift
-      - Sources/Jot/SpeechOutput.swift
-      - Sources/Jot/JotError.swift
       - Sources/Jot/KeyboardTextEvents.swift
       - Sources/Jot/CaptureController.swift
       - Sources/Jot/DictationCoordinator.swift
@@ -76,7 +82,6 @@ targets:
       - Sources/Jot/ListeningTimeline.swift
       - Sources/Jot/LiveCleanup.swift
       - Sources/Jot/MicrophoneCapture.swift
-      - Sources/Jot/RecognitionCommitWindow.swift
       - Sources/Jot/ResourceSnapshot.swift
       - Sources/Jot/ResourceSampler.swift
       - Sources/Jot/SessionAudioFile.swift
@@ -86,10 +91,7 @@ targets:
       - Sources/Jot/SuggestionCoordinator.swift
       - Sources/Jot/ScreenContextReader.swift
       - Sources/Jot/WindowImageCapture.swift
-      - Sources/Jot/SpeakerPass.swift
-      - Sources/Jot/MappedFloat32Source.swift
       - Sources/Jot/SpeakerRecognizer.swift
-      - Sources/Jot/SpeechPipeline.swift
       - Sources/Jot/CaptureEventKind.swift
       - Sources/Jot/SpeechServiceDependencies.swift
       - Sources/Jot/SpeechService.swift
@@ -101,20 +103,15 @@ targets:
         LD_RUNPATH_SEARCH_PATHS: '@executable_path'
     dependencies:
       - target: JotCore
-      - package: FluidAudio
+      - target: JotEngine
   JotLab:
     type: tool
     platform: macOS
     sources:
       - Sources/JotLab
       - Sources/Jot/AccessibilityElement.swift
-      - Sources/Jot/PreparedSpeakerModels.swift
       - Sources/Jot/AudioInputDevice.swift
       - Sources/Jot/AudioInputDeviceWatcher.swift
-      - Sources/Jot/AudioJob.swift
-      - Sources/Jot/AudioClock.swift
-      - Sources/Jot/SpeechOutput.swift
-      - Sources/Jot/JotError.swift
       - Sources/Jot/KeyboardTextEvents.swift
       - Sources/Jot/CaptureController.swift
       - Sources/Jot/DictationCoordinator.swift
@@ -129,7 +126,6 @@ targets:
       - Sources/Jot/ListeningTimeline.swift
       - Sources/Jot/LiveCleanup.swift
       - Sources/Jot/MicrophoneCapture.swift
-      - Sources/Jot/RecognitionCommitWindow.swift
       - Sources/Jot/ResourceSnapshot.swift
       - Sources/Jot/ResourceSampler.swift
       - Sources/Jot/SessionAudioFile.swift
@@ -139,10 +135,7 @@ targets:
       - Sources/Jot/SuggestionCoordinator.swift
       - Sources/Jot/ScreenContextReader.swift
       - Sources/Jot/WindowImageCapture.swift
-      - Sources/Jot/SpeakerPass.swift
-      - Sources/Jot/MappedFloat32Source.swift
       - Sources/Jot/SpeakerRecognizer.swift
-      - Sources/Jot/SpeechPipeline.swift
       - Sources/Jot/CaptureEventKind.swift
       - Sources/Jot/SpeechServiceDependencies.swift
       - Sources/Jot/SpeechService.swift
@@ -154,7 +147,7 @@ targets:
         LD_RUNPATH_SEARCH_PATHS: '@executable_path/../Frameworks @executable_path'
     dependencies:
       - target: JotCore
-      - package: FluidAudio
+      - target: JotEngine
   Jot:
     type: application
     platform: macOS
@@ -184,7 +177,7 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Resources/Jot.entitlements
     dependencies:
       - target: JotCore
-      - package: FluidAudio
+      - target: JotEngine
       - target: JotCLI
         embed: false
       - target: JotLab
@@ -214,7 +207,7 @@ targets:
         LD_RUNPATH_SEARCH_PATHS: '@executable_path'
     dependencies:
       - target: JotCore
-      - package: FluidAudio
+      - target: JotEngine
 schemes:
   Jot:
     build:

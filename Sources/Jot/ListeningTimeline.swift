@@ -1,5 +1,6 @@
 import Foundation
 import JotCore
+import JotEngine
 
 /// The session continuous listening feeds: its id and clock, the audio not yet cut into recognition chunks, and the session's audio file for the speaker pass.
 @MainActor

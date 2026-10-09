@@ -1,4 +1,5 @@
 {
+  "originHash" : "6cf1a03e737939468c6302e0ab8cf15e36b15b41915d102b756b6fa4e887ad1c",
   "pins" : [
     {
       "identity" : "apple-fm-swift",
@@ -7,7 +8,15 @@
       "state" : {
         "revision" : "5b937241b0236f892af28588e75a78dd557acf21"
       }
+    },
+    {
+      "identity" : "fluidaudio",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/FluidInference/FluidAudio.git",
+      "state" : {
+        "revision" : "5c19d5e12320e22bbfb7a1877b089d2665a69add"
+      }
     }
   ],
-  "version" : 2
+  "version" : 3
 }

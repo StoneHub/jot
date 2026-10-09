@@ -1,6 +1,6 @@
-import FluidAudio
 import Foundation
 import JotCore
+import JotEngine
 
 /// `jot lab`: runs one recording through the real listening path once per recognition run its variants need, then
 /// builds every variant's rows from that run's words, the offline speaker pass, and the variant's grouping settings.
@@ -18,7 +18,7 @@ struct TuningLab {
     let log: (String) -> Void
 
     func run() async throws -> [LabVariantResult] {
-        let samples = try AudioConverter().resampleAudioFile(audio)
+        let samples = try AudioClock.resample(audio)
         let audioSeconds = AudioClock.seconds(samples: samples.count)
         let runs = LabVariant.recognitionRuns(variants)
         log(String(format: "Audio: %.1f s. %d variants in %d recognition runs.", audioSeconds, variants.count, runs.count))

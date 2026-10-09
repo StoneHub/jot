@@ -1,6 +1,6 @@
 # Architecture
 
-One SwiftUI menu-bar application owns the microphone and model lifecycle. A shared JotCore module owns SQLite and the Unix socket protocol; the bundled `jot` helper provides CLI/MCP entry points. There is no web service.
+One SwiftUI menu-bar application owns the microphone and model lifecycle. A shared JotCore module owns SQLite and the Unix socket protocol; the bundled `jot` helper provides CLI/MCP entry points. The JotEngine module holds the recognition engine (`SpeechPipeline` with its `RecognitionCommitWindow`, and the offline `SpeakerPass`) and is the only target that links FluidAudio; the app, `JotRecoveryChecks`, `JotWindowChecks` and `jot-lab` link it, and its package tests run under `swift test`. There is no web service.
 
 AVAudioEngine → mono 16 kHz float samples → bounded capture queue → serialized speech worker → SQLite transcripts. Resume always listens. Held dictation marks a time range in that continuous timeline rather than maintaining a second recording buffer. Delivery is a separate attempt with saved text and a focus-bound target. A failure to acquire or deliver to a field does not delete recognized speech.
 

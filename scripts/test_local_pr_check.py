@@ -46,6 +46,10 @@ class PlanTests(unittest.TestCase):
         gates = self.plan(['Sources/JotCore/TranscriptExport.swift'])
         self.assertEqual(names(gates), ['portable', 'swift-test', 'app-build', 'recovery-checks'])
 
+    def test_engine_change_needs_every_mac_gate(self):
+        gates = self.plan(['Sources/JotEngine/SpeechPipeline.swift'])
+        self.assertEqual(names(gates), ['portable', 'swift-test', 'app-build', 'recovery-checks'])
+
     def test_test_only_and_build_configuration_changes(self):
         self.assertEqual(names(self.plan(['Tests/JotCoreTests/TranscriptExportTests.swift'])), ['portable', 'swift-test'])
         self.assertEqual(names(self.plan(['project.yml'])), ['portable', 'app-build', 'recovery-checks'])
@@ -125,10 +129,10 @@ class PlanTests(unittest.TestCase):
     def test_manual_checks_are_conservative_and_include_real_audio_for_pipeline(self):
         self.assertEqual(check.manual_checks(['README.md', 'Tests/Test.swift']), set())
         self.assertEqual(check.manual_checks(['Resources/Info.plist']), {'app-behavior'})
-        self.assertEqual(check.manual_checks(['Sources/Jot/SpeechPipeline.swift']),
+        self.assertEqual(check.manual_checks(['Sources/JotEngine/SpeechPipeline.swift']),
                          {'app-behavior', 'real-model-audio'})
         for path in ('Sources/Jot/Transcriber.swift', 'Sources/JotCore/TranscriptionTuning.swift',
-                     'Sources/JotCore/RecognitionCommitWindow.swift', 'Sources/JotCore/ListeningState.swift',
+                     'Sources/JotEngine/RecognitionCommitWindow.swift', 'Sources/JotCore/ListeningState.swift',
                      'scripts/check-recovery-flow.swift', 'scripts/check-capture-flow.swift', 'Package.resolved'):
             with self.subTest(path=path):
                 self.assertIn('real-model-audio', check.manual_checks([path]))

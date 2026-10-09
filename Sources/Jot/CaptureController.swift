@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import JotCore
+import JotEngine
 
 /// Gets samples from the chosen input device reliably: device selection, the saved-microphone fallback, and the retry after wake. What the samples mean is SpeechService's job.
 @MainActor

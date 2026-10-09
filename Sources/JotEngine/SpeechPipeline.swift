@@ -5,7 +5,7 @@ import FluidAudio
 import JotCore
 
 /// One inference worker. The controller never submits overlapping jobs.
-actor SpeechPipeline {
+public actor SpeechPipeline {
     private var asr: AsrManager?
     private var vad: VadManager?
     private var diarizer: SortformerDiarizer?
@@ -20,13 +20,13 @@ actor SpeechPipeline {
     /// Last confirmed speaker of the previous ambient block, carried forward while audio stays continuous.
     private var lastSpeaker: String?
     /// Prepared and released with the live models, but run on its own actor so a long pass never blocks live inference.
-    nonisolated let speakerPass = SpeakerPass()
+    public nonisolated let speakerPass = SpeakerPass()
     /// The owner's settings; the speech gate is read from them at each job.
     private let settings: JotSettings
 
-    init(settings: JotSettings) { self.settings = settings }
+    public init(settings: JotSettings) { self.settings = settings }
 
-    func prepare() async throws {
+    public func prepare() async throws {
         if asr == nil {
             let config = MLModelConfiguration()
             config.computeUnits = .cpuAndNeuralEngine
@@ -52,7 +52,7 @@ actor SpeechPipeline {
         try await speakerPass.prepare()
     }
 
-    func unload() async {
+    public func unload() async {
         await speakerPass.unload()
         asr = nil; vad = nil; diarizer = nil; lastSpeaker = nil; speakerFeed.reset()
         probabilities.removeAll(keepingCapacity: false)
@@ -60,7 +60,7 @@ actor SpeechPipeline {
         sessionID = ""; expectedOffset = 0; baseOffset = 0
     }
 
-    func testFile(_ url: URL, tuning: TranscriptionTuning = .init()) async throws -> SpeechOutput {
+    public func testFile(_ url: URL, tuning: TranscriptionTuning = .init()) async throws -> SpeechOutput {
         let file = try AVAudioFile(forReading: url)
         guard Double(file.length) / file.processingFormat.sampleRate <= 60 else { throw JotError.message("Diagnostic files must be at most 60 seconds.") }
         let samples = try AudioConverter().resampleAudioFile(url)
@@ -68,7 +68,7 @@ actor SpeechPipeline {
             samples: samples, ticket: UUID(), isFinal: true), tuning: tuning)
     }
 
-    func infer(_ job: AudioJob, tuning: TranscriptionTuning = .init()) async throws -> SpeechOutput {
+    public func infer(_ job: AudioJob, tuning: TranscriptionTuning = .init()) async throws -> SpeechOutput {
         guard let asr, let vad, let diarizer else { throw JotError.message("Prepare models before listening.") }
         try Task.checkCancellation()
         let begin = Date()
