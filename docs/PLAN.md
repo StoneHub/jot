@@ -19,6 +19,7 @@ The main architecture chain has shipped: direct owners, one continuous capture/r
 | 5 | #221 per-row speaker correction, with opt-in kept audio (30-day limit) | Nothing records which rows were wrong, so real audio cannot score speakers; this adds per-row corrections in Sessions, with tuning audio off by default and deleted within 30 days at most. |
 | 6 | #222 accuracy gate (blocked by #218 and #220) | The four `local-pr-check` gates stayed green while #215 dropped words, so recognition and speaker PRs get a `jot lab` comparison against main that fails past a set tolerance. |
 | 7 | Then the earlier ready work: #198 MCP listener; #208/#209 storage scaling; #194 wait for speech | These stay ready and rank below the list: #198 gives MCP clients the `jot listen` wait, #208/#209 bound work that grows with session length, and #194 cuts listener polling and command latency. |
+| 8 | #39 field-aware dictation style; #38 meeting notes; #42 vocabulary suggestions | Bounded product features with focused acceptance. Notes and vocabulary preserve source facts and keep recognition, cleanup and generated output distinct. |
 
 Agent-listening parallel work: #196 opt-in prompt context can proceed independently; #195 first verifies the actual async hook wake behavior before implementation; #197 is a prototype and design choice, not authorization to ship a settings pane. #199 documentation/promotion follows #193 and recorded live acceptance evidence. #200 is the umbrella.
 
