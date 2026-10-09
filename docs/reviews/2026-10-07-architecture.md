@@ -8,13 +8,13 @@ Baseline: main `03d0c11ce1d876c1b2613989a4f3c19614c7780f` passed all four Mac ch
 
 ## Capture and recognition ownership
 
-[MicrophoneCapture](../../Sources/Jot/MicrophoneCapture.swift) owns one AVAudioEngine input tap and conversion to mono 16 kHz floats. [CaptureController](../../Sources/Jot/CaptureController.swift) manages device selection and start/retry. [ListeningTimeline](../../Sources/Jot/ListeningTimeline.swift) assigns session time, assembles chunks and hands them to [Transcriber](../../Sources/Jot/Transcriber.swift), which admits one recognition job at a time into the [SpeechPipeline](../../Sources/Jot/SpeechPipeline.swift) actor. The microphone interface and injected dependencies let recovery checks exercise this flow without opening the real microphone.
+[MicrophoneCapture](../../Sources/Jot/MicrophoneCapture.swift) owns one AVAudioEngine input tap and conversion to mono 16 kHz floats. [CaptureController](../../Sources/Jot/CaptureController.swift) manages device selection and start/retry. [ListeningTimeline](../../Sources/Jot/ListeningTimeline.swift) assigns session time, assembles chunks and hands them to [Transcriber](../../Sources/Jot/Transcriber.swift), which admits one recognition job at a time into the [SpeechPipeline](../../Sources/JotEngine/SpeechPipeline.swift) actor. The microphone interface and injected dependencies let recovery checks exercise this flow without opening the real microphone.
 
 [DictationCoordinator](../../Sources/Jot/DictationCoordinator.swift) marks a range in that same timeline and reads its persisted timed words after recognition catches up. It does not create a second recording or independent ASR pipeline; hold boundaries can flush the shared pipeline. Suggestions consume text/source snapshots only when requested. The CLI and MCP consume the same socket/store, rather than listening independently.
 
 Some repeated work is intentional:
 
-- [RecognitionCommitWindow](../../Sources/Jot/RecognitionCommitWindow.swift) retains two seconds of committed left context and two seconds of uncommitted tail. With the next three-second chunk, recognition can process seven seconds. Ownership by word timing and overlap suppression prevent re-appending the already committed words. This is one serialized recognizer, not literally one model evaluation per sample.
+- [RecognitionCommitWindow](../../Sources/JotEngine/RecognitionCommitWindow.swift) retains two seconds of committed left context and two seconds of uncommitted tail. With the next three-second chunk, recognition can process seven seconds. Ownership by word timing and overlap suppression prevent re-appending the already committed words. This is one serialized recognizer, not literally one model evaluation per sample.
 - The live speaker model provides provisional attribution; a later offline speaker pass improves identity/segments. The offline pass does not transcribe the audio again.
 - Ambient phrase cleanup and dictation cleanup serve different outputs and can touch overlapping text. Do not remove one without preserving its output semantics and measuring the workload.
 
