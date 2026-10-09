@@ -31,7 +31,7 @@ extension SpeechService {
     func status() async throws -> [String: Any] {
         let pendingAudioSeconds = transcriber.queuedAudioSeconds
         let audioRetention = !keepAudioForSpeakerPass ? "bounded RAM only; no recordings saved"
-            : settings.bool(JotSettings.keepTuningAudio) ? "session audio kept until the speaker pass finishes, then deleted; a copy is kept up to 30 days for tuning"
+            : settings.bool(JotSettings.keepTuningAudio) ? "session audio kept until the speaker pass finishes, then deleted; a copy is kept up to 30 days and 10 GB for tuning"
             : "session audio kept until the speaker pass finishes, then deleted"
         var result: [String: Any] = ["mode": mode, "models": modelState.rawValue, "microphoneRunning": capture.running,
             "microphonePermission": AVCaptureDevice.authorizationStatus(for: .audio).rawValue,

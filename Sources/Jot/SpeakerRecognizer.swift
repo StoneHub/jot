@@ -75,7 +75,7 @@ final class SpeakerRecognizer: ObservableObject {
         }
     }
 
-    /// Copies the session's audio for tuning before the pass reads and deletes it, then deletes kept files past 30 days. The
+    /// Copies the session's audio for tuning before the pass reads and deletes it, then prunes the kept files. The
     /// copy runs off the main actor. A failed copy is logged and the pass goes ahead with its file as it was.
     private func keepForTuning(_ url: URL, session id: String) async {
         let directory = tuningAudioDirectory
@@ -88,11 +88,13 @@ final class SpeakerRecognizer: ObservableObject {
         await pruneTuningAudio()
     }
 
-    /// Deletes session audio kept for tuning once it is more than 30 days old, off the main actor, and logs each deletion. Runs at launch and after each kept file.
+    /// Deletes kept tuning audio past 30 days or 10 GB, off the main actor, and logs each deletion. Runs at launch and after each kept file.
     func pruneTuningAudio() async {
         let directory = tuningAudioDirectory
         let deleted = await Task.detached(priority: .utility) { TuningAudio.prune(in: directory, now: Date()) }.value
-        for id in deleted { recordEvent(.audioDiscarded, "Session audio kept for tuning was deleted after 30 days.", nil, id) }
+        for id in deleted.old { recordEvent(.audioDiscarded, "Session audio kept for tuning was deleted after 30 days.", nil, id) }
+        for id in deleted.overLimit { recordEvent(.audioDiscarded, "Session audio kept for tuning was deleted to keep the folder under 10 GB.", nil, id) }
+        for id in deleted.unfinished { recordEvent(.audioDiscarded, "An unfinished copy of session audio for tuning was deleted.", nil, id) }
     }
 
     /// Stores a pass and relabels the session's rows from it; the relabel waits until the session's last audio block is recognized and its cleanup has landed. The store work runs off the main thread. An export that already happened used the live labels. Internal so the check harness can hand it a result.

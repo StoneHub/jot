@@ -3,7 +3,8 @@ import Foundation
 /// Session audio kept to tune recognition while `keepTuningAudio` is on. Before the speaker pass reads and deletes a
 /// session's file, a copy goes to `tuning-audio/<sessionID>.wav` in the Jot directory, as a 16 kHz mono 16-bit PCM WAV that
 /// `jot lab` and other tools open directly. The folder is outside `audio/`, so the launch cleanup of stale session files
-/// leaves it alone. A kept file is deleted once it is more than 30 days old, at launch and each time a file is added.
+/// leaves it alone. At launch and each time a file is added, kept files more than 30 days old are deleted, then the oldest
+/// while the rest total more than 10 GB.
 public enum TuningAudio {
     /// One file in the folder: its name, when it was last written, and its size.
     struct File: Sendable, Equatable {
@@ -12,14 +13,28 @@ public enum TuningAudio {
         let bytes: Int
     }
 
-    /// The kept WAVs, for `jot status`. `oldest` is left out when there are none.
+    /// The kept WAVs, for `jot status`, and the limits pruning holds them to. `oldest` is left out when there are none.
     public struct Summary: Sendable, Equatable, Encodable {
         public let count: Int
         public let bytes: Int
         public let oldest: Date?
+        public var limitBytes = TuningAudio.maximumBytes
+        public var limitDays = Int(TuningAudio.maximumAge / (24 * 60 * 60))
+    }
+
+    /// What pruning deletes, oldest first: file names from `expired`, session ids from `prune`.
+    public struct Pruned: Sendable, Equatable {
+        /// WAVs more than 30 days old.
+        public var old: [String] = []
+        /// The oldest WAVs, while the rest total more than 10 GB.
+        public var overLimit: [String] = []
+        /// Copies a crash left half-written.
+        public var unfinished: [String] = []
     }
 
     static let maximumAge: TimeInterval = 30 * 24 * 60 * 60
+    /// 10 GB, as Finder counts it: about 87 hours of 16-bit audio.
+    static let maximumBytes = 10_000_000_000
     static let partialMaximumAge: TimeInterval = 24 * 60 * 60
     static let sampleRate: UInt32 = 16_000
     /// The header bytes the RIFF size counts: all 44 but the RIFF tag and the size itself.
@@ -110,25 +125,40 @@ public enum TuningAudio {
         return target
     }
 
-    /// The kept files to delete at `now`: WAVs written more than 30 days earlier, and copies a crash left half-written a day
-    /// or more ago. Anything else in the folder is not Jot's and stays.
-    static func expired(_ files: [File], now: Date) -> [File] {
-        files.filter { file in
+    /// The kept files to delete at `now`: WAVs written more than 30 days earlier, then the oldest of the rest while they total
+    /// more than 10 GB, and copies a crash left half-written a day or more ago. Anything else in the folder is not Jot's and stays.
+    static func expired(_ files: [File], now: Date) -> Pruned {
+        var pruned = Pruned()
+        var kept: [File] = []
+        for file in files.sorted(by: { ($0.written, $0.name) < ($1.written, $1.name) }) {
             let age = now.timeIntervalSince(file.written)
             // A copy writes its .partial file as it goes, so one untouched for a day was left by a crash.
-            if file.name.hasSuffix(".wav.partial") { return age > partialMaximumAge }
-            return file.name.hasSuffix(".wav") && age > maximumAge
+            if file.name.hasSuffix(".wav.partial") {
+                if age > partialMaximumAge { pruned.unfinished.append(file.name) }
+            } else if file.name.hasSuffix(".wav") {
+                if age > maximumAge { pruned.old.append(file.name) } else { kept.append(file) }
+            }
         }
+        var total = kept.reduce(0) { $0 + $1.bytes }
+        for file in kept where total > maximumBytes {
+            pruned.overLimit.append(file.name)
+            total -= file.bytes
+        }
+        return pruned
     }
 
-    /// Deletes the kept files more than 30 days old and returns their session ids, so each deletion is logged.
+    /// Deletes what `expired` picks and returns the session ids it deleted, so each deletion is logged.
     @discardableResult
-    public static func prune(in directory: URL = Self.directory, now: Date) -> [String] {
-        expired(files(in: directory), now: now).compactMap { file in
-            guard (try? FileManager.default.removeItem(at: directory.appendingPathComponent(file.name))) != nil else { return nil }
-            let wav = file.name.hasSuffix(".partial") ? String(file.name.dropLast(".partial".count)) : file.name
-            return String(wav.dropLast(".wav".count))
-        }.sorted()
+    public static func prune(in directory: URL = Self.directory, now: Date) -> Pruned {
+        let expired = expired(files(in: directory), now: now)
+        func delete(_ names: [String]) -> [String] {
+            names.compactMap { name in
+                guard (try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))) != nil else { return nil }
+                let wav = name.hasSuffix(".partial") ? String(name.dropLast(".partial".count)) : name
+                return String(wav.dropLast(".wav".count))
+            }
+        }
+        return Pruned(old: delete(expired.old), overLimit: delete(expired.overLimit), unfinished: delete(expired.unfinished))
     }
 
     static func summary(_ files: [File]) -> Summary {

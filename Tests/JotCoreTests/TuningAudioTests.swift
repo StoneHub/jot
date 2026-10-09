@@ -97,7 +97,7 @@ final class TuningAudioTests: XCTestCase {
             file("captions.srt", 90 * day),             // not written by Jot
             file("ahead.wav", -2 * day),                // the clock went back
         ]
-        XCTAssertEqual(TuningAudio.expired(files, now: now).map(\.name), ["late.wav"])
+        XCTAssertEqual(TuningAudio.expired(files, now: now), .init(old: ["late.wav"]))
     }
 
     /// A copy writes its .partial file as it goes, so one untouched for a day was left by a crash.
@@ -107,8 +107,24 @@ final class TuningAudioTests: XCTestCase {
             TuningAudio.File(name: "copying.wav.partial", written: now - 23 * 60 * 60, bytes: 1),
             TuningAudio.File(name: "crashed.wav.partial", written: now - day - 1, bytes: 1),
         ]
-        XCTAssertEqual(TuningAudio.expired(files, now: now).map(\.name), ["crashed.wav.partial"])
+        XCTAssertEqual(TuningAudio.expired(files, now: now), .init(unfinished: ["crashed.wav.partial"]))
         XCTAssertEqual(TuningAudio.summary(files), .init(count: 0, bytes: 0, oldest: nil), "jot status counts finished WAVs only")
+    }
+
+    /// Past 10 GB of kept WAVs the oldest go first, after the 30-day rule. Files that go for their age and half-written copies don't count.
+    func testOldestFilesGoOnceKeptWAVsPassTenGigabytes() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000), gigabyte = 1_000_000_000
+        func file(_ name: String, _ age: TimeInterval, _ bytes: Int) -> TuningAudio.File { .init(name: name, written: now - age, bytes: bytes) }
+        let files = [
+            file("c.wav", day, 9_500_000_000),
+            file("old.wav", 31 * day, 5 * gigabyte),
+            file("b.wav", 5 * day, gigabyte),
+            file("copying.wav.partial", 60, 2 * gigabyte),
+            file("a.wav", 10 * day, gigabyte),
+        ]
+        XCTAssertEqual(TuningAudio.expired(files, now: now), .init(old: ["old.wav"], overLimit: ["a.wav", "b.wav"]))
+        let exactlyTen = [file("a.wav", 2 * day, 6 * gigabyte), file("b.wav", day, 4 * gigabyte)]
+        XCTAssertEqual(TuningAudio.expired(exactlyTen, now: now), .init(), "Exactly 10 GB stays")
     }
 
     func testPruneDeletesExpiredFilesAndNamesTheirSessions() throws {
@@ -118,9 +134,9 @@ final class TuningAudioTests: XCTestCase {
         try write("new.wav", bytes: 4, written: now - day)
         try write("crashed.wav.partial", bytes: 4, written: now - 40 * day)
         try write("notes.txt", bytes: 4, written: now - 90 * day)
-        XCTAssertEqual(TuningAudio.prune(in: kept, now: now), ["crashed", "old"])
+        XCTAssertEqual(TuningAudio.prune(in: kept, now: now), .init(old: ["old"], unfinished: ["crashed"]))
         XCTAssertEqual(names(kept), ["new.wav", "notes.txt"])
-        XCTAssertEqual(TuningAudio.prune(in: directory.appendingPathComponent("missing"), now: now), [])
+        XCTAssertEqual(TuningAudio.prune(in: directory.appendingPathComponent("missing"), now: now), .init())
     }
 
     func testSummaryCountsKeptWAVs() throws {
