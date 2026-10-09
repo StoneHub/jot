@@ -23,7 +23,7 @@ STATUS_CONTEXT = 'jot/local-macos-validation'
 SWIFT_TRIGGERS = ('Sources/', 'Tests/', 'Package.swift', 'Package.resolved')
 APP_TRIGGERS = ('Sources/', 'Resources/', 'project.yml', 'Jot.xcodeproj/', 'Package.swift', 'Package.resolved',
                 'LICENSE', 'scripts/build-install.py', 'scripts/signing.py', 'scripts/check-no-feedback.py')
-RECOVERY_TRIGGERS = ('Sources/Jot/', 'Sources/JotCore/', 'scripts/check-recovery-flow.swift',
+RECOVERY_TRIGGERS = ('Sources/Jot/', 'Sources/JotCore/', 'Sources/JotEngine/', 'scripts/check-recovery-flow.swift',
                      'scripts/check-capture-flow.swift', 'project.yml', 'Package.swift', 'Package.resolved')
 NOT_COVERED = ('interactive UI, Accessibility and physical Fn behavior',
                'installed-app, updater and live capture behavior',
