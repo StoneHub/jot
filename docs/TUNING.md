@@ -14,7 +14,7 @@ Open **General → Speakers & paragraphs** in the native app. Each setting's (i)
 | Paragraph pause | Groups nearby words and same-speaker rows | Longer values create fewer, longer rows; live recognition still submits short chunks |
 | Hide filler-only rows | Hides isolated um/uh/hmm rows in Dictations | Original text remains in SQLite and CLI/MCP; fillers within sentences remain visible |
 
-Speaker settings apply to new audio and to any session you regroup. Dictations presentation changes immediately for paragraph grouping and filler visibility. This does not rerun old audio: recordings are not retained. Source words are not rewritten or deleted. Settings persist and are reported by `jot status` / MCP status.
+Speaker settings apply to new audio and to any session you regroup. Dictations presentation changes immediately for paragraph grouping and filler visibility. This does not rerun old audio: recordings are not retained unless you [keep them for tuning](#keep-session-audio-for-tuning). Source words are not rewritten or deleted. Settings persist and are reported by `jot status` / MCP status.
 
 ## Regroup a saved session
 
@@ -55,6 +55,10 @@ Limits:
 A row with no cleaned text was left alone by cleanup. That covers cleanup off or failing, and also cleanup returning the words unchanged, which Jot doesn't save. The run's phrase outcomes in the report tell these apart.
 
 Apply the variant you choose with `jot settings import variants.json "steadier speakers"`. It sets each of that variant's settings on the running app, as `jot settings set` would.
+
+## Keep session audio for tuning
+
+Jot deletes a session's audio once the speaker pass has read it. To keep real sessions for `jot lab`, run `jot settings set keepTuningAudio true`. Each session whose audio reaches the speaker pass then leaves a 16 kHz mono 16-bit WAV, about 115 MB an hour, at `~/Library/Application Support/Jot/tuning-audio/<session-id>.wav`, which `jot lab` opens directly. A session ended with the Pause button, or recorded with **Keep audio for speaker pass** off, keeps nothing. At launch and whenever a new file is added, kept files more than 30 days old are deleted, and then the oldest go while the rest total more than 10 GB, about 87 hours of audio. Deleting a session deletes its kept file too. `jot settings reset keepTuningAudio` stops keeping new files and deletes nothing, so the kept ones age out. `jot status` reports the count, total bytes, oldest date and both limits under `tuningAudio`. This is private audio of everything Jot heard, kept only on this Mac and never uploaded. It is off by default, and an update never turns it on.
 
 ## A short comparison
 

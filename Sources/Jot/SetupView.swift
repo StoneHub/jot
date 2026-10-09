@@ -214,7 +214,7 @@ struct SetupView: View {
                 .fixedSize(horizontal: false, vertical: true)
             point("waveform", "Listening", "Resume starts listening: Jot saves a searchable transcript of what the microphone hears in Sessions. Pause stops it. Nothing listens until you choose Resume.")
             point("keyboard", "Hold to dictate", "Hold \(service.shortcut.displayName) in a text field, speak and release. Jot types your words where the cursor is and never presses Return.")
-            point("internaldrive", "Kept on this Mac", "Transcripts stay in ~/Library/Application Support/Jot. Session audio is kept only until the speaker pass finishes, then deleted.")
+            point("internaldrive", "Kept on this Mac", "Transcripts stay in ~/Library/Application Support/Jot. Session audio is deleted after the speaker pass, unless you turn on keeping it for tuning, which keeps it on this Mac for up to 30 days.")
             point("arrow.down.circle", "One download", "Jot downloads about \(ModelCache.formatted(ModelCache.expectedBytes)) of speech models once, then works offline.")
             point("sparkles", "Optional Apple Intelligence", "Suggestions and cleanup use Apple's on-device model when macOS offers it. Everything else works without it.")
         }

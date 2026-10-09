@@ -21,7 +21,10 @@ final class SpeakerRecognizer: ObservableObject {
     private var passesBeingApplied = Set<String>()
     /// Sessions whose pass relabel failed partway, so some rows still carry live speaker ids. A successful Regroup rewrites them all.
     private var partlyRelabeled = Set<String>()
-    private let pass: SpeakerPass
+    /// Reads a finished session file and deletes it. The check harness stands in for the real pass, which needs the speaker models.
+    var runPass: @Sendable (URL) async throws -> SpeakerPassResult
+    /// Where session audio kept for tuning goes; the check harness points it at a temporary folder.
+    var tuningAudioDirectory = TuningAudio.directory
     /// Queued pass and People work retain the owner until completion; nothing is read through it.
     private unowned let owner: AnyObject
     private let library: SessionLibrary
@@ -34,7 +37,7 @@ final class SpeakerRecognizer: ObservableObject {
     init(pass: SpeakerPass, owner: AnyObject, library: SessionLibrary, settings: JotSettings,
          recordEvent: @escaping (CaptureEventKind, String, Double?, String?) -> Void,
          setNotice: @escaping (String) -> Void) {
-        self.pass = pass
+        runPass = { try await pass.run(url: $0) }
         self.owner = owner
         self.library = library
         self.settings = settings
@@ -64,11 +67,42 @@ final class SpeakerRecognizer: ObservableObject {
         defer { passRunning = false }
         do {
             guard let audio = try await file.finish() else { return }
-            let raw = try await pass.run(url: audio.url)
+            if settings.bool(JotSettings.keepTuningAudio), !(await library.waitForDeletion(id)) { await keepForTuning(audio.url, session: id) }
+            let raw = try await runPass(audio.url)
             await apply(raw, session: id, truncated: audio.truncated)
         } catch {
             reportFailure(error, session: id)
         }
+    }
+
+    /// Copies the session's audio for tuning before the pass reads and deletes it, then prunes the kept files. The
+    /// copy runs off the main actor. A failed copy is logged and the pass goes ahead with its file as it was.
+    private func keepForTuning(_ url: URL, session id: String) async {
+        let directory = tuningAudioDirectory
+        do {
+            _ = try await Task.detached(priority: .utility) { try TuningAudio.keep(url, sessionID: id, in: directory) }.value
+        } catch {
+            recordEvent(.processingError, "Could not keep session audio for tuning: \(error.localizedDescription)", nil, id)
+            return
+        }
+        // Deleted while it was copied: the delete may have run before the WAV existed.
+        if await library.waitForDeletion(id) { await deleteTuningAudio(session: id); return }
+        await pruneTuningAudio()
+    }
+
+    /// A deleted session's kept tuning audio goes with it, off the main actor.
+    func deleteTuningAudio(session id: String) async {
+        let url = TuningAudio.url(sessionID: id, in: tuningAudioDirectory)
+        _ = await Task.detached(priority: .utility) { try? FileManager.default.removeItem(at: url) }.value
+    }
+
+    /// Deletes kept tuning audio past 30 days or 10 GB, off the main actor, and logs each deletion. Runs at launch and after each kept file.
+    func pruneTuningAudio() async {
+        let directory = tuningAudioDirectory
+        let deleted = await Task.detached(priority: .utility) { TuningAudio.prune(in: directory, now: Date()) }.value
+        for id in deleted.old { recordEvent(.audioDiscarded, "Session audio kept for tuning was deleted after 30 days.", nil, id) }
+        for id in deleted.overLimit { recordEvent(.audioDiscarded, "Session audio kept for tuning was deleted to keep the folder under 10 GB.", nil, id) }
+        for id in deleted.unfinished { recordEvent(.audioDiscarded, "An unfinished copy of session audio for tuning was deleted.", nil, id) }
     }
 
     /// Stores a pass and relabels the session's rows from it; the relabel waits until the session's last audio block is recognized and its cleanup has landed. The store work runs off the main thread. An export that already happened used the live labels. Internal so the check harness can hand it a result.
