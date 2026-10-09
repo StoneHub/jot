@@ -2,7 +2,7 @@ import Foundation
 
 /// Preferences that live only in the test process. A UserDefaults suite leaves a plist in ~/Library/Preferences that the
 /// preferences daemon keeps after its domain is removed, so every test run used to add files there.
-final class MemoryDefaults: UserDefaults, @unchecked Sendable {
+final class MemoryDefaults: UserDefaults {
     private var values: [String: Any] = [:]
     private let lock = NSLock()
 
