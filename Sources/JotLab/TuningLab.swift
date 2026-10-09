@@ -38,13 +38,32 @@ struct TuningLab {
                 let passSpeakers = pass.segments.isEmpty ? nil : SpeakerPassRelabel.speakers(words: recognized.words, segments: pass.segments, tuning: tuning)
                 let rows = try LabRows.rows(rows: recognized.rows, words: recognized.words, readable: recognized.readable,
                     liveSpeakers: live, passSpeakers: passSpeakers)
+                var score = captions.map { LabScore(rows: rows, captions: $0) }
+                if let captions {
+                    // Before a pass, rows split where the live speaker changes.
+                    let liveRows = try passSpeakers == nil ? rows : LabRows.rows(rows: recognized.rows, words: recognized.words,
+                        readable: recognized.readable, liveSpeakers: live, passSpeakers: nil)
+                    score?.liveSpeakers = try speakerScore(speakers: live, rows: liveRows, shown: \.liveSpeaker, words: recognized.words, captions: captions)
+                    if let passSpeakers {
+                        score?.passSpeakers = try speakerScore(speakers: passSpeakers, rows: rows, shown: \.passSpeaker, words: recognized.words, captions: captions)
+                    }
+                }
                 results.append(LabVariantResult(name: variant.name, settings: variant.settings, recognitionRun: number + 1, rows: rows,
                     paragraphs: LabRows.paragraphs(rows, tuning: tuning),
                     timings: .init(audioSeconds: audioSeconds, recognitionSeconds: recognized.seconds, speakerPassSeconds: pass.processingSeconds),
-                    score: captions.map { LabScore(rows: rows, captions: $0) }, cleanupOutcomes: recognized.cleanupOutcomes))
+                    score: score, cleanupOutcomes: recognized.cleanupOutcomes))
             }
         }
         return results
+    }
+
+    /// Word accuracy for one speaker per word, and the diarization error rate of the stored rows with those speakers.
+    /// Nil when the captions name no speakers.
+    private func speakerScore(speakers: [String?], rows: [LabRow], shown: (LabRow) -> String?, words: [StoredWord],
+                              captions: [LabCaptions.Cue]) throws -> LabSpeakerScore? {
+        guard var score = try LabSpeakerScore(words: words, speakers: speakers, captions: captions) else { return nil }
+        score.diarizationError = LabDiarization.error(captions: captions, rows: rows, speaker: shown)
+        return score
     }
 
     private struct Recognized {

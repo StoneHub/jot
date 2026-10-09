@@ -39,7 +39,13 @@ func labMain() async -> Int32 {
         try LabReport.html(audioName: audio.lastPathComponent, variants: results).write(to: output.appendingPathComponent("report.html"), atomically: true, encoding: .utf8)
         for result in results {
             let score = result.score.map { String(format: ", WER %.1f%% raw, %.1f%% cleaned", $0.raw.rate * 100, $0.cleaned.rate * 100) } ?? ""
-            print("\(result.name): \(result.rows.count) rows, \(result.paragraphs.count) paragraphs, \(Set(result.rows.compactMap(\.passSpeaker)).count) pass speakers\(score)")
+            let speakers = [("live", result.score?.liveSpeakers), ("pass", result.score?.passSpeakers)].compactMap { name, speakers in
+                speakers.map { score in
+                    ", \(name) speakers " + String(format: "%.1f%% of words right", score.accuracy * 100)
+                        + (score.diarizationError.map { String(format: ", DER %.1f%%", $0.rate * 100) } ?? "")
+                }
+            }.joined()
+            print("\(result.name): \(result.rows.count) rows, \(result.paragraphs.count) paragraphs, \(Set(result.rows.compactMap(\.passSpeaker)).count) pass speakers\(score)\(speakers)")
         }
         print("Wrote \(output.appendingPathComponent("report.html").path) and variants.json.")
         return 0
