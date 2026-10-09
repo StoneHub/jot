@@ -4,16 +4,18 @@ import Foundation
 import JotCore
 
 /// The offline speaker pass: pyannote segmentation, WeSpeaker embeddings, and VBx clustering over a whole session. Its own actor, so a pass over a two-hour file never holds up live inference.
-actor SpeakerPass {
+public actor SpeakerPass {
     private var manager: PreparedSpeakerModels?
+
+    public init() {}
 
     /// Downloads the models once, then loads them from the same FluidAudio cache as the live models.
     func prepare() async throws { _ = try await loadedManager() }
 
-    func unload() { manager = nil }
+    public func unload() { manager = nil }
 
     /// Reads a session file straight from disk and deletes it whatever happens. A silent session is a result with no speakers, not an error.
-    func run(url: URL) async throws -> SpeakerPassResult {
+    public func run(url: URL) async throws -> SpeakerPassResult {
         defer { try? FileManager.default.removeItem(at: url) }
         // A pass queued by an automatic pause can start after Pause released the models; it loads them again and lets go of them when done.
         let loadedForThisPass = manager == nil

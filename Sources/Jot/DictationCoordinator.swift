@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import JotCore
+import JotEngine
 
 /// One held dictation at a time: the attempt record it saves while the key is down, the text it gathers from the listening timeline on release, the insertion, and the saved text available for explicit review.
 @MainActor
