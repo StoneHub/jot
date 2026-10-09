@@ -28,7 +28,7 @@ public enum LabReport {
         code { font-size: 12px; }
         </style></head><body>
         <h1>Jot lab: \(escape(audioName))</h1>
-        <table><tr><th>Variant</th><th>Settings</th><th>Run</th><th>Rows / paragraphs</th><th>Speakers (live / pass)</th><th>WER raw</th><th>WER cleaned</th>\(speakers ? "<th>Speaker words right</th><th>DER</th>" : "")<th>Cleanup phrases</th><th>Recognition</th><th>Speaker pass</th></tr>
+        <table><tr><th>Variant</th><th>Settings</th><th>Run</th><th>Rows / paragraphs</th><th>Speakers (live / pass)</th><th>WER raw</th><th>WER cleaned</th>\(speakers ? "<th>Speaker words right</th>" : "")<th>Cleanup phrases</th><th>Recognition</th><th>Speaker pass</th></tr>
 
         """
         for variant in variants {
@@ -38,20 +38,19 @@ public enum LabReport {
             page += "<tr><td>\(escape(variant.name))</td><td><code>\(settings.isEmpty ? "current settings" : settings.map(escape).joined(separator: "<br>"))</code></td>"
             page += "<td>\(variant.recognitionRun)</td><td>\(variant.rows.count) / \(variant.paragraphs.count)</td><td>\(live) / \(pass)</td>"
             page += "<td>\(variant.score.map { rate($0.raw) } ?? "–")</td><td>\(variant.score.map { rate($0.cleaned) } ?? "–")</td>"
-            if speakers { page += "<td>\(speakerLines(variant.score, accuracy))</td><td>\(speakerLines(variant.score, diarization))</td>" }
+            if speakers { page += "<td>\(speakerLines(variant.score))</td>" }
             let outcomes = variant.cleanupOutcomes.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", ")
             page += "<td>\(outcomes.isEmpty ? "–" : escape(outcomes))</td>"
             page += String(format: "<td>%.1f s</td><td>%.1f s</td></tr>\n", variant.timings.recognitionSeconds, variant.timings.speakerPassSeconds)
         }
         page += "</table>\n"
         if speakers {
-            page += String(format: """
+            page += """
                 <p class="meta">Speaker words right: recognized words whose speaker matches the captions' after each speaker id is \
                 paired with at most one caption voice. Words between cues are not scored; words in a row with no speaker count \
-                as wrong. DER: diarization error rate over the stored rows, with a %.2f s collar each side of every cue boundary. \
-                Time between rows counts as missed speech, and row time outside every cue as false alarm.</p>
+                as wrong.</p>
 
-                """, LabSpeakerScore.DiarizationError.collarSeconds / 2)
+                """
         }
         page += "<div class=\"grid\">\n"
         for variant in variants {
@@ -76,24 +75,15 @@ public enum LabReport {
             score.substitutions, score.deletions, score.insertions, score.referenceWords)
     }
 
-    /// One line each for the live and pass speakers, or a dash when neither has the measure.
-    private static func speakerLines(_ score: LabScore?, _ line: (LabSpeakerScore) -> String?) -> String {
+    /// One line each for the live and pass speakers, or a dash when neither was scored.
+    private static func speakerLines(_ score: LabScore?) -> String {
         let lines = [("live", score?.liveSpeakers), ("pass", score?.passSpeakers)].compactMap { name, speakers in
-            speakers.flatMap(line).map { "\(name) \($0)" }
+            speakers.map {
+                "\(name) " + String(format: "%.1f%% <span class=\"meta\">(%d of %d words, %d unattributed)</span>", $0.accuracy * 100,
+                    $0.correct, $0.words, $0.unattributed)
+            }
         }
         return lines.isEmpty ? "–" : lines.joined(separator: "<br>")
-    }
-
-    private static func accuracy(_ score: LabSpeakerScore) -> String? {
-        String(format: "%.1f%% <span class=\"meta\">(%d of %d words, %d unattributed)</span>", score.accuracy * 100,
-            score.correct, score.words, score.unattributed)
-    }
-
-    private static func diarization(_ score: LabSpeakerScore) -> String? {
-        guard let error = score.diarizationError, error.speechSeconds > 0 else { return nil }
-        return String(format: "%.1f%% <span class=\"meta\">(missed %.1f%%, false alarm %.1f%%, confusion %.1f%%)</span>", error.rate * 100,
-            error.missedSeconds / error.speechSeconds * 100, error.falseAlarmSeconds / error.speechSeconds * 100,
-            error.confusionSeconds / error.speechSeconds * 100)
     }
 
     private static func describe(_ value: LabVariant.Value) -> String {

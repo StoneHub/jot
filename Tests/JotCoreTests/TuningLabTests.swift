@@ -190,18 +190,6 @@ final class TuningLabTests: XCTestCase {
         }
     }
 
-    func testDiarizationSegmentsLeaveOutRowsWithNoOneSpeakerAndNeedEveryCueToNameOne() {
-        let rows = [
-            LabRow(start: 0, end: 1, liveSpeaker: "speaker-1", passSpeaker: "speaker-2", rawText: "a", cleanedText: nil, cleanup: .noCleanedText),
-            LabRow(start: 1, end: 2, liveSpeaker: nil, passSpeaker: "speaker-2", rawText: "b", cleanedText: nil, cleanup: .noCleanedText),
-            LabRow(start: 2, end: 3, liveSpeaker: "overlap", passSpeaker: nil, rawText: "c", cleanedText: nil, cleanup: .noCleanedText),
-        ]
-        XCTAssertEqual(LabSpeakerScore.segments(rows, speaker: \.liveSpeaker).map(\.speaker), ["speaker-1"])
-        XCTAssertEqual(LabSpeakerScore.segments(rows, speaker: \.passSpeaker).map(\.end), [1, 2])
-        XCTAssertEqual(LabSpeakerScore.segments([cue(0, 1, "Kim"), cue(1, 2, "Lee")])?.map(\.speaker), ["Kim", "Lee"])
-        XCTAssertNil(LabSpeakerScore.segments([cue(0, 1, "Kim"), cue(1, 2, nil)]), "An untagged cue's speech would count as silence")
-    }
-
     // MARK: Rows
 
     private func words(_ row: String, _ text: String, from start: Double) -> [StoredWord] {
@@ -294,19 +282,15 @@ final class TuningLabTests: XCTestCase {
         let plain = LabVariantResult(name: "current", settings: [:], recognitionRun: 1, rows: [], timings: timings, score: LabScore(raw: wer, cleaned: wer))
         let plainPage = LabReport.html(audioName: "a.wav", variants: [plain])
         XCTAssertFalse(plainPage.contains("Speaker words right"))
-        XCTAssertFalse(plainPage.contains("DER"))
         let plainJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: LabReport.json([plain])) as? [[String: Any]])
         XCTAssertEqual((plainJSON[0]["score"] as? [String: Any]).map { Set($0.keys) }, ["raw", "cleaned"])
 
         let words = [StoredWord(transcriptID: "r", position: 0, word: "a", startSeconds: 0, endSeconds: 0.5, probabilities: [])]
-        var live = try XCTUnwrap(LabSpeakerScore(words: words, speakers: ["speaker-1"], captions: [cue(0, 1, "Kim")]))
-        live.diarizationError = .init(missedSeconds: 0.1, falseAlarmSeconds: 0, confusionSeconds: 0.2, speechSeconds: 1)
         var scored = plain
-        scored.score?.liveSpeakers = live
+        scored.score?.liveSpeakers = try XCTUnwrap(LabSpeakerScore(words: words, speakers: ["speaker-1"], captions: [cue(0, 1, "Kim")]))
         let page = LabReport.html(audioName: "a.wav", variants: [scored, plain])
-        XCTAssertTrue(page.contains("<th>Speaker words right</th><th>DER</th>"))
-        XCTAssertTrue(page.contains("live 100.0%"))
-        XCTAssertTrue(page.contains("live 30.0% <span class=\"meta\">(missed 10.0%, false alarm 0.0%, confusion 20.0%)"))
+        XCTAssertTrue(page.contains("<th>WER cleaned</th><th>Speaker words right</th><th>Cleanup phrases</th>"))
+        XCTAssertTrue(page.contains("live 100.0% <span class=\"meta\">(1 of 1 words, 0 unattributed)</span>"))
         XCTAssertEqual(try JSONDecoder().decode([LabVariantResult].self, from: LabReport.json([scored])), [scored])
     }
 }

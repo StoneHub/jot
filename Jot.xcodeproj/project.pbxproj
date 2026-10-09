@@ -48,7 +48,6 @@
 		132C26A14258A6D3C8F0920D /* JotDefaultsKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = B02C95F663096FB499C5FD80 /* JotDefaultsKey.swift */; };
 		135AEE7B1BA5CB38D310B141 /* PreparedSpeakerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEBB9F39C67736FBDFC6BE7D /* PreparedSpeakerModels.swift */; };
 		13899AFFBA889828C7A0DC82 /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */; };
-		1465D1ED49443F8D469BF443 /* LabDiarization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BF12B46FF8F8A59F06231DD /* LabDiarization.swift */; };
 		14BA20ED56BEC045BC29FFF1 /* TuningPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6326A2A1C169CB0ED6DC05FB /* TuningPreset.swift */; };
 		14DB46313AE88EC56854704C /* GlassStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6E751674ACDF9A0C12697CF /* GlassStyles.swift */; };
 		16B7B41BE928CF26A60ED58E /* StoreOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C10746E3543EA3E7BF9DEE1 /* StoreOperation.swift */; };
@@ -478,7 +477,6 @@
 		08EAF8787DC306A4A3EEF2B2 /* TuningLab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TuningLab.swift; sourceTree = "<group>"; };
 		0928E956CD5E39760DC5966B /* PerformanceSample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceSample.swift; sourceTree = "<group>"; };
 		0BCB88E7AF3431E116F525DD /* SuggestionHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionHistory.swift; sourceTree = "<group>"; };
-		0BF12B46FF8F8A59F06231DD /* LabDiarization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabDiarization.swift; sourceTree = "<group>"; };
 		0C13D7A1E14465B009F1B194 /* LabCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabCommand.swift; sourceTree = "<group>"; };
 		0D04D4DC560A81F94B8DDEA7 /* AudioClock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioClock.swift; sourceTree = "<group>"; };
 		0D102ED3EF32548EB66C0167 /* SuggestionHistoryEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionHistoryEntry.swift; sourceTree = "<group>"; };
@@ -783,7 +781,6 @@
 				0D04D4DC560A81F94B8DDEA7 /* AudioClock.swift */,
 				0E76DBC2C08598EF5281221A /* AudioJob.swift */,
 				8B2C1E0A58E4D7B25AC24C81 /* JotError.swift */,
-				0BF12B46FF8F8A59F06231DD /* LabDiarization.swift */,
 				FADCC260F4E7723243F1208D /* MappedFloat32Source.swift */,
 				BEBB9F39C67736FBDFC6BE7D /* PreparedSpeakerModels.swift */,
 				CE39A1C13AA390696EEF9B6B /* RecognitionCommitWindow.swift */,
@@ -1636,7 +1633,6 @@
 				7845BD6062F9EC86574F950F /* AudioClock.swift in Sources */,
 				0868BB86D9F3565B5F99AA26 /* AudioJob.swift in Sources */,
 				72CB61671E841E1D835FFF49 /* JotError.swift in Sources */,
-				1465D1ED49443F8D469BF443 /* LabDiarization.swift in Sources */,
 				2D012756BA1628970CB66913 /* MappedFloat32Source.swift in Sources */,
 				135AEE7B1BA5CB38D310B141 /* PreparedSpeakerModels.swift in Sources */,
 				4F53C1D61BACC81F5D35C8B2 /* RecognitionCommitWindow.swift in Sources */,

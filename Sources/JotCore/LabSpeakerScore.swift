@@ -4,24 +4,6 @@ import Foundation
 /// transcript speaker is paired with at most one caption speaker, the pairing that gets the most words right. A voice split
 /// across two ids, or two voices under one id, gets credit for only one of them.
 public struct LabSpeakerScore: Codable, Sendable, Equatable {
-    /// Diarization error rate over time, in seconds of the captions' speech; the lab helper computes it with FluidAudio.
-    public struct DiarizationError: Codable, Sendable, Equatable {
-        /// The full width left unscored around each cue boundary: ±0.25 s, as NIST's md-eval scores, since caption times
-        /// and recognized word times rarely agree to the frame.
-        public static let collarSeconds = 0.5
-
-        public var missedSeconds: Double
-        public var falseAlarmSeconds: Double
-        public var confusionSeconds: Double
-        public var speechSeconds: Double
-        public var rate: Double { speechSeconds == 0 ? 0 : (missedSeconds + falseAlarmSeconds + confusionSeconds) / speechSeconds }
-
-        public init(missedSeconds: Double, falseAlarmSeconds: Double, confusionSeconds: Double, speechSeconds: Double) {
-            self.missedSeconds = missedSeconds; self.falseAlarmSeconds = falseAlarmSeconds
-            self.confusionSeconds = confusionSeconds; self.speechSeconds = speechSeconds
-        }
-    }
-
     /// Recognized words inside one caption speaker's cue: the words scored.
     public var words: Int
     /// Scored words whose speaker is paired with that cue's speaker.
@@ -34,8 +16,6 @@ public struct LabSpeakerScore: Codable, Sendable, Equatable {
     public var unscored: Int
     /// Each transcript speaker and the caption speaker it was paired with.
     public var pairs: [String: String]
-    /// Filled in by the lab helper.
-    public var diarizationError: DiarizationError?
 
     public var accuracy: Double { words == 0 ? 0 : Double(correct) / Double(words) }
 
@@ -68,20 +48,8 @@ public struct LabSpeakerScore: Codable, Sendable, Equatable {
     }
 
     /// The speaker a row names, if it names one person: the live diarizer's "overlap" names no one.
-    public static func person(_ speaker: String?) -> String? {
+    private static func person(_ speaker: String?) -> String? {
         speaker == "overlap" ? nil : speaker
-    }
-
-    /// Who spoke when, for the diarization error rate: the captions' cues, or stored rows with the speaker they have.
-    /// Nil when a cue names no single speaker, since its speech would count as silence. Rows with no speaker are left
-    /// out, so their time counts as missed speech.
-    public static func segments(_ captions: [LabCaptions.Cue]) -> [(speaker: String, start: Double, end: Double)]? {
-        guard captions.allSatisfy({ $0.speaker != nil }) else { return nil }
-        return captions.compactMap { cue in cue.speaker.map { ($0, cue.start, cue.end) } }
-    }
-
-    public static func segments(_ rows: [LabRow], speaker: (LabRow) -> String?) -> [(speaker: String, start: Double, end: Double)] {
-        rows.compactMap { row in person(speaker(row)).map { ($0, row.start, row.end) } }
     }
 
     /// The pairing of rows to columns, each used at most once, with the largest total: the Hungarian method on the square

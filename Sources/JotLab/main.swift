@@ -40,10 +40,7 @@ func labMain() async -> Int32 {
         for result in results {
             let score = result.score.map { String(format: ", WER %.1f%% raw, %.1f%% cleaned", $0.raw.rate * 100, $0.cleaned.rate * 100) } ?? ""
             let speakers = [("live", result.score?.liveSpeakers), ("pass", result.score?.passSpeakers)].compactMap { name, speakers in
-                speakers.map { score in
-                    ", \(name) speakers " + String(format: "%.1f%% of words right", score.accuracy * 100)
-                        + (score.diarizationError.map { String(format: ", DER %.1f%%", $0.rate * 100) } ?? "")
-                }
+                speakers.map { ", \(name) speakers " + String(format: "%.1f%% of words right", $0.accuracy * 100) }
             }.joined()
             print("\(result.name): \(result.rows.count) rows, \(result.paragraphs.count) paragraphs, \(Set(result.rows.compactMap(\.passSpeaker)).count) pass speakers\(score)\(speakers)")
         }
