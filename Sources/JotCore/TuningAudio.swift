@@ -12,8 +12,8 @@ public enum TuningAudio {
         let bytes: Int
     }
 
-    /// The kept WAVs, for `jot status`.
-    public struct Summary: Sendable, Equatable {
+    /// The kept WAVs, for `jot status`. `oldest` is left out when there are none.
+    public struct Summary: Sendable, Equatable, Encodable {
         public let count: Int
         public let bytes: Int
         public let oldest: Date?
