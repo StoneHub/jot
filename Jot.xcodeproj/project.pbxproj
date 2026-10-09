@@ -68,6 +68,7 @@
 		22598C9927F7D7BED943790B /* ShortcutPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91F9493A9A1D9A5FD7DA45BB /* ShortcutPreferences.swift */; };
 		229C38A9ECCE6E3DC9FF2752 /* SetupStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AB9EB4DDD26FF26ECB13962 /* SetupStep.swift */; };
 		233C3FA2FE2D442D04E59D97 /* ListeningTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40F41CDC337859B88E28A38E /* ListeningTimeline.swift */; };
+		2378C7E055A0662FC15A3FA5 /* LabSpeakerScore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24E6C4D5A6E6FBC2B116BFEC /* LabSpeakerScore.swift */; };
 		23BF7D613C3B8BE58CA2E267 /* DictationInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82A3D8CCC3D071ABC0F5EE69 /* DictationInput.swift */; };
 		26B1953847CF6326234E2950 /* check-shortcut-input.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72E2BC26344C47160EBD5F01 /* check-shortcut-input.swift */; };
 		2780F5725146F1A2937AF562 /* SpeechServiceDependencies.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDAC26C059DEAE2398D1B2F3 /* SpeechServiceDependencies.swift */; };
@@ -502,6 +503,7 @@
 		23353B724C7968C1C5209FA0 /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
 		2435CA90A7F439503A804B79 /* SuggestionDraftSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionDraftSnapshot.swift; sourceTree = "<group>"; };
 		2489F7534B23FECFD6C1A472 /* ScreenText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenText.swift; sourceTree = "<group>"; };
+		24E6C4D5A6E6FBC2B116BFEC /* LabSpeakerScore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabSpeakerScore.swift; sourceTree = "<group>"; };
 		263330C29B40BADBC9CFB45D /* SuggestionPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionPlan.swift; sourceTree = "<group>"; };
 		2657AFE914877050FC11631C /* LibraryRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryRows.swift; sourceTree = "<group>"; };
 		2678DF37BEA73A0E877702DC /* JotSettingsError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JotSettingsError.swift; sourceTree = "<group>"; };
@@ -929,6 +931,7 @@
 				ADE0A1ACF691282427C8750E /* LabRow.swift */,
 				4D6350FB586DEB294F0A4517 /* LabRows.swift */,
 				8BDDB5CDCAC437948891B466 /* LabScore.swift */,
+				24E6C4D5A6E6FBC2B116BFEC /* LabSpeakerScore.swift */,
 				7155F7313305581E24C166F7 /* LabVariant.swift */,
 				BFE66EA8622172FB454486AC /* LabVariantResult.swift */,
 				E5161AC2BF6256AC57286B16 /* LatencySummary.swift */,
@@ -1459,6 +1462,7 @@
 				DAFD0EDEC0C00874959A8392 /* LabRow.swift in Sources */,
 				7AB9706221603CD90F33E603 /* LabRows.swift in Sources */,
 				9F80D5A6D548672CDD66B5CF /* LabScore.swift in Sources */,
+				2378C7E055A0662FC15A3FA5 /* LabSpeakerScore.swift in Sources */,
 				D9AFF5F972A0228E1F267A47 /* LabVariant.swift in Sources */,
 				60833A27469B3F24E2A206A6 /* LabVariantResult.swift in Sources */,
 				DFB273C5C4C358EE061C15B2 /* LatencySummary.swift in Sources */,
