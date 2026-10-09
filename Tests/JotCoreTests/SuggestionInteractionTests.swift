@@ -248,9 +248,7 @@ final class SuggestionInteractionTests: XCTestCase {
     }
 
     func testShortcutIsUnassignedUntilChosenAndConflictsAreRejected() throws {
-        let name = "suggestion-tests-" + UUID().uuidString
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
-        defer { defaults.removePersistentDomain(forName: name) }
+        let defaults = MemoryDefaults()
         let preferences = SuggestionShortcutPreferences(defaults: defaults)
         XCTAssertNil(preferences.load())
         XCTAssertThrowsError(try preferences.save(.fn, dictation: .fn))

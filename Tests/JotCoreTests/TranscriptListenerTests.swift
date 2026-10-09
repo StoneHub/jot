@@ -192,9 +192,7 @@ final class TranscriptListenerTests: XCTestCase {
         XCTAssertLessThanOrEqual(listener.retainedRows, TranscriptListener.maximumRows)
     }
     func testSettingsExposeListenerDefaultsWithoutSavedPreferences() throws {
-        let name = "ListenTests." + UUID().uuidString
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
-        defer { defaults.removePersistentDomain(forName: name) }
+        let defaults = MemoryDefaults()
         let settings = JotSettings(defaults: defaults)
         XCTAssertEqual(settings.text(JotSettings.listenWakePhrases), "claude")
         XCTAssertEqual(settings.text(JotSettings.listenMode), "command")

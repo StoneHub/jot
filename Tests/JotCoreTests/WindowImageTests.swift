@@ -232,9 +232,7 @@ final class WindowImageTests: XCTestCase {
     }
 
     func testTheImageIsOffUntilChosen() throws {
-        let suite = "WindowImageTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = MemoryDefaults()
         XCTAssertFalse(JotSettings(defaults: defaults).bool(JotDefaultsKey.suggestionWindowImage))
     }
 }

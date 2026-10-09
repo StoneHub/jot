@@ -31,9 +31,7 @@ final class TuningLabTests: XCTestCase {
     }
 
     func testVariantAppliesOverTheBaseSettingsWithTheSameValidationAsJotSettingsSet() throws {
-        let suite = "TuningLabTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = MemoryDefaults()
         let settings = JotSettings(defaults: defaults)
         let variant = try LabVariant.parse(Data(#"[{"name": "a", "settings": {"chunkMaximumSeconds": 99, "cleanUpTranscriptions": false}}]"#.utf8))[0]
         try variant.apply(to: settings)

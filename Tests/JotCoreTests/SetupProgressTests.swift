@@ -1,21 +1,18 @@
 import XCTest
 @testable import JotCore
 
-/// Every test runs against its own UserDefaults suite and temporary directory, never the app's.
+/// Every test runs against its own in-memory preferences and temporary directory, never the app's.
 final class SetupProgressTests: XCTestCase {
-    private var suiteName = ""
     private var defaults: UserDefaults!
     private var directory: URL!
 
     override func setUpWithError() throws {
-        suiteName = "SetupProgressTests.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)
+        defaults = MemoryDefaults()
         directory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("jot-setup-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 
     override func tearDownWithError() throws {
-        defaults.removePersistentDomain(forName: suiteName)
         try? FileManager.default.removeItem(at: directory)
     }
 
@@ -52,9 +49,7 @@ final class SetupProgressTests: XCTestCase {
 
     func testEachEarlierPreferenceMarksAnExistingInstall() {
         for key in SetupProgress.earlierUseKeys {
-            let name = "SetupProgressTests.key.\(UUID().uuidString)"
-            let suite = UserDefaults(suiteName: name)!
-            defer { suite.removePersistentDomain(forName: name) }
+            let suite = MemoryDefaults()
             suite.set(false, forKey: key)
             XCTAssertEqual(SetupProgress.atLaunch(defaults: suite, directory: directory).status, .existingInstall, key)
         }

@@ -143,9 +143,7 @@ final class DictationShortcutTests: XCTestCase {
     }
 
     func testPreferencesPersistAndInvalidOrMissingValuesFallBackToFn() throws {
-        let suite = "JotShortcutTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = MemoryDefaults()
         let preferences = ShortcutPreferences(defaults: defaults)
         XCTAssertEqual(preferences.load(), .fn)
         try preferences.save(chord)
