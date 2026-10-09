@@ -436,6 +436,8 @@ final class SpeechService: ObservableObject {
                     : "Choose Review saved dictation to copy the saved text."
             }
             for stale in SessionAudioFile.discardStale(except: timeline.sessionID) { recordEvent(.audioDiscarded, "Session audio left by an earlier run was deleted.", session: stale) }
+            // Whether or not keepTuningAudio is on now: turning it off deletes nothing, so kept files age out here.
+            await speakers.pruneTuningAudio()
             if let data = UserDefaults.standard.data(forKey: JotDefaultsKey.modelUpdateChecks),
                let saved = try? JSONDecoder().decode([ModelUpdate].self, from: data) { modelUpdates = saved }
             meetingTitle = UserDefaults.standard.string(forKey: JotDefaultsKey.updateMeetingTitle)
@@ -749,6 +751,7 @@ final class SpeechService: ObservableObject {
     func deleteSession(_ id: String) async throws {
         guard canDeleteSession(id) else { throw JotError.message("Stop recording this session before deleting it.") }
         try await library.deleteSession(id)
+        await speakers.deleteTuningAudio(session: id)
     }
 
     func regroupSession(_ id: String) async throws {

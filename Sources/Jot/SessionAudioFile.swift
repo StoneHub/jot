@@ -15,9 +15,10 @@ final class SessionAudioFile: @unchecked Sendable {
     let url: URL
     private let writer: SessionAudioWriter
 
-    init(sessionID: String) {
+    /// `directory` is for the check harness, which keeps its files out of the service directory.
+    init(sessionID: String, directory: URL = SessionAudioPaths.directory) {
         self.sessionID = sessionID
-        url = SessionAudioPaths.url(sessionID: sessionID)
+        url = SessionAudioPaths.url(sessionID: sessionID, in: directory)
         writer = SessionAudioWriter(url: url, byteLimit: Self.byteLimit)
     }
 

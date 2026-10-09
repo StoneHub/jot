@@ -53,6 +53,19 @@ final class JotSettingsTests: XCTestCase {
         XCTAssertTrue(relaunched.isChanged(JotDefaultsKey.cleanUpTranscriptions), "Normalizing defaults runs only on the first launch")
     }
 
+    /// Kept tuning audio is private audio on disk, so only an explicit change turns it on: never a fresh install or an update.
+    func testKeepTuningAudioStaysOffUntilTurnedOn() throws {
+        XCTAssertFalse(JotSettings(defaults: defaults).bool(JotSettings.keepTuningAudio))
+        legacyTuning(#"{"speakerConfidence": 0.75}"#)
+        defaults.set(true, forKey: JotDefaultsKey.keepAudioForSpeakerPass)
+        defaults.removeObject(forKey: JotSettings.revisionKey)
+        let updated = JotSettings(defaults: defaults)
+        XCTAssertFalse(updated.bool(JotSettings.keepTuningAudio))
+        XCTAssertFalse(updated.isChanged(JotSettings.keepTuningAudio))
+        try updated.set(JotSettings.keepTuningAudio, raw: "true")
+        XCTAssertTrue(updated.bool(JotSettings.keepTuningAudio))
+    }
+
     func testUnreadableBlobIsDroppedWithoutChangingAnything() {
         legacyTuning("not json")
         let settings = JotSettings(defaults: defaults)

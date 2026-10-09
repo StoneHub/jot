@@ -168,7 +168,7 @@ targets:
         CFBundleShortVersionString: '0.2.13'
         CFBundleVersion: '20'
         LSUIElement: true
-        NSMicrophoneUsageDescription: Jot transcribes your microphone locally for dictation and ambient transcripts. Session audio is kept only until the speaker pass finishes, then deleted.
+        NSMicrophoneUsageDescription: Jot transcribes your microphone locally for dictation and ambient transcripts. Session audio is deleted after the speaker pass, unless you turn on keeping it for tuning, which keeps it on this Mac for up to 30 days.
         NSHighResolutionCapable: true
     settings:
       base:
