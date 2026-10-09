@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import JotCore
+import JotEngine
 
 /// The local socket API. Method names and response shapes are the contract the jot CLI and its MCP server depend on.
 extension SpeechService {

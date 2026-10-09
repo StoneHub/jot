@@ -3,6 +3,7 @@ import AVFoundation
 import AudioToolbox
 import CoreAudio
 import JotCore
+import JotEngine
 
 /// Audio callback owns resampling; only a bounded 8-second RAM queue crosses to the controller.
 /// What the service needs from a microphone, so checks can feed synthetic audio and failures without Core Audio.

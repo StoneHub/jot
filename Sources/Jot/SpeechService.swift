@@ -3,7 +3,7 @@ import AVFoundation
 import Combine
 import Foundation
 import JotCore
-import FluidAudio
+import JotEngine
 
 @MainActor
 final class SpeechService: ObservableObject {

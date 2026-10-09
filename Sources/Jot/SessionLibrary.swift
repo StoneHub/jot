@@ -1,5 +1,6 @@
 import Foundation
 import JotCore
+import JotEngine
 
 /// Reads and edits saved sessions and dictations for the screens and the socket API: recent rows, the paged Dictations list, Sessions, export, rename, delete, and regroup. Capture writes rows itself and hands the saved rows and cleaned text here, to Live, the recent rows, Sessions and Dictations.
 @MainActor

@@ -1,5 +1,6 @@
 import Foundation
 import JotCore
+import JotEngine
 import SQLite3
 
 extension RecoveryFlowChecks {

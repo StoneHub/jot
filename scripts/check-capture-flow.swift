@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import JotCore
+import JotEngine
 
 /// Drives the real service through Resume with a microphone that refuses to start, using the dependency seams instead of Core Audio, model downloads, or permission dialogs.
 enum CaptureFlowChecks {

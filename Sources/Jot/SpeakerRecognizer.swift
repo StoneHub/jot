@@ -1,5 +1,6 @@
 import Foundation
 import JotCore
+import JotEngine
 
 /// Runs the speaker pass over a finished session, names the voices Jot remembers, and keeps the People list.
 @MainActor

@@ -1,5 +1,6 @@
 import Foundation
 import JotCore
+import JotEngine
 
 private struct TranscriberSavedBlock: Sendable {
     let rows: [Transcript]

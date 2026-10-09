@@ -1,5 +1,6 @@
 import Foundation
 import JotCore
+import JotEngine
 
 /// One ambient session's audio for the offline speaker pass. The shared writer owns file I/O and bounded admission.
 final class SessionAudioFile: @unchecked Sendable {

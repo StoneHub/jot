@@ -3,7 +3,6 @@ import AVFoundation
 import Combine
 import Foundation
 import JotCore
-import FluidAudio
 
 /// The raw values are stored in the capture_events table and shown in History.
 enum CaptureEventKind: String {
