@@ -150,7 +150,7 @@ struct ModelsUpdatesView: View {
     }
 
     private var cacheSize: some View {
-        Text(service.cachedModelBytes > 0 ? "\(ModelCache.formatted(service.cachedModelBytes)) in local cache" : "No model files cached")
+        Text(service.cachedModelBytes > 0 ? "\(ModelCache.formatted(service.cachedModelBytes)) in local cache" : "No cache recorded yet")
             .font(.caption).foregroundStyle(.secondary)
     }
 
