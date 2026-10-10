@@ -367,6 +367,7 @@ final class SpeechService: ObservableObject {
     private(set) var pauseRequested = false { willSet { objectWillChange.send() } }
     private var observers: [NSObjectProtocol] = []
     private var lastStatsTime = Date.distantPast
+    private var lastCapabilityCheckTime = Date.distantPast
     lazy var input: DictationInput = {
         let result = DictationInput(onStart: { [weak self] in self?.holdBegan() }, onStop: { [weak self] released in self?.holdEnded(releasedAt: released) })
         result.shortcut = shortcut
@@ -453,6 +454,9 @@ final class SpeechService: ObservableObject {
         _ = suggestions
         updateSuggestionMonitoring()
         scheduleTimer()
+        observers.append(NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.refreshCapabilities() }
+        })
         let center = NSWorkspace.shared.notificationCenter
         observers.append(center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
@@ -493,10 +497,15 @@ final class SpeechService: ObservableObject {
         prepare()
     }
 
-    /// Audio drains five times a second while the microphone runs; otherwise the tick only does its once-a-second status work.
+    /// Starting capture replaces the quiet timer immediately; Fn never waits for
+    /// paused housekeeping to start its microphone or finish saved speech.
+    var tickInterval: TimeInterval { ambientEnabled ? 0.2 : 60 }
+
+    /// Audio drains five times a second while listening. Paused housekeeping runs
+    /// once a minute, while inference and recovery finish through their callbacks.
     private func scheduleTimer() {
         timer?.invalidate()
-        let interval = ambientEnabled ? 0.2 : 5.0
+        let interval = tickInterval
         let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
@@ -605,7 +614,8 @@ final class SpeechService: ObservableObject {
         prepare(confirmingDownload: true, listen: false)
     }
 
-    /// Assigns only a change, since the tick calls this every second.
+    /// Explicit permission requests revalidate immediately; background housekeeping
+    /// and foreground activation use refreshCapabilities instead.
     func refreshPermissions() {
         let microphone = dependencies.microphoneAuthorization()
         if micPermission != microphone { micPermission = microphone }
@@ -613,6 +623,18 @@ final class SpeechService: ObservableObject {
         if accessibilityGranted != accessibility { accessibilityGranted = accessibility }
         let screen = WindowImageCapture.permitted
         if screenRecordingAllowed != screen { screenRecordingAllowed = screen }
+    }
+
+    /// The foreground path and slow background check share this change-only update.
+    /// Request paths still consult live authorization/availability at point of use.
+    func refreshCapabilities() {
+        lastCapabilityCheckTime = dependencies.now()
+        refreshPermissions()
+        let availability = dependencies.intelligenceAvailability()
+        if cleanupAvailability != availability {
+            cleanupAvailability = availability
+            refreshShortcutEligibility()
+        }
     }
 
     var permissionsMissing: Bool { micPermission != .authorized || !accessibilityGranted }
@@ -1033,22 +1055,19 @@ final class SpeechService: ObservableObject {
         // Paused keeps the phase ready with the microphone stopped; nothing is drained then.
         if lifecycle.phase == .ready, ambientEnabled { drainAudio() }
         tickCount += 1
-        if dependencies.now().timeIntervalSince(lastStatsTime) >= 1 {
-            samplePerformance(); lastStatsTime = dependencies.now(); refreshPermissions()
+        let now = dependencies.now()
+        if now.timeIntervalSince(lastCapabilityCheckTime) >= 60 { refreshCapabilities() }
+        if now.timeIntervalSince(lastStatsTime) >= 1 {
+            samplePerformance(); lastStatsTime = now
             resourceReadout.snapshot = readoutSampler.sample()
-            // A published assignment tells the window to redraw even when the value is the same, so only changes are assigned.
-            let availability = dependencies.intelligenceAvailability()
-            if cleanupAvailability != availability {
-                cleanupAvailability = availability
-                refreshShortcutEligibility()
-            }
-            transcriber.queuedSeconds = transcriber.queuedAudioSeconds
-            if !pauseRequested, ambientEnabled || dictation.isActive, let lastAudioAt, dependencies.now().timeIntervalSince(lastAudioAt) > 4 {
+            let queued = transcriber.queuedAudioSeconds
+            if transcriber.queuedSeconds != queued { transcriber.queuedSeconds = queued }
+            if !pauseRequested, ambientEnabled || dictation.isActive, let lastAudioAt, now.timeIntervalSince(lastAudioAt) > 4 {
                 recordEvent(.inputStalled, "No microphone samples for more than four seconds."); pause(automatic: true); notice = "Microphone stopped delivering audio. Resume to reconnect; a capture gap occurred."
             }
             if !pauseRequested, ambientEnabled, !dictation.isActive, !dictation.isPending,
                SessionSplit.shouldStart(silenceMinutes: newSessionAfterSilence,
-                silenceSeconds: dependencies.now().timeIntervalSince(timeline.lastAmbientRowAt ?? timeline.sessionStarted),
+                silenceSeconds: now.timeIntervalSince(timeline.lastAmbientRowAt ?? timeline.sessionStarted),
                 isMeeting: meetingTitle != nil, workPending: !transcriber.isIdle) { timeline.rotateSession() }
         }
         transcriber.kick()

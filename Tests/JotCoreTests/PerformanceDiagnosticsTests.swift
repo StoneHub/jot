@@ -14,7 +14,7 @@ final class PerformanceDiagnosticsTests: XCTestCase {
         XCTAssertEqual(report.startup?.elapsedSeconds, 0)
         XCTAssertEqual(report.sampledPeakFootprintMiB, 999)
         XCTAssertEqual(report.current?.footprintMiB, 100)
-        XCTAssertEqual(report.samples[1].elapsedSeconds - report.samples[0].elapsedSeconds, 30)
+        XCTAssertEqual(report.samples[1].elapsedSeconds - report.samples[0].elapsedSeconds, 60)
     }
     /// The CPU seconds of kept samples, each covering the interval since the kept sample before it.
     private func keptCPUSeconds(_ samples: [PerformanceSample]) -> Double {
@@ -27,18 +27,18 @@ final class PerformanceDiagnosticsTests: XCTestCase {
         }
         observe(0, cpu: 0)
         observe(10, cpu: 50)     // 5 CPU seconds
-        observe(29.5, cpu: 0)
-        observe(30, cpu: 100)    // 0.5 CPU seconds, just after a recognition; kept
-        observe(45, cpu: 20)     // 3 CPU seconds
-        observe(60, cpu: 0)      // kept
+        observe(59.5, cpu: 0)
+        observe(60, cpu: 100)    // 0.5 CPU seconds, just after a recognition; kept
+        observe(75, cpu: 20)     // 3 CPU seconds
+        observe(120, cpu: 0)      // kept
         let samples = diagnostics.report.samples
-        XCTAssertEqual(samples.map(\.elapsedSeconds), [0, 30, 60])
-        XCTAssertEqual(samples[1].cpuPercent, 5.5 / 30 * 100, accuracy: 1e-9)
-        XCTAssertEqual(samples[2].cpuPercent, 3.0 / 30 * 100, accuracy: 1e-9)
+        XCTAssertEqual(samples.map(\.elapsedSeconds), [0, 60, 120])
+        XCTAssertEqual(samples[1].cpuPercent, 5.5 / 60 * 100, accuracy: 1e-9)
+        XCTAssertEqual(samples[2].cpuPercent, 3.0 / 60 * 100, accuracy: 1e-9)
         XCTAssertEqual(keptCPUSeconds(samples), 8.5, accuracy: 1e-9)
         XCTAssertEqual(diagnostics.report.current?.cpuPercent, 0, "The current sample keeps its own reading")
     }
-    /// Samples like the app's: a short one after each burst of work between idle stretches. Elapsed time is scaled so the 30-second cadence passes in a fraction of a second; scaling time leaves each percentage unchanged.
+    /// Samples like the app's: a short one after each burst of work between idle stretches. Elapsed time is scaled so the 60-second cadence passes in a fraction of a second; scaling time leaves each percentage unchanged.
     func testKeptSampleCPUAddsUpToTheKernelCount() throws {
         func kernelCPUSeconds() -> Double {
             var usage = rusage()
