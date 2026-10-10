@@ -55,6 +55,7 @@ func labMain() async -> Int32 {
 func prepareOutput(_ output: URL) throws {
     var directory = output.standardizedFileURL
     while directory.path != "/" {
+        directory = directory.resolvingSymlinksInPath().standardizedFileURL
         if FileManager.default.fileExists(atPath: directory.appendingPathComponent(".git").path) {
             throw LabError.invalid("\(output.path) is inside the git repository at \(directory.path); choose a folder outside it.")
         }
@@ -66,9 +67,9 @@ func prepareOutput(_ output: URL) throws {
     try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
 }
 
-/// Ctrl-C or a termination still removes the working files, which hold the recording and its transcript.
+/// Interrupt, termination, hangup and broken-pipe signals remove the private working files before exit.
 func removeOnInterrupt(_ scratch: URL) -> [DispatchSourceSignal] {
-    [SIGINT, SIGTERM].map { number in
+    [SIGINT, SIGTERM, SIGHUP, SIGPIPE].map { number in
         signal(number, SIG_IGN)
         let source = DispatchSource.makeSignalSource(signal: number, queue: .global())
         source.setEventHandler {
