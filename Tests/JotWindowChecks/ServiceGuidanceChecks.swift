@@ -161,14 +161,14 @@ struct ServiceGuidanceChecks {
         service.diagnostics = PerformanceDiagnostics(build: .debug)
         precondition(ActivityTrendSnapshot(report: service.diagnostics.report).points.isEmpty,
                      "An empty diagnostic buffer must not invent a trend")
-        for index in 0...30 where !(10...12).contains(index) {
-            service.diagnostics.observe(PerformanceSample(elapsedSeconds: Double(index * 30),
+        for index in 0...15 where !(5...7).contains(index) {
+            service.diagnostics.observe(PerformanceSample(elapsedSeconds: Double(index * 60),
                 footprintMiB: 110 + Double(index % 8) * 3,
                 residentMiB: 235 + Double(index % 6) * 4,
                 cpuPercent: 4 + Double(index % 5) * 7))
         }
         let trend = ActivityTrendSnapshot(report: service.diagnostics.report)
-        precondition(trend.points.count == 28 && Set(trend.points.map(\.segment)).count == 2,
+        precondition(trend.points.count == 13 && Set(trend.points.map(\.segment)).count == 2,
                      "Trend lines must preserve every retained sample and break across the measurement gap")
         precondition(trend.points.first?.minutesBeforeLatest == -15 && trend.points.last?.minutesBeforeLatest == 0,
                      "Trend scope must be relative to the latest reading")

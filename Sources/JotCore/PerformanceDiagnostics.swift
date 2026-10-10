@@ -1,8 +1,8 @@
 import Foundation
 
 public struct PerformanceDiagnostics: Sendable {
-    public static let sampleInterval: Double = 30
-    public static let sampleCapacity = 2880
+    public static let sampleInterval: Double = 60
+    public static let sampleCapacity = 1440
     public static let eventCapacity = 256
     public static let jobCapacity = 200
     private var startup: PerformanceSample?

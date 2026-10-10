@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Combine
 import Foundation
 import JotCore
@@ -17,6 +18,10 @@ struct RecoveryFlowChecks {
         var attempts = 0
         var chunks: [Double] = []
         var failFinal = false
+        var microphoneChecks = 0
+        var intelligenceChecks = 0
+        var microphoneAuthorization: AVAuthorizationStatus = .authorized
+        var intelligenceAvailability: CleanupAvailability = .notEnabled
 
         func infer(_ job: AudioJob) -> SpeechOutput {
             guard !job.samples.isEmpty else { return SpeechOutput(transcripts: [], text: "", processingSeconds: 0) }
@@ -170,6 +175,7 @@ struct RecoveryFlowChecks {
         try await checkQuietAndStall(directory: directory)
         try await checkCPUReadoutWhileListening(directory: directory)
         try await checkIdleRedraws(directory: directory)
+        try await checkHousekeepingCadence(directory: directory)
         try await checkSpeakerPassKeepsCleanup(directory: directory)
         try await checkRelabelsTakeTurns(directory: directory)
         try await checkControlsRedrawWhenWorkEnds(directory: directory)
@@ -925,13 +931,84 @@ struct RecoveryFlowChecks {
         let meters = service.resourceReadout.$snapshot.dropFirst().sink { _ in readouts += 1 }
         defer { meters.cancel() }
         for _ in 1...6 {
-            probe.now += 5
+            probe.now += 60
             service.tickRecoveryVerification()
         }
         precondition(readouts == 6, "Paused CPU and memory meters stopped refreshing")
         precondition(changes == 0, "Paused resource ticks told the whole window to redraw \(changes) times")
         precondition(service.resources.valid, "The diagnostic snapshot no longer sees the current resource readout")
-        print("PASS: six paused ticks refresh the resource meters without invalidating the whole window.")
+        print("PASS: six minute-spaced paused ticks refresh the resource meters without invalidating the whole window.")
+    }
+
+    /// Fast audio/stall ticks remain independent of slow capability housekeeping.
+    /// The same immediate refresh used on foreground activation updates cached UI
+    /// state; starting a hold still checks microphone authorization at point of use.
+    @MainActor static func checkHousekeepingCadence(directory: URL) async throws {
+        let probe = Probe()
+        let store = try TranscriptStore(directory: directory.appendingPathComponent("housekeeping"))
+        let microphone = ConstantMicrophone(seconds: 0.2, value: 0)
+        var dependencies = SpeechServiceDependencies(infer: { _, job, _ in
+            probe.chunks.append(AudioClock.seconds(samples: job.samples.count))
+            return SpeechOutput(transcripts: [], text: "", processingSeconds: 0.001)
+        },
+            deliver: { _, text in try probe.deliver(text) }, now: { probe.now })
+        dependencies.makeMicrophone = { microphone }
+        dependencies.microphoneAuthorization = {
+            probe.microphoneChecks += 1
+            return probe.microphoneAuthorization
+        }
+        dependencies.intelligenceAvailability = {
+            probe.intelligenceChecks += 1
+            return probe.intelligenceAvailability
+        }
+        let service = SpeechService(dependencies: dependencies)
+        defer { service.shutdown() }
+        precondition(service.tickInterval == 60, "Paused housekeeping still wakes more often than once a minute")
+        service.keepAudioForSpeakerPass = false
+        service.cleanUpTranscriptions = false
+        service.beginRecoveryVerification(store: store, startedAt: probe.now)
+        precondition(service.tickInterval == 0.2, "Listening no longer drains audio five times a second")
+        // The first tick establishes the background check, then fast ticks must
+        // not repeat authorization/Apple Intelligence queries before 60 seconds.
+        microphone.lastAudio = probe.now
+        service.tickRecoveryVerification()
+        await service.waitForRecoveryVerification()
+        let microphoneChecks = probe.microphoneChecks, intelligenceChecks = probe.intelligenceChecks
+        for _ in 1...59 {
+            probe.now += 1
+            microphone.lastAudio = probe.now
+            service.tickRecoveryVerification()
+            await service.waitForRecoveryVerification()
+        }
+        precondition(service.ambientEnabled && !service.pauseRequested, "Capability checks did not remain on the active listening path")
+        precondition(probe.microphoneChecks == microphoneChecks && probe.intelligenceChecks == intelligenceChecks,
+                     "One-second active stats still poll capabilities")
+        probe.now += 1
+        microphone.lastAudio = probe.now
+        service.tickRecoveryVerification()
+        await service.waitForRecoveryVerification()
+        precondition(probe.microphoneChecks == microphoneChecks + 1 && probe.intelligenceChecks == intelligenceChecks + 1,
+                     "Background capabilities were not refreshed after one minute")
+        probe.microphoneAuthorization = .denied
+        probe.intelligenceAvailability = .available
+        service.refreshCapabilities()
+        precondition(service.micPermission == .denied && service.cleanupAvailability == .available,
+                     "Foreground capability refresh did not update permissions/Apple Intelligence immediately")
+        probe.microphoneAuthorization = .authorized
+        let granted = await service.requestMic()
+        precondition(granted, "A request waited for background permission polling")
+        precondition(service.micPermission == .authorized, "Explicit microphone request retained stale permission state")
+        service.pause()
+        while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
+        precondition(service.tickInterval == 60 && service.isPaused && service.modelsLoaded,
+                     "Pause did not restore minute housekeeping while retaining prepared models")
+        await service.waitForRecoveryVerification()
+        let recognitions = probe.chunks.count
+        probe.now += 60
+        service.tickRecoveryVerification()
+        precondition(service.transcriber.isIdle && probe.chunks.count == recognitions && !service.capture.running,
+                     "Delayed paused housekeeping started capture or recognition work")
+        print("PASS: paused housekeeping is 60 seconds, listening drain remains 0.2 seconds, capabilities check once per minute, and foreground/request revalidation is immediate.")
     }
 
     /// What a screen that observes only the service shows for Install Update and the shortcut button. SwiftUI reads a screen's values on a later turn of the main actor than objectWillChange, so a change that no publish follows stays on screen.
@@ -1421,7 +1498,10 @@ struct RecoveryFlowChecks {
         let seeded = try store.setReadablePhrase(readable, for: rows)
         precondition(seeded, "The long session was not seeded")
         // 1,500 six-second turns rotating three voices. Each turn starts halfway through a row, so the pass splits every other row. Regroup from the same segments then relabels all 4,500 rows in place.
-        let segments = (0..<1_500).map { turn in (speaker: "S\(turn % 3 + 1)", start: Double(turn) * 6 + 1.5, end: Double(turn) * 6 + 7.5) }
+        let segments = (0..<1_500).map { (turn: Int) -> (speaker: String, start: Double, end: Double) in
+            let start = Double(turn) * 6 + 1.5
+            return (speaker: "S\(turn % 3 + 1)", start: start, end: start + 6)
+        }
         let pass = SpeakerPassResult(segments: segments, speakers: ["S1": [1], "S2": [2], "S3": [3]], durationSeconds: 9_000, processingSeconds: 1)
 
         // Listening goes on. Every 5 ms the ticker drains the microphone and does what a recognized block does: it saves a row and its word, adds the row to Live, and folds it into the recent rows and the Sessions list. It returns the longest gap between wakes beyond the 5 ms it sleeps.

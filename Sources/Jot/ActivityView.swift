@@ -61,8 +61,8 @@ final class ActivityInsightsLoader: ObservableObject {
 }
 
 struct ActivityView: View {
-    @ObservedObject var service: SpeechService
-    @ObservedObject var library: SessionLibrary
+    let service: SpeechService
+    let library: SessionLibrary
     @StateObject private var insights: ActivityInsightsLoader
     @Environment(\.scenePhase) private var scenePhase
     @State private var days = 7
@@ -114,7 +114,7 @@ struct ActivityView: View {
             guard scenePhase == .active else { return }
             while !Task.isCancelled {
                 await insights.refresh(library: library, days: days)
-                do { try await Task.sleep(for: .seconds(60)) } catch { return }
+                do { try await Task.sleep(for: .seconds(300)) } catch { return }
             }
         }
         .onChange(of: days) { _, _ in selectedDate = nil }
@@ -285,7 +285,7 @@ private struct ActivityLiveImpact: View {
                 HStack(spacing: 10) {
                     Label("Live on this Mac", systemImage: "waveform.path.ecg").font(.headline)
                     Spacer(minLength: 8)
-                    Text("Now").font(.caption.weight(.medium)).foregroundStyle(.tint)
+                    Text("Latest").font(.caption.weight(.medium)).foregroundStyle(.tint)
                         .padding(.horizontal, 8).padding(.vertical, 3)
                         .background(Color.accentColor.opacity(0.10), in: Capsule())
                 }
@@ -302,7 +302,7 @@ private struct ActivityLiveImpact: View {
                         Divider()
                         LazyVGrid(columns: ActivityStatColumns.make(width: width - 36, minimum: 145, itemCount: 3), alignment: .leading, spacing: 12) {
                             ActivityStat(title: "Jot CPU", value: resources.valid ? String(format: "%.1f%%", resources.processCPUPercent) : "—", symbol: "cpu",
-                                         detail: "100% represents one CPU core. Jot can use more than 100% across several cores. This is a current sample, not an average for the selected history period.")
+                                         detail: "100% represents one CPU core. Jot can use more than 100% across several cores. This is the latest interval reading, refreshed about once a minute while paused, not an average for the selected history period.")
                             ActivityStat(title: "Resident memory", value: resources.valid ? String(format: "%.0f MiB", resources.residentMiB) : "—", symbol: "square.stack.3d.up")
                             ActivityStat(title: "Mac thermal state", value: resources.valid ? resources.thermalState.capitalized : "—", symbol: "thermometer.medium")
                         }
@@ -368,14 +368,14 @@ private struct ActivityResourceTrends: View {
                 ActivityResourceChart(snapshot: snapshot, metric: .cpu)
                 ActivityResourceChart(snapshot: snapshot, metric: .memory)
             }
-            Text("Recent 30-second measurements from this launch, up to 15 minutes before the latest reading. Gaps stay open. Battery use is not measured.")
+            Text("Recent minute-spaced measurements from this launch, up to 15 minutes before the latest reading. Gaps stay open. Battery use is not measured.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
             while !Task.isCancelled {
                 snapshot = ActivityTrendSnapshot(report: service.diagnostics.report)
-                do { try await Task.sleep(for: .seconds(30)) } catch { return }
+                do { try await Task.sleep(for: .seconds(60)) } catch { return }
             }
         }
     }
