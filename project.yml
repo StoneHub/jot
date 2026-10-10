@@ -165,8 +165,8 @@ targets:
       properties:
         CFBundleDisplayName: Jot
         CFBundleIconFile: Jot.icns
-        CFBundleShortVersionString: '0.3.2'
-        CFBundleVersion: '23'
+        CFBundleShortVersionString: '0.3.3'
+        CFBundleVersion: '24'
         LSUIElement: true
         NSMicrophoneUsageDescription: Jot transcribes your microphone locally for dictation and ambient transcripts. Session audio is deleted after the speaker pass, unless you turn on keeping it for tuning, which keeps it on this Mac for up to 30 days.
         NSHighResolutionCapable: true
