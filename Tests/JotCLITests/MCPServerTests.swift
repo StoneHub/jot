@@ -71,6 +71,21 @@ final class MCPServerTests: XCTestCase {
         XCTAssertEqual((try response(frames[0])["result"] as? [String: Any])?["isError"] as? Bool, false)
         XCTAssertEqual((try response(frames[1])["result"] as? [String: Any])?["isError"] as? Bool, true)
     }
+    func testActivityToolForwardsOnlyValidBoundedRequestsAndReturnsChartData() throws {
+        var frames: [Data] = [], days: [Int] = []
+        let server = MCPServer(request: { method, arguments in
+            XCTAssertEqual(method, "activity.report")
+            days.append(try ActivityRequest.days(arguments: arguments))
+            return try JSONSerialization.data(withJSONObject: ["ok": true, "result": ["daily": [], "days": 30]])
+        }, writeFrame: { frames.append($0) })
+        try server.process(frame("tools/call", params: ["name": "activity_report", "arguments": ["days": 30]]))
+        try server.process(frame("tools/call", params: ["name": "activity_report", "arguments": ["days": true]]))
+        try server.process(frame("tools/call", params: ["name": "activity_report", "arguments": ["days": 365]]))
+        XCTAssertEqual(days, [30])
+        XCTAssertEqual((try response(frames[0])["result"] as? [String: Any])?["isError"] as? Bool, false)
+        XCTAssertEqual((try response(frames[1])["result"] as? [String: Any])?["isError"] as? Bool, true)
+        XCTAssertEqual((try response(frames[2])["result"] as? [String: Any])?["isError"] as? Bool, true)
+    }
     func testMalformedFrameAndUnknownMethodRemainProtocolErrors() throws {
         var frames: [Data] = []
         let server = MCPServer(request: { _, _ in XCTFail("No IPC"); return Data() }, writeFrame: { frames.append($0) })

@@ -27,6 +27,7 @@ struct JotCLI {
     Jot — local transcription service
 
     jot status                         Listening state, permissions, models, and system impact
+    jot activity [--days 7|30]          Local usage totals and daily chart data, without transcript text
     jot start                          Resume continuous listening
     jot pause                          Stop listening and end any meeting; the models stay loaded
     jot resume                         Start listening; loads the models only if they are not loaded
@@ -77,6 +78,12 @@ struct JotCLI {
     private static func command(_ args: [String]) throws -> (String, [String: Any]) {
         guard let first = args.first else { throw CLIError.usage(usage) }
         switch first {
+        case "activity":
+            if args.count == 1 { return ("activity.report", [:]) }
+            guard args.count == 3, args[1] == "--days", let days = Int(args[2]), [7, 30].contains(days) else {
+                throw CLIError.usage("Use: jot activity [--days 7|30]")
+            }
+            return ("activity.report", ["days": days])
         case "status", "start", "pause", "resume", "diagnostics":
             guard args.count == 1 else { throw CLIError.usage("Unexpected arguments for \(first)") }
             return ("speech." + first, [:])
