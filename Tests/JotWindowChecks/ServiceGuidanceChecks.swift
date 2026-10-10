@@ -37,7 +37,7 @@ struct ServiceGuidanceChecks {
         Task { @MainActor in
             do {
                 try await run()
-                print("PASS: real TranscriptView guidance remains reachable; synthetic Activity checks cover charts, narrow layout, empty and unavailable history.")
+                print("PASS: requested synthetic window checks completed without capture or model work.")
                 exit(0)
             } catch {
                 fputs("FAIL: \(error)\n", stderr)
@@ -62,6 +62,10 @@ struct ServiceGuidanceChecks {
             requestMicrophoneAccess: { fatalError("No permission request in window checks") }))
         service.micPermission = .authorized
         service.accessibilityGranted = true
+        if ProcessInfo.processInfo.environment["JOT_MODELS_WINDOW_CHECKS"] == "1" {
+            try await checkModels(service)
+            return
+        }
         if ProcessInfo.processInfo.environment["JOT_ACTIVITY_WINDOW_CHECKS"] == "1" {
             try await checkActivity(service)
             return
@@ -152,6 +156,93 @@ struct ServiceGuidanceChecks {
         precondition(!service.capture.running && !service.modelsLoaded, "Window checks changed capture or model state")
         window.orderOut(nil)
         try await checkActivity(service)
+    }
+
+    /// Model metadata and update states are invented; no release checks or downloads run.
+    @MainActor static func checkModels(_ service: SpeechService) async throws {
+        let baseline = ProcessInfo.processInfo.environment["JOT_MODELS_BASELINE"] == "1"
+        let delegate = JotDelegate()
+        var models = ModelUpdate.defaults
+        for index in models.indices {
+            models[index].revision = String(repeating: String(index + 1), count: 40)
+            models[index].publishedAt = "2026-10-01T12:00:00Z"
+            models[index].checkedAt = Date(timeIntervalSince1970: 1_791_072_000)
+        }
+        models[1].changedSinceLastCheck = true
+        service.modelUpdates = models
+        let releaseJSON = #"{"tag_name":"v9.9.9","html_url":"https://example.com/release","body":"Synthetic release notes.","assets":[{"name":"Jot-9.9.9.zip","browser_download_url":"https://example.com/Jot-9.9.9.zip","size":12345}],"draft":false}"#
+        let release = try ReleaseInfo.latest(from: Data(releaseJSON.utf8)) { "Jot-\($0).zip" }
+        for width in [1440.0, 1040.0, 720.0, 520.0] {
+            let host = NSHostingView(rootView: TranscriptView(service: service, library: service.library, setup: SetupFlow(), delegate: delegate))
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 820),
+                styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+            window.title = "Jot synthetic Models checks"
+            window.contentView = host
+            window.center(); window.makeKeyAndOrderFront(nil)
+            await settle(window)
+            try pressLabel("Models & updates", in: host)
+            await settle(window)
+            try snapshot(host, name: "models-\(Int(width))-top")
+            if !baseline {
+                try await reveal("app-check-updates", in: host, window: window)
+                try await reveal("model-check-updates", in: host, window: window)
+                for model in models {
+                    try await reveal("model-card-\(model.repository)", in: host, window: window)
+                }
+                try snapshot(host, name: "models-\(Int(width))-cards")
+                if width == 520 {
+                    service.checkingModels = true
+                    await settle(window)
+                    precondition(find("model-check-updates", in: host)?.isAccessibilityEnabled() == false,
+                                 "Model check stays disabled during an in-flight check")
+                    try snapshot(host, name: "models-520-checking")
+                    service.checkingModels = false
+                    service.modelUpdates = ModelUpdate.defaults
+                    service.modelUpdates[0].error = "The server could not be reached. Check your connection and try again."
+                    await settle(window)
+                    try await reveal("model-card-\(models[0].repository)", in: host, window: window)
+                    try snapshot(host, name: "models-520-error-notchecked")
+                }
+            }
+            window.orderOut(nil)
+        }
+        precondition(!service.capture.running && !service.modelsLoaded && service.library.store == nil,
+                     "Models window fixtures must not touch capture, models or history")
+        if !baseline { try await checkAppUpdateStates(release) }
+        print("PASS: Models layouts and on-demand update states remain reachable without network or capture work.")
+    }
+
+    @MainActor static func checkAppUpdateStates(_ release: ReleaseInfo) async throws {
+        let states: [(String, AppUpdater.State, Bool)] = [
+            ("available", .available(release), false), ("checking", .checking, true),
+            ("downloading", .downloading(0.42), true), ("finishing", .finishing, true),
+            ("installing", .installing, true), ("current", .upToDate("0.3.2"), false),
+            ("error", .failed("The connection is unavailable. Check your connection and try again."), false)
+        ]
+        for (name, state, busy) in states {
+            var checks = 0, installs = 0
+            let host = NSHostingView(rootView: ScrollView {
+                AppUpdateCard(state: state, isBusy: busy, check: { checks += 1 }, install: { installs += 1 })
+                    .padding(16)
+            })
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 480),
+                styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            window.title = "Jot synthetic app update"
+            window.contentView = host; window.center(); window.makeKeyAndOrderFront(nil)
+            await settle(window)
+            let action = name == "available" ? "app-install-update" : "app-check-updates"
+            try require(action, in: host, window: window, visible: true)
+            if busy {
+                precondition(find(action, in: host)?.isAccessibilityEnabled() == false,
+                             "Busy updater must not start another check")
+            } else {
+                try press(action, in: host)
+                precondition(name == "available" ? installs == 1 && checks == 0 : checks == 1 && installs == 0,
+                             "Update card invoked the wrong action")
+            }
+            try snapshot(host, name: "app-update-380-\(name)")
+            window.orderOut(nil)
+        }
     }
 
     /// Render only invented aggregates. No store is opened and no transcript text is needed.
