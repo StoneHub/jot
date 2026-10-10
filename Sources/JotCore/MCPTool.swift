@@ -8,7 +8,7 @@ public struct MCPTool {
     public let properties: [String: Any]
     public let required: [String]
     /// Tools that only read transcripts, status, or remembered voices.
-    public var readOnly: Bool { method.hasPrefix("transcripts.") || ["speech.status", "people.list"].contains(method) }
+    public var readOnly: Bool { method.hasPrefix("transcripts.") || ["speech.status", "activity.report", "people.list"].contains(method) }
 
     init(_ name: String, _ method: String, _ description: String, _ properties: [String: Any], _ required: [String]) {
         self.name = name; self.method = method; self.description = description; self.properties = properties; self.required = required
@@ -17,6 +17,7 @@ public struct MCPTool {
     /// tools/list reports the tools in this order.
     public static var catalog: [MCPTool] { [
         MCPTool("speech_status", "speech.status", "Get capture state, model state, and current system impact statistics.", [:], []),
+        MCPTool("activity_report", "activity.report", "Read aggregate local activity for 7 or 30 calendar days, including today: separate dictation and ambient saved-word counts, recorded-window durations, sessions, verified insertions, and daily buckets. Includes measurement notes for charts. No transcript text, audio, speaker names, session IDs, or app identities. Recorded windows include pauses and can overlap; they are not continuous speech or listening uptime. Retained history only, with no time-saved estimate.", ["days": ["type": "integer", "enum": [7, 30], "default": 7]], []),
         MCPTool("speech_diagnostics", "speech.diagnostics", "Read bounded local memory, lifecycle, and latency diagnostics without audio, transcripts, vocabulary, or app identities.", [:], []),
         MCPTool("speech_start", "speech.start", "Resume continuous microphone transcription when the user explicitly requests listening.", [:], []),
         MCPTool("speech_pause", "speech.pause", "Stop listening, finish saving captured speech, and end any meeting without exporting. The models stay loaded. Poll status until mode is paused and microphoneRunning is false.", [:], []),
@@ -44,6 +45,7 @@ public struct MCPTool {
 
     /// Runs before any socket call; `jot mcp` returns the thrown message as the tool result text.
     public func validate(arguments: [String: Any]) throws {
+        if method == "activity.report" { _ = try ActivityRequest.days(arguments: arguments); return }
         for key in arguments.keys where properties[key] == nil { throw MCPToolError.invalid("Unknown argument: \(key)") }
         for key in required where arguments[key] == nil { throw MCPToolError.invalid("Missing argument: \(key)") }
         for (key, value) in arguments {

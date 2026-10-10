@@ -60,8 +60,20 @@ final class MCPToolsTests: XCTestCase {
     }
 
     func testOnlyReadingToolsAreReadOnly() {
-        XCTAssertEqual(MCPTool.catalog.filter(\.readOnly).map(\.name), ["speech_status", "transcripts_search", "transcripts_recent",
+        XCTAssertEqual(MCPTool.catalog.filter(\.readOnly).map(\.name), ["speech_status", "activity_report", "transcripts_search", "transcripts_recent",
                                                                         "transcripts_since", "transcripts_read", "transcripts_sessions", "transcripts_export", "transcripts_events", "people_list"])
+    }
+    func testActivityReportIsBoundedReadOnlyAndValidatesSocketArguments() throws {
+        let activity = try tool("activity_report")
+        XCTAssertEqual(activity.method, "activity.report")
+        XCTAssertTrue(activity.readOnly)
+        XCTAssertNoThrow(try activity.validate(arguments: [:]))
+        XCTAssertNoThrow(try activity.validate(arguments: decode(#"{"days": 7}"#)))
+        XCTAssertNoThrow(try activity.validate(arguments: decode(#"{"days": 30}"#)))
+        for json in [#"{"days": 8}"#, #"{"days": true}"#, #"{"days": 7.5}"#, #"{"days": "7"}"#] {
+            try assertRejects("activity_report", json, "days must be 7 or 30")
+        }
+        try assertRejects("activity_report", #"{"sessionID": "private"}"#, "Unknown argument: sessionID")
     }
     func testForgetUsesTheCanonicalSocketMethod() throws {
         let tool = try XCTUnwrap(MCPTool.catalog.first { $0.name == "people_forget" })

@@ -153,31 +153,7 @@ private struct SettingToggle: View {
 
 extension TranscriptView {
     var activity: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                if !service.notice.isEmpty {
-                    Text(service.notice).font(.callout).foregroundStyle(.secondary)
-                        .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-                }
-                ResourceReadoutView(readout: service.resourceReadout) { resources in
-                    Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 18) {
-                        GridRow { metric("Process CPU", String(format: "%.1f%%", resources.processCPUPercent)); metric("Memory", String(format: "%.0f MB", resources.residentMiB)) }
-                        GridRow { metric("Memory footprint", String(format: "%.0f MB", resources.physicalFootprintMiB)); metric("Thermal state", resources.thermalState.capitalized) }
-                        GridRow { metric("Queued audio", String(format: "%.1f s", service.transcriber.queuedSeconds)); metric("Last inference", String(format: "%.2f s", service.transcriber.lastInferenceSeconds)) }
-                        GridRow { metric("Transcript lag", String(format: "%.2f s", service.transcriber.lagSeconds)); metric("Dropped audio", String(format: "%.1f s", service.droppedSeconds)) }
-                    }
-                }
-                Divider()
-                Text("Capture events").font(.headline)
-                ForEach(library.events) { event in
-                    HStack(alignment: .top) {
-                        Text(event.timestamp, format: .dateTime.hour().minute()).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                        Text(event.detail).font(.callout)
-                    }
-                }
-                if library.events.isEmpty { Text("No events yet").foregroundStyle(.secondary) }
-            }.frame(maxWidth: .infinity, alignment: .leading)
-        }
+        ActivityView(service: service, library: library)
     }
 
     var general: some View {
@@ -363,10 +339,4 @@ extension TranscriptView {
         }
     }
 
-    private func metric(_ title: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) { Text(title).font(.caption).foregroundStyle(.secondary); Text(value).font(.title2.monospacedDigit()) }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
-            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
-    }
 }

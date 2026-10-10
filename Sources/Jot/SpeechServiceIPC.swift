@@ -71,6 +71,12 @@ extension SpeechService {
             var result: Any = [:]
             switch method {
             case "speech.status": result = try await status()
+            case "activity.report":
+                let days = try ActivityRequest.days(arguments: params)
+                guard let store = library.store else { throw JotError.message("Saved history is unavailable") }
+                let now = Date(), calendar = Calendar.current
+                let report = try await storeExecutor.perform { try store.activity(days: days, now: now, calendar: calendar) }
+                result = try object(report)
             case "models.prepare": result = ["state": modelState.rawValue, "downloadBytes": prepareFromCommand()]
             case "models.unload": unloadModels(); result = try await status()
             case "models.check": checkModelUpdates(); if let modelCheck { await modelCheck.value }; result = try object(modelUpdates)

@@ -37,7 +37,7 @@ struct ServiceGuidanceChecks {
         Task { @MainActor in
             do {
                 try await run()
-                print("PASS: real TranscriptView keeps download, permission and recovery guidance reachable across 720 pt, at 520 × 420, and on another page.")
+                print("PASS: real TranscriptView guidance remains reachable; synthetic Activity checks cover charts, narrow layout, empty and unavailable history.")
                 exit(0)
             } catch {
                 fputs("FAIL: \(error)\n", stderr)
@@ -146,6 +146,94 @@ struct ServiceGuidanceChecks {
         }
         try snapshot(host, name: "520x420-resolved")
         precondition(!service.capture.running && !service.modelsLoaded, "Window checks changed capture or model state")
+        window.orderOut(nil)
+        try await checkActivity(service)
+    }
+
+    /// Render only invented aggregates. No store is opened and no transcript text is needed.
+    @MainActor static func checkActivity(_ service: SpeechService) async throws {
+        service.resourceReadout.snapshot = ResourceSnapshot(valid: true, processCPUPercent: 7.5,
+            residentMiB: 624, physicalFootprintMiB: 590, thermalState: "nominal")
+        let report = activityFixture(days: 7)
+        for width in [920.0, 520.0] {
+            let host = NSHostingView(rootView: ActivityFixturePage(service: service, report: report, error: nil, width: width))
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 760),
+                styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+            window.title = "Jot synthetic Activity checks"
+            window.contentView = host
+            window.center(); window.makeKeyAndOrderFront(nil)
+            await settle(window)
+            try require("activity-period", in: host, window: window, visible: true)
+            try require("activity-dictation-words", in: host, window: window, visible: true)
+            try snapshot(host, name: "activity-\(Int(width))-summary")
+            try await reveal("activity-daily-chart", in: host, window: window)
+            try snapshot(host, name: "activity-\(Int(width))-chart")
+            guard elements(host).contains(where: { ($0.accessibilityLabel() ?? "").contains("Daily saved dictation words") }) else {
+                throw Failure.missing("Daily saved dictation words accessibility label")
+            }
+            try await reveal("activity-advanced", in: host, window: window)
+            precondition(!elements(host).contains(where: { $0.accessibilityLabel() == "Recent capture events" }), "Raw events must start collapsed")
+            try snapshot(host, name: "activity-\(Int(width))-mac-impact")
+            window.orderOut(nil)
+        }
+        for state in ["empty", "error", "30-days"] {
+            let fixture = state == "error" ? nil : activityFixture(days: state == "30-days" ? 30 : 7, empty: state == "empty")
+            let error = state == "error" ? "Saved history is unavailable. Jot will try again while this page is open." : nil
+            let host = NSHostingView(rootView: ActivityFixturePage(service: service, report: fixture, error: error, width: 520))
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 760),
+                styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+            window.title = "Jot synthetic Activity checks"
+            window.contentView = host
+            window.center(); window.makeKeyAndOrderFront(nil)
+            await settle(window)
+            try require(state == "error" ? "activity-error" : state == "empty" ? "activity-empty" : "activity-daily-chart",
+                        in: host, window: window, visible: false)
+            try snapshot(host, name: "activity-520-\(state)")
+            window.orderOut(nil)
+        }
+        precondition(!service.capture.running && !service.modelsLoaded && service.library.store == nil,
+                     "Activity fixtures must not change capture, models or open history")
+    }
+
+    @MainActor struct ActivityFixturePage: View {
+        let service: SpeechService
+        let report: ActivityReport?
+        let error: String?
+        let width: Double
+        var body: some View {
+            HStack(spacing: 14) {
+                Color.clear.frame(width: width >= 720 ? 282 : 48)
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("Activity").font(.system(size: 26, weight: .bold, design: .rounded))
+                    ActivityView(service: service, library: service.library, fixture: report, fixtureError: error)
+                }.padding(width >= 720 ? 24 : 16).modifier(GlassSurface())
+            }.padding(16).background(JotBackdrop()).tint(Color(nsColor: .controlAccentColor))
+        }
+    }
+
+    static func activityFixture(days: Int, empty: Bool = false) -> ActivityReport {
+        let calendar = Calendar.current
+        let now = Date()
+        let start = calendar.date(byAdding: .day, value: -(days - 1), to: calendar.startOfDay(for: now))!
+        let counts = [84, 0, 236, 154, 450, 98, 196]
+        let daily = (0..<days).map { index in
+            let words = empty ? 0 : counts[index % counts.count]
+            return ActivityDay(date: calendar.date(byAdding: .day, value: index, to: start)!,
+                dictation: .init(wordCount: words, segmentCount: words > 0 ? 4 : 0, sessionCount: words > 0 ? 1 : 0,
+                                speechWindowSeconds: Double(words) / 2.2, activeDays: words > 0 ? 1 : 0),
+                ambient: .init(wordCount: empty ? 0 : 1350, segmentCount: empty ? 0 : 20, sessionCount: empty ? 0 : 1,
+                               speechWindowSeconds: empty ? 0 : 780, activeDays: empty ? 0 : 1),
+                verifiedDictationDeliveries: empty ? 0 : 4)
+        }
+        return ActivityReport(generatedAt: now, windowStart: start, windowEnd: now, days: days,
+            timeZoneIdentifier: calendar.timeZone.identifier,
+            dictation: .init(wordCount: daily.reduce(0) { $0 + $1.dictation.wordCount },
+                            segmentCount: empty ? 0 : days * 4, sessionCount: empty ? 0 : days,
+                            speechWindowSeconds: daily.reduce(0) { $0 + $1.dictation.speechWindowSeconds },
+                            activeDays: daily.filter { $0.dictation.wordCount > 0 }.count),
+            ambient: .init(wordCount: empty ? 0 : days * 1350, segmentCount: empty ? 0 : days * 20,
+                           sessionCount: empty ? 0 : days, speechWindowSeconds: empty ? 0 : Double(days * 780),
+                           activeDays: empty ? 0 : days), verifiedDictationDeliveries: empty ? 0 : days * 4, daily: daily)
     }
 
     @MainActor static func settle(_ window: NSWindow) async {
@@ -207,6 +295,7 @@ struct ServiceGuidanceChecks {
             if id != "service-pause-resume" && viewports.isEmpty { throw Failure.missing("scroll viewport for \(id)") }
             guard frame.width > 0 && frame.height > 0 && content.insetBy(dx: -1, dy: -1).contains(frame),
                   viewports.allSatisfy({ $0.insetBy(dx: -1, dy: -1).contains(frame) }) else {
+                print("Outside viewport: \(id); AX frame=\(frame); window=\(content); scroll viewports=\(viewports)")
                 throw Failure.outsideWindow(id)
             }
         }
