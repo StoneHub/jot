@@ -66,7 +66,6 @@ struct ActivityView: View {
     @StateObject private var insights: ActivityInsightsLoader
     @Environment(\.scenePhase) private var scenePhase
     @State private var days = 7
-    @State private var showAdvanced = false
     @State private var selectedDate: Date?
 
     /// Fixtures let the owned window checks render this screen without opening private history.
@@ -80,39 +79,36 @@ struct ActivityView: View {
     private struct RefreshIdentity: Equatable { let days: Int; let active: Bool }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .center, spacing: 16) { introduction.fixedSize(horizontal: true, vertical: false); Spacer(minLength: 8); periodPicker }
-                    VStack(alignment: .leading, spacing: 12) { introduction; periodPicker }
+        GeometryReader { geometry in
+            let wide = geometry.size.width >= 700
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    ActivityLiveImpact(service: service, width: geometry.size.width)
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .center, spacing: 16) { introduction.fixedSize(horizontal: true, vertical: false); Spacer(minLength: 8); periodPicker }
+                        VStack(alignment: .leading, spacing: 12) { introduction; periodPicker }
+                    }
+                    if let error = insights.error {
+                        Label(error, systemImage: "exclamationmark.circle")
+                            .font(.callout).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("activity-error")
+                    }
+                    if let report = insights.report {
+                        usage(report, wide: wide)
+                        ViewThatFits(in: .horizontal) {
+                            HStack(alignment: .firstTextBaseline, spacing: 16) { historyScope; Spacer(minLength: 8); updated(report) }
+                            VStack(alignment: .leading, spacing: 4) { historyScope; updated(report) }
+                        }
+                    } else if insights.loading {
+                        HStack(spacing: 10) { ProgressView().controlSize(.small); Text("Reading activity…").foregroundStyle(.secondary) }
+                            .accessibilityIdentifier("activity-loading")
+                            .padding(.vertical, 16)
+                    }
                 }
-                if let error = insights.error {
-                    Label(error, systemImage: "exclamationmark.circle")
-                        .font(.callout).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("activity-error")
-                }
-                if let report = insights.report {
-                    dictationSummary(report)
-                    dailyChart(report)
-                    speechDetails(report)
-                    ambientSummary(report)
-                    Text("Based on saved history on this Mac. Deleted history is excluded; today is still in progress.")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text("Updated \(report.generatedAt.formatted(date: .omitted, time: .shortened))")
-                        .font(.caption).foregroundStyle(.tertiary)
-                } else if insights.loading {
-                    HStack(spacing: 10) { ProgressView().controlSize(.small); Text("Reading activity…").foregroundStyle(.secondary) }
-                        .accessibilityIdentifier("activity-loading")
-                        .padding(.vertical, 24)
-                }
-                macImpact
-                advanced
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, 8)
             }
-            .frame(maxWidth: 860, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.bottom, 8)
         }
         .task(id: RefreshIdentity(days: days, active: scenePhase == .active)) {
             guard scenePhase == .active else { return }
@@ -124,10 +120,38 @@ struct ActivityView: View {
         .onChange(of: days) { _, _ in selectedDate = nil }
     }
 
+    private var historyScope: some View {
+        Text("Saved on this Mac · deleted history excluded · today in progress")
+            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func updated(_ report: ActivityReport) -> some View {
+        Text("Updated \(report.generatedAt.formatted(date: .omitted, time: .shortened))")
+            .font(.caption).foregroundStyle(.tertiary).fixedSize()
+    }
+
+    @ViewBuilder private func usage(_ report: ActivityReport, wide: Bool) -> some View {
+        if wide {
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 16) { dictationSummary(report); speechDetails(report) }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                VStack(alignment: .leading, spacing: 16) { dailyChart(report); ambientSummary(report) }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 16) {
+                dictationSummary(report)
+                dailyChart(report)
+                speechDetails(report)
+                ambientSummary(report)
+            }
+        }
+    }
+
     private var introduction: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("A little perspective on your dictation.").font(.headline)
-            Text("Words, everyday use, and Jot’s impact on this Mac.")
+            Text("Your words, over time").font(.headline)
+            Text("Saved dictation and ambient listening, kept distinct.")
                 .font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -167,7 +191,7 @@ struct ActivityView: View {
     private func dailyChart(_ report: ActivityReport) -> some View {
         ActivityCard {
             VStack(alignment: .leading, spacing: 14) {
-                Label("Dictation by day", systemImage: "chart.bar.xaxis").font(.headline)
+                Label("Dictation by day", systemImage: "chart.xyaxis.line").font(.headline)
                 if report.dictation.wordCount == 0 {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Room for your next thought.").font(.title3.weight(.medium))
@@ -176,9 +200,14 @@ struct ActivityView: View {
                     }.padding(.vertical, 18).accessibilityIdentifier("activity-empty")
                 } else {
                     Chart(report.daily) { day in
-                        BarMark(x: .value("Day", day.date, unit: .day), y: .value("Saved dictation words", day.dictation.wordCount))
-                            .foregroundStyle(Color.accentColor.gradient)
-                            .cornerRadius(3)
+                        AreaMark(x: .value("Day", day.date), y: .value("Saved dictation words", day.dictation.wordCount))
+                            .foregroundStyle(LinearGradient(colors: [Color.accentColor.opacity(0.18), Color.accentColor.opacity(0.02)], startPoint: .top, endPoint: .bottom))
+                            .accessibilityHidden(true)
+                        LineMark(x: .value("Day", day.date), y: .value("Saved dictation words", day.dictation.wordCount))
+                            .foregroundStyle(Color.accentColor)
+                            .lineStyle(StrokeStyle(lineWidth: 2.5))
+                        PointMark(x: .value("Day", day.date), y: .value("Saved dictation words", day.dictation.wordCount))
+                            .foregroundStyle(Color.accentColor).symbolSize(report.days == 7 ? 28 : 14)
                             .accessibilityLabel(day.date.formatted(date: .abbreviated, time: .omitted))
                             .accessibilityValue("\(day.dictation.wordCount.formatted()) saved dictation words")
                         if let selectedDay = selectedDay(in: report), selectedDay.id == day.id {
@@ -244,55 +273,185 @@ struct ActivityView: View {
         }
     }
 
-    private var macImpact: some View {
-        ActivityCard {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack { Label("On this Mac", systemImage: "desktopcomputer").font(.headline); Spacer(); Text("Now").font(.caption).foregroundStyle(.secondary) }
-                ResourceReadoutView(readout: service.resourceReadout) { resources in
-                    if resources.valid {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 125), alignment: .leading)], alignment: .leading, spacing: 16) {
-                            ActivityStat(title: "Jot CPU", value: String(format: "%.1f%%", resources.processCPUPercent), symbol: "cpu",
-                                         detail: "100% represents one CPU core. Jot can use more than 100% across several cores. This is a current sample, not an average for the selected period.")
-                            ActivityStat(title: "Resident memory", value: String(format: "%.0f MiB", resources.residentMiB), symbol: "memorychip")
-                            ActivityStat(title: "Mac thermal state", value: resources.thermalState.capitalized, symbol: "thermometer.medium")
-                        }
-                    } else {
-                        Text("Waiting for a resource sample…").font(.callout).foregroundStyle(.secondary)
-                    }
-                }
-                Text("Live process measurements. Battery use and accelerator placement are not measured.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
+}
 
-    private var advanced: some View {
-        DisclosureGroup(isExpanded: $showAdvanced) {
-            if showAdvanced {
-                VStack(alignment: .leading, spacing: 16) {
-                    ResourceReadoutView(readout: service.resourceReadout) { resources in
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), alignment: .leading)], alignment: .leading, spacing: 16) {
+/// Current values observe only the existing readout, while trends own their slower refresh.
+private struct ActivityLiveImpact: View {
+    let service: SpeechService
+    let width: CGFloat
+    var body: some View {
+        ActivityCard {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 10) {
+                    Label("Live on this Mac", systemImage: "waveform.path.ecg").font(.headline)
+                    Spacer(minLength: 8)
+                    Text("Now").font(.caption.weight(.medium)).foregroundStyle(.tint)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Color.accentColor.opacity(0.10), in: Capsule())
+                }
+                ResourceReadoutView(readout: service.resourceReadout) { resources in
+                    VStack(alignment: .leading, spacing: 16) {
+                        LazyVGrid(columns: ActivityStatColumns.make(width: width - 36, minimum: 130, itemCount: 5), alignment: .leading, spacing: 16) {
                             ActivityStat(title: "Memory footprint", value: resources.valid ? String(format: "%.0f MiB", resources.physicalFootprintMiB) : "—", symbol: "memorychip")
                             ActivityStat(title: "Queued audio", value: String(format: "%.1f s", service.transcriber.queuedSeconds), symbol: "waveform")
                             ActivityStat(title: "Last inference", value: String(format: "%.2f s", service.transcriber.lastInferenceSeconds), symbol: "timer")
                             ActivityStat(title: "Transcript lag", value: String(format: "%.2f s", service.transcriber.lagSeconds), symbol: "clock")
                             ActivityStat(title: "Dropped audio", value: String(format: "%.1f s", service.droppedSeconds), symbol: "waveform.slash")
+                        }.accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("activity-live-stats")
+                        Divider()
+                        LazyVGrid(columns: ActivityStatColumns.make(width: width - 36, minimum: 145, itemCount: 3), alignment: .leading, spacing: 12) {
+                            ActivityStat(title: "Jot CPU", value: resources.valid ? String(format: "%.1f%%", resources.processCPUPercent) : "—", symbol: "cpu",
+                                         detail: "100% represents one CPU core. Jot can use more than 100% across several cores. This is a current sample, not an average for the selected history period.")
+                            ActivityStat(title: "Resident memory", value: resources.valid ? String(format: "%.0f MiB", resources.residentMiB) : "—", symbol: "square.stack.3d.up")
+                            ActivityStat(title: "Mac thermal state", value: resources.valid ? resources.thermalState.capitalized : "—", symbol: "thermometer.medium")
                         }
                     }
-                    Divider()
-                    Text("Recent capture events").font(.headline)
-                    if library.events.isEmpty { Text("No recent events").font(.callout).foregroundStyle(.secondary) }
-                    ForEach(library.events) { event in
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(event.timestamp, format: .dateTime.month(.abbreviated).day().hour().minute())
-                                .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                            Text(event.detail).font(.callout).fixedSize(horizontal: false, vertical: true)
-                        }.accessibilityElement(children: .combine)
-                    }
-                }.padding(.top, 14)
+                }
+                ActivityResourceTrends(service: service, wide: width >= 700)
             }
-        } label: { Label("Advanced diagnostics", systemImage: "slider.horizontal.3").font(.callout) }
-        .accessibilityIdentifier("activity-advanced")
+        }
+    }
+}
+
+private enum ActivityStatColumns {
+    static func make(width: CGFloat, minimum: CGFloat, itemCount: Int) -> [GridItem] {
+        let spacing: CGFloat = 16
+        let count = min(itemCount, max(1, Int((max(0, width) + spacing) / (minimum + spacing))))
+        return Array(repeating: GridItem(.flexible(), spacing: spacing, alignment: .leading), count: count)
+    }
+}
+
+struct ActivityTrendPoint: Identifiable {
+    let sample: PerformanceSample
+    let minutesBeforeLatest: Double
+    let segment: Int
+    let isolated: Bool
+    var id: Double { sample.elapsedSeconds }
+}
+
+/// A numeric projection of existing diagnostics: no new sampler, no stored history.
+struct ActivityTrendSnapshot {
+    let points: [ActivityTrendPoint]
+    let spanMinutes: Double
+
+    init(report: PerformanceReport) {
+        let latest = report.current?.elapsedSeconds ?? report.samples.last?.elapsedSeconds ?? 0
+        let lower = max(0, latest - 900)
+        let retained = report.samples.filter {
+            $0.elapsedSeconds >= lower && $0.elapsedSeconds <= latest &&
+            [$0.elapsedSeconds, $0.cpuPercent, $0.footprintMiB, $0.residentMiB].allSatisfy { $0.isFinite && $0 >= 0 }
+        }
+        var runs: [(PerformanceSample, Int)] = []
+        var segment = 0
+        for sample in retained {
+            if let previous = runs.last, sample.elapsedSeconds - previous.0.elapsedSeconds > max(75, report.sampleIntervalSeconds * 2.5) { segment += 1 }
+            runs.append((sample, segment))
+        }
+        let counts = Dictionary(grouping: runs, by: { $0.1 }).mapValues(\.count)
+        points = runs.map {
+            ActivityTrendPoint(sample: $0.0, minutesBeforeLatest: ($0.0.elapsedSeconds - latest) / 60,
+                               segment: $0.1, isolated: counts[$0.1] == 1)
+        }
+        spanMinutes = max(1, min(15, latest / 60))
+    }
+}
+
+private struct ActivityResourceTrends: View {
+    let service: SpeechService
+    let wide: Bool
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var snapshot: ActivityTrendSnapshot?
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .top), count: wide ? 2 : 1), spacing: 16) {
+                ActivityResourceChart(snapshot: snapshot, metric: .cpu)
+                ActivityResourceChart(snapshot: snapshot, metric: .memory)
+            }
+            Text("Recent 30-second measurements from this launch, up to 15 minutes before the latest reading. Gaps stay open. Battery use is not measured.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            while !Task.isCancelled {
+                snapshot = ActivityTrendSnapshot(report: service.diagnostics.report)
+                do { try await Task.sleep(for: .seconds(30)) } catch { return }
+            }
+        }
+    }
+}
+
+private struct ActivityResourceChart: View {
+    enum Metric { case cpu, memory }
+    let snapshot: ActivityTrendSnapshot?
+    let metric: Metric
+    private var identifier: String { metric == .cpu ? "activity-cpu-trend" : "activity-memory-trend" }
+    private var title: String { metric == .cpu ? "CPU · % of one core" : "Memory · MiB" }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                if metric == .memory {
+                    Spacer(minLength: 4)
+                    legend("Footprint", color: .accentColor, dashed: false)
+                    legend("Resident", color: .secondary, dashed: true)
+                }
+            }
+            if let snapshot, !snapshot.points.isEmpty {
+                Chart(snapshot.points) { point in
+                    LineMark(x: .value("Minutes before latest reading", point.minutesBeforeLatest),
+                             y: .value(metric == .cpu ? "CPU percent" : "Footprint MiB", metric == .cpu ? point.sample.cpuPercent : point.sample.footprintMiB),
+                             series: .value("Series", "primary-\(point.segment)"))
+                        .foregroundStyle(Color.accentColor).lineStyle(StrokeStyle(lineWidth: 2))
+                    if metric == .memory {
+                        LineMark(x: .value("Minutes before latest reading", point.minutesBeforeLatest), y: .value("Resident MiB", point.sample.residentMiB),
+                                 series: .value("Series", "resident-\(point.segment)"))
+                            .foregroundStyle(Color.secondary).lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                    }
+                    if point.isolated {
+                        PointMark(x: .value("Minutes before latest reading", point.minutesBeforeLatest),
+                                  y: .value(metric == .cpu ? "CPU percent" : "Footprint MiB", metric == .cpu ? point.sample.cpuPercent : point.sample.footprintMiB))
+                            .foregroundStyle(Color.accentColor).symbolSize(22)
+                        if metric == .memory {
+                            PointMark(x: .value("Minutes before latest reading", point.minutesBeforeLatest), y: .value("Resident MiB", point.sample.residentMiB))
+                                .foregroundStyle(Color.secondary).symbolSize(22)
+                        }
+                    }
+                }
+                .chartLegend(.hidden)
+                .chartXScale(domain: -snapshot.spanMinutes...0)
+                .chartYScale(domain: .automatic(includesZero: true))
+                .chartXAxis {
+                    AxisMarks(values: .automatic(desiredCount: 3)) { value in
+                        AxisValueLabel {
+                            if let minutes = value.as(Double.self) {
+                                Text(minutes == 0 ? "Latest" : "\(Int(abs(minutes).rounded()))m earlier")
+                            }
+                        }
+                    }
+                }
+                .chartYAxis { AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) }
+                .frame(height: 125)
+                .accessibilityLabel(metric == .cpu ? "Recent Jot CPU measurements" : "Recent Jot memory measurements")
+                .accessibilityIdentifier(identifier)
+                if snapshot.points.count == 1 {
+                    Text("One measurement so far; a line appears as readings accumulate.")
+                        .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
+                Text("Collecting measurements…")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+                    .accessibilityIdentifier(identifier)
+            }
+        }
+    }
+
+    private func legend(_ title: String, color: Color, dashed: Bool) -> some View {
+        HStack(spacing: 4) {
+            Rectangle().fill(color).frame(width: dashed ? 8 : 12, height: 2).accessibilityHidden(true)
+            Text(title).font(.caption2).foregroundStyle(.secondary)
+        }
     }
 }
 

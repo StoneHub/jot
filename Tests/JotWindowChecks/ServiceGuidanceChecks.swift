@@ -62,6 +62,10 @@ struct ServiceGuidanceChecks {
             requestMicrophoneAccess: { fatalError("No permission request in window checks") }))
         service.micPermission = .authorized
         service.accessibilityGranted = true
+        if ProcessInfo.processInfo.environment["JOT_ACTIVITY_WINDOW_CHECKS"] == "1" {
+            try await checkActivity(service)
+            return
+        }
         let delegate = JotDelegate() // Not the NSApp delegate: applicationDidFinishLaunching is never called.
         let root = TranscriptView(service: service, library: service.library, setup: SetupFlow(), delegate: delegate)
         let host = NSHostingView(rootView: root)
@@ -154,8 +158,27 @@ struct ServiceGuidanceChecks {
     @MainActor static func checkActivity(_ service: SpeechService) async throws {
         service.resourceReadout.snapshot = ResourceSnapshot(valid: true, processCPUPercent: 7.5,
             residentMiB: 624, physicalFootprintMiB: 590, thermalState: "nominal")
+        service.diagnostics = PerformanceDiagnostics(build: .debug)
+        precondition(ActivityTrendSnapshot(report: service.diagnostics.report).points.isEmpty,
+                     "An empty diagnostic buffer must not invent a trend")
+        for index in 0...30 where !(10...12).contains(index) {
+            service.diagnostics.observe(PerformanceSample(elapsedSeconds: Double(index * 30),
+                footprintMiB: 110 + Double(index % 8) * 3,
+                residentMiB: 235 + Double(index % 6) * 4,
+                cpuPercent: 4 + Double(index % 5) * 7))
+        }
+        let trend = ActivityTrendSnapshot(report: service.diagnostics.report)
+        precondition(trend.points.count == 28 && Set(trend.points.map(\.segment)).count == 2,
+                     "Trend lines must preserve every retained sample and break across the measurement gap")
+        precondition(trend.points.first?.minutesBeforeLatest == -15 && trend.points.last?.minutesBeforeLatest == 0,
+                     "Trend scope must be relative to the latest reading")
+        var single = PerformanceDiagnostics(build: .debug)
+        single.observe(PerformanceSample(elapsedSeconds: 0, footprintMiB: 10, residentMiB: 20, cpuPercent: 3))
+        let singleTrend = ActivityTrendSnapshot(report: single.report)
+        precondition(singleTrend.points.count == 1 && singleTrend.points[0].isolated,
+                     "A single sample must remain visible as a point")
         let report = activityFixture(days: 7)
-        for width in [920.0, 520.0] {
+        for width in [1440.0, 920.0, 520.0] {
             let host = NSHostingView(rootView: ActivityFixturePage(service: service, report: report, error: nil, width: width))
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 760),
                 styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
@@ -163,17 +186,32 @@ struct ServiceGuidanceChecks {
             window.contentView = host
             window.center(); window.makeKeyAndOrderFront(nil)
             await settle(window)
-            try require("activity-period", in: host, window: window, visible: true)
-            try require("activity-dictation-words", in: host, window: window, visible: true)
+            // Trend state arrives in a task after the first layout; wait for the actual view,
+            // rather than racing its second accessibility-tree publication.
+            for _ in 0..<10 {
+                if find("activity-live-stats", in: host) != nil { break }
+                await settle(window)
+            }
+            try snapshot(host, name: "activity-\(Int(width))-ready")
+            try require("activity-live-stats", in: host, window: window, visible: true)
+            precondition(find("activity-advanced", in: host) == nil, "Activity has no hidden diagnostics section")
+            precondition(!elements(host).contains(where: { $0.accessibilityLabel() == "Recent capture events" }),
+                         "Activity must not display capture events")
+            try snapshot(host, name: "activity-\(Int(width))-top")
+            for id in ["activity-cpu-trend", "activity-memory-trend"] {
+                try await reveal(id, in: host, window: window)
+            }
+            precondition(!elements(host).contains(where: { $0.accessibilityLabel() == "Collecting measurements…" }),
+                         "Seeded diagnostic samples must render real trend charts")
+            try snapshot(host, name: "activity-\(Int(width))-trends")
+            try await reveal("activity-period", in: host, window: window)
+            try await reveal("activity-dictation-words", in: host, window: window)
             try snapshot(host, name: "activity-\(Int(width))-summary")
             try await reveal("activity-daily-chart", in: host, window: window)
             try snapshot(host, name: "activity-\(Int(width))-chart")
             guard elements(host).contains(where: { ($0.accessibilityLabel() ?? "").contains("Daily saved dictation words") }) else {
                 throw Failure.missing("Daily saved dictation words accessibility label")
             }
-            try await reveal("activity-advanced", in: host, window: window)
-            precondition(!elements(host).contains(where: { $0.accessibilityLabel() == "Recent capture events" }), "Raw events must start collapsed")
-            try snapshot(host, name: "activity-\(Int(width))-mac-impact")
             window.orderOut(nil)
         }
         for state in ["empty", "error", "30-days"] {
@@ -206,6 +244,7 @@ struct ServiceGuidanceChecks {
                 VStack(alignment: .leading, spacing: 18) {
                     Text("Activity").font(.system(size: 26, weight: .bold, design: .rounded))
                     ActivityView(service: service, library: service.library, fixture: report, fixtureError: error)
+                        .environment(\.scenePhase, .active)
                 }.padding(width >= 720 ? 24 : 16).modifier(GlassSurface())
             }.padding(16).background(JotBackdrop()).tint(Color(nsColor: .controlAccentColor))
         }

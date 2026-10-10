@@ -31,3 +31,9 @@ Rows are included and assigned to a bucket by absolute start time (`startedAt + 
 The payload contains no transcript text, audio, speaker names, session identifiers, or app identities. `measurementNotes` travels with the data so agents can preserve these limitations when creating charts. No typing-speed baseline or time-saved estimate is invented.
 
 For Mac impact charts, pair this report with the read-only `speech_status` resource snapshot and `speech_diagnostics` bounded local performance diagnostics. Those describe the current runtime and retained diagnostic samples, not resource totals for the 7/30-day history window. Jot does not retain historical battery or CPU usage alongside these activity buckets. Keep their sampling interval and scope visible when charting them together.
+
+## Activity screen
+
+Live resource and pipeline statistics lead the screen. CPU and memory line charts use the bounded performance samples already collected by Jot, separately from the selected 7/30-day usage window. They do not start a sampler, load transcript history, or persist new telemetry. Capture events remain available through the agent API and are not shown in Activity.
+
+The usage cards use the available window width, pairing related cards in wide layouts and stacking them in narrow layouts.
