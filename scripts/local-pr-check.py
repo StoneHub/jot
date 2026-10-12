@@ -36,7 +36,7 @@ PRESENTATION_FILES = {f'Sources/Jot/{name}.swift' for name in (
 TOOL_TESTS = {
     'scripts/local-pr-check.py': ('test_local_pr_check.py',),
     'scripts/signing.py': ('test_signing.py', 'test_packaged_install.py', 'test_release_install.py'),
-    'scripts/build-install.py': ('test_packaged_install.py', 'test_release_install.py'),
+    'scripts/build-install.py': ('test_packaged_install.py', 'test_release_install.py', 'test_build_cleanup.py'),
     'scripts/packaged_product.py': ('test_packaged_install.py', 'test_release_install.py'),
     'scripts/release.py': ('test_release_install.py',),
     'scripts/check-suggestion-fixtures.py': ('test_suggestion_fixtures.py',),

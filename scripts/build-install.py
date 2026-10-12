@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build or verify a supplied Jot product, then install it without interrupting capture."""
 import argparse
+from contextlib import nullcontext
 import sys
 import hashlib
 import json
@@ -11,6 +12,7 @@ import re
 import shutil
 import signal
 import subprocess
+import tempfile
 import time
 from signing import local_signing_configuration, verify_signing_team
 from packaged_product import validate_product_paths
@@ -52,7 +54,29 @@ def verify_product(source, configuration, team, expected=None):
     return info
 
 
-def build_product(configuration):
+def run_build(args, log):
+    process = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    try:
+        code = process.wait()
+    except BaseException:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+        except ProcessLookupError:
+            process.wait()
+        raise
+    if code:
+        raise subprocess.CalledProcessError(code, args)
+
+
+def build_product(configuration, disposable=None):
+    # Linked worktrees get disposable intermediates; the ordinary checkout keeps
+    # its single reusable development cache. An explicit flag can opt it out too.
+    if disposable is None:
+        disposable = (root / '.git').is_file()
     # The Command Line Tools alone cannot build the app target.
     developer = subprocess.run(['xcode-select', '-p'], capture_output=True, text=True)
     if developer.returncode != 0 or not Path(developer.stdout.strip(), 'usr/bin/xcodebuild').exists():
@@ -61,17 +85,38 @@ def build_product(configuration):
     identity, team = local_signing_configuration()
     if shutil.which('xcodegen'):
         subprocess.run(['xcodegen', 'generate'], check=True)
+    outputs = (tempfile.TemporaryDirectory(prefix='xcode-task-', dir=work) if disposable
+               else nullcontext(str(work / 'DerivedData.noindex')))
+    with outputs as derived:
+        return build_in_directory(configuration, identity, team, Path(derived), disposable)
+
+
+def build_in_directory(configuration, identity, team, derived, disposable):
     args = ['xcodebuild', '-project', 'Jot.xcodeproj', '-scheme', 'Jot',
             '-configuration', configuration, '-destination', 'platform=macOS,arch=arm64',
-            '-derivedDataPath', 'build/DerivedData.noindex', '-clonedSourcePackagesDirPath', 'build/SourcePackages',
+            '-derivedDataPath', str(derived), '-clonedSourcePackagesDirPath', 'build/SourcePackages',
             'CODE_SIGN_STYLE=Manual', f'CODE_SIGN_IDENTITY={identity}', f'DEVELOPMENT_TEAM={team}']
     print(f'Building; log: {work / "build.log"}', flush=True)
     with (work / 'build.log').open('w') as log:
-        subprocess.run(args + ['build'], stdout=log, stderr=subprocess.STDOUT, check=True)
+        run_build(args + ['build'], log)
     settings = json.loads(subprocess.check_output(args + ['-showBuildSettings', '-json']))
     s = next(item['buildSettings'] for item in settings if item['target'] == 'Jot')
     source = Path(s['TARGET_BUILD_DIR']) / s['FULL_PRODUCT_NAME']
     verify_product(source, configuration, team)
+    if disposable:
+        # Preserve the verified deliverable, not the dependency/object tree.
+        exported = work / 'products' / configuration / 'Jot.app'
+        if any(p.is_symlink() for p in (exported, exported.parent, exported.parent.parent)):
+            raise SystemExit('Build export cannot replace a symlink.')
+        processes = subprocess.check_output(['ps', '-axo', 'comm='], text=True).splitlines()
+        if str(exported / 'Contents/MacOS/Jot') in [line.strip() for line in processes]:
+            raise SystemExit('Previous exported Jot is running; product preserved.')
+        exported.parent.mkdir(parents=True, exist_ok=True)
+        if exported.exists():
+            shutil.rmtree(exported)
+        subprocess.run(['ditto', str(source), str(exported)], check=True)
+        verify_product(exported, configuration, team)
+        source = exported
     if configuration == 'Release':
         conditions = s.get('SWIFT_ACTIVE_COMPILATION_CONDITIONS', '').split()
         flags = s.get('OTHER_SWIFT_FLAGS', '')
@@ -177,6 +222,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--configuration', choices=['Debug', 'Release'], default='Debug')
     parser.add_argument('--build-only', action='store_true', help='Verify without replacing or launching the installed app')
+    parser.add_argument('--disposable-build', action='store_true', default=None,
+                        help='Remove build intermediates; keep only the verified app (default in linked worktrees)')
     parser.add_argument('--product', type=Path, help='Use this packaged Release Jot.app without building or reading signing identities')
     for field in ('team', 'version', 'build', 'sha256'):
         parser.add_argument(f'--expected-{field}', help=f'Required with --product: released {field}')
@@ -199,7 +246,7 @@ def main(argv=None):
         expected = dict(version=options.expected_version, build=options.expected_build, sha256=options.expected_sha256)
         verify_product(source, options.configuration, team, expected)
     else:
-        source, team = build_product(options.configuration)
+        source, team = build_product(options.configuration, options.disposable_build)
     if options.build_only:
         print(json.dumps(dict(source=str(source), configuration=options.configuration, installed=False), indent=2))
         return
@@ -207,4 +254,5 @@ def main(argv=None):
 
 
 if __name__ == '__main__':
+    signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(128 + signum))
     main()
