@@ -18,6 +18,8 @@ python3 scripts/release.py patch --notes "What changed" --install
 6. Commits `Release <version>`, creates the annotated tag `v<version>` with the notes as its message, pushes `main --follow-tags`, and runs `gh release create` with the zip and checksum. The asset must be named `Jot-<version>.zip`; the updater asks for exactly that name.
 7. With `--install`, verifies the final ZIP checksum, extracts it into a temporary directory, and runs `build-install.py --configuration Release --product <extracted Jot.app>` with the expected signing team, version, build number and original executable SHA-256. This installs the packaged product into `/Applications` without a second build or another signing-identity lookup.
 
+For a requested release-and-install batch, use this one release command with `--install`. A separate source-build installation before it would rebuild an intermediate version; the packaged-product handoff already verifies and installs the final artifact.
+
 ## Local pre-releases
 
 Until the Developer ID certificate and notarization credentials exist, `--local` publishes a release signed with the installed development identity:
