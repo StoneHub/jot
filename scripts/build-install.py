@@ -111,13 +111,10 @@ def build_in_directory(configuration, identity, team, derived, disposable):
     if disposable:
         # Preserve the verified deliverable, not the dependency/object tree.
         exported = work / 'products' / configuration / 'Jot.app'
-        if any(p.is_symlink() for p in (exported, exported.parent, exported.parent.parent)):
-            raise SystemExit('Build export cannot replace a symlink.')
-        processes = subprocess.check_output(['ps', '-axo', 'comm='], text=True).splitlines()
-        if str(exported / 'Contents/MacOS/Jot') in [line.strip() for line in processes]:
-            raise SystemExit('Previous exported Jot is running; product preserved.')
         exported.parent.mkdir(parents=True, exist_ok=True)
-        if exported.exists():
+        if exported.is_symlink():
+            exported.unlink()
+        elif exported.exists():
             shutil.rmtree(exported)
         subprocess.run(['ditto', str(source), str(exported)], check=True)
         verify_product(exported, configuration, team)

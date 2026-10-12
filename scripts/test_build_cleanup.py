@@ -124,13 +124,13 @@ class BuildCleanupTests(unittest.TestCase):
         self.assertEqual(source, self.source)
         self.assertFalse(self.exported.exists())
 
-    def test_export_symlink_never_removes_its_target(self):
+    def test_symlinked_build_output_allows_export_and_preserves_neighbors(self):
         outside = self.root / 'outside'
         outside.mkdir()
         (outside / 'sentinel').touch()
         (self.work / 'products').symlink_to(outside, target_is_directory=True)
-        with self.assertRaises(SystemExit):
-            installer.build_product('Debug')
+        source, team = installer.build_product('Debug')
+        self.assertTrue((outside / 'Debug/Jot.app/Contents/MacOS/Jot').is_file())
         self.assertTrue((outside / 'sentinel').exists())
         self.assertFalse(self.derived.exists())
 
