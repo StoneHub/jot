@@ -34,6 +34,7 @@ class BuildCleanupTests(unittest.TestCase):
         self.exported = self.work / 'products/Debug/Jot.app'
         self.source = None
         self.derived = None
+        self.packages = None
         for target, value in [('root', self.root), ('work', self.work)]:
             patch.object(installer, target, value).start()
         patch.object(installer, 'local_signing_configuration', return_value=('fixture', 'FIXTURE')).start()
@@ -56,6 +57,9 @@ class BuildCleanupTests(unittest.TestCase):
     def process(self, command, **kwargs):
         self.assertTrue(kwargs['start_new_session'])
         self.derived = Path(command[command.index('-derivedDataPath') + 1])
+        self.packages = Path(command[command.index('-clonedSourcePackagesDirPath') + 1])
+        self.packages.mkdir(parents=True, exist_ok=True)
+        (self.packages / 'downloaded-dependency').write_bytes(b'disposable clone')
         configuration = command[command.index('-configuration') + 1]
         self.source = self.derived / 'Build/Products' / configuration / 'Jot.app'
         (self.source / 'Contents/MacOS').mkdir(parents=True)
@@ -88,6 +92,7 @@ class BuildCleanupTests(unittest.TestCase):
         self.assertEqual(source, self.exported)
         self.assertEqual((source / 'Contents/MacOS/Jot').read_bytes(), b'verified synthetic product')
         self.assertFalse(self.derived.exists())
+        self.assertFalse(self.packages.exists())
         self.assertEqual(list(self.work.glob('xcode-task-*')), [])
 
     def test_failed_build_cleans_intermediates_and_preserves_previous_product(self):
@@ -97,6 +102,7 @@ class BuildCleanupTests(unittest.TestCase):
         with self.assertRaises(subprocess.CalledProcessError):
             installer.build_product('Debug')
         self.assertFalse(self.derived.exists())
+        self.assertFalse(self.packages.exists())
         self.assertTrue((self.exported / 'previous').exists())
 
     def test_cancellation_stops_build_before_removing_its_outputs(self):
@@ -106,6 +112,7 @@ class BuildCleanupTests(unittest.TestCase):
         self.assertTrue(self.terminated_before_cleanup)
         self.assertEqual(self.waits, 2)
         self.assertFalse(self.derived.exists())
+        self.assertFalse(self.packages.exists())
 
     def test_invalid_release_never_replaces_previous_export(self):
         previous = self.work / 'products/Release/Jot.app'
@@ -116,11 +123,14 @@ class BuildCleanupTests(unittest.TestCase):
             installer.build_product('Release')
         self.assertTrue((previous / 'sentinel').exists())
         self.assertFalse(self.derived.exists())
+        self.assertFalse(self.packages.exists())
         self.assertFalse((self.work / 'release-proof.json').exists())
 
     def test_retained_development_cache_survives(self):
         source, team = installer.build_product('Debug', disposable=False)
         self.assertTrue(self.derived.exists())
+        self.assertTrue((self.packages / 'downloaded-dependency').exists())
+        self.assertEqual(self.packages, self.work / 'SourcePackages')
         self.assertEqual(source, self.source)
         self.assertFalse(self.exported.exists())
 
@@ -133,6 +143,7 @@ class BuildCleanupTests(unittest.TestCase):
         self.assertTrue((outside / 'Debug/Jot.app/Contents/MacOS/Jot').is_file())
         self.assertTrue((outside / 'sentinel').exists())
         self.assertFalse(self.derived.exists())
+        self.assertFalse(self.packages.exists())
 
 
 if __name__ == '__main__':

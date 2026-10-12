@@ -92,9 +92,11 @@ def build_product(configuration, disposable=None):
 
 
 def build_in_directory(configuration, identity, team, derived, disposable):
+    # Task package clones must share the temporary output lifetime too.
+    packages = derived / 'SourcePackages' if disposable else work / 'SourcePackages'
     args = ['xcodebuild', '-project', 'Jot.xcodeproj', '-scheme', 'Jot',
             '-configuration', configuration, '-destination', 'platform=macOS,arch=arm64',
-            '-derivedDataPath', str(derived), '-clonedSourcePackagesDirPath', 'build/SourcePackages',
+            '-derivedDataPath', str(derived), '-clonedSourcePackagesDirPath', str(packages),
             'CODE_SIGN_STYLE=Manual', f'CODE_SIGN_IDENTITY={identity}', f'DEVELOPMENT_TEAM={team}']
     print(f'Building; log: {work / "build.log"}', flush=True)
     with (work / 'build.log').open('w') as log:
