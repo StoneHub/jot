@@ -2,6 +2,8 @@
 
 A swarm of agents works Jot's issue queue. Two leads take turns over one shared state, and short-lived workers each take one issue.
 
+[AGENTS.md](../AGENTS.md) governs proportional checks and delivery authority. Coordination below assigns owners; it does not add blanket native-validation, review or release gates.
+
 - **On duty:** Codex Monday to Friday, Claude Saturday and Sunday (US Eastern). Claude swarm jobs are scheduled only on weekends.
 - **Host:** Monroe's MacBook Pro runs both leads and every Mac worker.
 - **State:** GitHub only. Labels, blocked-by links, the pinned control issue [#201](https://github.com/StoneHub/jot/issues/201) and [PLAN.md](PLAN.md). Whatever a chat knows that isn't written there is lost at the next hand-off.
@@ -21,15 +23,15 @@ A swarm of agents works Jot's issue queue. Two leads take turns over one shared 
 ## Work an issue (worker)
 
 1. Claim: an issue labelled `ready`, with no open blocked-by issue, in an area that has room. Swap `ready` for `in-progress` and comment `claimed by <tool> on <host>, branch <branch>`.
-2. Work on that branch in its own worktree. For a behavior change, show red/green: the new test fails with only the fix reverted. Cloud workers follow [CLOUD-WORK.md](CLOUD-WORK.md).
-3. Review: one adversarial reviewer. Use three lenses when the change moves work across threads or rewrites stored data.
-4. Open the PR with `Fixes #N`, the checks you ran and their results, what you couldn't run, and a short **test when you sit down** list for Monroe.
+2. Isolate concurrent changes on that branch in a worktree when needed. Run the affected build and meaningful behavioral checks; use a regression when it catches a real failure or protects a durable contract. Cloud workers follow [CLOUD-WORK.md](CLOUD-WORK.md).
+3. Review the diff; seek independent review when consequential threading, persistence or other unresolved risk warrants it.
+4. Open the PR linking the issue, the checks you ran and their results, what you couldn't run, and a short **test when you sit down** list for Monroe. Close the issue only when its agreed outcome is complete.
 
 Done when the PR is open and marked ready for review, and the claim comment links it. Merging belongs to the lead.
 
 ## Merge rule
 
-The lead on duty merges, one PR at a time, when `python3 scripts/local-pr-check.py <PR> --post` reports `PASS` on the PR head with current `main` merged in. `--post` also publishes the verdict as the `jot/local-pr-check` status on the PR head. A PASS covers the gates the diff needs: portable checks, Swift tests, the app build and the recovery checks.
+The lead on duty owns integration, one PR at a time, after the affected checks available in the worker's environment pass. Review the current diff and integration boundaries; broaden only when they, failures or unresolved risk warrant it. The optional `local-pr-check` selects diagnostic checks; statuses, native-only checks and per-PR device validation are not standing merge requirements. Report relevant checks that could not run.
 
 The `app-behavior` and real-model-audio attestations aren't merge gates. They go on Monroe's daily test list, and a failure he finds is fixed forward. Workers, cloud ones included, open PRs and leave merging to the lead.
 
@@ -38,8 +40,8 @@ The `app-behavior` and real-model-audio attestations aren't merge gates. They go
 A tick runs every two hours from 08:00 to 22:00.
 
 1. Read the status block of #201, the `in-progress` issues and the open PRs.
-2. If `main` moved since the SHA in the status block by anything other than a merge you made on PASS, run `python3 scripts/local-pr-check.py --current --all` from a clean checkout of `main`. Without `--all`, a clean checkout runs only the portable gate. If it fails, fixing main is this tick's only work.
-3. For each non-draft PR: if it's behind `main`, merge `main` into it and push. Run the check, then `gh pr merge <PR> --merge` on PASS, or comment the failure and hand the PR back to its worker. Fetch `main` again after every merge.
+2. If `main` moved since the recorded SHA, inspect the changed behavior and the checks already recorded. Run only relevant missing checks; choose `--all` for a justified broad check. A clean `--current` diff selects only whitespace, so it is not proof of the preceding batch. Fix known build/runtime breakage before new work.
+3. For each non-draft PR, resolve actual integration conflicts and missing relevant checks, then merge authorized work or return a concrete failure to its worker. Fetch `main` again after every merge; an advanced base alone does not require repeating sufficient checks.
 4. Release stale claims: an `in-progress` issue with no push for 24 hours goes back to `ready`, with a comment.
 5. Dispatch `ready` issues up to the caps, using the brief below.
 6. Rewrite the status block of #201: on duty, in progress, PRs waiting and why, main's SHA and its last check, next.
@@ -49,7 +51,7 @@ Done when every non-draft PR is merged, handed back with a comment, or waiting o
 ## Daily and weekly jobs
 
 - **08:15 brief:** one comment on #201 listing what merged since the last brief, the `needs-monroe` items, the test-when-you-sit-down lists from merged PRs, and today's dispatch plan.
-- **18:30 integration:** run `python3 scripts/local-pr-check.py --current --all` on a clean checkout of `main`. On PASS, if anything merged since the last release, cut one with `python3 scripts/release.py patch --local --install`; this installs it too, so it needs Jot on the host paused and idle. Otherwise skip the release and say so in the next brief.
+- **18:30 integration:** review the integrated batch and complete relevant missing checks. When batch release/install delivery is authorized, use the checked Release product and verify it with Jot paused and idle. Otherwise record the current usable/source state and remaining delivery step in the next brief.
 - **Friday 18:00 hand-off (Codex):** push every claimed branch, comment each claim's next step, and write the weekend queue in #201.
 - **Sunday 18:00 hand-off (Claude):** the same, plus the weekly replan: re-rank `ready` work, refresh PLAN.md by PR, and report the week's numbers in #201. Those numbers are issues closed, PRs merged, fix-forwards and reverts, and Monroe's open `needs-monroe` items. Leave no Claude worker running into Monday.
 

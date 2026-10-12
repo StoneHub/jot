@@ -23,24 +23,47 @@ def names(gates):
 
 
 class PlanTests(unittest.TestCase):
-    head_files = {'scripts/test_signing.py', 'scripts/check-no-feedback.py'}
+    head_files = {'scripts/test_signing.py', 'scripts/test_local_pr_check.py', 'scripts/check-no-feedback.py'}
 
     def plan(self, files, **options):
         return check.plan(files, self.head_files, 'base', 'head', **options)
 
     def test_documentation_needs_only_portable_checks(self):
-        gates = self.plan(['docs/PLAN.md', 'scripts/test_signing.py'])
+        gates = self.plan(['docs/PLAN.md', 'README.md'])
         self.assertEqual(names(gates), ['portable'])
-        commands = [' '.join(step[1:]) for step in gates[0].steps]
-        self.assertIn('diff --check base head', commands)
+        self.assertEqual(gates[0].steps, [['git', 'diff', '--check', 'base', 'head']])
+
+    def test_tooling_selects_its_existing_tests(self):
+        for path, pattern in [('scripts/local-pr-check.py', 'test_local_pr_check.py'),
+                              ('scripts/signing.py', 'test_signing.py'), ('scripts/test_signing.py', 'test_signing.py')]:
+            with self.subTest(path=path):
+                commands = [' '.join(step[1:]) for step in self.plan([path])[0].steps]
+                self.assertIn(f'-m unittest discover -s scripts -p {pattern}', commands)
+                self.assertNotIn('-m unittest discover -s scripts -p test_*.py', commands)
+
+    def test_unknown_python_tool_keeps_broad_tooling_coverage(self):
+        commands = [' '.join(step[1:]) for step in self.plan(['scripts/new-tool.py'])[0].steps]
         self.assertIn('-m unittest discover -s scripts -p test_*.py', commands)
-        self.assertIn('scripts/check-no-feedback.py', commands)
-        self.assertNotIn('scripts/check-suggestion-fixtures.py', commands)
 
     def test_optional_checks_follow_the_checked_out_tree(self):
         self.head_files = {'scripts/check-suggestion-fixtures.py'}
-        commands = [' '.join(step[1:]) for step in self.plan(['README.md'])[0].steps]
+        commands = [' '.join(step[1:]) for step in self.plan(['docs/evaluation/contextual-suggestions/scenarios.json'])[0].steps]
         self.assertEqual(commands, ['diff --check base head', 'scripts/check-suggestion-fixtures.py'])
+        self.head_files = set()
+        self.assertEqual(self.plan(['scripts/check-suggestion-fixtures.py'])[0].steps,
+                         [['git', 'diff', '--check', 'base', 'head']])
+
+    def test_presentation_uses_app_build_without_audio_or_package_tests(self):
+        for path in ('Sources/Jot/ActivityView.swift', 'Sources/Jot/TranscriptView+Settings.swift'):
+            with self.subTest(path=path):
+                self.assertEqual(names(self.plan([path])), ['portable', 'app-build'])
+                self.assertEqual(check.manual_checks([path]), {'app-behavior'})
+
+    def test_store_capture_lifecycle_and_unknown_app_sources_keep_recovery(self):
+        for path in ('Sources/JotCore/TranscriptStore.swift', 'Sources/JotCore/ServiceLifecycle.swift',
+                     'Sources/Jot/CaptureController.swift', 'Sources/Jot/DictationInput.swift', 'Sources/Jot/NewOwner.swift'):
+            with self.subTest(path=path):
+                self.assertIn('recovery-checks', names(self.plan([path])))
 
     def test_core_change_needs_every_mac_gate(self):
         gates = self.plan(['Sources/JotCore/TranscriptExport.swift'])
@@ -56,14 +79,22 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(names(self.plan(['Resources/Info.plist'])), ['portable', 'app-build'])
         self.assertEqual(names(self.plan(['SourcesExtra.md'])), ['portable'])
 
-    def test_filters_run_before_the_full_suite(self):
-        gate = self.plan(['docs/PLAN.md'], filters=['TranscriptExportTests'])[1]
-        self.assertEqual(gate.steps, [['swift', 'test', '--filter', 'TranscriptExportTests'], ['swift', 'test']])
+    def test_filters_run_only_the_focused_tests(self):
+        gate = self.plan(['docs/PLAN.md'], filters=['TranscriptExportTests', 'HistoryDeletionTests'])[1]
+        self.assertEqual(gate.steps, [['swift', 'test', '--filter', 'TranscriptExportTests'],
+                                     ['swift', 'test', '--filter', 'HistoryDeletionTests']])
+
+    def test_explicit_all_restores_every_gate_and_full_suite_once(self):
+        gates = self.plan(['README.md'], filters=['TranscriptExportTests'], everything=True)
+        self.assertEqual(names(gates), list(check.GATES))
+        self.assertEqual(gates[1].steps, [['swift', 'test']])
+        self.assertIn([sys.executable, '-m', 'unittest', 'discover', '-s', 'scripts', '-p', 'test_*.py'], gates[0].steps)
+        self.assertIn([sys.executable, 'scripts/check-no-feedback.py'], gates[0].steps)
 
     @patch.object(check.platform, 'system', return_value='Linux')
     def test_mac_gates_are_unavailable_elsewhere(self, system):
         gates = self.plan(['Sources/Jot/SessionLibrary.swift'], skip={'portable'})
-        self.assertEqual([gate.status for gate in gates], ['skipped', 'unavailable', 'unavailable', 'unavailable'])
+        self.assertEqual([gate.status for gate in gates], ['skipped', 'unavailable', 'unavailable'])
 
     def test_verdict(self):
         gate = lambda status: check.Gate('g', 'G', [], status=status)
