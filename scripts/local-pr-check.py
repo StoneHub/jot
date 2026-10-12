@@ -23,11 +23,30 @@ STATUS_CONTEXT = 'jot/local-macos-validation'
 # Every posted check also reports its gate verdict here. Manual attestations are not merge gates, so this
 # context never claims them; STATUS_CONTEXT stays the stricter, attested one.
 GATE_STATUS_CONTEXT = 'jot/local-pr-check'
-SWIFT_TRIGGERS = ('Sources/', 'Tests/', 'Package.swift', 'Package.resolved')
+SWIFT_TRIGGERS = ('Sources/JotCore/', 'Sources/JotEngine/', 'Sources/JotCLI/',
+                  'Sources/JotSuggestionEvaluation/', 'Tests/', 'Package.swift', 'Package.resolved')
 APP_TRIGGERS = ('Sources/', 'Resources/', 'project.yml', 'Jot.xcodeproj/', 'Package.swift', 'Package.resolved',
                 'LICENSE', 'scripts/build-install.py', 'scripts/signing.py', 'scripts/check-no-feedback.py')
-RECOVERY_TRIGGERS = ('Sources/Jot/', 'Sources/JotCore/', 'Sources/JotEngine/', 'scripts/check-recovery-flow.swift',
+RECOVERY_TRIGGERS = ('Sources/JotCore/', 'Sources/JotEngine/', 'scripts/check-recovery-flow.swift',
                      'scripts/check-capture-flow.swift', 'project.yml', 'Package.swift', 'Package.resolved')
+# These presentation files do not own capture, persistence or delivery. New/unknown app files stay conservative.
+PRESENTATION_FILES = {f'Sources/Jot/{name}.swift' for name in (
+    'ActivityView', 'GlassStyles', 'LiveTranscriptText', 'LiveView', 'PeopleView', 'SessionsView',
+    'SetupView', 'ShortcutSettings', 'SuggestionCard', 'TranscriptView', 'TranscriptView+Settings', 'VocabularyView')}
+TOOL_TESTS = {
+    'scripts/local-pr-check.py': ('test_local_pr_check.py',),
+    'scripts/signing.py': ('test_signing.py', 'test_packaged_install.py', 'test_release_install.py'),
+    'scripts/build-install.py': ('test_packaged_install.py', 'test_release_install.py'),
+    'scripts/packaged_product.py': ('test_packaged_install.py', 'test_release_install.py'),
+    'scripts/release.py': ('test_release_install.py',),
+    'scripts/check-suggestion-fixtures.py': ('test_suggestion_fixtures.py',),
+    'scripts/check-suggestion-results.py': ('test_suggestion_results.py',),
+    'Sources/JotLab/main.swift': ('test_lab_output_paths.py', 'test_lab_signal_cleanup.py'),
+    'Sources/JotCore/LabError.swift': ('test_lab_output_paths.py',),
+    'docs/evaluation/contextual-suggestions/scenarios.json': ('test_suggestion_fixtures.py', 'test_suggestion_results.py'),
+}
+FIXTURE_TRIGGERS = ('scripts/check-suggestion-fixtures.py', 'scripts/test_suggestion_fixtures.py',
+                    'docs/evaluation/contextual-suggestions/scenarios.json')
 NOT_COVERED = ('interactive UI, Accessibility and physical Fn behavior',
                'installed-app, updater and live capture behavior',
                'manual checks the PR description lists')
@@ -62,26 +81,40 @@ def touches(files, triggers):
                for path in files for trigger in triggers)
 
 
+def needs_recovery(files):
+    return touches(files, RECOVERY_TRIGGERS) or any(
+        path.startswith('Sources/Jot/') and path not in PRESENTATION_FILES for path in files)
+
+
 def plan(files, head_files, merge_base, head, filters=(), everything=False, skip=()):
     """Choose the gates this diff needs. `head_files` lists the checked-out tree, to find optional checks."""
     python = sys.executable or 'python3'
     portable = [['git', 'diff', '--check', merge_base, head]]
-    if any(path.startswith('scripts/test_') and path.endswith('.py') for path in head_files):
+    available_tests = {Path(path).name for path in head_files if path.startswith('scripts/test_') and path.endswith('.py')}
+    selected_tests = {name for path in files for name in TOOL_TESTS.get(path, ())}
+    selected_tests.update(Path(path).name for path in files if path.startswith('scripts/test_') and path.endswith('.py'))
+    unknown_tool = any(path.startswith('scripts/') and path.endswith('.py') and path not in TOOL_TESTS
+                       and not Path(path).name.startswith('test_') and path != 'scripts/check-no-feedback.py' for path in files)
+    if available_tests and (everything or unknown_tool):
         portable.append([python, '-m', 'unittest', 'discover', '-s', 'scripts', '-p', 'test_*.py'])
-    for script in ('check-no-feedback.py', 'check-suggestion-fixtures.py'):
-        if f'scripts/{script}' in head_files:
+    else:
+        portable += [[python, '-m', 'unittest', 'discover', '-s', 'scripts', '-p', name]
+                     for name in sorted(selected_tests & available_tests)]
+    for script, needed in (('check-no-feedback.py', touches(files, APP_TRIGGERS)),
+                           ('check-suggestion-fixtures.py', touches(files, FIXTURE_TRIGGERS))):
+        if (everything or needed) and f'scripts/{script}' in head_files:
             portable.append([python, f'scripts/{script}'])
     gates = [Gate('portable', 'Portable checks', portable, reason='always')]
 
     if everything or filters or touches(files, SWIFT_TRIGGERS):
-        steps = [['swift', 'test', '--filter', name] for name in filters] + [['swift', 'test']]
+        steps = [['swift', 'test']] if everything or not filters else [['swift', 'test', '--filter', name] for name in filters]
         gates.append(Gate('swift-test', 'Swift package tests', steps, needs=('swift',),
                           reason='requested' if everything or filters else 'Swift sources, tests or manifest changed'))
     if everything or touches(files, APP_TRIGGERS):
         gates.append(Gate('app-build', 'Signed Debug app build (no install)',
                           [[python, 'scripts/build-install.py', '--build-only']], needs=('xcodebuild',),
                           reason='requested' if everything else 'app sources, resources or build configuration changed'))
-    if everything or touches(files, RECOVERY_TRIGGERS):
+    if everything or needs_recovery(files):
         derived = 'build/DerivedData.noindex'
         steps = [['xcodegen', 'generate']] if shutil.which('xcodegen') else []
         steps += [['xcodebuild', '-project', 'Jot.xcodeproj', '-scheme', 'JotRecoveryChecks', '-configuration', 'Debug',
@@ -307,7 +340,7 @@ def manual_checks(files):
     checks = {'app-behavior'} if touches(files, APP_TRIGGERS) else set()
     # Names alone cannot identify all recognition paths (for example Transcriber or ListeningState).
     # Use the complete recovery footprint, including its build inputs, rather than infer semantics.
-    if touches(files, RECOVERY_TRIGGERS):
+    if needs_recovery(files):
         checks.add('real-model-audio')
     return checks
 
@@ -398,7 +431,7 @@ def main(argv=None):
     parser.add_argument('--base', help='base branch (default: the PR base, else main)')
     parser.add_argument('--remote', default='origin')
     parser.add_argument('--filter', action='append', default=[], metavar='TEST',
-                        help='run `swift test --filter TEST` before the full suite; repeatable')
+                        help='run only `swift test --filter TEST`; repeatable; --all selects the full suite instead')
     parser.add_argument('--all', action='store_true', help='run every gate whatever the diff touches')
     parser.add_argument('--skip', action='append', default=[], choices=GATES, help='skip a gate (verdict INCOMPLETE)')
     parser.add_argument('--dry-run', action='store_true', help='print the plan without running it')

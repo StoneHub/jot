@@ -27,7 +27,7 @@ Suggestion work: #79, #90, #139, #140, #150 and #162 are parked for about a mont
 
 Deferred: #40 calendar meeting names, then #33 microphone proximity. Public distribution is separate work under [RELEASING.md](RELEASING.md), not an automatic daily output.
 
-A release goes out after each merged batch, so Monroe's other Mac updates in-app.
+When release delivery is requested, ship the completed batch so Monroe's other Mac updates in-app.
 
 ## Refactor only the next responsibility being changed
 
@@ -42,4 +42,4 @@ A release goes out after each merged batch, so Monroe's other Mac updates in-app
 
 Judge Jot by release-to-field median/p95, transcript and speaker quality on known audio, no lost audio, and no main-thread stall over 50 ms while listening. Compare the same configuration, models and workload; export `jot diagnostics` before restarting. Static work-growth findings are not measured speedups.
 
-A worker owns one ready issue and one worktree. Open one reviewed PR per issue. Integrate only after the trusted Mac `local-pr-check` passes on the current PR head with current main included. For pipeline changes also run generated or authorized local audio through the real-model recovery path. Install the checked Release build when capture is paused and work is idle; preserve transcript selection, history and preferences. Never rebuild/delete a database as a compatibility shortcut. Unsupported formats should be refused intact.
+Follow [AGENTS.md](../AGENTS.md) for proportional checks and solo delivery. Keep one owner for overlapping changes and use a worktree or PR when coordination needs it. Run the affected checks available in the environment and report what remains uncompiled or untested; broaden for affected boundaries, failures or unresolved risk. Use local audio comparisons for relevant recognition-quality changes rather than every layout edit. Installation/release follows the requested delivery boundary, with capture paused and work idle; preserve transcript selection, history and preferences. Unsupported databases are refused intact.
