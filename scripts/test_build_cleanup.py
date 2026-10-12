@@ -26,6 +26,7 @@ class BuildCleanupTests(unittest.TestCase):
         self.developer = self.root / 'developer'
         (self.developer / 'usr/bin').mkdir(parents=True)
         (self.developer / 'usr/bin/xcodebuild').touch()
+        self.conditions = ""
         self.code = 0
         self.cancel = False
         self.waits = 0
@@ -55,7 +56,8 @@ class BuildCleanupTests(unittest.TestCase):
     def process(self, command, **kwargs):
         self.assertTrue(kwargs['start_new_session'])
         self.derived = Path(command[command.index('-derivedDataPath') + 1])
-        self.source = self.derived / 'Build/Products/Debug/Jot.app'
+        configuration = command[command.index('-configuration') + 1]
+        self.source = self.derived / 'Build/Products' / configuration / 'Jot.app'
         (self.source / 'Contents/MacOS').mkdir(parents=True)
         (self.source / 'Contents/MacOS/Jot').write_bytes(b'verified synthetic product')
         (self.derived / 'intermediate').write_bytes(b'disposable')
@@ -78,7 +80,8 @@ class BuildCleanupTests(unittest.TestCase):
         if command[0] == 'ps':
             return ''
         return json.dumps([{'target': 'Jot', 'buildSettings': {
-            'TARGET_BUILD_DIR': str(self.source.parent), 'FULL_PRODUCT_NAME': 'Jot.app'}}])
+            'TARGET_BUILD_DIR': str(self.source.parent), 'FULL_PRODUCT_NAME': 'Jot.app',
+            'SWIFT_ACTIVE_COMPILATION_CONDITIONS': self.conditions}}])
 
     def test_linked_build_removes_intermediates_but_keeps_verified_deliverable(self):
         source, team = installer.build_product('Debug')
@@ -103,6 +106,17 @@ class BuildCleanupTests(unittest.TestCase):
         self.assertTrue(self.terminated_before_cleanup)
         self.assertEqual(self.waits, 2)
         self.assertFalse(self.derived.exists())
+
+    def test_invalid_release_never_replaces_previous_export(self):
+        previous = self.work / 'products/Release/Jot.app'
+        previous.mkdir(parents=True)
+        (previous / 'sentinel').touch()
+        self.conditions = 'DEBUG'
+        with self.assertRaises(SystemExit):
+            installer.build_product('Release')
+        self.assertTrue((previous / 'sentinel').exists())
+        self.assertFalse(self.derived.exists())
+        self.assertFalse((self.work / 'release-proof.json').exists())
 
     def test_retained_development_cache_survives(self):
         source, team = installer.build_product('Debug', disposable=False)

@@ -103,6 +103,11 @@ def build_in_directory(configuration, identity, team, derived, disposable):
     s = next(item['buildSettings'] for item in settings if item['target'] == 'Jot')
     source = Path(s['TARGET_BUILD_DIR']) / s['FULL_PRODUCT_NAME']
     verify_product(source, configuration, team)
+    if configuration == 'Release':
+        conditions = s.get('SWIFT_ACTIVE_COMPILATION_CONDITIONS', '').split()
+        flags = s.get('OTHER_SWIFT_FLAGS', '')
+        if 'DEBUG' in conditions or re.search(r'-D\s*DEBUG\b', flags):
+            raise SystemExit('Release build unexpectedly defines DEBUG.')
     if disposable:
         # Preserve the verified deliverable, not the dependency/object tree.
         exported = work / 'products' / configuration / 'Jot.app'
@@ -118,10 +123,6 @@ def build_in_directory(configuration, identity, team, derived, disposable):
         verify_product(exported, configuration, team)
         source = exported
     if configuration == 'Release':
-        conditions = s.get('SWIFT_ACTIVE_COMPILATION_CONDITIONS', '').split()
-        flags = s.get('OTHER_SWIFT_FLAGS', '')
-        if 'DEBUG' in conditions or re.search(r'-D\s*DEBUG\b', flags):
-            raise SystemExit('Release build unexpectedly defines DEBUG.')
         (work / 'release-proof.json').write_text(json.dumps(dict(source=str(source),
             configuration='Release', signingTeam=team, debugDefined=False, feedbackRuntimeMarkers=False,
             sha256=digest(source / 'Contents/MacOS/Jot')), indent=2) + '\n')
