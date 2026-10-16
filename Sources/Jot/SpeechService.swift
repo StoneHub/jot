@@ -163,7 +163,8 @@ final class SpeechService: ObservableObject {
     /// Set when a resume would download models that are not cached yet. The view asks before any download starts.
     @Published var downloadPrompt: Int64?
     /// Title of the meeting being recorded; nil when ambient is off or was started without a name.
-    @Published private(set) var meetingTitle: String?
+    /// Set by the meeting calls in SpeechService+Meetings.swift, by Pause and by the update restore.
+    @Published var meetingTitle: String?
     @Published private(set) var vocabulary = PersonalVocabulary()
     @Published private(set) var vocabularyLoadError: String?
     private let vocabularyPreferences = VocabularyPreferences()
@@ -192,32 +193,7 @@ final class SpeechService: ObservableObject {
     #else
     var diagnostics = PerformanceDiagnostics(build: .release)
     #endif
-    private let diagnosticsBegan = ProcessInfo.processInfo.systemUptime
-
-    /// Records CPU and memory for `jot diagnostics`. The window's readout comes from the tick, with a sampler of its own.
-    func samplePerformance() {
-        let sample = sampler.sample()
-        guard sample.valid else { return }
-        let elapsed = ProcessInfo.processInfo.systemUptime - diagnosticsBegan
-        diagnostics.observe(.init(elapsedSeconds: elapsed, footprintMiB: sample.physicalFootprintMiB,
-            residentMiB: sample.residentMiB, cpuPercent: sample.processCPUPercent,
-            droppedAudioSeconds: droppedSeconds, bufferedAudioSeconds: AudioClock.seconds(samples: capture.bufferedSampleCount + timeline.bufferedSampleCount) + transcriber.inFlightAudioSeconds,
-            queuedAudioSeconds: transcriber.queuedAudioSeconds, loadedHistoryRows: library.history.count,
-            modelsReady: modelState == .ready, ambientEnabled: ambientEnabled, dictationActive: dictation.isActive,
-            inferenceRunning: transcriber.processing != nil))
-    }
-
-    func markPerformance(_ kind: PerformanceEventKind) {
-        samplePerformance()
-        diagnostics.mark(kind, at: ProcessInfo.processInfo.systemUptime - diagnosticsBegan)
-    }
-
-    /// Records a finished job, stamped with the time it finished.
-    func recordPerformance(_ job: PerformanceJob) {
-        var job = job
-        job.elapsedSeconds = ProcessInfo.processInfo.systemUptime - diagnosticsBegan
-        diagnostics.record(job)
-    }
+    let diagnosticsBegan = ProcessInfo.processInfo.systemUptime
 
     @Published var dictationEnabled = false
     @Published var droppedSeconds = 0.0
@@ -226,7 +202,7 @@ final class SpeechService: ObservableObject {
     /// Resume is loading models or restarting the microphone.
     var preparing: Bool { preparation != nil }
     lazy var pipeline = SpeechPipeline(settings: settings)
-    private let sampler = ResourceSampler()
+    let sampler = ResourceSampler()
     /// A sampler measures CPU since its previous sample, and `sampler` also samples when a recognition finishes. Sharing it would leave each recognition's CPU out of the next readout, so the readout has its own, sampled only at launch and by the tick.
     private let readoutSampler = ResourceSampler()
     private let keepAwake = KeepAwakeAssertion()
@@ -695,89 +671,6 @@ final class SpeechService: ObservableObject {
     /// Closes the audio chunk in progress so a held range starts or ends on an exact timeline boundary.
     func closeChunk() { drainAudio(); timeline.flushAmbient(final: true) }
 
-    // MARK: Sessions and meetings
-
-    /// A meeting is ambient capture with a name, and an export when it ends.
-    func startMeeting(_ title: String) async {
-        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { notice = "Give the meeting a name first."; return }
-        do {
-            try await startAmbient()
-            guard ambientEnabled else { throw JotError.message("Ambient capture did not start.") }
-            meetingTitle = trimmed
-            let store = library.store, id = timeline.sessionID
-            try await storeExecutor.submit { try store?.setTitle(sessionID: id, title: trimmed) }.value
-            library.refreshSessions()
-        } catch { meetingTitle = nil; notice = error.localizedDescription }
-    }
-
-    /// Renames the running meeting: the name goes on its session now and on any continuation after an automatic pause.
-    func renameMeeting(_ title: String) {
-        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard meetingTitle != nil, !trimmed.isEmpty, let id = timeline.activeSessionID else { return }
-        meetingTitle = trimmed; library.renameSession(id, title: trimmed)
-    }
-
-    /// Names any session from the socket. Naming the running meeting's session renames the meeting too, so the Live chip and a continuation after an automatic pause use the new name.
-    func setSessionTitle(_ id: String, title: String) async throws {
-        let store = library.store
-        guard !(await library.waitForDeletion(id)) else { throw JotError.message("Session was deleted.") }
-        try await storeExecutor.submit { try store?.setTitle(sessionID: id, title: title) }.value
-        library.refreshSessions()
-        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        if meetingTitle != nil, id == timeline.activeSessionID, !trimmed.isEmpty { meetingTitle = trimmed }
-    }
-
-    /// A meeting kept through an automatic pause records on into a new session under the same name. The earlier part stays in Sessions, and TranscriptExport.write adds " (2)" to a duplicate file name.
-    private func continueMeeting() async throws {
-        guard let meetingTitle, ambientEnabled else { return }
-        let store = library.store, id = timeline.sessionID
-        try await storeExecutor.submit { try store?.setTitle(sessionID: id, title: meetingTitle) }.value
-        library.refreshSessions()
-    }
-
-    /// Closes and exports the named session while continuous listening immediately
-    /// continues in a fresh untitled session.
-    @discardableResult
-    func endMeeting() async -> URL? {
-        guard !pauseRequested else {
-            notice = "Wait for Pause to finish before exporting the meeting."
-            return nil
-        }
-        guard !dictation.isActive, !dictation.isPending else {
-            notice = "Finish the held dictation before ending the meeting."
-            return nil
-        }
-        library.clearLastExport()
-        let id = timeline.sessionID
-        let generation = lifecycle.generation
-        if ambientEnabled { drainAudio(); timeline.flushAmbient(final: true) }
-        let throughOffset = timeline.ambientOffset
-        timeline.endSessionAudio(runPass: true)
-        meetingTitle = nil
-        if ambientEnabled {
-            timeline.beginSession(at: dependencies.now())
-            recordEvent(.started, "Listening continued in a fresh session after meeting export.")
-            transcriber.kick()
-        }
-        if lifecycle.acceptsWork(generation) {
-            await transcriber.waitUntilProcessed(sessionID: id, through: throughOffset)
-            if !lifecycle.acceptsWork(generation) {
-                notice = "Meeting export interrupted. Saved transcripts remain in Sessions; no file was exported."
-                return nil
-            }
-        }
-        library.refreshSessions()
-        // A meeting with nothing transcribed ends quietly; there is no file to show.
-        let store = library.store
-        guard (try? await storeExecutor.perform { try store?.session(id: id).isEmpty }) == false else { return nil }
-        do {
-            let url = try await library.exportSession(id)
-            NSWorkspace.shared.activateFileViewerSelecting([url])
-            return url
-        } catch { notice = error.localizedDescription; return nil }
-    }
-
     private func activateAmbient() async throws {
         let token = lifecycle.generation
         guard lifecycle.acceptsWork(token), !diagnosticActive, !pauseRequested else { throw JotError.message("Resume the service before listening.") }
@@ -1005,60 +898,6 @@ final class SpeechService: ObservableObject {
         }
         await storeExecutor.flush()
         await library.waitForReads()
-    }
-
-    /// Counts and state only; transcript and field contents never enter diagnostics.
-    var recoveryDiagnostics: [String: Any] {
-        [
-            "attemptState": dictation.currentAttempt?.state.rawValue ?? "none",
-            "attemptPending": dictation.isActive || dictation.isPending,
-            "pendingAudioJobs": transcriber.jobs.count + (transcriber.processing == nil ? 0 : 1),
-            "recoveryRunning": dictation.recoveryRunning,
-            "cleanupPending": cleanup.pendingCount,
-            "cleanupBufferedRows": cleanup.bufferedRowCount,
-            "cleanupRequested": cleanup.cleanupRequestedCount,
-            "cleanupCompleted": cleanup.cleanupCompletedCount,
-            "cleanupApplied": cleanup.cleanupAppliedCount,
-            "cleanupBypassed": cleanup.cleanupBypassedCount,
-            "cleanupOutcomes": cleanup.cleanupOutcomeCounts
-        ]
-    }
-
-    func recordEvent(_ kind: CaptureEventKind, _ detail: String, duration: Double? = nil, session: String? = nil) {
-        let marker: PerformanceEventKind?
-        switch kind {
-        case .started: marker = .ambientStarted
-        case .sleep: marker = .sleep
-        case .deviceChange: marker = .deviceChange
-        case .audioGap: marker = .audioGap
-        case .processingError: marker = .processingFailed
-        default: marker = nil
-        }
-        if let marker { markPerformance(marker) }
-        let store = library.store
-        let event = CaptureEvent(sessionID: session ?? timeline.sessionID, kind: kind.rawValue, detail: detail, durationSeconds: duration)
-        let write = storeExecutor.submit { try store?.appendEvent(event) }
-        Task {
-            do { _ = try await write.value; library.refreshEvents() }
-            catch { notice = "Could not save capture event: \(error.localizedDescription)" }
-        }
-    }
-
-    func checkModelUpdates() {
-        guard !checkingModels else { return }
-        checkingModels = true
-        let current = modelUpdates
-        modelCheck = Task {
-            let results = await withTaskGroup(of: (Int, ModelUpdate).self) { group in
-                for (index, model) in current.enumerated() { group.addTask { (index, await model.check()) } }
-                var rows: [(Int, ModelUpdate)] = []
-                for await row in group { rows.append(row) }
-                return rows.sorted { $0.0 < $1.0 }.map(\.1)
-            }
-            modelUpdates = results
-            if let data = try? JSONEncoder().encode(results) { UserDefaults.standard.set(data, forKey: JotDefaultsKey.modelUpdateChecks) }
-            checkingModels = false; modelCheck = nil
-        }
     }
 
     func shutdown() {
