@@ -223,9 +223,11 @@ final class SpeechService: ObservableObject {
     private var pausing: Task<Void, Never>?
     private var unloading: Task<Void, Never>?
     /// A hold while paused: the microphone starts for this hold alone. See `holdBegan`.
-    private var holdCapture: Task<Void, Never>?
+    lazy var pausedHold = PausedHold(startMicrophone: { [unowned self] in try await startHoldCapture() },
+        stopMicrophone: { [unowned self] in stopHoldCapture() }, microphoneOn: { [unowned self] in ambientEnabled },
+        beginDictation: { [unowned self] in dictation.begin() }, report: { [unowned self] in notice = $0.localizedDescription })
     /// The microphone is on for a held dictation only; release stops it and Jot is paused again.
-    private(set) var holdOnlyCapture = false
+    var holdOnlyCapture: Bool { pausedHold.isActive }
     private var sleepResume = SleepResumePolicy()
     var diagnostic: Task<SpeechOutput, Error>?
     private var tickCount = 0
@@ -258,7 +260,7 @@ final class SpeechService: ObservableObject {
             return DictationReadiness.blocker(phase: self.lifecycle.phase, modelsReady: self.modelState == .ready,
                 ambientEnabled: self.ambientEnabled, pauseRequested: self.pauseRequested, dictationPending: self.dictation.isPending,
                 dictationActive: self.dictation.isActive, diagnosticActive: self.diagnosticActive,
-                microphoneStarting: self.preparing || self.holdCapture != nil)
+                microphoneStarting: self.preparing || self.pausedHold.isStarting)
         }
         result.onError = { [weak self] error in
             self?.notice = error.localizedDescription
@@ -709,7 +711,7 @@ final class SpeechService: ObservableObject {
             ambientRequested = false
             UserDefaults.standard.set(true, forKey: JotDefaultsKey.servicePaused)
         }
-        guard !pauseRequested, ambientEnabled || ambientRequested || preparing || holdCapture != nil || capture.running else { return }
+        guard !pauseRequested, ambientEnabled || ambientRequested || preparing || pausedHold.isStarting || capture.running else { return }
         suggestions.dismiss(action: .serviceStopped)
         pauseRequested = true
         markPerformance(.pause)
@@ -722,8 +724,7 @@ final class SpeechService: ObservableObject {
         timeline.endSessionAudio(runPass: automatic && runSpeakerPass)
         let outcome = PauseOutcome(automatic: automatic, ambientRequested: ambientRequested, meetingTitle: meetingTitle)
         ambientRequested = outcome.ambientRequested; meetingTitle = outcome.meetingTitle
-        let holdingTask = holdCapture
-        holdingTask?.cancel(); holdOnlyCapture = false
+        let holdingTask = pausedHold.interrupt()
         // The dictation tap stays on: with the models loaded, a hold while paused runs the microphone for the hold.
         updateSuggestionMonitoring()
         if dictation.isActive { dictation.end() }
@@ -777,31 +778,20 @@ final class SpeechService: ObservableObject {
     func holdBegan() {
         guard !switchingInput, !preparingUpdate else { return }
         if canHoldDictation { dictation.begin(); return }
-        guard microphoneOff, holdCapture == nil else { return }
-        holdOnlyCapture = true
-        holdCapture = Task {
-            defer { holdCapture = nil }
-            do {
-                try await startHoldCapture()
-                guard !Task.isCancelled, holdOnlyCapture, ambientEnabled else { stopHoldCapture(); return }
-                dictation.begin()
-            } catch {
-                holdOnlyCapture = false
-                notice = error.localizedDescription
-            }
-        }
+        guard microphoneOff else { return }
+        pausedHold.begin()
     }
 
     /// The shortcut came up: the hold ends as always, and a hold-only microphone stops.
     func holdEnded(releasedAt released: Double) {
         dictation.end(releasedAt: released)
-        if holdOnlyCapture { stopHoldCapture() }
+        pausedHold.release()
     }
 
     /// A short tap discards the held intent, and a hold-only microphone stops.
     func holdDiscarded() {
         dictation.cancelTap()
-        if holdOnlyCapture { stopHoldCapture() }
+        pausedHold.release()
     }
 
     private func startHoldCapture() async throws {
@@ -822,10 +812,9 @@ final class SpeechService: ObservableObject {
     }
 
     /// Ends a hold-only capture: the microphone stops, the hold's session closes, and Jot is paused again. If listening was
-    /// requested meanwhile, the microphone stays on and the session simply continues.
+    /// requested meanwhile, the microphone stays on and the session simply continues. Called by `pausedHold` after it has
+    /// cleared its own state.
     private func stopHoldCapture() {
-        holdOnlyCapture = false
-        holdCapture?.cancel()
         guard !ambientRequested, ambientEnabled || capture.running else { return }
         capture.stop(); drainAudio()
         timeline.flushAmbient(final: true)
@@ -906,7 +895,7 @@ final class SpeechService: ObservableObject {
         cleanup.shutdown()
         if ambientEnabled { recordEvent(.stopped, "Application quit; capture ended.") }
         inputChange?.cancel(); updateRecovery?.cancel()
-        modelCheck?.cancel(); preparation?.cancel(); transcriber.cancel(); diagnostic?.cancel(); pausing?.cancel(); unloading?.cancel(); holdCapture?.cancel()
+        modelCheck?.cancel(); preparation?.cancel(); transcriber.cancel(); diagnostic?.cancel(); pausing?.cancel(); unloading?.cancel(); pausedHold.cancelStart()
         suggestions.dismiss(action: .serviceStopped)
         timer?.invalidate(); dictation.releaseFieldEffects(); input.disable(); capture.stop(); updateKeepAwakeAssertion(); server?.stop()
         capture.stopWatching()

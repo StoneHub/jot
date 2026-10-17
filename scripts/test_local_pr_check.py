@@ -164,7 +164,8 @@ class PlanTests(unittest.TestCase):
                          {'app-behavior', 'real-model-audio'})
         for path in ('Sources/Jot/Transcriber.swift', 'Sources/JotCore/TranscriptionTuning.swift',
                      'Sources/JotEngine/RecognitionCommitWindow.swift', 'Sources/JotCore/ListeningState.swift',
-                     'scripts/check-recovery-flow.swift', 'scripts/check-capture-flow.swift', 'Package.resolved'):
+                     'scripts/check-recovery-flow.swift', 'scripts/recovery-checks/RecoveryFlowChecks+QuietCPU.swift',
+                     'scripts/check-capture-flow.swift', 'Package.resolved'):
             with self.subTest(path=path):
                 self.assertIn('real-model-audio', check.manual_checks([path]))
 
