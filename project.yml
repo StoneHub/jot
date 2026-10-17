@@ -62,6 +62,7 @@ targets:
     platform: macOS
     sources:
       - scripts/check-recovery-flow.swift
+      - scripts/recovery-checks
       - scripts/check-capture-flow.swift
       - scripts/check-store-responsiveness.swift
       - scripts/check-shortcut-input.swift
