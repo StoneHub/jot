@@ -133,6 +133,7 @@ The installer adds `~/.local/bin/jot`. Jot must be running to use it.
 
 ```sh
 jot status
+jot controls               # Lightweight, text-free state for local control surfaces
 jot pause
 jot resume
 jot start                 # Resume continuous listening

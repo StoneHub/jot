@@ -76,7 +76,7 @@ final class SuggestionCoordinator {
     private(set) var keyboardAllowsSuggestions = false
     private var requests = 0
     private var insertions = 0
-    private var outcome = "idle"
+    private var outcome = "idle" { didSet { ControlEvents.signal() } }
     /// Why the last request showed no suggestion, as a code: never field, screen, prompt or output text.
     private var reason = "none"
     private var lastMode = "none"

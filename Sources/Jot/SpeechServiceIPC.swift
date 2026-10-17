@@ -70,6 +70,14 @@ extension SpeechService {
             let offset = params["offset"] as? Int ?? 0
             var result: Any = [:]
             switch method {
+            case "speech.controls":
+                let suggestion = suggestions.diagnostics
+                let phase: DictationAttempt.State? = dictation.isActive ? .capturing
+                    : dictation.isPending ? .recognizing : dictation.currentAttempt?.state
+                result = try object(ControlSnapshot(mode: mode, meetingActive: meetingTitle != nil,
+                    dictation: phase, dictationSequence: controlSequence,
+                    suggestion: suggestion["outcome"] as? String ?? "idle",
+                    suggestionSequence: suggestion["requests"] as? Int ?? 0, inputLevel: Double(capture.inputLevel) / 100))
             case "speech.status": result = try await status()
             case "activity.report":
                 let days = try ActivityRequest.days(arguments: params)

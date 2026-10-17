@@ -195,7 +195,7 @@ final class SpeechService: ObservableObject {
         }
     }
 
-    @Published var lifecycle = ServiceLifecycle()
+    @Published var lifecycle = ServiceLifecycle() { didSet { ControlEvents.signal() } }
     @Published var dictationRequested = UserDefaults.standard.bool(forKey: JotDefaultsKey.dictationRequested)
     @Published private(set) var shortcut = ShortcutPreferences().load()
     @Published private(set) var suggestionShortcut = SuggestionShortcutPreferences().load()
@@ -241,7 +241,7 @@ final class SpeechService: ObservableObject {
 
     private var shortcutStateReady = false
     func refreshShortcutEligibility() {
-        if shortcutStateReady { input.refreshShortcutState() }
+        if shortcutStateReady { input.refreshShortcutState(); ControlEvents.signal() }
     }
 
     func setShortcutRecording(_ active: Bool) { suggestions.dismiss(action: .settingsChanged); input.isRecordingShortcut = active }
@@ -257,7 +257,7 @@ final class SpeechService: ObservableObject {
     }
 
     @Published var ambientRequested = false
-    @Published private(set) var ambientEnabled = false
+    @Published private(set) var ambientEnabled = false { didSet { ControlEvents.signal() } }
     /// Where listening stands, read from the lifecycle, the microphone and a held dictation. `jot status` reports its mode and model state.
     var listeningState: ListeningState {
         ListeningState(phase: lifecycle.phase, generation: lifecycle.generation, microphoneOn: ambientEnabled, dictationActive: dictation.isActive)
@@ -275,7 +275,7 @@ final class SpeechService: ObservableObject {
     /// Set when a resume would download models that are not cached yet. The view asks before any download starts.
     @Published var downloadPrompt: Int64?
     /// Title of the meeting being recorded; nil when ambient is off or was started without a name.
-    @Published private(set) var meetingTitle: String?
+    @Published private(set) var meetingTitle: String? { didSet { ControlEvents.signal() } }
     @Published private(set) var vocabulary = PersonalVocabulary()
     @Published private(set) var vocabularyLoadError: String?
     private let vocabularyPreferences = VocabularyPreferences()
@@ -320,9 +320,12 @@ final class SpeechService: ObservableObject {
     }
 
     func markPerformance(_ kind: PerformanceEventKind) {
+        if kind == .dictationStarted { controlSequence &+= 1 }
         samplePerformance()
         diagnostics.mark(kind, at: ProcessInfo.processInfo.systemUptime - diagnosticsBegan)
     }
+
+    private(set) var controlSequence: UInt64 = 0
 
     /// Records a finished job, stamped with the time it finished.
     func recordPerformance(_ job: PerformanceJob) {

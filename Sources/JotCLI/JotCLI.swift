@@ -84,7 +84,7 @@ struct JotCLI {
                 throw CLIError.usage("Use: jot activity [--days 7|30]")
             }
             return ("activity.report", ["days": days])
-        case "status", "start", "pause", "resume", "diagnostics":
+        case "status", "controls", "start", "pause", "resume", "diagnostics":
             guard args.count == 1 else { throw CLIError.usage("Unexpected arguments for \(first)") }
             return ("speech." + first, [:])
         case "clear-history":
