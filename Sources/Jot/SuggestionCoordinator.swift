@@ -301,60 +301,8 @@ final class SuggestionCoordinator {
                 // the same grounding requirement as a request that never had an image.
                 if image != nil && self.windowImage != SuggestionHistoryEntry.WindowImageOutcome.attached.rawValue && selected.isEmpty,
                    self.refuseMissingContext(for: mode) { return }
-                switch result {
-                case .output(let raw):
-                    switch SuggestionOutput.process(raw, mode: mode, singleLine: field.role != kAXTextAreaRole) {
-                    case .suggestion(let output):
-                        let text = mode == .continuation ? SuggestionOutput.continuation(output, before: before) : output
-                        let review = text.isEmpty ? .unchanged : SuggestionOutput.review(text, draft: field.draft, seed: self.seed?.text,
-                                                                                         placeholder: field.placeholder, context: excerpt)
-                        switch review {
-                        case .accept: break
-                        case .unchanged:
-                            self.showNotice(mode == .continuation ? "No suggestion: the result only repeated your text."
-                                                                  : "Your selection already reads well. No changes suggested.", reason: "unchanged")
-                            return
-                        case .restatesHint:
-                            self.showNotice(field.draft.isBlank ? Self.needsNotes : "No suggestion: the result only repeated the field's hint.",
-                                            reason: "restates-hint")
-                            return
-                        case .copiesContext:
-                            self.showNotice("No suggestion: the result only repeated text on screen.", reason: "copies-context"); return
-                        }
-                        self.candidate = text; self.outcome = "ready"
-                        self.updateReceipt {
-                            $0.outcome = .ready
-                            $0.previewMilliseconds = min(60_000, max(0, Int(Date().timeIntervalSince($0.startedAt) * 1_000)))
-                        }
-                        self.input.showSuggestionKeys(.ready)
-                        guard let frame = self.input.targetFrame(timeout: 0.005) else { self.dismiss(action: .focusChanged); return }
-                        let title: String, action: String
-                        if let seed = self.seed {
-                            title = seed.isSelection ? "Rewrite of your selection" : "Draft from your notes"
-                            action = seed.isSelection ? "Tab to replace the selection" : "Tab to replace your notes"
-                        } else if mode == .continuation {
-                            title = "Suggested continuation"; action = "Tab to insert at the cursor"
-                        } else { title = "Suggested reply"; action = "Tab to insert" }
-                        self.card.show(text: text.trimmingCharacters(in: .whitespaces), title: title,
-                                       sources: SuggestionAttribution.line(plan: plan, selected: selected,
-                                                                           sessionTitle: context?.sessionTitle,
-                                                                           windowImage: self.windowImage == SuggestionHistoryEntry.WindowImageOutcome.attached.rawValue),
-                                       action: action, ready: true, at: frame)
-                    case .abstained(let detail), .rejected(let detail):
-                        let text: String
-                        switch mode {
-                        case .draft: text = "No suggestion for this selection."
-                        case .continuation: text = "No suggestion: nothing to add from your text and this context."
-                        case .reply: text = "No suggestion from this context."
-                        }
-                        self.showNotice(text, reason: detail)
-                    }
-                case .unavailable: self.showNotice("No suggestion: Apple Intelligence is unavailable.", reason: "model-unavailable")
-                case .timedOut: self.showNotice("No suggestion: the model took too long.", reason: "timed-out")
-                case .blocked: self.showNotice("No suggestion: the previous request is still ending.", reason: "blocked")
-                case .failed: self.showNotice("No suggestion: the model could not complete the request.", reason: "model-failed")
-                case .cancelled: self.dismiss(action: .serviceStopped)
-                }
+                self.present(result, mode: mode, plan: plan, field: field, before: before, excerpt: excerpt,
+                             selected: selected, sessionTitle: context?.sessionTitle)
             } catch {
                 guard token == self.generation else { return }
                 self.showNotice("No suggestion: local context could not be read.", reason: "context-unreadable")
@@ -362,6 +310,63 @@ final class SuggestionCoordinator {
         }
     }
 
+    /// Shows a model result: the card when the output survives review, otherwise the notice that says why not.
+    private func present(_ result: ModelCallResult, mode: SuggestionMode, plan: SuggestionPlan, field: DictationInput.SuggestionField,
+                         before: String, excerpt: String?, selected: [SuggestionSource], sessionTitle: String?) {
+        switch result {
+        case .output(let raw):
+            switch SuggestionOutput.process(raw, mode: mode, singleLine: field.role != kAXTextAreaRole) {
+            case .suggestion(let output):
+                let text = mode == .continuation ? SuggestionOutput.continuation(output, before: before) : output
+                let review = text.isEmpty ? .unchanged : SuggestionOutput.review(text, draft: field.draft, seed: seed?.text,
+                                                                                 placeholder: field.placeholder, context: excerpt)
+                switch review {
+                case .accept: break
+                case .unchanged:
+                    showNotice(mode == .continuation ? "No suggestion: the result only repeated your text."
+                                                     : "Your selection already reads well. No changes suggested.", reason: "unchanged")
+                    return
+                case .restatesHint:
+                    showNotice(field.draft.isBlank ? Self.needsNotes : "No suggestion: the result only repeated the field's hint.",
+                               reason: "restates-hint")
+                    return
+                case .copiesContext:
+                    showNotice("No suggestion: the result only repeated text on screen.", reason: "copies-context"); return
+                }
+                candidate = text; outcome = "ready"
+                updateReceipt {
+                    $0.outcome = .ready
+                    $0.previewMilliseconds = min(60_000, max(0, Int(Date().timeIntervalSince($0.startedAt) * 1_000)))
+                }
+                input.showSuggestionKeys(.ready)
+                guard let frame = input.targetFrame(timeout: 0.005) else { dismiss(action: .focusChanged); return }
+                let title: String, action: String
+                if let seed {
+                    title = seed.isSelection ? "Rewrite of your selection" : "Draft from your notes"
+                    action = seed.isSelection ? "Tab to replace the selection" : "Tab to replace your notes"
+                } else if mode == .continuation {
+                    title = "Suggested continuation"; action = "Tab to insert at the cursor"
+                } else { title = "Suggested reply"; action = "Tab to insert" }
+                card.show(text: text.trimmingCharacters(in: .whitespaces), title: title,
+                          sources: SuggestionAttribution.line(plan: plan, selected: selected, sessionTitle: sessionTitle,
+                                                              windowImage: windowImage == SuggestionHistoryEntry.WindowImageOutcome.attached.rawValue),
+                          action: action, ready: true, at: frame)
+            case .abstained(let detail), .rejected(let detail):
+                let text: String
+                switch mode {
+                case .draft: text = "No suggestion for this selection."
+                case .continuation: text = "No suggestion: nothing to add from your text and this context."
+                case .reply: text = "No suggestion from this context."
+                }
+                showNotice(text, reason: detail)
+            }
+        case .unavailable: showNotice("No suggestion: Apple Intelligence is unavailable.", reason: "model-unavailable")
+        case .timedOut: showNotice("No suggestion: the model took too long.", reason: "timed-out")
+        case .blocked: showNotice("No suggestion: the previous request is still ending.", reason: "blocked")
+        case .failed: showNotice("No suggestion: the model could not complete the request.", reason: "model-failed")
+        case .cancelled: dismiss(action: .serviceStopped)
+        }
+    }
 
     /// A selection rewrite is grounded in its seed. Replies and continuations need external context even when an
     /// optional image was captured but the model rejected it before generation.
