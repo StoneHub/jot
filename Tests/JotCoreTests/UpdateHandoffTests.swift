@@ -50,7 +50,7 @@ final class UpdateHandoffTests: XCTestCase {
         handoff.commit(meetingTitle: "Standup")
         let probe = Probe()
         let pausing = Task { @MainActor in await Task.yield(); probe.drained = true }
-        handoff.cancel(after: pausing, stillWanted: { true }, resume: { probe.resumedAfterDrain = probe.drained })
+        handoff.cancel(after: { pausing }, stillWanted: { true }, resume: { probe.resumedAfterDrain = probe.drained })
         XCTAssertNil(defaults.string(forKey: JotDefaultsKey.updateMeetingTitle), "A failed update hands nothing to a relaunch")
         await handoff.waitForRecovery()
         XCTAssertEqual(probe.resumedAfterDrain, true)
@@ -61,7 +61,7 @@ final class UpdateHandoffTests: XCTestCase {
         let handoff = UpdateHandoff(defaults: defaults)
         handoff.begin(listening: false)
         let probe = Probe()
-        handoff.cancel(after: nil, stillWanted: { true }, resume: { probe.resumed = true })
+        handoff.cancel(after: { nil }, stillWanted: { true }, resume: { probe.resumed = true })
         await handoff.waitForRecovery()
         XCTAssertFalse(probe.resumed)
     }
@@ -71,7 +71,7 @@ final class UpdateHandoffTests: XCTestCase {
         let handoff = UpdateHandoff(defaults: defaults)
         handoff.begin(listening: true)
         let probe = Probe()
-        handoff.cancel(after: nil, stillWanted: { false }, resume: { probe.resumed = true })
+        handoff.cancel(after: { nil }, stillWanted: { false }, resume: { probe.resumed = true })
         await handoff.waitForRecovery()
         XCTAssertFalse(probe.resumed)
     }
@@ -82,7 +82,7 @@ final class UpdateHandoffTests: XCTestCase {
         handoff.begin(listening: true)
         let probe = Probe()
         let pausing = Task { @MainActor in await Task.yield() }
-        handoff.cancel(after: pausing, stillWanted: { true }, resume: { probe.resumed = true })
+        handoff.cancel(after: { pausing }, stillWanted: { true }, resume: { probe.resumed = true })
         handoff.cancelRecovery()
         await pausing.value
         await Task.yield()

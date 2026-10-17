@@ -74,7 +74,7 @@ final class SpeechService: ObservableObject {
     @Published private(set) var preparingUpdate = false { didSet { refreshShortcutEligibility() } }
     private var inputChange: Task<Void, Never>?
     /// Whether listening was on when an update began: the relaunch, or a failed update, resumes it.
-    private let updateHandoff = UpdateHandoff()
+    private lazy var updateHandoff = UpdateHandoff()
 
     /// The one store. Nothing in SpeechService copies a value out of it; the setting properties in
     /// SpeechService+Settings.swift read it, and each setter writes it and then calls `settingChanged`, which applies the side
@@ -561,7 +561,8 @@ final class SpeechService: ObservableObject {
     func cancelUpdatePreparation() {
         guard preparingUpdate else { return }
         preparingUpdate = false
-        updateHandoff.cancel(after: pausing, stillWanted: { [weak self] in self?.ambientRequested ?? false },
+        updateHandoff.cancel(after: { [weak self] in self?.pausing },
+                             stillWanted: { [weak self] in self?.ambientRequested ?? false },
                              resume: { [weak self] in self?.prepare() })
     }
 

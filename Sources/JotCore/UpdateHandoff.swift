@@ -10,7 +10,7 @@ public final class UpdateHandoff {
     public private(set) var resumesListening = false
     private var recovery: Task<Void, Never>?
 
-    nonisolated public init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+    public init(defaults: UserDefaults = .standard) { self.defaults = defaults }
 
     public func begin(listening: Bool) { resumesListening = listening }
 
@@ -23,16 +23,16 @@ public final class UpdateHandoff {
         } else { defaults.removeObject(forKey: JotDefaultsKey.updateMeetingTitle) }
     }
 
-    /// The update failed, so the running app stays in charge. Listening it interrupted resumes once `pausing` has
-    /// settled, since a timeout can occur while Pause still drains, unless `stillWanted` is false by then or
-    /// `cancelRecovery` ran.
-    public func cancel(after pausing: Task<Void, Never>?, stillWanted: @escaping @MainActor () -> Bool,
-                       resume: @escaping @MainActor () -> Void) {
+    /// The update failed, so the running app stays in charge. Listening it interrupted resumes once the Pause that
+    /// `pausing` returns has settled, since a timeout can occur while Pause still drains, unless `stillWanted` is false by
+    /// then or `cancelRecovery` ran. `pausing` is read when the resume starts, not when the update is cancelled.
+    public func cancel(after pausing: @escaping @MainActor () -> Task<Void, Never>?,
+                       stillWanted: @escaping @MainActor () -> Bool, resume: @escaping @MainActor () -> Void) {
         defaults.removeObject(forKey: JotDefaultsKey.updateMeetingTitle)
         guard resumesListening else { return }
         recovery?.cancel()
         recovery = Task { [weak self] in
-            if let pausing { await pausing.value }
+            if let pausing = pausing() { await pausing.value }
             guard !Task.isCancelled, stillWanted() else { return }
             resume()
             self?.recovery = nil
