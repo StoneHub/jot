@@ -88,7 +88,7 @@ public final class TranscriptStore: @unchecked Sendable {
               transcript.startSeconds >= 0, transcript.endSeconds >= transcript.startSeconds,
               ["ambient", "dictation"].contains(transcript.mode),
               transcript.text.utf8.count <= 1_000_000 else { throw StoreError.invalid("Invalid transcript fields") }
-        try db.locked { try insert(transcript) }
+        try db.locked { try TranscriptRows.insert(db, [transcript]) }
     }
 
     /// Saves delivery state and recognized text for force-quit recovery. Raw audio is
@@ -126,155 +126,21 @@ public final class TranscriptStore: @unchecked Sendable {
         try DictationRecoveryRows.recoveryText(db, from: lowerBound, through: upperBound)
     }
 
-    private func insert(_ transcript: Transcript) throws {
-        try insert([transcript])
-    }
-
-    /// Caller holds the lock; one statement serves every row.
-    private func insert(_ transcripts: [Transcript]) throws {
-        let stmt = try db.prepare("INSERT INTO transcripts(id,session_id,started_at,start_seconds,end_seconds,text,speaker_id,mode) VALUES(?,?,?,?,?,?,?,?)")
-        defer { sqlite3_finalize(stmt) }
-        for transcript in transcripts {
-            sqlite3_reset(stmt)
-            db.bind(transcript.id, to: 1, in: stmt)
-            db.bind(transcript.sessionID, to: 2, in: stmt)
-            sqlite3_bind_double(stmt, 3, transcript.startedAt.timeIntervalSince1970)
-            sqlite3_bind_double(stmt, 4, transcript.startSeconds)
-            sqlite3_bind_double(stmt, 5, transcript.endSeconds)
-            db.bind(transcript.text, to: 6, in: stmt)
-            db.bind(transcript.speakerID, to: 7, in: stmt)
-            db.bind(transcript.mode, to: 8, in: stmt)
-            try db.finish(stmt)
-        }
-    }
-
     /// Relabels one finished session's ambient rows from one speaker per stored word. A row whose words keep one speaker keeps its id and cleaned text and takes that speaker; a row whose speaker changes inside it is replaced by one row per speaker, each with its words and its share of the cleaned text. Speaker names, the title, and events stay. `speakers` runs without the lock. The plan is written in batches, releasing the lock between them so a reader never waits long: a reader can see a partly relabeled session, but every row is consistent. False when the session has no stored words: it was deleted, or recorded before words were kept.
     @discardableResult
     public func relabelSession(_ id: String, speakers: ([StoredWord]) -> [String?]) throws -> Bool {
-        let words = try words(sessionID: id)
-        if words.isEmpty { return false }
-        let readable = try readableTexts(sessionID: id)
-        let plan = try RowRelabel(words: words, speakers: speakers(words), readable: readable)
-        try inBatches(plan.kept) { try relabel($0, sessionID: id) }
-        try inBatches(plan.splits) { try split($0, sessionID: id) }
-        return true
-    }
-
-    /// How long a relabel batch may hold the lock before it commits.
-    private static let relabelBatchWork = Duration.milliseconds(5)
-
-    /// Writes a relabel plan a batch at a time. Each batch is one transaction that commits once about 5 ms of work is done. NSLock is not fair: a batch that takes the lock straight after the one before can keep a waiting reader, such as the main thread, out for several batches, so a millisecond's pause between batches lets it in.
-    private func inBatches<Row>(_ rows: [Row], write: (Row) throws -> Void) throws {
-        var next = 0
-        while next < rows.count {
-            try db.locked {
-                try db.transaction {
-                    let began = ContinuousClock.now
-                    repeat {
-                        try write(rows[next])
-                        next += 1
-                    } while next < rows.count && began.duration(to: .now) < Self.relabelBatchWork
-                }
-            }
-            Thread.sleep(forTimeInterval: 0.001)
-        }
+        try SessionRelabel.run(db, sessionID: id, speakers: speakers)
     }
 
     /// Cleaned text by row id, for one session's rows that have it.
     public func readableTexts(sessionID: String) throws -> [String: String] {
-        try db.locked {
-            let stmt = try db.prepare("SELECT r.transcript_id,r.text FROM transcript_readable r JOIN transcripts t ON t.id = r.transcript_id WHERE t.session_id = ?")
-            defer { sqlite3_finalize(stmt) }
-            db.bind(sessionID, to: 1, in: stmt)
-            var result: [String: String] = [:]
-            while true {
-                let status = sqlite3_step(stmt)
-                if status == SQLITE_DONE { break }
-                guard status == SQLITE_ROW else { throw db.error() }
-                result[db.column(stmt, 0)!] = db.column(stmt, 1) ?? ""
-            }
-            return result
-        }
-    }
-
-    /// A kept row takes its new speaker. A row that is gone, deleted with its session, changes nothing. Caller holds the lock and the transaction.
-    private func relabel(_ row: (rowID: String, speaker: String?), sessionID: String) throws {
-        let update = try db.prepare("UPDATE transcripts SET speaker_id=? WHERE id=? AND session_id=? AND mode='ambient'")
-        defer { sqlite3_finalize(update) }
-        db.bind(row.speaker, to: 1, in: update)
-        db.bind(row.rowID, to: 2, in: update)
-        db.bind(sessionID, to: 3, in: update)
-        try db.finish(update)
-    }
-
-    /// A split row is deleted, which takes its words and cleaned text with it, and its pieces are inserted in its place. A row that is gone, deleted with its session, gets no pieces. Caller holds the lock and the transaction.
-    private func split(_ split: RowRelabel.Split, sessionID: String) throws {
-        let delete = try db.prepare("DELETE FROM transcripts WHERE id=? AND session_id=? AND mode='ambient' RETURNING started_at")
-        defer { sqlite3_finalize(delete) }
-        db.bind(split.rowID, to: 1, in: delete)
-        db.bind(sessionID, to: 2, in: delete)
-        let status = sqlite3_step(delete)
-        if status == SQLITE_DONE { return }
-        guard status == SQLITE_ROW else { throw db.error() }
-        let startedAt = Date(timeIntervalSince1970: sqlite3_column_double(delete, 0))
-        // A statement left mid-row would keep the transaction from committing.
-        sqlite3_reset(delete)
-        var rows: [Transcript] = []
-        var words: [StoredWord] = []
-        var readable: [(transcriptID: String, text: String)] = []
-        for piece in split.pieces {
-            let row = Transcript(sessionID: sessionID, startedAt: startedAt, startSeconds: piece.start, endSeconds: piece.end, text: piece.text, speakerID: piece.speaker, mode: "ambient")
-            var pieceWords = piece.words
-            for index in pieceWords.indices {
-                pieceWords[index].transcriptID = row.id
-            }
-            try StoredWordRows.validate(pieceWords)
-            rows.append(row)
-            words.append(contentsOf: pieceWords)
-            if let text = piece.readable { readable.append((transcriptID: row.id, text: text)) }
-        }
-        try insert(rows)
-        try StoredWordRows.insert(db, words)
-        try insertReadable(readable)
-    }
-
-    /// Caller holds the lock and the transaction.
-    private func insertReadable(_ texts: [(transcriptID: String, text: String)]) throws {
-        let stmt = try db.prepare("INSERT INTO transcript_readable(transcript_id,text) VALUES(?,?)")
-        defer { sqlite3_finalize(stmt) }
-        for readable in texts {
-            sqlite3_reset(stmt)
-            db.bind(readable.transcriptID, to: 1, in: stmt)
-            db.bind(readable.text, to: 2, in: stmt)
-            try db.finish(stmt)
-        }
+        try ReadableTextRows.texts(db, sessionID: sessionID)
     }
 
     /// A phrase may remove all the filler from one constituent row. Apply the
     /// complete edit atomically, only if every original row still exists unchanged.
     @discardableResult public func setReadablePhrase(_ texts: [String], for sources: [Transcript]) throws -> Bool {
-        guard texts.count == sources.count, !sources.isEmpty,
-              texts.reduce(0, { $0 + $1.utf8.count }) <= 1_000_000 else {
-            throw StoreError.invalid("Invalid readable phrase")
-        }
-        return try db.locked {
-            try db.transaction { () -> Bool in
-                for source in sources {
-                    let check = try db.prepare("SELECT 1 FROM transcripts WHERE id=? AND text=?")
-                    db.bind(source.id, to: 1, in: check); db.bind(source.text, to: 2, in: check)
-                    let exists = sqlite3_step(check) == SQLITE_ROW
-                    sqlite3_finalize(check)
-                    if !exists { return false }
-                }
-                for (source, text) in zip(sources, texts) {
-                    let stmt = try db.prepare("INSERT OR REPLACE INTO transcript_readable(transcript_id,text) VALUES(?,?)")
-                    db.bind(source.id, to: 1, in: stmt); db.bind(text, to: 2, in: stmt)
-                    defer { sqlite3_finalize(stmt) }
-                    try db.finish(stmt)
-                }
-                return true
-            }
-        }
+        try ReadableTextRows.setPhrase(db, texts, for: sources)
     }
 
     /// The words one inference block produced, in one transaction. Each word must belong to a saved transcript; positions and start times must ascend within a transcript.
