@@ -73,8 +73,8 @@ final class SpeechService: ObservableObject {
     @Published private(set) var switchingInput = false { didSet { refreshShortcutEligibility() } }
     @Published private(set) var preparingUpdate = false { didSet { refreshShortcutEligibility() } }
     private var inputChange: Task<Void, Never>?
-    private var resumeAfterUpdate = false
-    private var updateRecovery: Task<Void, Never>?
+    /// Whether listening was on when an update began: the relaunch, or a failed update, resumes it.
+    private lazy var updateHandoff = UpdateHandoff()
 
     /// The one store. Nothing in SpeechService copies a value out of it; the setting properties in
     /// SpeechService+Settings.swift read it, and each setter writes it and then calls `settingChanged`, which applies the side
@@ -309,8 +309,7 @@ final class SpeechService: ObservableObject {
             await speakers.pruneTuningAudio()
             if let data = UserDefaults.standard.data(forKey: JotDefaultsKey.modelUpdateChecks),
                let saved = try? JSONDecoder().decode([ModelUpdate].self, from: data) { modelUpdates = saved }
-            meetingTitle = UserDefaults.standard.string(forKey: JotDefaultsKey.updateMeetingTitle)
-            UserDefaults.standard.removeObject(forKey: JotDefaultsKey.updateMeetingTitle)
+            meetingTitle = updateHandoff.takeMeetingTitle()
             if UserDefaults.standard.bool(forKey: JotDefaultsKey.modelsPrepared) {
                 // The models load at launch either way, so Resume is immediate; a launch left paused only leaves the microphone off.
                 prepare(listen: !UserDefaults.standard.bool(forKey: JotDefaultsKey.servicePaused))
@@ -545,7 +544,7 @@ final class SpeechService: ObservableObject {
     func prepareForUpdate() async throws {
         guard !preparingUpdate else { throw JotError.message("An update is already finishing.") }
         preparingUpdate = true
-        resumeAfterUpdate = ambientRequested
+        updateHandoff.begin(listening: ambientRequested)
         sleepResume.cancel()
         pause(automatic: true, runSpeakerPass: timeline.lastAmbientRowAt != nil)
         let deadline = ContinuousClock.now + .seconds(60)
@@ -556,27 +555,15 @@ final class SpeechService: ObservableObject {
             }
             try await Task.sleep(for: .milliseconds(50))
         }
-        // The next app launch resumes only the listening the update interrupted, including its meeting title.
-        UserDefaults.standard.set(!resumeAfterUpdate, forKey: JotDefaultsKey.servicePaused)
-        if resumeAfterUpdate, let meetingTitle {
-            UserDefaults.standard.set(meetingTitle, forKey: JotDefaultsKey.updateMeetingTitle)
-        } else { UserDefaults.standard.removeObject(forKey: JotDefaultsKey.updateMeetingTitle) }
+        updateHandoff.commit(meetingTitle: meetingTitle)
     }
 
     func cancelUpdatePreparation() {
         guard preparingUpdate else { return }
         preparingUpdate = false
-        UserDefaults.standard.removeObject(forKey: JotDefaultsKey.updateMeetingTitle)
-        if resumeAfterUpdate {
-            // A timeout can occur while Pause still drains: resume only after that work has settled.
-            updateRecovery?.cancel()
-            updateRecovery = Task {
-                if let pausing { await pausing.value }
-                guard !Task.isCancelled, ambientRequested else { return }
-                prepare()
-                updateRecovery = nil
-            }
-        }
+        updateHandoff.cancel(after: { [weak self] in self?.pausing },
+                             stillWanted: { [weak self] in self?.ambientRequested ?? false },
+                             resume: { [weak self] in self?.prepare() })
     }
 
     /// Models loaded, microphone on, no pause under way.
@@ -614,7 +601,7 @@ final class SpeechService: ObservableObject {
     /// meeting for Resume. Nothing to do when the microphone is already off and no start is under way.
     func pause(automatic: Bool = false, runSpeakerPass: Bool = true) {
         if !automatic {
-            updateRecovery?.cancel(); updateRecovery = nil
+            updateHandoff.cancelRecovery()
             sleepResume.cancel()
             capture.resetInputSearch()
             // A Pause clicked during a device change also cancels its automatic resume.
@@ -804,7 +791,7 @@ final class SpeechService: ObservableObject {
     func shutdown() {
         cleanup.shutdown()
         if ambientEnabled { recordEvent(.stopped, "Application quit; capture ended.") }
-        inputChange?.cancel(); updateRecovery?.cancel()
+        inputChange?.cancel(); updateHandoff.cancelRecovery()
         modelCheck?.cancel(); preparation?.cancel(); transcriber.cancel(); diagnostic?.cancel(); pausing?.cancel(); unloading?.cancel(); pausedHold.cancelStart()
         suggestions.dismiss(action: .serviceStopped)
         timer?.invalidate(); dictation.releaseFieldEffects(); input.disable(); capture.stop(); updateKeepAwakeAssertion(); server?.stop()
