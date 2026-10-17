@@ -54,6 +54,7 @@
 		14DB46313AE88EC56854704C /* GlassStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6E751674ACDF9A0C12697CF /* GlassStyles.swift */; };
 		15599DFC8B30C545A845C27B /* SpeechService+Meetings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8980FD3AED2B4B58C327993 /* SpeechService+Meetings.swift */; };
 		16B7B41BE928CF26A60ED58E /* StoreOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C10746E3543EA3E7BF9DEE1 /* StoreOperation.swift */; };
+		1832F2E4C18096DB7AB774EC /* PausedHold.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD3344902EA14B24CCA3D480 /* PausedHold.swift */; };
 		1916303AD706B15000CF6DDA /* VocabularyPatternCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = F13ACF0544750F59352B8382 /* VocabularyPatternCache.swift */; };
 		198E02BBBD30CFE30DEA92BC /* JotCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D2E098CDE7120087F5C947F0 /* JotCore.framework */; };
 		1A3F21D72BEB8DD938A32954 /* TranscriptListenConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 376C255B9F520C8BBE2CD76A /* TranscriptListenConfiguration.swift */; };
@@ -169,6 +170,7 @@
 		6BA6413CE7DFADBFB1A430E2 /* LabCaptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A76CECA9856AE044B230CBD8 /* LabCaptions.swift */; };
 		6C90A1DD9BB31EBC7165639F /* PhraseCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82F2EA91CC53C86941193E3C /* PhraseCleanup.swift */; };
 		6CA28F1C6538D728C88972BA /* SpeakerRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8680759A7B6F51ABC6336028 /* SpeakerRecognizer.swift */; };
+		6DF9C2A3645FF2B7A129F69E /* PausedHold.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD3344902EA14B24CCA3D480 /* PausedHold.swift */; };
 		6F59DFF89DE7ACA8B84268B1 /* TranscriptChange.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6B2DDDBD81F039F2F6295A6 /* TranscriptChange.swift */; };
 		6F6AFCF5F313C08DE94D202C /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = CF8E8E7D8E656AB679CA76DA /* LICENSE */; };
 		7074D9781110AF2C6C1ACAFA /* ShortcutTargetAcquisition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05E5774F2EA53B72E09C9D2A /* ShortcutTargetAcquisition.swift */; };
@@ -296,6 +298,7 @@
 		BB62B9AEF02E2A87C1A773DB /* PeopleStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91F8074E00354A4D7035E920 /* PeopleStore.swift */; };
 		BB64AED560E2CD1F4B4FF675 /* MicrophoneStartRetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96C0189208CFC78FDDDA5D0F /* MicrophoneStartRetry.swift */; };
 		BDA71562E47943EDEB6EAEA1 /* AccessibilityElement.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9048C6E04C51F3FEC4A83FD /* AccessibilityElement.swift */; };
+		BDF95630283829B393E6431F /* PausedHold.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD3344902EA14B24CCA3D480 /* PausedHold.swift */; };
 		BE231E62D1A7EF570EFA8F40 /* PerformanceEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = E140FD55F4DBB4651999774E /* PerformanceEvent.swift */; };
 		BE8F79826254F5A142D584DE /* SpeechService+Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D0A8B91F18F4F1888258C1E /* SpeechService+Settings.swift */; };
 		BF8F2F375F54EC6CA71E6060 /* SuggestionFieldReadback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73D98812F8A03430DA0CB687 /* SuggestionFieldReadback.swift */; };
@@ -385,6 +388,7 @@
 		F7456F49B924FB6A41134542 /* ListenError.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFD467C265C09E4FC29B530A /* ListenError.swift */; };
 		F7D748AD1AC16DAF351D647B /* DictationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A6943067E4E73D56E69890D /* DictationCoordinator.swift */; };
 		F8582FACF33F73EA96F027A9 /* SelectableHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF4F7EA10A696D822E25FABC /* SelectableHistory.swift */; };
+		F8C2CEF959B3826BF38F9D72 /* PausedHold.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD3344902EA14B24CCA3D480 /* PausedHold.swift */; };
 		F999859D3C6A44874171104D /* LocalServiceError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C74FC1946E109F1AEAE2BDF /* LocalServiceError.swift */; };
 		F9B45D563A336B331ADE47AF /* CaptureChunkScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A5727CE2CEA9481D349D44 /* CaptureChunkScheduler.swift */; };
 		FA0B7FE48BCB33F0F6E82329 /* SessionLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A601577DB723625149B12CA /* SessionLibrary.swift */; };
@@ -689,6 +693,7 @@
 		BB1315CC0A485DBF08945A01 /* SuggestionFnGesture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionFnGesture.swift; sourceTree = "<group>"; };
 		BC8001AB9925D19877F40FB4 /* ShortcutEventTap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutEventTap.swift; sourceTree = "<group>"; };
 		BD326956C3E7FB03D26E6E5E /* PeopleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleView.swift; sourceTree = "<group>"; };
+		BD3344902EA14B24CCA3D480 /* PausedHold.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PausedHold.swift; sourceTree = "<group>"; };
 		BE17BC338395A203C66985A4 /* SpeakerPass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerPass.swift; sourceTree = "<group>"; };
 		BE1CC811540F74F27A08E5AF /* DictationHighlight.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationHighlight.swift; sourceTree = "<group>"; };
 		BEBB9F39C67736FBDFC6BE7D /* PreparedSpeakerModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreparedSpeakerModels.swift; sourceTree = "<group>"; };
@@ -864,6 +869,7 @@
 				64DFC6286492A052B21DE7FA /* LiveTranscriptText.swift */,
 				5A608DB6E5CA06D36C6CE0E6 /* LiveView.swift */,
 				FF1B77AE53082548A951DF56 /* MicrophoneCapture.swift */,
+				BD3344902EA14B24CCA3D480 /* PausedHold.swift */,
 				BD326956C3E7FB03D26E6E5E /* PeopleView.swift */,
 				F361B31FF1DB535C01A02DD5 /* ResourceSampler.swift */,
 				67DE2BA9CA9A17E8598D5CEA /* ResourceSnapshot.swift */,
@@ -1455,6 +1461,7 @@
 				76F97CF4DF9E0347AD45D880 /* LiveTranscriptText.swift in Sources */,
 				0643D545CF0AC17B78F5D0BA /* LiveView.swift in Sources */,
 				3DEE5E37A8CB60A338F2A646 /* MicrophoneCapture.swift in Sources */,
+				6DF9C2A3645FF2B7A129F69E /* PausedHold.swift in Sources */,
 				C5A65B901A55E853DD64E9C7 /* PeopleView.swift in Sources */,
 				E91B6A16A44BEF7E75FC1EB0 /* ResourceSampler.swift in Sources */,
 				11ED1CFFFF13D434EE6CB9DC /* ResourceSnapshot.swift in Sources */,
@@ -1677,6 +1684,7 @@
 				4DCCB68BCD5C1B129D76B812 /* LiveCleanup.swift in Sources */,
 				36E18E62132F85E8744154EE /* MemoryDefaults.swift in Sources */,
 				FD2FAF01AFD3557B3623E908 /* MicrophoneCapture.swift in Sources */,
+				BDF95630283829B393E6431F /* PausedHold.swift in Sources */,
 				54344AED2BB3F3695BAE233B /* ResourceSampler.swift in Sources */,
 				7573B821C2C28DB73DB9CCFC /* ResourceSnapshot.swift in Sources */,
 				598C4D99C17BE21EC5DED6DE /* ScreenContextReader.swift in Sources */,
@@ -1740,6 +1748,7 @@
 				233C3FA2FE2D442D04E59D97 /* ListeningTimeline.swift in Sources */,
 				70B759A83A6271994115137A /* LiveCleanup.swift in Sources */,
 				B7C00EECBE6C6878B253E962 /* MicrophoneCapture.swift in Sources */,
+				1832F2E4C18096DB7AB774EC /* PausedHold.swift in Sources */,
 				426A1F4CE87D2CE6B756B721 /* ResourceSampler.swift in Sources */,
 				0F018AA5309D683527C78FCC /* ResourceSnapshot.swift in Sources */,
 				FD45AAFCC1052690D165CDD5 /* ScreenContextReader.swift in Sources */,
@@ -1796,6 +1805,7 @@
 				803F22CD6EDD06748F0BD46D /* LiveTranscriptText.swift in Sources */,
 				F05134FCBE92D742B51E5BBA /* LiveView.swift in Sources */,
 				76BAEBA5FA6DE4D2C280A463 /* MicrophoneCapture.swift in Sources */,
+				F8C2CEF959B3826BF38F9D72 /* PausedHold.swift in Sources */,
 				C08E47646BE2FFC7640AE555 /* PeopleView.swift in Sources */,
 				EC9E08D9C244B9835859E80C /* ResourceSampler.swift in Sources */,
 				69ADE2F563B57CDCC48BBB4C /* ResourceSnapshot.swift in Sources */,
