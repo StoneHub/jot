@@ -28,7 +28,8 @@ SWIFT_TRIGGERS = ('Sources/JotCore/', 'Sources/JotEngine/', 'Sources/JotCLI/',
 APP_TRIGGERS = ('Sources/', 'Resources/', 'project.yml', 'Jot.xcodeproj/', 'Package.swift', 'Package.resolved',
                 'LICENSE', 'scripts/build-install.py', 'scripts/signing.py', 'scripts/check-no-feedback.py')
 RECOVERY_TRIGGERS = ('Sources/JotCore/', 'Sources/JotEngine/', 'scripts/check-recovery-flow.swift',
-                     'scripts/recovery-checks/', 'scripts/check-capture-flow.swift', 'project.yml',
+                     'scripts/recovery-checks/', 'scripts/check-capture-flow.swift',
+                     'scripts/check-store-responsiveness.swift', 'scripts/check-shortcut-input.swift', 'project.yml',
                      'Package.swift', 'Package.resolved')
 # These presentation files do not own capture, persistence or delivery. New/unknown app files stay conservative.
 PRESENTATION_FILES = {f'Sources/Jot/{name}.swift' for name in (
