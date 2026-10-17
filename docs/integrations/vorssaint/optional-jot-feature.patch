@@ -123,7 +123,7 @@ index 6f45e4cf..4cab4379 100644
          case .dockClick: return ["dock clicks", "dock click", "click the dock icon", "dock icon", "dock actions"]
 diff --git a/Sources/Vorssaint/Services/Jot/JotBridge.swift b/Sources/Vorssaint/Services/Jot/JotBridge.swift
 new file mode 100644
-index 00000000..6e451c86
+index 00000000..56c400e7
 --- /dev/null
 +++ b/Sources/Vorssaint/Services/Jot/JotBridge.swift
 @@ -0,0 +1,249 @@
@@ -202,14 +202,14 @@ index 00000000..6e451c86
 +        refresh()
 +    }
 +    func refresh() {
-+        guard enabled, !reading, !busy else { return }
++        guard enabled, AppFeature.jot.isAvailable, !reading, !busy else { return }
 +        reading = true; lastRefresh = Date()
 +        let token = generation
 +        queue.async {
 +            let result = Result { try Self.request("speech.controls") }
 +            DispatchQueue.main.async {
 +                self.reading = false
-+                guard token == self.generation, self.enabled else { return }
++                guard token == self.generation, self.enabled, AppFeature.jot.isAvailable else { return }
 +                switch result {
 +                case .success(let data):
 +                    do {
@@ -266,7 +266,7 @@ index 00000000..6e451c86
 +    }
 +    private func clearIsland() {
 +        phase = "idle"
-+        NotchService.shared.dismissJotNotice()
++        if NotchSupport.isEnabled() { NotchService.shared.dismissJotNotice() }
 +    }
 +    func open() { NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications/Jot.app")) }
 +    /// Send Jot its normal macOS Quit request. Never terminate this host or
@@ -306,7 +306,7 @@ index 00000000..6e451c86
 +                params: snapshot?.meetingActive == true ? [:] : ["title": "Meeting"])
 +    }
 +    private func command(_ method: String, params: [String: Any] = [:]) {
-+        guard enabled, snapshot != nil, !busy else { return }
++        guard enabled, AppFeature.jot.isAvailable, snapshot != nil, !busy else { return }
 +        busy = true; error = nil
 +        queue.async {
 +            let result = Result { try Self.request(method, params: params, timeout: method == "speech.meeting_end" ? 60 : 5) }
