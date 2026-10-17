@@ -19,6 +19,7 @@
 		0643D545CF0AC17B78F5D0BA /* LiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A608DB6E5CA06D36C6CE0E6 /* LiveView.swift */; };
 		0648B6F2DC5F03CE16E5C2ED /* VocabularyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D61874EB855429080562675D /* VocabularyView.swift */; };
 		0716C14AD00BDA6BD9FB35AB /* SpeechServiceIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42A30D435B413C60B77D5B35 /* SpeechServiceIPC.swift */; };
+		07E51DE7D7A118B36812A9B4 /* SpeechService+Permissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191DA6F475ADD3A5E643FF55 /* SpeechService+Permissions.swift */; };
 		0868BB86D9F3565B5F99AA26 /* AudioJob.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E76DBC2C08598EF5281221A /* AudioJob.swift */; };
 		0947EDE8057197DA17216580 /* PerformanceJob.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF9D887E417A6D0BE9F8A8C4 /* PerformanceJob.swift */; };
 		09ADF8254359F711C8402FB0 /* AudioInputDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF344F7E5776F61E5C4A985D /* AudioInputDevice.swift */; };
@@ -29,6 +30,7 @@
 		0C6637B88C039C4EEEB58198 /* ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = 2AF537A90CCFD9AEEF273426 /* ThirdPartyNotices.txt */; };
 		0C7534CE7E9D3A3820505152 /* SpeechServiceDependencies.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDAC26C059DEAE2398D1B2F3 /* SpeechServiceDependencies.swift */; };
 		0C918687DE78757C418F4D09 /* ServiceControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 963CF0B6CB7AC19969690774 /* ServiceControls.swift */; };
+		0CC857DF23DCF372744B63ED /* SpeechService+Permissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191DA6F475ADD3A5E643FF55 /* SpeechService+Permissions.swift */; };
 		0CD3C69E1F75C76293C202D4 /* ShortcutTargetTicket.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB507051ADF45C72D5742179 /* ShortcutTargetTicket.swift */; };
 		0D08BFBF7D0B1DFCE9467D9C /* DictationInput+Delivery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AAAAC253E89A01B7D918109 /* DictationInput+Delivery.swift */; };
 		0D7045C48EE488A1D80ED377 /* AudioInputDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF344F7E5776F61E5C4A985D /* AudioInputDevice.swift */; };
@@ -142,6 +144,7 @@
 		54F00210B01AD83169A500BE /* DictationReadiness.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9096ACD17598D16FF2D647D3 /* DictationReadiness.swift */; };
 		56656F142D935941715955F2 /* ModelDownload.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83A72FC458832E2767E4E80F /* ModelDownload.swift */; };
 		57305CBE9C3B04FE3A1F23BB /* PerformanceSample.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0928E956CD5E39760DC5966B /* PerformanceSample.swift */; };
+		58F2CE8521A3414C2BEF1D9D /* SpeechService+Permissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191DA6F475ADD3A5E643FF55 /* SpeechService+Permissions.swift */; };
 		598C4D99C17BE21EC5DED6DE /* ScreenContextReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0235B93AAE4DB4CA1923BCA3 /* ScreenContextReader.swift */; };
 		59BAF528C836348746A3BCF7 /* RecoveryFlowChecks+Relabels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEF7B31349AB0F25D8C224D8 /* RecoveryFlowChecks+Relabels.swift */; };
 		5A660A2CA87AA8E5225DC142 /* SessionAudioFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74B630DD768233386E24B60B /* SessionAudioFile.swift */; };
@@ -205,6 +208,7 @@
 		78819BFB9905FF36EEE81196 /* SpeakerPass.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE17BC338395A203C66985A4 /* SpeakerPass.swift */; };
 		7A7254717D19305C74ED8360 /* ServiceControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 963CF0B6CB7AC19969690774 /* ServiceControls.swift */; };
 		7AB9706221603CD90F33E603 /* LabRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D6350FB586DEB294F0A4517 /* LabRows.swift */; };
+		7AC8D1245C618793690C89A9 /* DictationRecoveryRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2439957F0C87FF270AABB8F /* DictationRecoveryRows.swift */; };
 		7AF40A55F386E1422A983CB5 /* SpeechPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D92FBBD2B042C8380B4D51B /* SpeechPipeline.swift */; };
 		7B32805CDCDC94BE7199B1F3 /* MCPTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 831B9DB139EB44CC567DDB15 /* MCPTool.swift */; };
 		7C397ED9F05DCC3041A5ED24 /* DictationInput+Accessibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE390AF5C97475F71AD2918D /* DictationInput+Accessibility.swift */; };
@@ -332,6 +336,7 @@
 		C9F2D32B07DA75D1F315A059 /* SuggestionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE957A5843B14B0AFA30FBB3 /* SuggestionCoordinator.swift */; };
 		CA96D9A280DF6D24738B51A4 /* LiveCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0481ADADD05BFA1A6D0E293C /* LiveCleanup.swift */; };
 		CB99DD1789813FB24F791413 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = CDE54F5568B2E1009E317C26 /* libsqlite3.tbd */; };
+		CC72B38108CD90B77771D6C3 /* SpeakerLabelRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CAC64AD6E0D8AFAE5F70B6F /* SpeakerLabelRows.swift */; };
 		CCD86928FC451A120507C3C2 /* LocalServiceClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7988C1690F7A0F8E6C37CAEB /* LocalServiceClient.swift */; };
 		CE41316CF2FC8414E69CEF14 /* PersonalVocabulary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8056EA6CBA3EA3C1DC87BCCA /* PersonalVocabulary.swift */; };
 		CEAB37DC1515AE4B44AAC350 /* ActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E449515C9F7F6D0C4692248 /* ActivityView.swift */; };
@@ -360,6 +365,7 @@
 		DC8B4372856A5BA0CB040167 /* JotEngine.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E3F7D01BDF81227F2D55740F /* JotEngine.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		DD390B77839B528672C95C1C /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */; };
 		DD8557A3C9375771D0BA06F4 /* RecoveryFlowChecks+QuietCPU.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5E6592CD2F5E20FEEF597BA /* RecoveryFlowChecks+QuietCPU.swift */; };
+		DEE0D116BC6F83045D862E39 /* SpeechService+Permissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191DA6F475ADD3A5E643FF55 /* SpeechService+Permissions.swift */; };
 		DFB273C5C4C358EE061C15B2 /* LatencySummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5161AC2BF6256AC57286B16 /* LatencySummary.swift */; };
 		E0C164F90CEAB61D0C95F24F /* CaptureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C898180408412523C4E31E37 /* CaptureController.swift */; };
 		E17CFFA1A449845249858620 /* ShortcutTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFAF1ADC5E12DA1CEC248BF8 /* ShortcutTracker.swift */; };
@@ -548,6 +554,7 @@
 		12FD7C3A2AB9A0D631EB43AB /* SettingsImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsImport.swift; sourceTree = "<group>"; };
 		13753D9DE01F8E1C717E94AB /* TranscriptSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptSession.swift; sourceTree = "<group>"; };
 		1512EC3A0BD7B5C6A621FB68 /* TranscriptListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptListener.swift; sourceTree = "<group>"; };
+		191DA6F475ADD3A5E643FF55 /* SpeechService+Permissions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SpeechService+Permissions.swift"; sourceTree = "<group>"; };
 		1AAAAC253E89A01B7D918109 /* DictationInput+Delivery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DictationInput+Delivery.swift"; sourceTree = "<group>"; };
 		1C10746E3543EA3E7BF9DEE1 /* StoreOperation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreOperation.swift; sourceTree = "<group>"; };
 		1C33A3E252A64EE9389B3646 /* SessionSplit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSplit.swift; sourceTree = "<group>"; };
@@ -611,6 +618,7 @@
 		5B8AED40D2D1296EEBFE89FA /* ClipboardInsertion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardInsertion.swift; sourceTree = "<group>"; };
 		5BBE982BF75A138FACCE3BE0 /* TranscriptChanges.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptChanges.swift; sourceTree = "<group>"; };
 		5C9B894EB2EFD57621C9E4A0 /* ModelUnavailable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelUnavailable.swift; sourceTree = "<group>"; };
+		5CAC64AD6E0D8AFAE5F70B6F /* SpeakerLabelRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerLabelRows.swift; sourceTree = "<group>"; };
 		5D0BF24005EE0C2BB76EEAC0 /* JotCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JotCLI.swift; sourceTree = "<group>"; };
 		5E449515C9F7F6D0C4692248 /* ActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityView.swift; sourceTree = "<group>"; };
 		616352CB1801D0ECED44BDFF /* TranscriptDeletion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptDeletion.swift; sourceTree = "<group>"; };
@@ -729,6 +737,7 @@
 		BFE66EA8622172FB454486AC /* LabVariantResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabVariantResult.swift; sourceTree = "<group>"; };
 		C0186C7A018B87FF6DF644E2 /* CLIError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIError.swift; sourceTree = "<group>"; };
 		C1C5114298E41FD0B34E6B8C /* MicrophoneSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneSelection.swift; sourceTree = "<group>"; };
+		C2439957F0C87FF270AABB8F /* DictationRecoveryRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationRecoveryRows.swift; sourceTree = "<group>"; };
 		C2D7BFB98668DA15D68394E3 /* NoiseFillers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoiseFillers.swift; sourceTree = "<group>"; };
 		C34AF98B190AE8AD30B25C75 /* VocabularyError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabularyError.swift; sourceTree = "<group>"; };
 		C3A6C0E6D4390B51F5EF3B06 /* MCPInstructions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPInstructions.swift; sourceTree = "<group>"; };
@@ -944,6 +953,7 @@
 				2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */,
 				79CE2C592ECE6830EE38ACE2 /* SpeechService+Diagnostics.swift */,
 				B8980FD3AED2B4B58C327993 /* SpeechService+Meetings.swift */,
+				191DA6F475ADD3A5E643FF55 /* SpeechService+Permissions.swift */,
 				9D0A8B91F18F4F1888258C1E /* SpeechService+Settings.swift */,
 				DDAC26C059DEAE2398D1B2F3 /* SpeechServiceDependencies.swift */,
 				42A30D435B413C60B77D5B35 /* SpeechServiceIPC.swift */,
@@ -1032,6 +1042,7 @@
 				82451273D64155266BD2C4ED /* DictationAttempt.swift */,
 				83ACD6F41350D0FEEF8F9394 /* DictationCleanup.swift */,
 				9096ACD17598D16FF2D647D3 /* DictationReadiness.swift */,
+				C2439957F0C87FF270AABB8F /* DictationRecoveryRows.swift */,
 				7415694705568E2457081A4F /* DictationShortcut.swift */,
 				6646658769779D619884AA27 /* DictationSpeakerMute.swift */,
 				7A4B3E828024ED7E37E54C47 /* DirectoryLock.swift */,
@@ -1117,6 +1128,7 @@
 				0F426834033E58473457EA73 /* SourceSelection.swift */,
 				8C65AE9B9F5641F417C0A85B /* SourceSelector.swift */,
 				91BE6EEF6AD6F736A1D00FE4 /* SpeakerAssignment.swift */,
+				5CAC64AD6E0D8AFAE5F70B6F /* SpeakerLabelRows.swift */,
 				B3BCABDCF03AE6090F9A5558 /* SpeakerModelFeed.swift */,
 				CAF736D13A8D0B0B5B88B3D6 /* SpeakerPassRelabel.swift */,
 				3A5260FABD83BB1B61C7AA29 /* SpeakerPassResult.swift */,
@@ -1537,6 +1549,7 @@
 				782379222F79E6443D2D606C /* SpeakerRecognizer.swift in Sources */,
 				72EB0EA580342D0682DAF88F /* SpeechService+Diagnostics.swift in Sources */,
 				9D8670925E893237E2CAF5BD /* SpeechService+Meetings.swift in Sources */,
+				DEE0D116BC6F83045D862E39 /* SpeechService+Permissions.swift in Sources */,
 				BE8F79826254F5A142D584DE /* SpeechService+Settings.swift in Sources */,
 				987B92C586EF2356FE9B3BBC /* SpeechService.swift in Sources */,
 				0C7534CE7E9D3A3820505152 /* SpeechServiceDependencies.swift in Sources */,
@@ -1578,6 +1591,7 @@
 				A3FF9985FD01BE755ED16719 /* DictationAttempt.swift in Sources */,
 				6A34209658A335507BD1D20E /* DictationCleanup.swift in Sources */,
 				54F00210B01AD83169A500BE /* DictationReadiness.swift in Sources */,
+				7AC8D1245C618793690C89A9 /* DictationRecoveryRows.swift in Sources */,
 				8EF28A78E5F76B97289D3D9B /* DictationShortcut.swift in Sources */,
 				7F7F23DCD4A5FFD39B920C97 /* DictationSpeakerMute.swift in Sources */,
 				CFE281C0304865E793C37B39 /* DirectoryLock.swift in Sources */,
@@ -1664,6 +1678,7 @@
 				C5AB8F2A7FE2EE570E1FB413 /* SourceSelection.swift in Sources */,
 				395B236842387B7D5D90E993 /* SourceSelector.swift in Sources */,
 				3DD394A4CDE801E64E1CFA12 /* SpeakerAssignment.swift in Sources */,
+				CC72B38108CD90B77771D6C3 /* SpeakerLabelRows.swift in Sources */,
 				0DB308115BFD1B01FC3BDC49 /* SpeakerModelFeed.swift in Sources */,
 				B8963CAA9974229526F3C449 /* SpeakerPassRelabel.swift in Sources */,
 				FDDFD60A787B8C6899F75E1C /* SpeakerPassResult.swift in Sources */,
@@ -1755,6 +1770,7 @@
 				F6A8237B76485839B26F8CC4 /* SpeakerRecognizer.swift in Sources */,
 				5C2751623BA1611A7E1DBCB1 /* SpeechService+Diagnostics.swift in Sources */,
 				15599DFC8B30C545A845C27B /* SpeechService+Meetings.swift in Sources */,
+				58F2CE8521A3414C2BEF1D9D /* SpeechService+Permissions.swift in Sources */,
 				9BAC270CA5DF959E4F6A1AA3 /* SpeechService+Settings.swift in Sources */,
 				DD390B77839B528672C95C1C /* SpeechService.swift in Sources */,
 				B64E540EDB82AA0DA92AEE1A /* SpeechServiceDependencies.swift in Sources */,
@@ -1834,6 +1850,7 @@
 				6CA28F1C6538D728C88972BA /* SpeakerRecognizer.swift in Sources */,
 				D7A45CAE69535B79F4870679 /* SpeechService+Diagnostics.swift in Sources */,
 				71ECED3AF98D13790A2A2372 /* SpeechService+Meetings.swift in Sources */,
+				0CC857DF23DCF372744B63ED /* SpeechService+Permissions.swift in Sources */,
 				8F3845393772ACB84CB0E284 /* SpeechService+Settings.swift in Sources */,
 				13899AFFBA889828C7A0DC82 /* SpeechService.swift in Sources */,
 				68D16FBFDECE251BE2A9B928 /* SpeechServiceDependencies.swift in Sources */,
@@ -1899,6 +1916,7 @@
 				F1AC51E55A3F4FEAFF96CB3A /* SpeakerRecognizer.swift in Sources */,
 				34E3AF36637CF7E2679C295C /* SpeechService+Diagnostics.swift in Sources */,
 				2E2294A6D08F7F87798D5045 /* SpeechService+Meetings.swift in Sources */,
+				07E51DE7D7A118B36812A9B4 /* SpeechService+Permissions.swift in Sources */,
 				782A34284B89972E0DEC65BF /* SpeechService+Settings.swift in Sources */,
 				0BBD81DB25843D0B71CB34BF /* SpeechService.swift in Sources */,
 				2780F5725146F1A2937AF562 /* SpeechServiceDependencies.swift in Sources */,
