@@ -74,6 +74,7 @@ targets:
       - Sources/Jot/DictationHighlight.swift
       - Sources/Jot/DictationInput.swift
       - Sources/Jot/DictationInput+SuggestionField.swift
+      - Sources/Jot/DictationInput+Delivery.swift
       - Sources/Jot/SuggestionFieldReadback.swift
       - Sources/Jot/SuggestionFieldReader.swift
       - Sources/Jot/ShortcutEventTap.swift
@@ -122,6 +123,7 @@ targets:
       - Sources/Jot/DictationHighlight.swift
       - Sources/Jot/DictationInput.swift
       - Sources/Jot/DictationInput+SuggestionField.swift
+      - Sources/Jot/DictationInput+Delivery.swift
       - Sources/Jot/SuggestionFieldReadback.swift
       - Sources/Jot/SuggestionFieldReader.swift
       - Sources/Jot/ShortcutEventTap.swift
