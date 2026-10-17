@@ -105,6 +105,7 @@ targets:
       - Sources/Jot/SpeechService+Meetings.swift
       - Sources/Jot/SpeechService+Diagnostics.swift
       - Sources/Jot/SpeechService+Permissions.swift
+      - Sources/Jot/SpeechService+Sessions.swift
       - Sources/Jot/SpeechServiceIPC.swift
       - Sources/Jot/Transcriber.swift
     settings:
@@ -158,6 +159,7 @@ targets:
       - Sources/Jot/SpeechService+Meetings.swift
       - Sources/Jot/SpeechService+Diagnostics.swift
       - Sources/Jot/SpeechService+Permissions.swift
+      - Sources/Jot/SpeechService+Sessions.swift
       - Sources/Jot/SpeechServiceIPC.swift
       - Sources/Jot/Transcriber.swift
     settings:
