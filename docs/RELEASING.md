@@ -11,7 +11,7 @@ python3 scripts/release.py patch --notes "What changed" --install
 `patch`, `minor`, `major`, or an explicit `X.Y.Z` picks the new version. The script, one printed line per step:
 
 1. Refuses unless it is on `main`, the tree is clean, `HEAD` equals `origin/main` after a fetch, `gh auth status` passes, and a signing identity is set.
-2. Bumps `JotVersion.current`, `project.yml`, and `Resources/Info.plist`. `CFBundleShortVersionString` is the version; `CFBundleVersion` is the number of existing `v*` tags plus one, so it increases every release. Writes `docs/RELEASE-NOTES-<version>.md` from `--notes`.
+2. Bumps `JotVersion.current`, `project.yml`, and `Resources/Info.plist`. `CFBundleShortVersionString` is the version; `CFBundleVersion` is the number of existing `v*` tags plus one, so it increases every release. Writes `docs/release-notes/<version>.md` from `--notes`.
 3. Runs `swift test`, then `build-install.py --configuration Release --build-only`, and reads `build/release-proof.json`.
 4. Zips the product, submits it to Apple with `notarytool`, and waits for `Accepted` before continuing.
 5. Staples and validates the notarization ticket, verifies the signature and Gatekeeper assessment, then recreates `build/Jot-<version>.zip` and its checksum from the stapled app.

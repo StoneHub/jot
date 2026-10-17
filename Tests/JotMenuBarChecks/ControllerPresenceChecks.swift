@@ -10,6 +10,25 @@ struct ControllerPresenceChecks {
 
     @MainActor
     static func main() {
+        if CommandLine.arguments.contains("--live") {
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.prohibited)
+            let presence = JotControllerPresence()
+            let initial = presence.isRunning
+            var states = [initial]
+            FileHandle.standardOutput.write(Data("Initial controller presence: \(initial)\n".utf8))
+            let deadline = Date().addingTimeInterval(60)
+            while states.count < 3 && Date() < deadline {
+                RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+                if presence.isRunning != states.last {
+                    states.append(presence.isRunning)
+                    FileHandle.standardOutput.write(Data("Controller presence: \(presence.isRunning)\n".utf8))
+                }
+            }
+            precondition(states == [initial, !initial, initial], "Expected a real controller exit and relaunch")
+            print("Live workspace presence transitions: \(states); fallback icon: \(states.map { !$0 })")
+            return
+        }
         let center = NotificationCenter()
         let fixture = Fixture()
         let presence = JotControllerPresence(center: center, controllerIsRunning: {

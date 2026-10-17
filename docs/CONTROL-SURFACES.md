@@ -6,9 +6,13 @@ Jot posts `space.jot.app.controlsChanged` through DistributedNotificationCenter 
 
 Controllers use the existing `speech.pause`, `speech.resume`, `speech.meeting_start` and `speech.meeting_end` methods. Starting capture remains an explicit user action. Opening `/Applications/Jot.app` raises the app through its existing reopen handler. An Island can mirror Fn activity, but must keep Jot's field-anchored suggestion preview and explicit Tab insertion. A delivery-unverified state must never be presented as confirmed insertion. No controller should subscribe to transcripts merely to animate a microphone.
 
+## Integration principles
+
+Jot stays useful as a standalone app. Integrations should fit the host app's existing feature discovery, settings and lifecycle, use this reusable local control API, and keep capture, history and insertion owned by Jot. A host remains optional. The Vorssaint contribution is an opt-in built-in feature, rather than a plugin loader or separately branded Jot utility app.
+
 ## Standalone menu bar fallback
 
-Jot works independently of any external controller. Its General → App setting, “Always show menu bar icon”, defaults on. When off, Jot hides its icon only while the custom Vorssaint+Jot app (`space.monroe.JotBar`) is running. Jot checks at launch and observes macOS application launch/termination notifications, so its icon returns if the controller quits or crashes and hides again when the controller relaunches. This runtime fallback does not change the saved preference or start/stop capture. Stock Vorssaint and unrelated apps do not suppress Jot's icon.
+Jot works independently of any external controller. Its General → App setting, “Always show menu bar icon”, defaults on. When off, Jot hides its icon only while the custom Vorssaint+Jot app (`space.monroe.JotBar`) is running. Jot checks at launch, observes macOS application launch/termination notifications, and reconciles every three seconds to recover missed events. Its icon returns if the controller quits or crashes and hides again when the controller relaunches. This runtime fallback does not change the saved preference or start/stop capture. Stock Vorssaint and unrelated apps do not suppress Jot's icon.
 
 Focused native regression: `swiftc -swift-version 6 -parse-as-library Sources/Jot/JotControllerPresence.swift Tests/JotMenuBarChecks/ControllerPresenceChecks.swift -o build/controller-presence-checks && build/controller-presence-checks`.
 
