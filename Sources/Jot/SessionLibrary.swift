@@ -23,7 +23,6 @@ final class SessionLibrary: ObservableObject {
     /// Every saved dictation row, for the Dictations count in the sidebar.
     @Published private(set) var dictationCount = 0
     @Published private(set) var historyRevision = 0
-    @Published private(set) var lastExport: URL?
     private var historySources: [String: [String]] = [:]
     /// The rows Dictations was built from, newest first, one past the page so it knows there is more.
     private var historyRows: [Transcript] = []
@@ -406,14 +405,10 @@ final class SessionLibrary: ObservableObject {
         let (session, rows) = try await exportable(id)
         let directory = Self.exportDirectory
         let tuning = settings.tuning
-        let url = try await storeExecutor.perform {
+        return try await storeExecutor.perform {
             try TranscriptExport.write(session: session, rows: rows, directory: directory, tuning: tuning)
         }
-        lastExport = url
-        return url
     }
-
-    func clearLastExport() { lastExport = nil }
 
     /// The caller has already checked that the session is not recording.
     func deleteSession(_ id: String) async throws {
@@ -504,7 +499,6 @@ final class SessionLibrary: ObservableObject {
         discardAttempt()
         contentRevision &+= 1
         try await storeExecutor.submit { try store.clearHistory() }.value
-        lastExport = nil
         historyLimit = 50
         didDeleteHistory()
         setNotice("Dictations cleared. Sessions were kept.")

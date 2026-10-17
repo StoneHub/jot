@@ -56,7 +56,6 @@ extension SpeechService {
             notice = "Finish the held dictation before ending the meeting."
             return nil
         }
-        library.clearLastExport()
         let id = timeline.sessionID
         let generation = lifecycle.generation
         if ambientEnabled { drainAudio(); timeline.flushAmbient(final: true) }
