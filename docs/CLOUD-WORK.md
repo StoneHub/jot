@@ -20,6 +20,8 @@ Cloud sessions fix known issues and build features without the Mac. [AGENTS.md](
 | Swift logic, SwiftUI, AX/event taps, capture/speaker timing, Foundation Models quality | Careful source review; uncompiled | Build, tests, and Monroe's end-to-end use |
 | Signing, installation, updater swap, shell integration | None | Local delivery under `AGENTS.md` |
 
+A new, renamed or removed source file goes in `project.yml` only. `Jot.xcodeproj/project.pbxproj` is xcodegen output, and xcodegen assigns its own IDs, so a hand edit never matches what it generates and leaves the Mac check `INCOMPLETE` on a dirty tree. Say in the PR that the project needs regenerating; the Mac run commits the regenerated file to the PR branch before its final check.
+
 Portable checks follow the changed behavior. Documentation needs `git diff --check`; changed Python tooling runs its matching existing test file. For example, a local-checker change uses:
 
 ```sh
