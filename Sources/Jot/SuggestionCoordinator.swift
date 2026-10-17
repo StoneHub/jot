@@ -33,43 +33,6 @@ final class SuggestionCoordinator {
     private var agentSnapshot: [SuggestionSource] = []
     private var agentLatestID: String?
     private var candidate: String?
-    private struct Receipt {
-        let id = UUID()
-        let startedAt = Date()
-        var revision = 0
-        var appBundleID: String?
-        var fieldRole: SuggestionHistoryEntry.FieldRole = .unknown
-        var purpose: SuggestionHistoryEntry.Purpose = .textEntry
-        var plan: SuggestionHistoryEntry.Plan = .needsNotes
-        var mode: SuggestionHistoryEntry.Mode = .none
-        var beforeEndsSentence = true
-        var draftCharacters = 0
-        var selectionCharacters = 0
-        var selected: [SuggestionHistoryEntry.SourceUsage] = []
-        var excluded: [SuggestionHistoryEntry.ExcludedUsage] = []
-        var agentInput: AgentContext.MatchState = .noMessages
-        var deadlineMilliseconds: Int?
-        var generationMilliseconds: Int?
-        var previewMilliseconds: Int?
-        var windowImage: SuggestionHistoryEntry.WindowImageOutcome?
-        var windowImageMilliseconds: Int?
-        var generationStartedAt: Date?
-        var outcome: SuggestionHistoryEntry.Outcome = .requested
-        var reason: SuggestionHistoryEntry.Reason?
-        var action: SuggestionHistoryEntry.Action?
-        var complete = false
-
-        func entry() -> SuggestionHistoryEntry {
-            SuggestionHistoryEntry(id: id, revision: revision, startedAt: startedAt,
-                appBundleID: appBundleID, fieldRole: fieldRole, purpose: purpose, plan: plan, mode: mode,
-                beforeEndsSentence: beforeEndsSentence, draftCharacters: draftCharacters,
-                selectionCharacters: selectionCharacters, selected: selected, excluded: excluded,
-                agentInput: agentInput, deadlineMilliseconds: deadlineMilliseconds,
-                generationMilliseconds: generationMilliseconds, previewMilliseconds: previewMilliseconds,
-                windowImage: windowImage, windowImageMilliseconds: windowImageMilliseconds,
-                outcome: outcome, reason: reason, action: action, complete: complete)
-        }
-    }
     private var receipt: Receipt?
     /// A draft replaces exactly these notes on Tab; a reply inserts at the cursor.
     private var seed: SuggestionSeed?
@@ -192,20 +155,7 @@ final class SuggestionCoordinator {
             dismiss(); reason = "unreadable-field"; notice("No suggestion: this field cannot be read safely."); return
         }
         self.field = field
-        updateReceipt { receipt in
-            receipt.appBundleID = SuggestionHistoryEntry.sanitizedBundleID(field.bundleID)
-            switch field.role {
-            case kAXTextAreaRole: receipt.fieldRole = .textArea
-            case kAXTextFieldRole: receipt.fieldRole = .textField
-            case kAXComboBoxRole: receipt.fieldRole = .comboBox
-            default: receipt.fieldRole = .unknown
-            }
-            receipt.purpose = field.role != kAXTextAreaRole ? .singleLine
-                : field.bundleID == "com.openai.codex" ? .agentPrompt : .textEntry
-            receipt.draftCharacters = (field.draft.value as NSString).length
-            receipt.selectionCharacters = field.draft.length
-            receipt.beforeEndsSentence = SuggestionPrompt.endsSentence(field.draft.before)
-        }
+        updateReceipt { $0.describe(field) }
         let blank = field.draft.isBlank
         if blank && field.role != kAXTextAreaRole { showNotice(Self.needsNotes, reason: "needs-notes"); return }
         let store = self.store()
@@ -283,20 +233,7 @@ final class SuggestionCoordinator {
                     mode = .draft; self.seed = seed
                     (before, after) = field.draft.text(around: seed)
                 }
-                self.updateReceipt { receipt in
-                    switch plan {
-                    case .reply: receipt.plan = .reply
-                    case .continuation: receipt.plan = .continuation
-                    case .draft: receipt.plan = .draft
-                    case .needsNotes: receipt.plan = .needsNotes
-                    }
-                    switch mode {
-                    case .reply: receipt.mode = .reply
-                    case .continuation: receipt.mode = .continuation
-                    case .draft: receipt.mode = .draft
-                    }
-                    receipt.beforeEndsSentence = SuggestionPrompt.endsSentence(before)
-                }
+                self.updateReceipt { $0.record(plan: plan, mode: mode, before: before) }
                 self.lastMode = mode.rawValue
                 // The matched agent conversation is the field's own: naming it on the target puts its turns in the selector's
                 // conversation tier, above the room's speech, so a busy room cannot crowd them out of the bound.
@@ -311,25 +248,7 @@ final class SuggestionCoordinator {
                 let addition = HeardSpeech.addition(heard, to: selection.selected, members: { context?.rows(for: [$0]) ?? [] }, limits: .window)
                 let selected = addition.selected
                 let usage = SuggestionHistoryEntry.usage(selected: selected, excluded: selection.excluded)
-                self.updateReceipt { receipt in
-                    receipt.selected = usage.selected
-                    receipt.excluded = usage.excluded
-                    if addition.duplicateSpeechCount > 0 {
-                        let existing = receipt.excluded.firstIndex { $0.reason == .duplicate }
-                        if let existing {
-                            let prior = receipt.excluded.remove(at: existing)
-                            receipt.excluded.append(.init(reason: .duplicate, count: prior.count + addition.duplicateSpeechCount))
-                        } else { receipt.excluded.append(.init(reason: .duplicate, count: addition.duplicateSpeechCount)) }
-                    }
-                    if addition.overLimitSpeechCount > 0 {
-                        let existing = receipt.excluded.firstIndex { $0.reason == .overLimit }
-                        if let existing {
-                            let prior = receipt.excluded.remove(at: existing)
-                            receipt.excluded.append(.init(reason: .overLimit, count: prior.count + addition.overLimitSpeechCount))
-                        } else { receipt.excluded.append(.init(reason: .overLimit, count: addition.overLimitSpeechCount)) }
-                    }
-                    receipt.excluded.sort { $0.reason.rawValue < $1.reason.rawValue }
-                }
+                self.updateReceipt { $0.record(usage, addition: addition) }
                 self.usedScreen = selected.contains { $0.kind == ScreenContext.kind }
                 self.usedSpeech = selected.contains { $0.kind == "dictation" || $0.kind == "meeting-transcript" }
                 self.usedHeard = selected.contains { $0.kind == HeardSpeech.kind }
