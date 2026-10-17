@@ -1,10 +1,12 @@
 import SwiftUI
 import AppKit
+import JotCore
 
 #if !JOT_WINDOW_CHECKS
 @main
 struct JotApp: App {
     @NSApplicationDelegateAdaptor(JotDelegate.self) var delegate
+    @AppStorage(JotDefaultsKey.showMenuBarIcon) private var showMenuBarIcon = true
     var body: some Scene {
         Window("Jot", id: "main") {
             // Every page must fit this size: below it nothing lays out, above it nothing may overflow the window.
@@ -18,7 +20,7 @@ struct JotApp: App {
                 Button("Set Up Jot…") { delegate.openSetup() }
             }
         }
-        MenuBarExtra {
+        MenuBarExtra(isInserted: $showMenuBarIcon) {
             MenuControls(service: delegate.service, delegate: delegate)
         } label: {
             JotMenuIconLabel(service: delegate.service)

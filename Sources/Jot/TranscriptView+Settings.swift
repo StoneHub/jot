@@ -396,6 +396,10 @@ extension TranscriptView {
                 recoverySettings
                 listeningSettings
                 speakerSettings
+                SettingsGroup(title: "App", symbol: "menubar.rectangle") {
+                    SettingToggle(title: "Show menu bar icon", info: "You can still open Jot from Applications when the icon is hidden.",
+                                  isOn: $showMenuBarIcon)
+                }
             }.frame(maxWidth: 680, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
         }
     }

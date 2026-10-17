@@ -1,5 +1,6 @@
 /// UserDefaults keys. Existing installs store these names on disk, so they never change. JotSettings defines which of them are user settings.
 public enum JotDefaultsKey {
+    public static let showMenuBarIcon = "showMenuBarIcon"
     public static let cleanUpDictation = "cleanUpDictation"
     public static let cleanUpTranscriptions = "cleanUpTranscriptions"
     /// Historical storage key: keep its value so custom-shortcut preferences survive.
