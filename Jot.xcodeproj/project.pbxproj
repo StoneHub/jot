@@ -313,6 +313,7 @@
 		BB64AED560E2CD1F4B4FF675 /* MicrophoneStartRetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96C0189208CFC78FDDDA5D0F /* MicrophoneStartRetry.swift */; };
 		BDA71562E47943EDEB6EAEA1 /* AccessibilityElement.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9048C6E04C51F3FEC4A83FD /* AccessibilityElement.swift */; };
 		BDF95630283829B393E6431F /* PausedHold.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD3344902EA14B24CCA3D480 /* PausedHold.swift */; };
+		BE148E7BE574E3B82647222B /* SuggestionPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0968FB62E8835D04A67C239B /* SuggestionPresentation.swift */; };
 		BE231E62D1A7EF570EFA8F40 /* PerformanceEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = E140FD55F4DBB4651999774E /* PerformanceEvent.swift */; };
 		BE8F79826254F5A142D584DE /* SpeechService+Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D0A8B91F18F4F1888258C1E /* SpeechService+Settings.swift */; };
 		BF8F2F375F54EC6CA71E6060 /* SuggestionFieldReadback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73D98812F8A03430DA0CB687 /* SuggestionFieldReadback.swift */; };
@@ -533,6 +534,7 @@
 		082519B815D650EA8590760F /* RecoveryFlowChecks+RealModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RecoveryFlowChecks+RealModels.swift"; sourceTree = "<group>"; };
 		08EAF8787DC306A4A3EEF2B2 /* TuningLab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TuningLab.swift; sourceTree = "<group>"; };
 		0928E956CD5E39760DC5966B /* PerformanceSample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceSample.swift; sourceTree = "<group>"; };
+		0968FB62E8835D04A67C239B /* SuggestionPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionPresentation.swift; sourceTree = "<group>"; };
 		0BCB88E7AF3431E116F525DD /* SuggestionHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionHistory.swift; sourceTree = "<group>"; };
 		0C13D7A1E14465B009F1B194 /* LabCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabCommand.swift; sourceTree = "<group>"; };
 		0D04D4DC560A81F94B8DDEA7 /* AudioClock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioClock.swift; sourceTree = "<group>"; };
@@ -1140,6 +1142,7 @@
 				0E74C565DD0D5D75D924D179 /* SuggestionMode.swift */,
 				E38A1F664C7A1C05170E0BC0 /* SuggestionOutput.swift */,
 				263330C29B40BADBC9CFB45D /* SuggestionPlan.swift */,
+				0968FB62E8835D04A67C239B /* SuggestionPresentation.swift */,
 				FD9DA69C44C08A69E9538F78 /* SuggestionPrompt.swift */,
 				EDD68923576B49C8E0509214 /* SuggestionRequest.swift */,
 				D0B05489263D72F7EB3C0CE7 /* SuggestionSeed.swift */,
@@ -1686,6 +1689,7 @@
 				1C58E344E5DB7FCA08EB45AB /* SuggestionMode.swift in Sources */,
 				EAB3554E8F9290235AB18C12 /* SuggestionOutput.swift in Sources */,
 				8C22551C93964C1F782644B4 /* SuggestionPlan.swift in Sources */,
+				BE148E7BE574E3B82647222B /* SuggestionPresentation.swift in Sources */,
 				FE004F3E87FE916B6C2DA938 /* SuggestionPrompt.swift in Sources */,
 				E379FBAE57DD36AF3CEA4BA0 /* SuggestionRequest.swift in Sources */,
 				FAA50DCDF0EC42B60FE6D0F7 /* SuggestionSeed.swift in Sources */,
