@@ -228,13 +228,13 @@ public final class TranscriptStore: @unchecked Sendable {
             for index in pieceWords.indices {
                 pieceWords[index].transcriptID = row.id
             }
-            try validate(pieceWords)
+            try StoredWordRows.validate(pieceWords)
             rows.append(row)
             words.append(contentsOf: pieceWords)
             if let text = piece.readable { readable.append((transcriptID: row.id, text: text)) }
         }
         try insert(rows)
-        try insert(words)
+        try StoredWordRows.insert(db, words)
         try insertReadable(readable)
     }
 
@@ -279,58 +279,13 @@ public final class TranscriptStore: @unchecked Sendable {
 
     /// The words one inference block produced, in one transaction. Each word must belong to a saved transcript; positions and start times must ascend within a transcript.
     public func appendWords(_ words: [StoredWord]) throws {
-        guard words.count <= 20_000 else { throw StoreError.invalid("Too many words in one batch") }
-        try validate(words)
-        try db.locked { try db.transaction { try insert(words) } }
+        try StoredWordRows.append(db, words)
     }
 
     /// Every stored word of one session in time order, the input for regrouping or a later speaker pass.
     public func words(sessionID: String) throws -> [StoredWord] {
-        try db.locked {
-            let stmt = try db.prepare("SELECT w.transcript_id,w.position,w.word,w.start_seconds,w.end_seconds,w.p1,w.p2,w.p3,w.p4 FROM transcript_words w JOIN transcripts t ON t.id = w.transcript_id WHERE t.session_id = ? ORDER BY w.start_seconds,w.position")
-            defer { sqlite3_finalize(stmt) }
-            db.bind(sessionID, to: 1, in: stmt)
-            var result: [StoredWord] = []
-            while true {
-                let status = sqlite3_step(stmt)
-                if status == SQLITE_DONE { break }
-                guard status == SQLITE_ROW else { throw db.error() }
-                let probabilities = (Int32(5)..<9).prefix { sqlite3_column_type(stmt, $0) != SQLITE_NULL }.map { Float(sqlite3_column_double(stmt, $0)) }
-                result.append(StoredWord(transcriptID: db.column(stmt, 0)!, position: Int(sqlite3_column_int64(stmt, 1)), word: db.column(stmt, 2)!,
-                    startSeconds: sqlite3_column_double(stmt, 3), endSeconds: sqlite3_column_double(stmt, 4), probabilities: probabilities))
-            }
-            return result
-        }
+        try StoredWordRows.words(db, sessionID: sessionID)
     }
-
-    private func validate(_ words: [StoredWord]) throws {
-        var previous: StoredWord?
-        for word in words {
-            guard !word.transcriptID.isEmpty, word.word.utf8.count <= 1_000, word.position >= 0,
-                  word.startSeconds.isFinite, word.endSeconds.isFinite, word.startSeconds >= 0, word.endSeconds >= word.startSeconds,
-                  word.probabilities.count <= 4, word.probabilities.allSatisfy(\.isFinite) else { throw StoreError.invalid("Invalid word fields") }
-            if let previous, previous.transcriptID == word.transcriptID {
-                guard word.position > previous.position, word.startSeconds >= previous.startSeconds else { throw StoreError.invalid("Words must ascend within a transcript") }
-            }
-            previous = word
-        }
-    }
-
-    /// Caller holds the lock and the transaction; the words were validated already.
-    private func insert(_ words: [StoredWord]) throws {
-        let stmt = try db.prepare("INSERT INTO transcript_words(transcript_id,position,word,start_seconds,end_seconds,p1,p2,p3,p4) VALUES(?,?,?,?,?,?,?,?,?)")
-        defer { sqlite3_finalize(stmt) }
-        for word in words {
-            sqlite3_reset(stmt)
-            db.bind(word.transcriptID, to: 1, in: stmt); sqlite3_bind_int64(stmt, 2, Int64(word.position)); db.bind(word.word, to: 3, in: stmt)
-            sqlite3_bind_double(stmt, 4, word.startSeconds); sqlite3_bind_double(stmt, 5, word.endSeconds)
-            for slot in 0..<4 {
-                if slot < word.probabilities.count { sqlite3_bind_double(stmt, Int32(6 + slot), Double(word.probabilities[slot])) } else { sqlite3_bind_null(stmt, Int32(6 + slot)) }
-            }
-            try db.finish(stmt)
-        }
-    }
-
 
     /// Pass mode "dictation" or "ambient" to read one kind of row; nil reads both.
     public func search(_ query: String, mode: String? = nil, limit: Int = 50, offset: Int = 0) throws -> [Transcript] {
@@ -341,42 +296,11 @@ public final class TranscriptStore: @unchecked Sendable {
     }
 
     public func appendEvent(_ event: CaptureEvent) throws {
-        guard !event.id.isEmpty, !event.sessionID.isEmpty, !event.kind.isEmpty,
-              event.kind.utf8.count <= 100, event.detail.utf8.count <= 2000,
-              event.timestamp.timeIntervalSince1970.isFinite,
-              event.durationSeconds.map({ $0.isFinite && $0 >= 0 }) ?? true else { throw StoreError.invalid("Invalid capture event fields") }
-        try db.locked {
-            let stmt = try db.prepare("INSERT INTO capture_events(id,session_id,timestamp,kind,detail,duration_seconds) VALUES(?,?,?,?,?,?)")
-            defer { sqlite3_finalize(stmt) }
-            db.bind(event.id, to: 1, in: stmt); db.bind(event.sessionID, to: 2, in: stmt)
-            sqlite3_bind_double(stmt, 3, event.timestamp.timeIntervalSince1970)
-            db.bind(event.kind, to: 4, in: stmt); db.bind(event.detail, to: 5, in: stmt)
-            if let duration = event.durationSeconds { sqlite3_bind_double(stmt, 6, duration) } else { sqlite3_bind_null(stmt, 6) }
-            try db.finish(stmt)
-        }
+        try CaptureEventRows.append(db, event)
     }
 
     public func events(sessionID: String? = nil, limit: Int = 50, offset: Int = 0) throws -> [CaptureEvent] {
-        try db.locked {
-            let clause = sessionID == nil ? "" : "WHERE session_id = ?"
-            let stmt = try db.prepare("SELECT id,session_id,timestamp,kind,detail,duration_seconds FROM capture_events \(clause) ORDER BY timestamp DESC,id DESC LIMIT ? OFFSET ?")
-            defer { sqlite3_finalize(stmt) }
-            var index: Int32 = 1
-            if let sessionID { db.bind(sessionID, to: index, in: stmt); index += 1 }
-            sqlite3_bind_int(stmt, index, Int32(clamp(limit)))
-            sqlite3_bind_int64(stmt, index + 1, Int64(max(0, offset)))
-            var result: [CaptureEvent] = []
-            while true {
-                let status = sqlite3_step(stmt)
-                if status == SQLITE_DONE { break }
-                guard status == SQLITE_ROW else { throw db.error() }
-                result.append(CaptureEvent(id: db.column(stmt, 0)!, sessionID: db.column(stmt, 1)!,
-                    timestamp: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 2)),
-                    kind: db.column(stmt, 3)!, detail: db.column(stmt, 4)!,
-                    durationSeconds: sqlite3_column_type(stmt, 5) == SQLITE_NULL ? nil : sqlite3_column_double(stmt, 5)))
-            }
-            return result
-        }
+        try CaptureEventRows.events(db, sessionID: sessionID, limit: clamp(limit), offset: offset)
     }
 
     /// Bounded explicit-request context: recent dictation plus only the latest ambient session.
