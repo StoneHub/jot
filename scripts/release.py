@@ -34,7 +34,7 @@ def main():
     work = root / 'build'
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('bump', help='patch, minor, major, or an explicit X.Y.Z')
-    parser.add_argument('--notes', help='Release notes; written to docs/RELEASE-NOTES-<version>.md and used for the tag and release')
+    parser.add_argument('--notes', help='Release notes; written to docs/release-notes/<version>.md and used for the tag and release')
     parser.add_argument('--install', action='store_true', help='Install the released product into /Applications afterwards')
     parser.add_argument('--local', action='store_true', help='Publish a pre-release signed with the local development identity, without notarization')
     parser.add_argument('--dry-run', action='store_true', help='Bump, test, build, and zip, then restore the tree without committing, tagging, or publishing')
@@ -101,7 +101,7 @@ def main():
     if tag in out(['git', 'tag', '--list']).split():
         raise SystemExit(f'Tag {tag} already exists.')
     build_number = len([t for t in out(['git', 'tag', '--list', 'v*']).split()]) + 1
-    notes_file = root / f'docs/RELEASE-NOTES-{version}.md'
+    notes_file = root / f'docs/release-notes/{version}.md'
     if notes_file.exists():
         raise SystemExit(f'{notes_file.relative_to(root)} already exists.')
     edits = {}
@@ -117,6 +117,7 @@ def main():
     rewrite(project_file, r"CFBundleVersion: '[^']+'", f"CFBundleVersion: '{build_number}'")
     rewrite(plist_file, r'(<key>CFBundleShortVersionString</key>\s*<string>)[^<]+', rf'\g<1>{version}')
     rewrite(plist_file, r'(<key>CFBundleVersion</key>\s*<string>)[^<]+', rf'\g<1>{build_number}')
+    notes_file.parent.mkdir(parents=True, exist_ok=True)
     notes_file.write_text(f'# Jot {version}\n\n{options.notes.strip()}\n')
     edits[notes_file] = None
     step(f'Version {previous} -> {version} (build {build_number}); notes in {notes_file.relative_to(root)}')
