@@ -196,7 +196,11 @@ enum CaptureFlowChecks {
         microphone.startCalls = 0
         let pausedSession = service.timeline.activeSessionID
         service.holdBegan()
+        service.holdBegan()
+        precondition(service.input.startBlocker()?.hasPrefix("The microphone is starting") == true,
+                     "A press while the hold's microphone starts was not explained: \(service.input.startBlocker() ?? "nil")")
         while !service.dictation.isActive { try await Task.sleep(for: .milliseconds(5)) }
+        precondition(microphone.startCalls == 1, "A second press while the microphone started for a hold started it again")
         precondition(microphone.running && service.ambientEnabled && service.holdOnlyCapture && service.timeline.activeSessionID != pausedSession,
                      "The hold did not start the microphone in a session of its own")
         service.holdEnded(releasedAt: ProcessInfo.processInfo.systemUptime)
@@ -205,6 +209,39 @@ enum CaptureFlowChecks {
                      "The microphone stayed on after the held dictation")
         precondition(!service.ambientRequested, "A hold while paused turned listening back on")
         print("PASS: a hold while paused runs the microphone for the hold only and leaves Jot paused with the models loaded.")
+
+        // A release before the hold's microphone is up cancels its start; Jot stays paused and the microphone never starts.
+        microphone.startCalls = 0
+        service.holdBegan()
+        service.holdEnded(releasedAt: ProcessInfo.processInfo.systemUptime)
+        while service.pausedHold.isStarting { try await Task.sleep(for: .milliseconds(5)) }
+        precondition(microphone.startCalls == 0 && !microphone.running && !service.ambientEnabled && !service.holdOnlyCapture,
+                     "A release before the hold's microphone was up still started it")
+        precondition(service.isPaused && service.microphoneOff && !service.dictation.isActive, "A release during the start did not leave Jot paused")
+
+        // Pause during a hold-only capture takes the microphone and ends the hold; the later release changes nothing.
+        service.holdBegan()
+        while !service.dictation.isActive { try await Task.sleep(for: .milliseconds(5)) }
+        service.pause()
+        precondition(!service.holdOnlyCapture, "Pause left the hold-only flag set")
+        while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
+        service.holdEnded(releasedAt: ProcessInfo.processInfo.systemUptime)
+        precondition(!microphone.running && !service.ambientEnabled && !service.ambientRequested && service.isPaused && service.modelsLoaded,
+                     "Pause during a held dictation did not leave Jot paused with the models loaded")
+
+        // Resume during a hold-only capture keeps the microphone on at release, and the session continues as listening.
+        service.holdBegan()
+        while !service.dictation.isActive { try await Task.sleep(for: .milliseconds(5)) }
+        let heldWhilePaused = service.timeline.activeSessionID
+        service.prepare(confirmingDownload: true)
+        service.holdEnded(releasedAt: ProcessInfo.processInfo.systemUptime)
+        await service.dictation.waitForRecovery()
+        precondition(microphone.running && service.ambientEnabled && service.ambientRequested && !service.holdOnlyCapture && !service.isPaused,
+                     "Resume during a held dictation stopped the microphone at release")
+        precondition(service.timeline.activeSessionID == heldWhilePaused, "Resume during a held dictation started another session")
+        service.pause()
+        while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
+        print("PASS: a hold while paused ignores a second press, stops on a release during its start, yields to Pause, and keeps listening after Resume.")
 
         // Paused, the hooks are refused and the models are still loaded; Unload Models is the only release, and Resume after it loads them again.
         let hook: [String: Any] = ["method": "context.hook", "params": ["role": "user", "source": "codex", "conversation": "c1", "text": "hello"]]

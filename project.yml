@@ -82,6 +82,7 @@ targets:
       - Sources/Jot/ShortcutTargetTicket.swift
       - Sources/Jot/ShortcutTargetAcquisition.swift
       - Sources/Jot/KeepAwakeAssertion.swift
+      - Sources/Jot/PausedHold.swift
       - Sources/Jot/ListeningTimeline.swift
       - Sources/Jot/LiveCleanup.swift
       - Sources/Jot/MicrophoneCapture.swift
@@ -132,6 +133,7 @@ targets:
       - Sources/Jot/ShortcutTargetTicket.swift
       - Sources/Jot/ShortcutTargetAcquisition.swift
       - Sources/Jot/KeepAwakeAssertion.swift
+      - Sources/Jot/PausedHold.swift
       - Sources/Jot/ListeningTimeline.swift
       - Sources/Jot/LiveCleanup.swift
       - Sources/Jot/MicrophoneCapture.swift
