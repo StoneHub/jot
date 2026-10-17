@@ -6,7 +6,15 @@ Jot posts `space.jot.app.controlsChanged` through DistributedNotificationCenter 
 
 Controllers use the existing `speech.pause`, `speech.resume`, `speech.meeting_start` and `speech.meeting_end` methods. Starting capture remains an explicit user action. Opening `/Applications/Jot.app` raises the app through its existing reopen handler. An Island can mirror Fn activity, but must keep Jot's field-anchored suggestion preview and explicit Tab insertion. A delivery-unverified state must never be presented as confirmed insertion. No controller should subscribe to transcripts merely to animate a microphone.
 
+## Standalone menu bar fallback
+
+Jot works independently of any external controller. Its General → App setting, “Always show menu bar icon”, defaults on. When off, Jot hides its icon only while the custom Vorssaint+Jot app (`space.monroe.JotBar`) is running. Jot checks at launch and observes macOS application launch/termination notifications, so its icon returns if the controller quits or crashes and hides again when the controller relaunches. This runtime fallback does not change the saved preference or start/stop capture. Stock Vorssaint and unrelated apps do not suppress Jot's icon.
+
+Focused native regression: `swiftc -swift-version 6 -parse-as-library Sources/Jot/JotControllerPresence.swift Tests/JotMenuBarChecks/ControllerPresenceChecks.swift -o build/controller-presence-checks && build/controller-presence-checks`.
+
 ## Try when at the Mac
+
+- With “Always show menu bar icon” off, quit and reopen Vorssaint+Jot: Jot's icon should return and then hide. Launch Jot with no controller running: its icon should appear. With the setting on, the icon should stay visible throughout.
 
 - Hold Fn: the external controller should show capture, then processing on release, then the actual insertion result. Check a failed or unverified insertion shows review rather than success.
 - Double-Fn: the preview stays beside the field; Tab accepts and Escape dismisses. Opening or observing a controller must not start capture.

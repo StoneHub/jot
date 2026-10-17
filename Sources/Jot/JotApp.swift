@@ -7,6 +7,7 @@ import JotCore
 struct JotApp: App {
     @NSApplicationDelegateAdaptor(JotDelegate.self) var delegate
     @AppStorage(JotDefaultsKey.showMenuBarIcon) private var showMenuBarIcon = true
+    @StateObject private var controller = JotControllerPresence()
     var body: some Scene {
         Window("Jot", id: "main") {
             // Every page must fit this size: below it nothing lays out, above it nothing may overflow the window.
@@ -20,7 +21,9 @@ struct JotApp: App {
                 Button("Set Up Jot…") { delegate.openSetup() }
             }
         }
-        MenuBarExtra(isInserted: $showMenuBarIcon) {
+        // Runtime fallback never rewrites the user's preference: the icon can
+        // disappear again when the controller returns.
+        MenuBarExtra(isInserted: Binding(get: { controller.showsIcon(alwaysShow: showMenuBarIcon) }, set: { _ in })) {
             MenuControls(service: delegate.service, delegate: delegate)
         } label: {
             JotMenuIconLabel(service: delegate.service)

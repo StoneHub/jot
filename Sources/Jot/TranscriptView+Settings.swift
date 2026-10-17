@@ -397,7 +397,7 @@ extension TranscriptView {
                 listeningSettings
                 speakerSettings
                 SettingsGroup(title: "App", symbol: "menubar.rectangle") {
-                    SettingToggle(title: "Show menu bar icon", info: "You can still open Jot from Applications when the icon is hidden.",
+                    SettingToggle(title: "Always show menu bar icon", info: "When off, Jot hides its icon while Vorssaint+Jot is running. The icon returns automatically when that app quits.",
                                   isOn: $showMenuBarIcon)
                 }
             }.frame(maxWidth: 680, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
