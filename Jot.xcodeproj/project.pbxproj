@@ -40,6 +40,7 @@
 		1065516243BA2B972D73899B /* MCPInstructions.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3A6C0E6D4390B51F5EF3B06 /* MCPInstructions.swift */; };
 		106BA473BF7AB2A72F82BFC5 /* LiveCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0481ADADD05BFA1A6D0E293C /* LiveCleanup.swift */; };
 		110EFAD8A2FA57FA074C9007 /* StoreError.swift in Sources */ = {isa = PBXBuildFile; fileRef = A111233DAECA1CB2FEEBD9A6 /* StoreError.swift */; };
+		11BB5BA8DF4EF9187382C89E /* JotControllerPresence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01322D9E97B0BBC30ED6EFA1 /* JotControllerPresence.swift */; };
 		11ED1CFFFF13D434EE6CB9DC /* ResourceSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67DE2BA9CA9A17E8598D5CEA /* ResourceSnapshot.swift */; };
 		11F6E0DAD2B030FF76E4E07B /* SuggestionGeneration.swift in Sources */ = {isa = PBXBuildFile; fileRef = C648CE26613197412F053214 /* SuggestionGeneration.swift */; };
 		1254949403F4FAE0C9102F32 /* KeyboardTextEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DFFF1A639AD466E8AB9C91B /* KeyboardTextEvents.swift */; };
@@ -252,6 +253,7 @@
 		A84D2F3520652FB64F16B110 /* TranscriptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBDB9C8F81FE456A8328BCE4 /* TranscriptStore.swift */; };
 		A8B7DCD3111493035A4F71D9 /* ShortcutTargetAcquisition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05E5774F2EA53B72E09C9D2A /* ShortcutTargetAcquisition.swift */; };
 		A901395EB68999D1CFFDD1D8 /* PeopleMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27AE752E4DE288711A329DDD /* PeopleMatcher.swift */; };
+		A9088DCFFACF31ADC0BC0A23 /* JotControllerPresence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01322D9E97B0BBC30ED6EFA1 /* JotControllerPresence.swift */; };
 		AAB71BB4575A17E59BF77E55 /* SuggestionFieldReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 430D66DFC41D44579283FEB3 /* SuggestionFieldReader.swift */; };
 		AAE5E6270CDFF233B0761659 /* ListeningTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40F41CDC337859B88E28A38E /* ListeningTimeline.swift */; };
 		AB8A6B38E0D06567E02DB5BD /* SpeechTurn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DFE0CCD0F6036B7750C437D /* SpeechTurn.swift */; };
@@ -486,6 +488,7 @@
 
 /* Begin PBXFileReference section */
 		00B4F5D92D25351C93A3E99B /* MachTimebase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MachTimebase.swift; sourceTree = "<group>"; };
+		01322D9E97B0BBC30ED6EFA1 /* JotControllerPresence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JotControllerPresence.swift; sourceTree = "<group>"; };
 		0235B93AAE4DB4CA1923BCA3 /* ScreenContextReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenContextReader.swift; sourceTree = "<group>"; };
 		03B9CC832E9639545BFC1585 /* check-store-responsiveness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "check-store-responsiveness.swift"; sourceTree = "<group>"; };
 		0481ADADD05BFA1A6D0E293C /* LiveCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCleanup.swift; sourceTree = "<group>"; };
@@ -831,6 +834,7 @@
 				82A3D8CCC3D071ABC0F5EE69 /* DictationInput.swift */,
 				A6E751674ACDF9A0C12697CF /* GlassStyles.swift */,
 				EBA0F84BDC3CF425D094A331 /* JotApp.swift */,
+				01322D9E97B0BBC30ED6EFA1 /* JotControllerPresence.swift */,
 				3EEFF7CD54878C9E034B716A /* KeepAwakeAssertion.swift */,
 				6DFFF1A639AD466E8AB9C91B /* KeyboardTextEvents.swift */,
 				40F41CDC337859B88E28A38E /* ListeningTimeline.swift */,
@@ -1416,6 +1420,7 @@
 				09AFFFF3AF1BE6A912FA1BA0 /* DictationInput.swift in Sources */,
 				14DB46313AE88EC56854704C /* GlassStyles.swift in Sources */,
 				48A035BE8890396E0ED43AAE /* JotApp.swift in Sources */,
+				11BB5BA8DF4EF9187382C89E /* JotControllerPresence.swift in Sources */,
 				E3CF5ED8A4671E6F1AF3972D /* KeepAwakeAssertion.swift in Sources */,
 				B3514657CFDC0282C4EE3D22 /* KeyboardTextEvents.swift in Sources */,
 				72C6B1350B8785BD23ACFAE1 /* ListeningTimeline.swift in Sources */,
@@ -1745,6 +1750,7 @@
 				23BF7D613C3B8BE58CA2E267 /* DictationInput.swift in Sources */,
 				B1A85083969C3775BEA094AF /* GlassStyles.swift in Sources */,
 				9572D73CAA46AF95AAA3E76A /* JotApp.swift in Sources */,
+				A9088DCFFACF31ADC0BC0A23 /* JotControllerPresence.swift in Sources */,
 				015079250451415A16783408 /* KeepAwakeAssertion.swift in Sources */,
 				D96BCABE54FA760223E99960 /* KeyboardTextEvents.swift in Sources */,
 				C946FB1931FF0ABF2BC95166 /* ListeningTimeline.swift in Sources */,
