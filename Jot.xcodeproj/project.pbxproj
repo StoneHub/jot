@@ -175,6 +175,7 @@
 		66B8957514BEDD3D82E0A662 /* AppleFM in Frameworks */ = {isa = PBXBuildFile; productRef = 82EA2AAAF0F7562ED7F86957 /* AppleFM */; };
 		66D45732195ED153D7B91D9D /* ShortcutEventTap.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC8001AB9925D19877F40FB4 /* ShortcutEventTap.swift */; };
 		6722E95A60B70F129F3B0922 /* SuggestionTarget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49802E2F37EF1F2C700AA7B4 /* SuggestionTarget.swift */; };
+		67C387F99202A28B29B55B29 /* SetupFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A296C10B39C80C5647544CB /* SetupFlow.swift */; };
 		67CAD9A3E14557EF99F6D67A /* KeepAwakeAssertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EEFF7CD54878C9E034B716A /* KeepAwakeAssertion.swift */; };
 		68A990392B7CAAB061ADC290 /* Jot.icns in Resources */ = {isa = PBXBuildFile; fileRef = 78ECFD6E5E5AF02BE9088B4A /* Jot.icns */; };
 		68B95AD672492587FDC9743F /* RecoveryFlowChecks+CPUReadout.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA59C334CE5EAA5B8EBDDF66 /* RecoveryFlowChecks+CPUReadout.swift */; };
@@ -408,6 +409,7 @@
 		EC4003D9C37B4EE4BF9F0F1D /* SessionAudioFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74B630DD768233386E24B60B /* SessionAudioFile.swift */; };
 		EC9E08D9C244B9835859E80C /* ResourceSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = F361B31FF1DB535C01A02DD5 /* ResourceSampler.swift */; };
 		EE75EF752825E1DE720DADAF /* SpokenSymbols.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E39D1A4A4A7BB017D27321C /* SpokenSymbols.swift */; };
+		EF7C8651464849C156DF2C17 /* SetupFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A296C10B39C80C5647544CB /* SetupFlow.swift */; };
 		EF7E055303121CBE1247446C /* ControlSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B277E5F8CDF99C4DA21F4D1 /* ControlSnapshot.swift */; };
 		EFFEDFA79E698ECA75ABA6CD /* SessionAudioFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74B630DD768233386E24B60B /* SessionAudioFile.swift */; };
 		F05134FCBE92D742B51E5BBA /* LiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A608DB6E5CA06D36C6CE0E6 /* LiveView.swift */; };
@@ -570,6 +572,7 @@
 		1512EC3A0BD7B5C6A621FB68 /* TranscriptListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptListener.swift; sourceTree = "<group>"; };
 		183A39D7A575E764BED5B4EB /* ActivityLiveImpact.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityLiveImpact.swift; sourceTree = "<group>"; };
 		191DA6F475ADD3A5E643FF55 /* SpeechService+Permissions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SpeechService+Permissions.swift"; sourceTree = "<group>"; };
+		1A296C10B39C80C5647544CB /* SetupFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupFlow.swift; sourceTree = "<group>"; };
 		1AAAAC253E89A01B7D918109 /* DictationInput+Delivery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DictationInput+Delivery.swift"; sourceTree = "<group>"; };
 		1C10746E3543EA3E7BF9DEE1 /* StoreOperation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreOperation.swift; sourceTree = "<group>"; };
 		1C33A3E252A64EE9389B3646 /* SessionSplit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSplit.swift; sourceTree = "<group>"; };
@@ -967,6 +970,7 @@
 				74B630DD768233386E24B60B /* SessionAudioFile.swift */,
 				8A601577DB723625149B12CA /* SessionLibrary.swift */,
 				0FD7554D79D87DF0EC3E65D6 /* SessionsView.swift */,
+				1A296C10B39C80C5647544CB /* SetupFlow.swift */,
 				3EBDBA5283D24DA0EAD48C8F /* SetupView.swift */,
 				BC8001AB9925D19877F40FB4 /* ShortcutEventTap.swift */,
 				B091B8659394C293AB6A5B14 /* ShortcutSettings.swift */,
@@ -1571,6 +1575,7 @@
 				5A660A2CA87AA8E5225DC142 /* SessionAudioFile.swift in Sources */,
 				0AE13DCDEF17598D4CDFE981 /* SessionLibrary.swift in Sources */,
 				33ADF6DCB52461DE3B1FB2AB /* SessionsView.swift in Sources */,
+				EF7C8651464849C156DF2C17 /* SetupFlow.swift in Sources */,
 				D5513DD5B2B2D3A756B3E8CE /* SetupView.swift in Sources */,
 				1CD9A5D49577239F6E4C9605 /* ShortcutEventTap.swift in Sources */,
 				E5AC6A21952912C803142B66 /* ShortcutSettings.swift in Sources */,
@@ -1947,6 +1952,7 @@
 				650BFA42D2C2E3E44A995998 /* SessionAudioFile.swift in Sources */,
 				FA0B7FE48BCB33F0F6E82329 /* SessionLibrary.swift in Sources */,
 				9D2B2BCA2A3E04A4E218CADF /* SessionsView.swift in Sources */,
+				67C387F99202A28B29B55B29 /* SetupFlow.swift in Sources */,
 				D607D367793F51EE63A008A1 /* SetupView.swift in Sources */,
 				2D3693648D8F09F6A17CF3A0 /* ShortcutEventTap.swift in Sources */,
 				1F09C20F94E054D89A16CA9B /* ShortcutSettings.swift in Sources */,
