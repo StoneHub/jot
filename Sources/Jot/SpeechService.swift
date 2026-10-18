@@ -517,7 +517,9 @@ final class SpeechService: ObservableObject {
         if !automatic { capture.resetInputSearch() }
         switchingInput = true
         // Stop immediately and flush the tail before changing the device. Automatic pause retains listening and meeting intent.
-        pause(automatic: true, runSpeakerPass: timeline.lastAmbientRowAt != nil)
+        // Setup's Download loads the models with the microphone off: there is nothing to stop, and a pause would cancel the load.
+        let modelsOnlyLoad = preparing && !ambientRequested && !ambientEnabled && !capture.running
+        if !modelsOnlyLoad { pause(automatic: true, runSpeakerPass: timeline.lastAmbientRowAt != nil) }
         inputChange = Task {
             if let pausing { await pausing.value }
             if let unloading { await unloading.value }
