@@ -84,7 +84,7 @@ struct ListenCommand {
                     continue
                 }
                 if current.hasMore { continue } // quiet-gap never fires between pages
-                let status = try call("speech.status") as? [String: Any]
+                let status = try call("speech.controls") as? [String: Any] // mode only; speech.status also counts storage and tuning audio
                 guard !expired() else { return }
                 let isPaused = status?["mode"] as? String == "paused"
                 if isPaused, !paused {
