@@ -74,10 +74,25 @@ extension SpeechService {
                 return nil
             }
         }
+        // The last phrase is cleaned after it is recognized; the file waits for the cleaned text. Each phrase's cleanup has its own deadline.
+        if lifecycle.acceptsWork(generation), cleanup.isCleaning(session: id) {
+            let waiting = "Cleaning up the meeting's last words before export…"
+            notice = waiting
+            do {
+                try await MeetingExportWait.wait(isValid: { lifecycle.acceptsWork(generation) }, isComplete: { !cleanup.isCleaning(session: id) })
+            } catch {
+                notice = "Meeting export interrupted. Saved transcripts remain in Sessions; no file was exported."
+                return nil
+            }
+            if notice == waiting { notice = "" }
+        }
         library.refreshSessions()
         // A meeting with nothing transcribed ends quietly; there is no file to show.
         let store = library.store
-        guard (try? await storeExecutor.perform { try store?.session(id: id).isEmpty }) == false else { return nil }
+        let isEmpty: Bool?
+        do { isEmpty = try await storeExecutor.perform { try store?.session(id: id).isEmpty } }
+        catch { notice = error.localizedDescription; return nil }
+        guard isEmpty == false else { return nil }
         do {
             let url = try await library.exportSession(id)
             NSWorkspace.shared.activateFileViewerSelecting([url])
