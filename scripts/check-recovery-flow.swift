@@ -131,6 +131,12 @@ struct RecoveryFlowChecks {
         precondition(service.library.live.paragraphs.contains { $0.mode == "dictation" }, "Live did not show the saved dictation")
         print("PASS: Live adds each saved row and the held dictation as they are saved, matching a full read.")
 
+        // A tap while paused reaches cancelTap without begin(), with the finished attempt still current; it must not delete it.
+        service.dictation.cancelTap()
+        let afterBareTap = try await service.dictation.savedDictationForReview()
+        precondition(afterBareTap?.text == expected, "A tap with no hold deleted the saved dictation")
+        print("PASS: a tap that began no hold keeps the finished dictation saved for review.")
+
         // Double-tap discards its short holds; saved review is read-only and never inserts room speech.
         service.dictation.begin(); service.dictation.cancelTap()
         service.dictation.begin(); service.dictation.cancelTap()

@@ -159,11 +159,13 @@ final class DictationCoordinator {
     }
 
     /// A tap explicitly discards only the current held intent. Continuous listening
-    /// rows and earlier saved dictations remain untouched.
+    /// rows and earlier saved dictations remain untouched. A tap while paused never began a hold, so the finished
+    /// attempt still in `currentAttempt`, perhaps one kept for review, is not this tap's to delete.
     func cancelTap() {
         speakerMute.end(); highlight.hide()
-        if isActive || isPending { markPerformance(.dictationCancelled) }
         input.discardTarget()
+        guard isActive || isPending else { return }
+        markPerformance(.dictationCancelled)
         if let id = currentAttempt?.id {
             discardedAttemptIDs.insert(id)
             if let store = library.store {
