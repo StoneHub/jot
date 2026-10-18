@@ -288,6 +288,8 @@ final class DictationCoordinator {
             attempt.updatedAt = now()
             if text.isEmpty || attemptHadGap {
                 attempt.state = .deliveryFailed
+                // Current before the save: a listening block recognized meanwhile must not save the attempt back as recognizing.
+                currentAttempt = attempt
                 try await save(attempt)
                 guard await isCurrentAfterDeletion(id, session: started.sessionID) else { return }
                 currentAttempt = attempt
@@ -301,6 +303,7 @@ final class DictationCoordinator {
                 timing.finish(attemptHadGap ? .failed : .noSpeech)
             } else {
                 attempt.state = .ready
+                currentAttempt = attempt
                 try await save(attempt)
                 guard await isCurrentAfterDeletion(id, session: started.sessionID) else { return }
                 // History gets one durable dictation row, while the underlying listening
@@ -335,6 +338,7 @@ final class DictationCoordinator {
                 attempt.text = DictationCleanup.prepare(attempt.text, vocabulary: vocabulary).text
             }
             attempt.state = .deliveryFailed; attempt.updatedAt = now()
+            currentAttempt = attempt
             try? await save(attempt)
             guard await isCurrentAfterDeletion(id, session: started.sessionID) else { return }
             currentAttempt = attempt
