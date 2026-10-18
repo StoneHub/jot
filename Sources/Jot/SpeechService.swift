@@ -578,8 +578,10 @@ final class SpeechService: ObservableObject {
         guard await requestMic() else { throw JotError.message("Microphone permission is required.") }
         guard lifecycle.acceptsWork(token), ambientRequested, !pauseRequested else { return }
         guard !ambientEnabled else { return }
-        if !capture.running { lastAudioAt = dependencies.now() }
+        let wasRunning = capture.running
         guard try await capture.startRetrying(shouldContinue: { lifecycle.acceptsWork(token) && ambientRequested && !pauseRequested }) else { return }
+        // A start that needed retries took seconds; the four-second stall check counts from when the microphone came up.
+        if !wasRunning { lastAudioAt = dependencies.now() }
         timeline.beginSession(at: dependencies.now())
         ambientEnabled = true; updateKeepAwakeAssertion(); scheduleTimer()
         if !switchingInput { livePresentationRevision &+= 1 }
@@ -698,8 +700,8 @@ final class SpeechService: ObservableObject {
         }
         guard await requestMic() else { throw JotError.message("Microphone permission is required.") }
         guard lifecycle.acceptsWork(token), !pauseRequested, !ambientEnabled, !Task.isCancelled else { return }
-        lastAudioAt = dependencies.now()
         guard try await capture.startRetrying(shouldContinue: { lifecycle.acceptsWork(token) && !pauseRequested && !Task.isCancelled }) else { return }
+        lastAudioAt = dependencies.now()
         guard !Task.isCancelled else { capture.stop(); return }
         // No audio file: a dictation of one voice needs no speaker pass.
         timeline.beginSession(at: dependencies.now(), withAudio: false)
