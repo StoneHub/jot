@@ -44,6 +44,9 @@ extension SpeechService {
         library.refreshSessions()
     }
 
+    /// The longest End meeting waits for cleanup: one phrase's cleanup deadline and a little more.
+    static let meetingCleanupWait = LiveCleanup.livePhraseCleanupTimeout + .seconds(3)
+
     /// Closes and exports the named session while continuous listening immediately
     /// continues in a fresh untitled session.
     @discardableResult
@@ -74,12 +77,15 @@ extension SpeechService {
                 return nil
             }
         }
-        // The last phrase is cleaned after it is recognized; the file waits for the cleaned text. Each phrase's cleanup has its own deadline.
+        // The last phrase is cleaned after it is recognized; the file waits for the cleaned text, up to about one phrase's
+        // cleanup deadline. A longer queue exports what is cleaned by then, and the rest as recognized.
         if lifecycle.acceptsWork(generation), cleanup.isCleaning(session: id) {
             let waiting = "Cleaning up the meeting's last words before export…"
             notice = waiting
+            let deadline = ContinuousClock.now + Self.meetingCleanupWait
             do {
-                try await MeetingExportWait.wait(isValid: { lifecycle.acceptsWork(generation) }, isComplete: { !cleanup.isCleaning(session: id) })
+                try await MeetingExportWait.wait(isValid: { lifecycle.acceptsWork(generation) },
+                    isComplete: { !cleanup.isCleaning(session: id) || ContinuousClock.now >= deadline })
             } catch {
                 notice = "Meeting export interrupted. Saved transcripts remain in Sessions; no file was exported."
                 return nil
