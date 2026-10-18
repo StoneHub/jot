@@ -77,8 +77,13 @@ public final class LocalServiceServer: @unchecked Sendable {
             guard active else { return }
             let client = accept(fd, nil, nil)
             if client < 0 {
-                if errno == EINTR { continue }
-                return
+                switch errno {
+                case EINTR, ECONNABORTED: continue
+                // Out of descriptors or memory for now: the listener stays open, so wait and accept again rather than leave the socket unserved.
+                case EMFILE, ENFILE, ENOBUFS, ENOMEM: usleep(100_000); continue
+                // Anything else, such as stop() closing the listener, ends the loop.
+                default: return
+                }
             }
             LocalSocket.configure(client)
             lock.lock()
