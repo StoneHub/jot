@@ -180,9 +180,11 @@ final class DictationCoordinator {
         setRecoveryNotice("Current dictation discarded. Listening history was kept.")
     }
 
-    /// Lost or dropped audio inside a hold marks the attempt partial; outside a hold there is nothing to mark.
+    /// Lost or dropped audio inside a hold marks the attempt partial; outside a hold there is nothing to mark. Release drains
+    /// capture and queues the held tail as a final block, which is never dropped, so a gap reported while the attempt is
+    /// pending is in audio after the release.
     func markGap(_ recoveryNotice: String) {
-        guard isActive || isPending else { return }
+        guard isActive else { return }
         attemptHadGap = true
         setRecoveryNotice(recoveryNotice)
     }

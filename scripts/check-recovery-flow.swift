@@ -117,10 +117,13 @@ struct RecoveryFlowChecks {
         precondition(probe.chunks.allSatisfy { $0 <= 3 }, "Recognition still waits for a large audio block")
         try await libraryMatchesStore(service, store, "25 dictation blocks")
         service.dictation.end()
+        // Audio lost after the release is not the hold's: the finished hold still goes to delivery.
+        service.timeline.ingestAudio(samples: [], dropped: 1_600, lastAudio: probe.now, rms: 0.01)
         await service.waitForRecoveryVerification()
         let expected = (1...25).map { "segment\($0)" }.joined(separator: " ")
         let retained = try store.latestRecoverableDictationAttempt()
         precondition(retained?.text == expected, "A 75-second hold lost recognized words")
+        precondition(retained?.hasGap == false, "Audio lost after the release marked the finished hold partial")
         precondition(probe.attempts == 1 && probe.delivered.isEmpty, "Failed delivery was retried automatically")
         let reopened = try TranscriptStore(directory: directory)
         let reopenedAttempt = try reopened.latestRecoverableDictationAttempt()
