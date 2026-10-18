@@ -291,5 +291,45 @@ enum CaptureFlowChecks {
         service.cancelUpdatePreparation()
         precondition(!microphone.running, "Failed update started a previously paused microphone")
         print("PASS: Update saves the audio tail, preserves listening and meeting intent, blocks new intake, and restores listening on failure; paused updates stay paused.")
+        try await checkMicrophoneChoiceDuringModelsOnlyLoad()
+    }
+
+    /// Holds the model load until opened, as a download in progress does.
+    @MainActor final class LoadGate {
+        var closed = true
+        func wait() async throws { while closed { try await Task.sleep(for: .milliseconds(5)) } }
+    }
+
+    /// Setup's Download loads the models with the microphone off, and its next page offers the microphone picker. Choosing an input there changes it and leaves the load running.
+    @MainActor static func checkMicrophoneChoiceDuringModelsOnlyLoad() async throws {
+        let microphone = FakeMicrophone()
+        let load = LoadGate()
+        var dependencies = SpeechServiceDependencies(
+            infer: { _, _, _ in SpeechOutput(transcripts: [], text: "", processingSeconds: 0) },
+            deliver: { _, _ in throw DictationInput.InputError.targetChanged },
+            now: Date.init)
+        dependencies.makeMicrophone = { microphone }
+        let connectedInputs = ConnectedInputs([.init(id: "built-in", name: "Built-in"), .init(id: "verification-hub", name: "Hub")])
+        dependencies.availableInputs = { connectedInputs.values }
+        dependencies.defaultInputUID = { "built-in" }
+        dependencies.prepareModels = { _ in try await load.wait() }
+        dependencies.unloadModels = { _ in }
+        dependencies.microphoneAuthorization = { .authorized }
+        dependencies.requestMicrophoneAccess = { true }
+        let service = SpeechService(dependencies: dependencies)
+        defer { service.shutdown() }
+        service.capture.refreshInputDevices()
+        service.keepAudioForSpeakerPass = false
+        service.prepareModelsOnly()
+        precondition(service.preparing, "Setup's Download did not start loading the models")
+        service.setInput(uid: "verification-hub")
+        await service.waitForInputChange()
+        precondition(service.capture.selectedInputUID == "verification-hub", "Choosing a microphone during Setup's Download did not change the input")
+        precondition(service.preparing, "Choosing a microphone cancelled Setup's model download: \(service.notice)")
+        load.closed = false
+        await service.waitForPreparation()
+        precondition(service.modelState == .ready && !microphone.running && !service.ambientRequested,
+                     "Setup's Download did not finish with the models loaded and the microphone off: \(service.mode), \(service.notice)")
+        print("PASS: choosing a microphone while Setup downloads the models keeps the download and leaves the microphone off.")
     }
 }
