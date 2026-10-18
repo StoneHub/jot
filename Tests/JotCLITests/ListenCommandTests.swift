@@ -48,7 +48,7 @@ final class ListenCommandTests: XCTestCase {
         var now = 0.0, polls = 0, sleeps: [Double] = [], lines: [String] = []
         let command = ListenCommand(request: { method, _, _ in
             if method == "settings.get" { return try self.object(["settings": []]) }
-            if method == "speech.status" { return try self.object(["mode": "ambient"]) }
+            if method == "speech.controls" { return try self.object(["mode": "ambient"]) }
             polls += 1
             switch polls {
             case 1: return try self.envelope(TranscriptChanges(rows: [], cursor: 0, hasMore: false))
@@ -68,7 +68,7 @@ final class ListenCommandTests: XCTestCase {
         var now = 0.0, lines: [String] = [], delays: [Double] = []
         let command = ListenCommand(request: { method, _, _ in
             if method == "settings.get" { return try self.object(["settings": []]) }
-            if method == "speech.status" { return try self.object(["mode": "ambient"]) }
+            if method == "speech.controls" { return try self.object(["mode": "ambient"]) }
             var page = TranscriptChanges(rows: [], cursor: 42, hasMore: false); page.pollAfterSeconds = 0.1
             return try self.envelope(page)
         }, uptime: { now }, wallTime: { self.base }, sleep: { delays.append($0); now += $0 }, output: { lines.append($0) })
@@ -89,7 +89,7 @@ final class ListenCommandTests: XCTestCase {
         var now = 0.0, statuses = 0, lines: [String] = []
         let command = ListenCommand(request: { method, _, _ in
             if method == "settings.get" { return try self.object(["settings": []]) }
-            if method == "speech.status" {
+            if method == "speech.controls" {
                 statuses += 1
                 return try self.object(["mode": statuses == 3 ? "ambient" : "paused"])
             }
@@ -119,7 +119,7 @@ final class ListenCommandTests: XCTestCase {
             methods.append(method)
             if method == "settings.get" { return try self.object(["settings": []]) }
             if method == "transcripts.recent" { return try self.envelope([self.row("history", "Claude prior", at: -10)]) }
-            if method == "speech.status" { return try self.object(["mode": "ambient"]) }
+            if method == "speech.controls" { return try self.object(["mode": "ambient"]) }
             polls += 1
             if polls == 1 { return try self.envelope(TranscriptChanges(rows: [], cursor: 10, hasMore: false)) }
             return try self.envelope(TranscriptChanges(rows: polls == 2 ? [.init(self.row("live", "Claude use prior"), sequence: 11)] : [], cursor: 11, hasMore: false))
@@ -133,7 +133,7 @@ final class ListenCommandTests: XCTestCase {
         let command = ListenCommand(request: { method, params, _ in
             if method == "settings.get" { return try self.object(["settings": []]) }
             if method == "transcripts.recent" { snapshotRead = true; return try self.envelope([self.row("deleted", "stale private context", at: -10)]) }
-            if method == "speech.status" { return try self.object(["mode": "ambient"]) }
+            if method == "speech.controls" { return try self.object(["mode": "ambient"]) }
             polls += 1
             if polls == 1 { return try self.envelope(TranscriptChanges(rows: [], cursor: snapshotRead ? 101 : 100, hasMore: false)) }
             if polls == 2 {
