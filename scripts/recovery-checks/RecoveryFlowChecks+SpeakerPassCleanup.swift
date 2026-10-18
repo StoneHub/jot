@@ -68,6 +68,12 @@ extension RecoveryFlowChecks {
             service.transcriber.kick()
             return id
         }
+        /// What cleanup did, for a failure message (#228): cleaned text refused because a relabel replaced its rows first counts as bypassed after a changed outcome; a timed-out or busy cleanup shows in the outcomes.
+        func cleanupState(_ paragraphs: [Transcript]) -> String {
+            let cleanup = service.cleanup
+            let outcomes = cleanup.cleanupOutcomeCounts.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
+            return "speakers \(paragraphs.map(\.speakerID)); cleanup applied \(cleanup.cleanupAppliedCount), bypassed \(cleanup.cleanupBypassedCount), outcomes [\(outcomes)]; notice \(service.notice)"
+        }
         let id = speakAndEndSession()
         service.library.showLive(id)
         // The first voice gives way to the second inside the first row, between "should" and "ship". Cleanup is still running when the pass arrives.
@@ -81,7 +87,7 @@ extension RecoveryFlowChecks {
         let expected = ["So we should", "ship it on friday then ok."]
         let speakers = ["speaker-1", "speaker-2"]
         let paragraphs = await service.library.sessionParagraphs(id)
-        precondition(paragraphs.map(\.text) == expected, "The speaker pass lost cleaned text: \(paragraphs.map(\.text))")
+        precondition(paragraphs.map(\.text) == expected, "The speaker pass lost cleaned text: \(paragraphs.map(\.text)); \(cleanupState(paragraphs))")
         precondition(paragraphs.map(\.speakerID) == speakers, "The speaker pass labels were not applied: \(paragraphs.map(\.speakerID))")
         let events = try store.events(sessionID: id)
         precondition(events.contains { $0.kind == "speaker_pass" }, "The speaker pass recorded no event: \(service.notice)")
@@ -102,7 +108,7 @@ extension RecoveryFlowChecks {
         try await service.regroupSession(second)
         await service.waitForRecoveryVerification()
         let duringCleanup = await service.library.sessionParagraphs(second)
-        precondition(duringCleanup.map(\.text) == expected, "Regroup during cleanup lost cleaned text: \(duringCleanup.map(\.text))")
+        precondition(duringCleanup.map(\.text) == expected, "Regroup during cleanup lost cleaned text: \(duringCleanup.map(\.text)); \(cleanupState(duringCleanup))")
         precondition(duringCleanup.map(\.speakerID) == speakers, "Regroup during cleanup did not apply the pass: \(duringCleanup.map(\.speakerID))")
         print("PASS: Regroup pressed while a session's last phrase is being cleaned waits for it and keeps the cleaned text.")
 
@@ -127,7 +133,7 @@ extension RecoveryFlowChecks {
         try await early.value
         let afterEarly = await service.library.sessionParagraphs(third)
         precondition(afterEarly.map(\.speakerID) == speakers, "Regroup pressed before the pass stored its segments replaced the pass's speakers: \(afterEarly.map(\.speakerID)), \(afterEarly.map(\.text))")
-        precondition(afterEarly.map(\.text) == expected, "Regroup pressed before the pass lost cleaned text: \(afterEarly.map(\.text))")
+        precondition(afterEarly.map(\.text) == expected, "Regroup pressed before the pass lost cleaned text: \(afterEarly.map(\.text)); \(cleanupState(afterEarly))")
         let earlyNames = afterEarly.map(\.speakerLabel)
         precondition(earlyNames == ["Ada", nil], "Regroup pressed before the pass stored its segments moved the name the pass recognized: \(earlyNames)")
         precondition(service.notice == "Session regrouped from the speaker pass.", "Regroup pressed before the pass did not regroup from it: \(service.notice)")
