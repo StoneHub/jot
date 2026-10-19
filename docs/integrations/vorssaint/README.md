@@ -2,6 +2,12 @@
 
 Jot integrations should fit the tools people already use. Jot remains a standalone app; hosts use its reusable local control API and own only their presentation. The intended Vorssaint integration is a normal optional built-in feature, using its existing Features hub, settings, navigation, lifecycle and update path. It is not a new plugin loader or a separately branded Jot product.
 
+## App feature shipped in Jot.app
+
+Jot.app carries its own Vorssaint feature: `Contents/Resources/VorssaintIntegration.json` declares the Jot row, the Listening switch and its actions, and `Contents/Helpers/jot-vorssaint` answers the host one JSON line per request. A Vorssaint build with native app features finds it in /Applications after checking Jot's signature, and consent is bound to that signature and declaration. The helper reads only `speech.controls` and calls the controller methods below, so no transcript, title or audio reaches the host. After Listen, Don't listen and the meeting actions it reads again until Jot shows the requested state, so the switch does not flip back. The mapping lives in `VorssaintPresentation` with its tests.
+
+This replaces the development adapter that the private Vorssaint prototype staged on its own. It needs a host with the native app-feature catalog; stock Vorssaint does not have it yet.
+
 ## Prepared upstream contribution
 
 [optional-jot-feature.patch](optional-jot-feature.patch) applies to upstream Vorssaint commit `5457c2d69a0dffb62a7c644252e28207b1188457`. It adds:
