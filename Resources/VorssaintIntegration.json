@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "id": "space.jot.app",
+  "bundleIdentifier": "space.jot.app",
+  "title": "Jot",
+  "symbol": "waveform",
+  "summary": "Control Jot and show speech activity. Jot owns capture and stays independently available.",
+  "adapter": "Contents/Helpers/jot-vorssaint",
+  "toggles": [
+    { "id": "listening", "title": "Listening", "onAction": "listen", "offAction": "pause" }
+  ],
+  "actions": [
+    { "id": "open", "title": "Open Jot" },
+    { "id": "listen", "title": "Listen" },
+    { "id": "pause", "title": "Don’t listen", "confirmation": "Stop listening and end any active meeting?" },
+    { "id": "meeting.start", "title": "Start Meeting", "textPrompt": "Meeting title" },
+    { "id": "meeting.end", "title": "End Meeting" },
+    { "id": "quit", "title": "Quit Jot" }
+  ]
+}

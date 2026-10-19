@@ -57,6 +57,16 @@ targets:
         LD_RUNPATH_SEARCH_PATHS: '@executable_path/../Frameworks'
     dependencies:
       - target: JotCore
+  JotVorssaint:
+    type: tool
+    platform: macOS
+    sources: [Sources/JotVorssaint]
+    settings:
+      base:
+        PRODUCT_NAME: jot-vorssaint
+        LD_RUNPATH_SEARCH_PATHS: '@executable_path/../Frameworks'
+    dependencies:
+      - target: JotCore
   JotRecoveryChecks:
     type: tool
     platform: macOS
@@ -179,6 +189,8 @@ targets:
         buildPhase: resources
       - path: Resources/ThirdPartyNotices.txt
         buildPhase: resources
+      - path: Resources/VorssaintIntegration.json
+        buildPhase: resources
       - path: LICENSE
         buildPhase: resources
     info:
@@ -203,18 +215,23 @@ targets:
         embed: false
       - target: JotLab
         embed: false
+      - target: JotVorssaint
+        embed: false
     postBuildScripts:
       - name: Bundle agent CLI
         script: |
           mkdir -p "$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers"
           cp "$BUILT_PRODUCTS_DIR/jot" "$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/jot"
           cp "$BUILT_PRODUCTS_DIR/jot-lab" "$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/jot-lab"
+          cp "$BUILT_PRODUCTS_DIR/jot-vorssaint" "$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/jot-vorssaint"
         inputFiles:
           - $(BUILT_PRODUCTS_DIR)/jot
           - $(BUILT_PRODUCTS_DIR)/jot-lab
+          - $(BUILT_PRODUCTS_DIR)/jot-vorssaint
         outputFiles:
           - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/jot
           - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/jot-lab
+          - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/jot-vorssaint
   JotWindowChecks:
     type: tool
     platform: macOS

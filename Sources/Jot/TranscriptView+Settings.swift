@@ -93,7 +93,7 @@ extension TranscriptView {
                 listeningSettings
                 speakerSettings
                 SettingsGroup(title: "App", symbol: "menubar.rectangle") {
-                    SettingToggle(title: "Always show menu bar icon", info: "When off, Jot hides its icon while Vorssaint+Jot is running. The icon returns automatically when that app quits.",
+                    SettingToggle(title: "Always show menu bar icon", info: "When off, Jot hides its icon while Vorssaint shows Jot in its Dynamic Island. The icon returns when that feature is turned off or Vorssaint quits.",
                                   isOn: $showMenuBarIcon)
                 }
             }.frame(maxWidth: 680, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)

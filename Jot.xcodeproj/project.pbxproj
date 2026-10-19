@@ -19,6 +19,7 @@
 		0643D545CF0AC17B78F5D0BA /* LiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A608DB6E5CA06D36C6CE0E6 /* LiveView.swift */; };
 		0648B6F2DC5F03CE16E5C2ED /* VocabularyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D61874EB855429080562675D /* VocabularyView.swift */; };
 		0716C14AD00BDA6BD9FB35AB /* SpeechServiceIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42A30D435B413C60B77D5B35 /* SpeechServiceIPC.swift */; };
+		073C3B00CD7B25F432C53D42 /* VorssaintIntegration.json in Resources */ = {isa = PBXBuildFile; fileRef = 949C420BFD4722407BB5C6E7 /* VorssaintIntegration.json */; };
 		07E51DE7D7A118B36812A9B4 /* SpeechService+Permissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191DA6F475ADD3A5E643FF55 /* SpeechService+Permissions.swift */; };
 		0868BB86D9F3565B5F99AA26 /* AudioJob.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E76DBC2C08598EF5281221A /* AudioJob.swift */; };
 		0947EDE8057197DA17216580 /* PerformanceJob.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF9D887E417A6D0BE9F8A8C4 /* PerformanceJob.swift */; };
@@ -92,6 +93,7 @@
 		2D66B6A637FF533C7053FFE9 /* JotCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D2E098CDE7120087F5C947F0 /* JotCore.framework */; };
 		2E2294A6D08F7F87798D5045 /* SpeechService+Meetings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8980FD3AED2B4B58C327993 /* SpeechService+Meetings.swift */; };
 		3112CDA56D8D1060341B053F /* SessionLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A601577DB723625149B12CA /* SessionLibrary.swift */; };
+		31B15D9DEDF1E69DD66BFBF2 /* VorssaintFeature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64EA31B889F5FAAE4DD86464 /* VorssaintFeature.swift */; };
 		31D0FBE140B2935F2B0A84CF /* check-recovery-flow.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA5056B84E7AD6B092886919 /* check-recovery-flow.swift */; };
 		330CF17CE150D5474557F32D /* UserVoiceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEE0D4A32940C28F6C72D68D /* UserVoiceStore.swift */; };
 		3366EB54B0678AF2CE939C33 /* TranscriptListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1512EC3A0BD7B5C6A621FB68 /* TranscriptListener.swift */; };
@@ -383,6 +385,7 @@
 		DD390B77839B528672C95C1C /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */; };
 		DD8557A3C9375771D0BA06F4 /* RecoveryFlowChecks+QuietCPU.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5E6592CD2F5E20FEEF597BA /* RecoveryFlowChecks+QuietCPU.swift */; };
 		DEE0D116BC6F83045D862E39 /* SpeechService+Permissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191DA6F475ADD3A5E643FF55 /* SpeechService+Permissions.swift */; };
+		DF96E97E53E0B4E62F13678E /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BB3ACD08203A234EDCD57B6 /* main.swift */; };
 		DFB273C5C4C358EE061C15B2 /* LatencySummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5161AC2BF6256AC57286B16 /* LatencySummary.swift */; };
 		E0C164F90CEAB61D0C95F24F /* CaptureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C898180408412523C4E31E37 /* CaptureController.swift */; };
 		E17CFFA1A449845249858620 /* ShortcutTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFAF1ADC5E12DA1CEC248BF8 /* ShortcutTracker.swift */; };
@@ -420,6 +423,7 @@
 		F1AC51E55A3F4FEAFF96CB3A /* SpeakerRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8680759A7B6F51ABC6336028 /* SpeakerRecognizer.swift */; };
 		F23046D94524269DD88E6FC4 /* check-capture-flow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 843F15BB91A9B223CEA18CB9 /* check-capture-flow.swift */; };
 		F2920146F6F9706A4AC63E10 /* AgentContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CB952D28B1838EB34DA1960 /* AgentContext.swift */; };
+		F2D59BBFB6AE90B06D874A1E /* JotCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D2E098CDE7120087F5C947F0 /* JotCore.framework */; };
 		F3248BE04925933DDD7EC89C /* ReadableTextRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 274468C9F4FACD96DDB48BAC /* ReadableTextRows.swift */; };
 		F39E2781C6B2CA0959B89114 /* JotCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D2E098CDE7120087F5C947F0 /* JotCore.framework */; };
 		F3A5DDA2D07BE624C47FD821 /* WindowImageGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F839A8A3345995EC3FF4F95 /* WindowImageGeometry.swift */; };
@@ -466,6 +470,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = BCFD8FABA83FE0B14C12D0C1;
 			remoteInfo = JotCore;
+		};
+		1B1B638285206A729785905B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5729D6C2EC45B150D2A5B40B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 110D80358188A1DAB4D9E241;
+			remoteInfo = JotVorssaint;
 		};
 		34422EFFFFCD9E2AE024BE68 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -529,6 +540,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 3F3C802B5B316E1F2CF65158;
 			remoteInfo = JotCLI;
+		};
+		F374946D72D8FCF6AFEEB751 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5729D6C2EC45B150D2A5B40B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BCFD8FABA83FE0B14C12D0C1;
+			remoteInfo = JotCore;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -605,6 +623,7 @@
 		3021C2EF51145A7BDED93A9C /* ServiceGuidanceChecks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceGuidanceChecks.swift; sourceTree = "<group>"; };
 		3078D9C965950A3E9ED18B49 /* SetupProgress.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupProgress.swift; sourceTree = "<group>"; };
 		31F7EE07CA30F7AAD14BDAB9 /* AudioInputDeviceWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioInputDeviceWatcher.swift; sourceTree = "<group>"; };
+		329EA9649EEFF355ABA6A205 /* JotVorssaint */ = {isa = PBXFileReference; includeInIndex = 0; path = JotVorssaint; sourceTree = BUILT_PRODUCTS_DIR; };
 		35E6B986F9E9763E984076A4 /* WindowImageGeneration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowImageGeneration.swift; sourceTree = "<group>"; };
 		36EED2B8F9A3A149CE94E3D2 /* SemanticVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticVersion.swift; sourceTree = "<group>"; };
 		376C255B9F520C8BBE2CD76A /* TranscriptListenConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptListenConfiguration.swift; sourceTree = "<group>"; };
@@ -652,6 +671,7 @@
 		63B325648B69E21750EBF215 /* SessionAudioWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionAudioWriter.swift; sourceTree = "<group>"; };
 		6426715E1DD091B61B49DB51 /* SpeakerPassStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerPassStore.swift; sourceTree = "<group>"; };
 		64DFC6286492A052B21DE7FA /* LiveTranscriptText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranscriptText.swift; sourceTree = "<group>"; };
+		64EA31B889F5FAAE4DD86464 /* VorssaintFeature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VorssaintFeature.swift; sourceTree = "<group>"; };
 		651850351DF0D76098A021B7 /* ReleaseInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleaseInfo.swift; sourceTree = "<group>"; };
 		6613AB3B8F7BD75C2CFDF556 /* RowRelabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RowRelabel.swift; sourceTree = "<group>"; };
 		6646658769779D619884AA27 /* DictationSpeakerMute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationSpeakerMute.swift; sourceTree = "<group>"; };
@@ -708,6 +728,7 @@
 		91BE6EEF6AD6F736A1D00FE4 /* SpeakerAssignment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerAssignment.swift; sourceTree = "<group>"; };
 		91F8074E00354A4D7035E920 /* PeopleStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleStore.swift; sourceTree = "<group>"; };
 		91F9493A9A1D9A5FD7DA45BB /* ShortcutPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutPreferences.swift; sourceTree = "<group>"; };
+		949C420BFD4722407BB5C6E7 /* VorssaintIntegration.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = VorssaintIntegration.json; sourceTree = "<group>"; };
 		95995C31AC896BE76C27532F /* PerformanceDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceDiagnostics.swift; sourceTree = "<group>"; };
 		95C80CCA8DD0EA57CBD8F177 /* TranscriptCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptCleanup.swift; sourceTree = "<group>"; };
 		95F80C34BFB6F772A6C7B331 /* SetupReadiness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupReadiness.swift; sourceTree = "<group>"; };
@@ -716,6 +737,7 @@
 		972C32437B75A2F1E380916A /* SavedSuggestionInteraction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedSuggestionInteraction.swift; sourceTree = "<group>"; };
 		97ADF09DB2276506706FA8DC /* UserVoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserVoice.swift; sourceTree = "<group>"; };
 		9A4D583EF07B940C30081D6E /* MeetingExportWait.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingExportWait.swift; sourceTree = "<group>"; };
+		9BB3ACD08203A234EDCD57B6 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		9C74FC1946E109F1AEAE2BDF /* LocalServiceError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalServiceError.swift; sourceTree = "<group>"; };
 		9CB952D28B1838EB34DA1960 /* AgentContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentContext.swift; sourceTree = "<group>"; };
 		9D0A8B91F18F4F1888258C1E /* SpeechService+Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SpeechService+Settings.swift"; sourceTree = "<group>"; };
@@ -840,6 +862,14 @@
 			files = (
 				2D66B6A637FF533C7053FFE9 /* JotCore.framework in Frameworks */,
 				46766F0CF3BF6C02F604476B /* JotEngine.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3B17B913A3935B9F10EDE909 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F2D59BBFB6AE90B06D874A1E /* JotCore.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1017,6 +1047,7 @@
 				C1DEE3EB4427813127E7E1D0 /* JotCore */,
 				16C5864F174FD8D57278B58F /* JotEngine */,
 				F103BEC418C65428A6CAD07B /* JotLab */,
+				E944BDB3D2D373F1D49D9ACF /* JotVorssaint */,
 				F3C3E4D9C67AEB05A478B101 /* JotWindowChecks */,
 				06FE27CEE90A61C01D2DB41A /* recovery-checks */,
 				8B06638858A04B172277FDD9 /* Resources */,
@@ -1032,6 +1063,7 @@
 				FF011AF3F4B42BB9B97A069F /* Assets.xcassets */,
 				78ECFD6E5E5AF02BE9088B4A /* Jot.icns */,
 				2AF537A90CCFD9AEEF273426 /* ThirdPartyNotices.txt */,
+				949C420BFD4722407BB5C6E7 /* VorssaintIntegration.json */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -1224,6 +1256,7 @@
 				C34AF98B190AE8AD30B25C75 /* VocabularyError.swift */,
 				F13ACF0544750F59352B8382 /* VocabularyPatternCache.swift */,
 				6377DB9D5C692E4E97A8BE65 /* VocabularyPreferences.swift */,
+				64EA31B889F5FAAE4DD86464 /* VorssaintFeature.swift */,
 				35E6B986F9E9763E984076A4 /* WindowImageGeneration.swift */,
 				4F839A8A3345995EC3FF4F95 /* WindowImageGeometry.swift */,
 				D2C4791A807634036391DDB7 /* WordErrorRate.swift */,
@@ -1241,6 +1274,7 @@
 				E3F7D01BDF81227F2D55740F /* JotEngine.framework */,
 				2D6BAC2FBEA770A74E3E8409 /* JotLab */,
 				22DFD1104FF0F55F21DFA91C /* JotRecoveryChecks */,
+				329EA9649EEFF355ABA6A205 /* JotVorssaint */,
 				DAC4D8304004A11BC13D0D23 /* JotWindowChecks */,
 			);
 			name = Products;
@@ -1261,6 +1295,15 @@
 			);
 			name = JotCLI;
 			path = Sources/JotCLI;
+			sourceTree = "<group>";
+		};
+		E944BDB3D2D373F1D49D9ACF /* JotVorssaint */ = {
+			isa = PBXGroup;
+			children = (
+				9BB3ACD08203A234EDCD57B6 /* main.swift */,
+			);
+			name = JotVorssaint;
+			path = Sources/JotVorssaint;
 			sourceTree = "<group>";
 		};
 		F103BEC418C65428A6CAD07B /* JotLab */ = {
@@ -1286,6 +1329,25 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		110D80358188A1DAB4D9E241 /* JotVorssaint */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 567662BA5622C3E3C6569981 /* Build configuration list for PBXNativeTarget "JotVorssaint" */;
+			buildPhases = (
+				5B2B0C8AF84CCC790F241A74 /* Sources */,
+				3B17B913A3935B9F10EDE909 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				8A167188B80F18F6567DBE78 /* PBXTargetDependency */,
+			);
+			name = JotVorssaint;
+			packageProductDependencies = (
+			);
+			productName = JotVorssaint;
+			productReference = 329EA9649EEFF355ABA6A205 /* JotVorssaint */;
+			productType = "com.apple.product-type.tool";
+		};
 		3E98EA4466E0FB7510143776 /* JotLab */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 7DD6C853823B19054A94AF3F /* Build configuration list for PBXNativeTarget "JotLab" */;
@@ -1402,6 +1464,7 @@
 				E35CF0D5A813975202437707 /* PBXTargetDependency */,
 				C2C478DC6A4E792DED73CC16 /* PBXTargetDependency */,
 				5BBAF7D28B00FE42A16C5BD2 /* PBXTargetDependency */,
+				7CE561CC8678A1EE2845018F /* PBXTargetDependency */,
 			);
 			name = Jot;
 			packageProductDependencies = (
@@ -1438,6 +1501,9 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					110D80358188A1DAB4D9E241 = {
+						ProvisioningStyle = Manual;
+					};
 					3E98EA4466E0FB7510143776 = {
 						ProvisioningStyle = Manual;
 					};
@@ -1482,6 +1548,7 @@
 				BCFD8FABA83FE0B14C12D0C1 /* JotCore */,
 				7FB72D53DDF30B85CDEF3323 /* JotEngine */,
 				3F3C802B5B316E1F2CF65158 /* JotCLI */,
+				110D80358188A1DAB4D9E241 /* JotVorssaint */,
 				6D8AAD3F0927A334A58CD310 /* JotRecoveryChecks */,
 				3E98EA4466E0FB7510143776 /* JotLab */,
 				B0C2456737C67D0846A9A98E /* Jot */,
@@ -1499,6 +1566,7 @@
 				68A990392B7CAAB061ADC290 /* Jot.icns in Resources */,
 				6F6AFCF5F313C08DE94D202C /* LICENSE in Resources */,
 				0C6637B88C039C4EEEB58198 /* ThirdPartyNotices.txt in Resources */,
+				073C3B00CD7B25F432C53D42 /* VorssaintIntegration.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1515,6 +1583,7 @@
 			inputPaths = (
 				"$(BUILT_PRODUCTS_DIR)/jot",
 				"$(BUILT_PRODUCTS_DIR)/jot-lab",
+				"$(BUILT_PRODUCTS_DIR)/jot-vorssaint",
 			);
 			name = "Bundle agent CLI";
 			outputFileListPaths = (
@@ -1522,10 +1591,11 @@
 			outputPaths = (
 				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/jot",
 				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/jot-lab",
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/jot-vorssaint",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "mkdir -p \"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers\"\ncp \"$BUILT_PRODUCTS_DIR/jot\" \"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/jot\"\ncp \"$BUILT_PRODUCTS_DIR/jot-lab\" \"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/jot-lab\"\n";
+			shellScript = "mkdir -p \"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers\"\ncp \"$BUILT_PRODUCTS_DIR/jot\" \"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/jot\"\ncp \"$BUILT_PRODUCTS_DIR/jot-lab\" \"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/jot-lab\"\ncp \"$BUILT_PRODUCTS_DIR/jot-vorssaint\" \"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/jot-vorssaint\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -1612,6 +1682,14 @@
 				D4E3CBFA39C405CBEA8684B2 /* TranscriptView.swift in Sources */,
 				00074A8DD9DA7968F26870BE /* VocabularyView.swift in Sources */,
 				12D63E8DA5C808A998A90FDA /* WindowImageCapture.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5B2B0C8AF84CCC790F241A74 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DF96E97E53E0B4E62F13678E /* main.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1785,6 +1863,7 @@
 				3E7F950DED6000E6A39CDA4E /* VocabularyError.swift in Sources */,
 				1916303AD706B15000CF6DDA /* VocabularyPatternCache.swift in Sources */,
 				05618F73F3D294B80EC9AEDE /* VocabularyPreferences.swift in Sources */,
+				31B15D9DEDF1E69DD66BFBF2 /* VorssaintFeature.swift in Sources */,
 				B42C227281EA9DC25271DA8B /* WindowImageGeneration.swift in Sources */,
 				F3A5DDA2D07BE624C47FD821 /* WindowImageGeometry.swift in Sources */,
 				718646DA703A19421B12C7D6 /* WordErrorRate.swift in Sources */,
@@ -2009,10 +2088,20 @@
 			target = BCFD8FABA83FE0B14C12D0C1 /* JotCore */;
 			targetProxy = 4D4719C7AC50409BF97A6E35 /* PBXContainerItemProxy */;
 		};
+		7CE561CC8678A1EE2845018F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 110D80358188A1DAB4D9E241 /* JotVorssaint */;
+			targetProxy = 1B1B638285206A729785905B /* PBXContainerItemProxy */;
+		};
 		8530A59F2ABD2D6C4FA78E4C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 7FB72D53DDF30B85CDEF3323 /* JotEngine */;
 			targetProxy = B7144FDD0919393ED9ED50FF /* PBXContainerItemProxy */;
+		};
+		8A167188B80F18F6567DBE78 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BCFD8FABA83FE0B14C12D0C1 /* JotCore */;
+			targetProxy = F374946D72D8FCF6AFEEB751 /* PBXContainerItemProxy */;
 		};
 		8AC9C6E88845D00CC15B7BC9 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -2062,6 +2151,17 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		05B9E496FCE623B64CCBB250 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = space.jot.JotVorssaint;
+				PRODUCT_NAME = "jot-vorssaint";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
 		0B80DD5D9D4CE8C13EE19B41 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -2200,6 +2300,17 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = space.jot.app;
 				PRODUCT_NAME = Jot;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		313F22397A8E3416FF989536 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = space.jot.JotVorssaint;
+				PRODUCT_NAME = "jot-vorssaint";
 				SDKROOT = macosx;
 			};
 			name = Release;
@@ -2419,6 +2530,15 @@
 			buildConfigurations = (
 				442C521A059F0DF7D568BB2F /* Debug */,
 				59A80C833F2B8620FBD968C5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		567662BA5622C3E3C6569981 /* Build configuration list for PBXNativeTarget "JotVorssaint" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				05B9E496FCE623B64CCBB250 /* Debug */,
+				313F22397A8E3416FF989536 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
