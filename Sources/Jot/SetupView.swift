@@ -333,11 +333,19 @@ struct SetupView: View {
                 }
             }
             SetupRow(state: service.dictationEnabled ? .done : .needed, title: "Dictation shortcut", detail: shortcutDetail) { shortcutAction }
+            if let conflict = service.fnShortcutConflict {
+                SetupRow(state: .attention, title: "Fn/Globe key",
+                         detail: "macOS also \(conflict) when Fn is pressed. In Keyboard settings, set \"Press 🌐 key to\" Do Nothing.") {
+                    Button("Keyboard Settings") { service.openKeyboardSettings() }.modifier(GlassButton())
+                }
+            }
             SetupRow(state: trialSucceeded ? .done : .optional, title: "Try it", detail: trialDetail) { trialAction }
             VStack(alignment: .leading, spacing: 8) {
                 tip("pause.circle", "Pause stops listening. Holding the shortcut still works while paused: the microphone turns on for the hold only.")
                 tip("doc.text", "If Jot cannot insert, for example after focus changes, it keeps the words. Review saved dictation shows them to copy.")
-                tip("globe", "If Fn opens emoji or another macOS feature, set the Fn/Globe key to Do Nothing in System Settings → Keyboard.")
+                if service.fnShortcutConflict == nil {
+                    tip("globe", "If Fn opens emoji or another macOS feature, set the Fn/Globe key to Do Nothing in System Settings → Keyboard.")
+                }
             }
         }
         .onAppear { if trialBaseline == nil { trialBaseline = library.dictationCount } }

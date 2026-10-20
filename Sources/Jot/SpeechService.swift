@@ -160,6 +160,8 @@ final class SpeechService: ObservableObject {
     @Published var checkingModels = false
     @Published var micPermission = AVCaptureDevice.authorizationStatus(for: .audio)
     @Published var accessibilityGranted = DictationInput.accessibilityGranted
+    /// macOS's own Fn/Globe action, which also fires on every Fn hold unless it is Do Nothing.
+    @Published private(set) var fnKeyUsage = SpeechService.readFnKeyUsage()
     /// Screen Recording, for the optional window image. macOS may need Jot reopened before a new permission applies.
     @Published private(set) var screenRecordingAllowed = WindowImageCapture.permitted
     @Published private(set) var cachedModelBytes = ModelCache.bytesOnDisk()
@@ -486,6 +488,8 @@ final class SpeechService: ObservableObject {
         if accessibilityGranted != accessibility { accessibilityGranted = accessibility }
         let screen = WindowImageCapture.permitted
         if screenRecordingAllowed != screen { screenRecordingAllowed = screen }
+        let fnUsage = Self.readFnKeyUsage()
+        if fnKeyUsage != fnUsage { fnKeyUsage = fnUsage }
     }
 
     /// The foreground path and slow background check share this change-only update.

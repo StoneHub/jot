@@ -65,6 +65,17 @@ extension SpeechService {
     }
 
     func openScreenRecordingSettings() { openSettings("Privacy_ScreenCapture") }
+
+    /// What also happens when the Fn dictation shortcut is pressed; nil for another shortcut or when macOS does nothing.
+    var fnShortcutConflict: String? { shortcut.keyCode == nil ? fnKeyUsage?.conflict : nil }
+    nonisolated static func readFnKeyUsage() -> FnKeyUsage? {
+        FnKeyUsage(storedValue: UserDefaults(suiteName: "com.apple.HIToolbox")?.object(forKey: "AppleFnUsageType"))
+    }
+    /// Keyboard settings, where "Press 🌐 key to" lives.
+    func openKeyboardSettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension") else { return }
+        NSWorkspace.shared.open(url)
+    }
     private func openSettings(_ pane: String) {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") else { return }
         NSWorkspace.shared.open(url)

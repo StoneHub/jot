@@ -63,6 +63,11 @@ struct ServiceControls: View {
                     if enabled { Task { await service.enableDictation() } } else { service.disableDictation() }
                 })).labelsHidden().toggleStyle(.switch)
             }.help("Hold \(service.shortcut.displayName) to dictate, while listening or paused. Double-tap Fn only requests suggestions when enabled.")
+            if service.dictationRequested, let conflict = service.fnShortcutConflict {
+                ControlRow(symbol: "globe", title: "Fn also \(conflict)", caption: "Set the Globe key to Do Nothing", secondary: true) {
+                    Button("Settings") { service.openKeyboardSettings() }.modifier(GlassButton())
+                }.help("In System Settings → Keyboard, set \"Press 🌐 key to\" Do Nothing so holding Fn only dictates.")
+            }
             if service.dictationRequested && !service.modelsDownloaded { DictationModelsRow(service: service) }
             ControlRow(title: "Hold to talk", secondary: true) { ShortcutSettings(service: service) }
             ControlRow(title: "Keep Mac awake", caption: "While listening", secondary: true) {
