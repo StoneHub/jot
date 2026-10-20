@@ -105,6 +105,8 @@ final class DictationInput {
     }
 
     private var recording = false
+    /// A hold, or a released dictation still waiting to insert, owns the captured field.
+    var dictationOwnsTarget: Bool { recording || target != nil || targetAcquisition != nil }
     /// Stays true through focus-error completion until the physical gesture ends.
     private var gestureAccepted = false
     var clipboardRestore: (() -> Void)?
@@ -331,7 +333,8 @@ final class DictationInput {
                 gestureAccepted = false
             case .tapDisabled:
                 onSuggestionDismiss?(.serviceStopped)
-                cancel(InputError.shortcutCancelled)
+                // A released dictation keeps its target until insertion; only an active hold is cut short.
+                if recording { cancel(InputError.shortcutCancelled) }
                 gestureAccepted = false
             }
         }

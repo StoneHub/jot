@@ -115,7 +115,7 @@ final class SuggestionCoordinator {
         gate.cancel()
         card.hide(); input.dismissSuggestionKeys()
         candidate = nil; seed = nil; field = nil; rows = []; agentSnapshot = []; agentLatestID = nil
-        if ownsTarget { ownsTarget = false; input.discardTarget() }
+        if ownsTarget { ownsTarget = false; input.clearTarget() }
     }
 
     /// A selection becomes a rewrite that replaces it; other text is continued at the cursor; a blank composer gets a
@@ -446,7 +446,8 @@ final class SuggestionCoordinator {
         dismiss(action: .newRequest)
         beginReceipt()
         updateReceipt { $0.outcome = .blocked; $0.reason = .refused }
-        guard anchorToField else {
+        // Capturing a field here would replace a dictation's target, and dismissing the notice would end its hold.
+        guard anchorToField, !input.dictationOwnsTarget else {
             updateReceipt { $0.complete = true }
             notice(text)
             return
