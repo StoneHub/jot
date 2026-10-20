@@ -63,173 +63,169 @@ extension SpeechService {
     }
 
     func handle(_ data: Data) async -> Data {
-        do {
-            guard let request = try JSONSerialization.jsonObject(with: data) as? [String: Any], let method = request["method"] as? String else { throw JotError.message("Invalid request") }
-            let params = request["params"] as? [String: Any] ?? [:]
-            let limit = params["limit"] as? Int ?? 50
-            let offset = params["offset"] as? Int ?? 0
-            var result: Any = [:]
-            switch method {
-            case "speech.controls":
-                let suggestion = suggestions.diagnostics
-                let phase: DictationAttempt.State? = dictation.isActive ? .capturing
-                    : dictation.isPending ? .recognizing : dictation.currentAttempt?.state
-                result = try object(ControlSnapshot(mode: mode, meetingActive: meetingTitle != nil,
-                    dictation: phase, dictationSequence: controlSequence,
-                    suggestion: suggestion["outcome"] as? String ?? "idle",
-                    suggestionSequence: suggestion["requests"] as? Int ?? 0, inputLevel: ControlSnapshot.inputLevel(meter: capture.inputLevel)))
-            case "speech.status": result = try await status()
-            case "activity.report":
-                let days = try ActivityRequest.days(arguments: params)
-                guard let store = library.store else { throw JotError.message("Saved history is unavailable") }
-                let now = Date(), calendar = Calendar.current
-                let report = try await storeExecutor.perform { try store.activity(days: days, now: now, calendar: calendar) }
-                result = try object(report)
-            case "models.prepare": result = ["state": modelState.rawValue, "downloadBytes": prepareFromCommand()]
-            case "models.unload": unloadModels(); result = try await status()
-            case "models.check": checkModelUpdates(); if let modelCheck { await modelCheck.value }; result = try object(modelUpdates)
-            case "speech.diagnostics":
-                samplePerformance(); result = try object(diagnostics.report)
-            case "speech.start": try await startAmbient(); result = try await status()
-            case "speech.pause": pause(); result = try await status()
-            case "speech.resume": _ = prepareFromCommand(); result = try await status()
-            case "speech.meeting_start":
-                guard let title = params["title"] as? String else { throw JotError.message("Meeting needs a title") }
-                await startMeeting(title)
-                guard meetingTitle != nil else { throw JotError.message(notice.isEmpty ? "Meeting did not start" : notice) }
-                result = ["sessionID": timeline.sessionID, "title": title]
-            case "speech.meeting_end":
-                let id = timeline.sessionID
-                guard meetingTitle != nil || ambientEnabled else { throw JotError.message("No meeting or ambient capture is running") }
-                let files = try await endMeeting()
-                // "file" is the last part; "files" lists every part when an automatic pause split the meeting.
-                result = ["sessionID": id, "file": files.last?.path ?? "", "files": files.map(\.path)]
-            case "sessions.title":
-                guard let id = params["sessionID"] as? String, let title = params["title"] as? String else { throw JotError.message("sessionID and title are required") }
-                try await setSessionTitle(id, title: title)
-                result = ["sessionID": id, "title": title]
-            case "settings.get": result = ["settings": settings.report(), "revision": JotSettings.revision]
-            case "settings.set":
-                guard let key = params["key"] as? String, let value = params["value"] else { throw JotError.message("key and value are required") }
-                try settings.set(key, raw: value); settingChanged(key)
-                result = settingRow(key)
-            case "settings.reset":
-                guard let key = params["key"] as? String else { throw JotError.message("key is required") }
-                try settings.reset(key); settingChanged(key)
-                result = settingRow(key)
-            case "transcripts.clear": try await clearHistory(); result = ["cleared": true]
-            case "transcripts.delete_session":
-                guard let id = params["sessionID"] as? String else { throw JotError.message("sessionID is required") }
-                try await deleteSession(id); result = ["deleted": true]
-            case "transcripts.search":
-                let store = library.store, query = params["query"] as? String ?? ""
-                result = try await readOffMain { try store?.search(query, limit: limit, offset: offset) ?? [] }
-            case "transcripts.recent":
-                let store = library.store
-                result = try await readOffMain { try store?.recent(limit: limit, offset: offset) ?? [] }
-            case "transcripts.events":
-                let store = library.store, sessionID = params["sessionID"] as? String
-                result = try await readOffMain { try store?.events(sessionID: sessionID, limit: limit, offset: offset) ?? [] }
-            case "suggestions.recent":
-                guard let suggestionHistory else { throw JotError.message("Suggestion history is unavailable") }
-                result = try object(await suggestionHistory.recent(limit: limit))
-            case "transcripts.sessions":
-                let store = library.store
-                result = try await readOffMain { try store?.sessions(limit: limit) ?? [] }
-            case "transcripts.since":
-                let cursor = params["cursor"] as? Int
-                guard params["cursor"] == nil || (cursor != nil && cursor! >= 0) else { throw JotError.message("cursor must be a nonnegative integer") }
-                let generation = params["generation"] as? String
-                guard params["generation"] == nil || generation?.isEmpty == false else { throw JotError.message("generation must be a nonempty string") }
-                let sessionID = params["sessionID"] as? String
-                guard params["sessionID"] == nil || sessionID?.isEmpty == false else { throw JotError.message("sessionID must be a nonempty string") }
-                let store = library.store
-                result = try await readOffMain {
-                    try store?.changes(since: cursor.map(Int64.init), generation: generation, sessionID: sessionID, limit: limit) ?? TranscriptChanges(rows: [], cursor: Int64(cursor ?? 0), hasMore: false)
-                }
-            case "transcripts.read":
-                guard let id = params["id"] as? String else { throw JotError.message("id is required") }
-                let store = library.store
-                guard let item = try await Task.detached(priority: .userInitiated, operation: { try store?.read(id: id) }).value else { throw JotError.message("Transcript not found") }
-                result = try object(item)
-            case "transcripts.export":
-                guard let id = params["sessionID"] as? String else { throw JotError.message("sessionID is required") }
-                let (session, rows) = try await library.exportable(id)
-                if params["format"] as? String == "json" { result = try object(TranscriptGrouping.foldContinuations(rows)) }
-                else { result = ["sessionID": id, "text": TranscriptExport.markdown(session: session, rows: rows, tuning: tuning)] }
-            case "speech.transcribe_file":
-                guard !preparingUpdate, !switchingInput, lifecycle.phase == .paused, !capture.running, transcriber.isIdle, !diagnosticActive else { throw JotError.message("Pause Jot before diagnostic file transcription.") }
-                guard ModelCache.bytesOnDisk() > 0 else { throw JotError.message("Prepare speech models before diagnostic file transcription.") }
-                guard let path = params["path"] as? String else { throw JotError.message("path is required") }
-                diagnosticActive = true
-                defer { diagnosticActive = false }
-                let token = lifecycle.generation
-                // File diagnostics use an isolated pipeline while paused, so they never reset the live speaker timeline.
-                let filePipeline = SpeechPipeline(settings: settings)
-                let fileTask = Task {
-                    do {
-                        try await filePipeline.prepare()
-                        let output = try await filePipeline.testFile(URL(fileURLWithPath: path), tuning: tuning)
-                        await filePipeline.unload()
-                        return output
-                    } catch {
-                        await filePipeline.unload()
-                        throw error
-                    }
-                }
-                diagnostic = fileTask
-                defer { diagnostic = nil }
-                let output = try await fileTask.value
-                guard lifecycle.generation == token else { throw CancellationError() }
-                result = ["text": output.text, "transcripts": try object(output.transcripts), "processingSeconds": output.processingSeconds, "persisted": false]
-            case "context.add":
-                guard ambientEnabled else { throw JotError.message(Self.pausedIntake) }
-                guard let role = params["role"] as? String, let source = params["source"] as? String, let text = params["text"] as? String else {
-                    throw JotError.message("context.add needs role, source and text")
-                }
-                let message = try agentContext.add(role: role, source: source, conversation: params["conversation"] as? String, text: text)
-                result = ["id": message.id, "held": agentContext.count, "windowMinutes": suggestionWindowMinutes]
-            case "context.hook":
-                guard ambientEnabled else { throw JotError.message(Self.pausedIntake) }
-                guard let role = params["role"] as? String, let source = params["source"] as? String,
-                      ["claude-code", "codex"].contains(source),
-                      let conversation = params["conversation"] as? String, !conversation.isEmpty,
-                      conversation.utf8.count <= 200,
-                      let text = params["text"] as? String,
-                      params["eventID"] == nil || ((params["eventID"] as? String).map { !$0.isEmpty && $0.utf8.count <= 512 } == true)
-                else { throw JotError.message("Invalid agent hook context") }
-                let message = try agentContext.add(role: role, source: source, conversation: conversation,
-                                                   text: text, turn: params["turn"] as? String,
-                                                   cwd: params["cwd"] as? String, eventID: params["eventID"] as? String)
-                result = ["id": message.id, "held": agentContext.count]
-            case "context.clear": agentContext.clear(); result = ["held": 0]
-            case "people.list":
-                let iso = ISO8601DateFormatter()
-                var rows: [[String: Any]] = []
-                if let you = speakers.userVoice {
-                    // The user's own voice, learned from dictation holds; "you" is its id for people.forget.
-                    rows.append(["id": "you", "name": UserVoice.label, "sampleCount": you.sampleCount, "heldSeconds": you.heldSeconds,
-                                 "trusted": you.trusted, "updatedAt": iso.string(from: you.updatedAt)])
-                }
-                let peopleStore = speakers.peopleStore
-                let people = try await storeExecutor.perform { try peopleStore?.list() ?? [] }
-                rows += people.map { ["id": $0.id, "name": $0.name, "sampleCount": $0.sampleCount, "createdAt": iso.string(from: $0.createdAt), "updatedAt": iso.string(from: $0.updatedAt)] }
-                result = rows
-            case "people.forget", "people.delete":
-                guard let id = params["id"] as? String else { throw JotError.message("id is required") }
-                if id == "you" { speakers.forgetUserVoice() } else { let store = speakers.peopleStore; try await storeExecutor.submit { try store?.delete(id: id) }.value; speakers.refreshPeople() }
-                result = ["deleted": true]
-            case "speakers.label":
-                guard let session = params["sessionID"] as? String, let speaker = params["speakerID"] as? String, let name = params["name"] as? String else { throw JotError.message("sessionID, speakerID and name are required") }
-                // The name is saved before the voice is remembered, so Live shows it even when remembering the voice fails.
-                defer { library.reloadLive() }
-                try await speakers.labelSpeaker(session: session, speaker: speaker, name: name, voice: await speakers.passEmbedding(session: session, speaker: speaker))
-                result = ["updated": true]
-            default: throw JotError.message("Unknown method: \(method)")
+        await LocalDispatch.handle(data) { try await respond(to: $0) }
+    }
+
+    private func respond(to request: LocalRequest) async throws -> Any {
+        let params = request.params, limit = request.limit, offset = request.offset
+        var result: Any = [:]
+        switch request.method {
+        case .speechControls:
+            let suggestion = suggestions.diagnostics
+            let phase: DictationAttempt.State? = dictation.isActive ? .capturing
+                : dictation.isPending ? .recognizing : dictation.currentAttempt?.state
+            result = try object(ControlSnapshot(mode: mode, meetingActive: meetingTitle != nil,
+                dictation: phase, dictationSequence: controlSequence,
+                suggestion: suggestion["outcome"] as? String ?? "idle",
+                suggestionSequence: suggestion["requests"] as? Int ?? 0, inputLevel: ControlSnapshot.inputLevel(meter: capture.inputLevel)))
+        case .speechStatus: result = try await status()
+        case .activityReport:
+            let days = try ActivityRequest.days(arguments: params)
+            guard let store = library.store else { throw JotError.message("Saved history is unavailable") }
+            let now = Date(), calendar = Calendar.current
+            let report = try await storeExecutor.perform { try store.activity(days: days, now: now, calendar: calendar) }
+            result = try object(report)
+        case .modelsPrepare: result = ["state": modelState.rawValue, "downloadBytes": prepareFromCommand()]
+        case .modelsUnload: unloadModels(); result = try await status()
+        case .modelsCheck: checkModelUpdates(); if let modelCheck { await modelCheck.value }; result = try object(modelUpdates)
+        case .speechDiagnostics:
+            samplePerformance(); result = try object(diagnostics.report)
+        case .speechStart: try await startAmbient(); result = try await status()
+        case .speechPause: pause(); result = try await status()
+        case .speechResume: _ = prepareFromCommand(); result = try await status()
+        case .speechMeetingStart:
+            guard let title = params["title"] as? String else { throw JotError.message("Meeting needs a title") }
+            await startMeeting(title)
+            guard meetingTitle != nil else { throw JotError.message(notice.isEmpty ? "Meeting did not start" : notice) }
+            result = ["sessionID": timeline.sessionID, "title": title]
+        case .speechMeetingEnd:
+            let id = timeline.sessionID
+            guard meetingTitle != nil || ambientEnabled else { throw JotError.message("No meeting or ambient capture is running") }
+            let files = try await endMeeting()
+            // "file" is the last part; "files" lists every part when an automatic pause split the meeting.
+            result = ["sessionID": id, "file": files.last?.path ?? "", "files": files.map(\.path)]
+        case .sessionsTitle:
+            guard let id = params["sessionID"] as? String, let title = params["title"] as? String else { throw JotError.message("sessionID and title are required") }
+            try await setSessionTitle(id, title: title)
+            result = ["sessionID": id, "title": title]
+        case .settingsGet: result = ["settings": settings.report(), "revision": JotSettings.revision]
+        case .settingsSet:
+            guard let key = params["key"] as? String, let value = params["value"] else { throw JotError.message("key and value are required") }
+            try settings.set(key, raw: value); settingChanged(key)
+            result = settingRow(key)
+        case .settingsReset:
+            guard let key = params["key"] as? String else { throw JotError.message("key is required") }
+            try settings.reset(key); settingChanged(key)
+            result = settingRow(key)
+        case .transcriptsClear: try await clearHistory(); result = ["cleared": true]
+        case .transcriptsDeleteSession:
+            guard let id = params["sessionID"] as? String else { throw JotError.message("sessionID is required") }
+            try await deleteSession(id); result = ["deleted": true]
+        case .transcriptsSearch:
+            let store = library.store, query = params["query"] as? String ?? ""
+            result = try await readOffMain { try store?.search(query, limit: limit, offset: offset) ?? [] }
+        case .transcriptsRecent:
+            let store = library.store
+            result = try await readOffMain { try store?.recent(limit: limit, offset: offset) ?? [] }
+        case .transcriptsEvents:
+            let store = library.store, sessionID = params["sessionID"] as? String
+            result = try await readOffMain { try store?.events(sessionID: sessionID, limit: limit, offset: offset) ?? [] }
+        case .suggestionsRecent:
+            guard let suggestionHistory else { throw JotError.message("Suggestion history is unavailable") }
+            result = try object(await suggestionHistory.recent(limit: limit))
+        case .transcriptsSessions:
+            let store = library.store
+            result = try await readOffMain { try store?.sessions(limit: limit) ?? [] }
+        case .transcriptsSince:
+            let cursor = params["cursor"] as? Int
+            guard params["cursor"] == nil || (cursor != nil && cursor! >= 0) else { throw JotError.message("cursor must be a nonnegative integer") }
+            let generation = params["generation"] as? String
+            guard params["generation"] == nil || generation?.isEmpty == false else { throw JotError.message("generation must be a nonempty string") }
+            let sessionID = params["sessionID"] as? String
+            guard params["sessionID"] == nil || sessionID?.isEmpty == false else { throw JotError.message("sessionID must be a nonempty string") }
+            let store = library.store
+            result = try await readOffMain {
+                try store?.changes(since: cursor.map(Int64.init), generation: generation, sessionID: sessionID, limit: limit) ?? TranscriptChanges(rows: [], cursor: Int64(cursor ?? 0), hasMore: false)
             }
-            return try JSONSerialization.data(withJSONObject: ["ok": true, "result": result], options: [.sortedKeys])
-        } catch {
-            return (try? JSONSerialization.data(withJSONObject: ["ok": false, "error": error.localizedDescription])) ?? Data()
+        case .transcriptsRead:
+            guard let id = params["id"] as? String else { throw JotError.message("id is required") }
+            let store = library.store
+            guard let item = try await Task.detached(priority: .userInitiated, operation: { try store?.read(id: id) }).value else { throw JotError.message("Transcript not found") }
+            result = try object(item)
+        case .transcriptsExport:
+            guard let id = params["sessionID"] as? String else { throw JotError.message("sessionID is required") }
+            let (session, rows) = try await library.exportable(id)
+            if params["format"] as? String == "json" { result = try object(TranscriptGrouping.foldContinuations(rows)) }
+            else { result = ["sessionID": id, "text": TranscriptExport.markdown(session: session, rows: rows, tuning: tuning)] }
+        case .speechTranscribeFile:
+            guard !preparingUpdate, !switchingInput, lifecycle.phase == .paused, !capture.running, transcriber.isIdle, !diagnosticActive else { throw JotError.message("Pause Jot before diagnostic file transcription.") }
+            guard ModelCache.bytesOnDisk() > 0 else { throw JotError.message("Prepare speech models before diagnostic file transcription.") }
+            guard let path = params["path"] as? String else { throw JotError.message("path is required") }
+            diagnosticActive = true
+            defer { diagnosticActive = false }
+            let token = lifecycle.generation
+            // File diagnostics use an isolated pipeline while paused, so they never reset the live speaker timeline.
+            let filePipeline = SpeechPipeline(settings: settings)
+            let fileTask = Task {
+                do {
+                    try await filePipeline.prepare()
+                    let output = try await filePipeline.testFile(URL(fileURLWithPath: path), tuning: tuning)
+                    await filePipeline.unload()
+                    return output
+                } catch {
+                    await filePipeline.unload()
+                    throw error
+                }
+            }
+            diagnostic = fileTask
+            defer { diagnostic = nil }
+            let output = try await fileTask.value
+            guard lifecycle.generation == token else { throw CancellationError() }
+            result = ["text": output.text, "transcripts": try object(output.transcripts), "processingSeconds": output.processingSeconds, "persisted": false]
+        case .contextAdd:
+            guard ambientEnabled else { throw JotError.message(Self.pausedIntake) }
+            guard let role = params["role"] as? String, let source = params["source"] as? String, let text = params["text"] as? String else {
+                throw JotError.message("context.add needs role, source and text")
+            }
+            let message = try agentContext.add(role: role, source: source, conversation: params["conversation"] as? String, text: text)
+            result = ["id": message.id, "held": agentContext.count, "windowMinutes": suggestionWindowMinutes]
+        case .contextHook:
+            guard ambientEnabled else { throw JotError.message(Self.pausedIntake) }
+            guard let role = params["role"] as? String, let source = params["source"] as? String,
+                  ["claude-code", "codex"].contains(source),
+                  let conversation = params["conversation"] as? String, !conversation.isEmpty,
+                  conversation.utf8.count <= 200,
+                  let text = params["text"] as? String,
+                  params["eventID"] == nil || ((params["eventID"] as? String).map { !$0.isEmpty && $0.utf8.count <= 512 } == true)
+            else { throw JotError.message("Invalid agent hook context") }
+            let message = try agentContext.add(role: role, source: source, conversation: conversation,
+                                               text: text, turn: params["turn"] as? String,
+                                               cwd: params["cwd"] as? String, eventID: params["eventID"] as? String)
+            result = ["id": message.id, "held": agentContext.count]
+        case .contextClear: agentContext.clear(); result = ["held": 0]
+        case .peopleList:
+            let iso = ISO8601DateFormatter()
+            var rows: [[String: Any]] = []
+            if let you = speakers.userVoice {
+                // The user's own voice, learned from dictation holds; "you" is its id for people.forget.
+                rows.append(["id": "you", "name": UserVoice.label, "sampleCount": you.sampleCount, "heldSeconds": you.heldSeconds,
+                             "trusted": you.trusted, "updatedAt": iso.string(from: you.updatedAt)])
+            }
+            let peopleStore = speakers.peopleStore
+            let people = try await storeExecutor.perform { try peopleStore?.list() ?? [] }
+            rows += people.map { ["id": $0.id, "name": $0.name, "sampleCount": $0.sampleCount, "createdAt": iso.string(from: $0.createdAt), "updatedAt": iso.string(from: $0.updatedAt)] }
+            result = rows
+        case .peopleForget, .peopleDelete:
+            guard let id = params["id"] as? String else { throw JotError.message("id is required") }
+            if id == "you" { speakers.forgetUserVoice() } else { let store = speakers.peopleStore; try await storeExecutor.submit { try store?.delete(id: id) }.value; speakers.refreshPeople() }
+            result = ["deleted": true]
+        case .speakersLabel:
+            guard let session = params["sessionID"] as? String, let speaker = params["speakerID"] as? String, let name = params["name"] as? String else { throw JotError.message("sessionID, speakerID and name are required") }
+            // The name is saved before the voice is remembered, so Live shows it even when remembering the voice fails.
+            defer { library.reloadLive() }
+            try await speakers.labelSpeaker(session: session, speaker: speaker, name: name, voice: await speakers.passEmbedding(session: session, speaker: speaker))
+            result = ["updated": true]
         }
+        return result
     }
 }
