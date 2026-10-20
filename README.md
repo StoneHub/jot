@@ -208,7 +208,7 @@ swift test
 
 The installer builds, verifies signatures, installs to Applications, and checks the running executable. It refuses to replace the app during capture, inference, or model preparation. Set `JOT_SIGN_IDENTITY` and `JOT_SIGN_TEAM` to override signing defaults. Build logs and installation proof are in `build/`.
 
-See [architecture and limits](docs/ARCHITECTURE.md), [the plan](docs/PLAN.md), and [contextual suggestions and Jot-managed Terminal integration](docs/CONTEXTUAL-SUGGESTIONS.md). To build a Release app without changing your installed copy, use `./scripts/build-install.py --configuration Release --build-only`. Debug and Release builds contain no UI feedback tool. A signed local build is not a notarized download or proof of installation on another Mac.
+See [architecture and limits](docs/ARCHITECTURE.md), [the plan](docs/PLAN.md), [contextual suggestions and Jot-managed Terminal integration](docs/CONTEXTUAL-SUGGESTIONS.md), and [local control surfaces and Vorssaint](docs/CONTROL-SURFACES.md). To build a Release app without changing your installed copy, use `./scripts/build-install.py --configuration Release --build-only`. Debug and Release builds contain no UI feedback tool. A signed local build is not a notarized download or proof of installation on another Mac.
 
 ## License and credits
 
