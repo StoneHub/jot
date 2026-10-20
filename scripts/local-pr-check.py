@@ -44,6 +44,7 @@ TOOL_TESTS = {
     'scripts/release.py': ('test_release_install.py', 'test_release_notes.py'),
     'scripts/check-suggestion-fixtures.py': ('test_suggestion_fixtures.py',),
     'scripts/check-suggestion-results.py': ('test_suggestion_results.py',),
+    'scripts/compare-quiet-cpu.py': ('test_compare_quiet_cpu.py',),
     'Sources/JotLab/main.swift': ('test_lab_output_paths.py', 'test_lab_signal_cleanup.py'),
     'Sources/JotCore/LabError.swift': ('test_lab_output_paths.py',),
     'docs/evaluation/contextual-suggestions/scenarios.json': ('test_suggestion_fixtures.py', 'test_suggestion_results.py'),
