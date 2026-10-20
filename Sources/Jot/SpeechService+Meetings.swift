@@ -51,10 +51,10 @@ extension SpeechService {
     static let meetingCleanupWait = LiveCleanup.livePhraseCleanupTimeout + .seconds(3)
 
     /// Closes and exports the named session while continuous listening immediately
-    /// continues in a fresh untitled session. Returns nil for a meeting with nothing
-    /// transcribed; a refusal or failed export throws, with the same text in the notice.
+    /// continues in a fresh untitled session. Returns the exported files, oldest part first, and none for a meeting with
+    /// nothing transcribed; a refusal or failed export throws, with the same text in the notice.
     @discardableResult
-    func endMeeting() async throws -> URL? {
+    func endMeeting() async throws -> [URL] {
         func failure(_ message: String) -> JotError {
             notice = message
             return JotError.message(message)
@@ -66,7 +66,7 @@ extension SpeechService {
             throw failure("Finish the held dictation before ending the meeting.")
         }
         let id = timeline.sessionID
-        let earlierParts = meetingParts.filter { $0 != id }
+        let parts = meetingParts.filter { $0 != id } + [id]
         let generation = lifecycle.generation
         if ambientEnabled { drainAudio(); timeline.flushAmbient(final: true) }
         let throughOffset = timeline.ambientOffset
@@ -86,35 +86,41 @@ extension SpeechService {
         // The last phrase is cleaned after it is recognized; the file waits for the cleaned text, up to about one phrase's
         // cleanup deadline. A longer queue exports what is cleaned by then, and the rest as recognized, and says so.
         var cleanupUnfinished = false
-        if lifecycle.acceptsWork(generation), cleanup.isCleaning(session: id) {
+        // Pause does not wait for optional cleanup, so an earlier part may still be cleaning too.
+        let cleaning = { parts.contains { cleanup.isCleaning(session: $0) } }
+        if lifecycle.acceptsWork(generation), cleaning() {
             let waiting = "Cleaning up the meeting's last words before export…"
             notice = waiting
             let deadline = ContinuousClock.now + Self.meetingCleanupWait
             do {
                 try await MeetingExportWait.wait(isValid: { lifecycle.acceptsWork(generation) },
-                    isComplete: { !cleanup.isCleaning(session: id) || ContinuousClock.now >= deadline })
+                    isComplete: { !cleaning() || ContinuousClock.now >= deadline })
             } catch {
                 throw failure("Meeting export interrupted. Saved transcripts remain in Sessions; no file was exported.")
             }
             if notice == waiting { notice = "" }
-            cleanupUnfinished = cleanup.isCleaning(session: id)
+            cleanupUnfinished = cleaning()
         }
         library.refreshSessions()
         // A meeting with nothing transcribed ends quietly; there is no file to show. Earlier parts were already
         // drained by the automatic pause that ended them.
         var files: [URL] = []
         do {
-            for part in earlierParts + [id] {
+            for part in parts {
                 if let url = try await exportIfTranscribed(part) { files.append(url) }
             }
-        } catch { throw failure(error.localizedDescription) }
-        guard let last = files.last else { return nil }
+        } catch {
+            guard !files.isEmpty else { throw failure(error.localizedDescription) }
+            NSWorkspace.shared.activateFileViewerSelecting(files)
+            throw failure("Saved \(files.count) of the meeting's parts, then: \(error.localizedDescription)")
+        }
+        guard !files.isEmpty else { return [] }
         NSWorkspace.shared.activateFileViewerSelecting(files)
         var notes: [String] = []
         if files.count > 1 { notes.append("The meeting was paused along the way, so it was saved as \(files.count) files.") }
         if cleanupUnfinished { notes.append("Exported before cleanup finished: the last lines are as recognized. Export it again from Sessions once cleanup is done.") }
         if !notes.isEmpty { notice = notes.joined(separator: " ") }
-        return last
+        return files
     }
 
     private func exportIfTranscribed(_ id: String) async throws -> URL? {
