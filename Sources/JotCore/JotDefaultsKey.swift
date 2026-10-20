@@ -29,4 +29,6 @@ public enum JotDefaultsKey {
     public static let personalVocabulary = "personalVocabulary"
     public static let setupStatus = "setupStatus"
     public static let setupStep = "setupStep"
+    /// Set by "Don't ask again" on the move-to-Applications offer.
+    public static let declinedApplicationsInstall = "declinedApplicationsInstall"
 }
