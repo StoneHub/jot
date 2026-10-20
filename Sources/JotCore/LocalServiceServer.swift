@@ -1,9 +1,11 @@
 import Foundation
 import Darwin
+import os
 
 /// Bounded local IPC: eight clients, 1 MiB requests, 4 MiB responses, ten-second input deadline.
 public final class LocalServiceServer: @unchecked Sendable {
     public typealias Handler = @Sendable (Data) async -> Data
+    private static let log = Logger(subsystem: "space.jot.app", category: "local-service")
     private let socketURL: URL
     private let handler: Handler
     private let lock = NSLock()
@@ -72,6 +74,8 @@ public final class LocalServiceServer: @unchecked Sendable {
     }
 
     private func acceptConnections(_ fd: Int32, run: UUID) {
+        // Logged once per exhaustion so a socket that stops answering can be traced, without a line every 100 ms.
+        var exhausted = false
         while true {
             lock.lock(); let active = listener == fd && generation == run; lock.unlock()
             guard active else { return }
@@ -80,10 +84,20 @@ public final class LocalServiceServer: @unchecked Sendable {
                 switch errno {
                 case EINTR, ECONNABORTED: continue
                 // Out of descriptors or memory for now: the listener stays open, so wait and accept again rather than leave the socket unserved.
-                case EMFILE, ENFILE, ENOBUFS, ENOMEM: usleep(100_000); continue
+                case EMFILE, ENFILE, ENOBUFS, ENOMEM:
+                    if !exhausted {
+                        exhausted = true
+                        let reason = String(cString: strerror(errno))
+                        Self.log.error("Local service cannot accept connections: \(reason, privacy: .public). Retrying every 100 ms.")
+                    }
+                    usleep(100_000); continue
                 // Anything else, such as stop() closing the listener, ends the loop.
                 default: return
                 }
+            }
+            if exhausted {
+                exhausted = false
+                Self.log.notice("Local service is accepting connections again.")
             }
             LocalSocket.configure(client)
             lock.lock()
