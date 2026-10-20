@@ -48,16 +48,19 @@ extension SpeechService {
     static let meetingCleanupWait = LiveCleanup.livePhraseCleanupTimeout + .seconds(3)
 
     /// Closes and exports the named session while continuous listening immediately
-    /// continues in a fresh untitled session.
+    /// continues in a fresh untitled session. Returns nil for a meeting with nothing
+    /// transcribed; a refusal or failed export throws, with the same text in the notice.
     @discardableResult
-    func endMeeting() async -> URL? {
+    func endMeeting() async throws -> URL? {
+        func failure(_ message: String) -> JotError {
+            notice = message
+            return JotError.message(message)
+        }
         guard !pauseRequested else {
-            notice = "Wait for Pause to finish before exporting the meeting."
-            return nil
+            throw failure("Wait for Pause to finish before exporting the meeting.")
         }
         guard !dictation.isActive, !dictation.isPending else {
-            notice = "Finish the held dictation before ending the meeting."
-            return nil
+            throw failure("Finish the held dictation before ending the meeting.")
         }
         let id = timeline.sessionID
         let generation = lifecycle.generation
@@ -73,8 +76,7 @@ extension SpeechService {
         if lifecycle.acceptsWork(generation) {
             await transcriber.waitUntilProcessed(sessionID: id, through: throughOffset)
             if !lifecycle.acceptsWork(generation) {
-                notice = "Meeting export interrupted. Saved transcripts remain in Sessions; no file was exported."
-                return nil
+                throw failure("Meeting export interrupted. Saved transcripts remain in Sessions; no file was exported.")
             }
         }
         // The last phrase is cleaned after it is recognized; the file waits for the cleaned text, up to about one phrase's
@@ -87,8 +89,7 @@ extension SpeechService {
                 try await MeetingExportWait.wait(isValid: { lifecycle.acceptsWork(generation) },
                     isComplete: { !cleanup.isCleaning(session: id) || ContinuousClock.now >= deadline })
             } catch {
-                notice = "Meeting export interrupted. Saved transcripts remain in Sessions; no file was exported."
-                return nil
+                throw failure("Meeting export interrupted. Saved transcripts remain in Sessions; no file was exported.")
             }
             if notice == waiting { notice = "" }
         }
@@ -97,12 +98,12 @@ extension SpeechService {
         let store = library.store
         let isEmpty: Bool?
         do { isEmpty = try await storeExecutor.perform { try store?.session(id: id).isEmpty } }
-        catch { notice = error.localizedDescription; return nil }
+        catch { throw failure(error.localizedDescription) }
         guard isEmpty == false else { return nil }
         do {
             let url = try await library.exportSession(id)
             NSWorkspace.shared.activateFileViewerSelecting([url])
             return url
-        } catch { notice = error.localizedDescription; return nil }
+        } catch { throw failure(error.localizedDescription) }
     }
 }
