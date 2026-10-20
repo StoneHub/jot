@@ -119,6 +119,7 @@ public final class LocalServiceServer: @unchecked Sendable {
             if allowed { clients.insert(client) }
             lock.unlock()
             guard allowed else { close(client); continue }
+            // An unnamed peer keeps full access: UID is the trust boundary, and failing closed would also lock out the jot CLI.
             let restricted = LocalSocket.peerExecutablePath(client).map(isHelper) ?? false
             DispatchQueue.global(qos: .utility).async { [weak self] in self?.serve(client, restricted: restricted) }
         }
