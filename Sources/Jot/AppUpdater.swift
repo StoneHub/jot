@@ -38,7 +38,8 @@ final class AppUpdater: ObservableObject {
                 let release = try ReleaseInfo.newest(from: data) { "Jot-\($0).zip" }
                 guard let installed = SemanticVersion.parse(JotVersion.current) else { throw UpdateError("Installed version \(JotVersion.current) is not a version.") }
                 if release.version > installed {
-                    let runningTeam = try Self.teamIdentifier(of: Bundle.main.bundleURL)
+                    let running = Bundle.main.bundleURL
+                    let runningTeam = try await Task.detached { try Self.teamIdentifier(of: running) }.value
                     guard runningTeam == Self.officialTeamIdentifier else {
                         throw UpdateError("This source-built copy is signed by team \(runningTeam). Install an official Jot download once to use automatic updates.")
                     }
@@ -66,9 +67,9 @@ final class AppUpdater: ObservableObject {
                 let zip = try await download(release, to: staging)
                 log("downloaded \(zip.lastPathComponent), \(release.assetSize) bytes")
                 state = .installing
-                try run("/usr/bin/ditto", "-x", "-k", zip.path, staging.path)
+                try await run("/usr/bin/ditto", "-x", "-k", zip.path, staging.path)
                 let bundle = staging.appending(path: "Jot.app")
-                try verify(bundle, expecting: release.version)
+                try await verify(bundle, expecting: release.version)
                 log("verified \(bundle.path)")
                 state = .finishing
                 try await service.prepareForUpdate()
@@ -109,14 +110,15 @@ final class AppUpdater: ObservableObject {
         return destination
     }
 
-    private func verify(_ bundle: URL, expecting version: SemanticVersion) throws {
+    private func verify(_ bundle: URL, expecting version: SemanticVersion) async throws {
         guard FileManager.default.fileExists(atPath: bundle.path) else { throw UpdateError("The download did not contain Jot.app.") }
-        try run("/usr/bin/codesign", "--verify", "--deep", "--strict", bundle.path)
-        let running = try Self.teamIdentifier(of: Bundle.main.bundleURL)
-        let downloaded = try Self.teamIdentifier(of: bundle)
+        try await run("/usr/bin/codesign", "--verify", "--deep", "--strict", bundle.path)
+        let installed = Bundle.main.bundleURL
+        let running = try await Task.detached { try Self.teamIdentifier(of: installed) }.value
+        let downloaded = try await Task.detached { try Self.teamIdentifier(of: bundle) }.value
         guard running == downloaded else { throw UpdateError("Signing team \(downloaded) does not match the installed app (\(running)).") }
         // Unnotarized Apple Development signatures fail Gatekeeper while the quarantine flag is set; xattr exits nonzero when there is none.
-        try run("/usr/bin/xattr", "-dr", "com.apple.quarantine", bundle.path, allowFailure: true)
+        try await run("/usr/bin/xattr", "-dr", "com.apple.quarantine", bundle.path, allowFailure: true)
         let info = bundle.appending(path: "Contents/Info.plist")
         let bundleVersion = (NSDictionary(contentsOf: info)?["CFBundleShortVersionString"] as? String).flatMap(SemanticVersion.parse)
         guard bundleVersion == version else { throw UpdateError("Downloaded app reports version \(bundleVersion?.description ?? "unknown"), expected \(version).") }
@@ -172,7 +174,8 @@ final class AppUpdater: ObservableObject {
         NSApp.terminate(nil)
     }
 
-    private static func teamIdentifier(of bundle: URL) throws -> String {
+    /// Blocking; callers run it off the main actor.
+    nonisolated private static func teamIdentifier(of bundle: URL) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
         process.arguments = ["-dv", bundle.path]
@@ -188,19 +191,23 @@ final class AppUpdater: ObservableObject {
         throw UpdateError("\(bundle.lastPathComponent) has no TeamIdentifier.")
     }
 
-    private func run(_ executable: String, _ arguments: String..., allowFailure: Bool = false) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        let pipe = Pipe()
-        process.standardOutput = FileHandle.nullDevice; process.standardError = pipe
-        try process.run()
-        let stderr = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        process.waitUntilExit()
+    /// Unzipping and deep signature checks take seconds; they run off the main actor so listening and the window keep going.
+    private func run(_ executable: String, _ arguments: String..., allowFailure: Bool = false) async throws {
+        let (status, stderr) = try await Task.detached { () throws -> (Int32, String) in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: executable)
+            process.arguments = arguments
+            let pipe = Pipe()
+            process.standardOutput = FileHandle.nullDevice; process.standardError = pipe
+            try process.run()
+            let stderr = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            process.waitUntilExit()
+            return (process.terminationStatus, stderr)
+        }.value
         let name = URL(fileURLWithPath: executable).lastPathComponent
-        log("\(name) \(arguments.joined(separator: " ")) -> exit \(process.terminationStatus)")
-        guard process.terminationStatus == 0 || allowFailure else {
-            throw UpdateError("\(name) failed: \(stderr.isEmpty ? "exit \(process.terminationStatus)" : stderr)")
+        log("\(name) \(arguments.joined(separator: " ")) -> exit \(status)")
+        guard status == 0 || allowFailure else {
+            throw UpdateError("\(name) failed: \(stderr.isEmpty ? "exit \(status)" : stderr)")
         }
     }
 
