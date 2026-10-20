@@ -39,8 +39,9 @@ final class LiveCleanup {
         self.clean = clean
         self.activityChanged = activityChanged
         self.workerFinished = workerFinished
-        liveTranscriptCleanup = TranscriptCleanup(settings: settings, availability: availability)
-        transcriptCleanup = TranscriptCleanup(settings: settings, purpose: .dictation, availability: availability)
+        let model = ChosenModel(.cleanup, settings: settings)
+        liveTranscriptCleanup = TranscriptCleanup(settings: settings, provider: model, availability: availability)
+        transcriptCleanup = TranscriptCleanup(settings: settings, purpose: .dictation, provider: model, availability: availability)
     }
 
     /// A phrase worker is running; Install Update and the harness wait for it.
@@ -122,7 +123,7 @@ final class LiveCleanup {
         activityChanged()
     }
 
-    /// One dictation row through the on-device cleanup, counted with the live phrases in the recovery diagnostics.
+    /// One dictation row through cleanup, counted with the live phrases in the recovery diagnostics.
     func cleanDictation(_ text: String) async -> (text: String, outcome: CleanupResult.Outcome) {
         cleanupRequestedCount += 1
         let cleanup = await clean(transcriptCleanup, [text], Self.dictationCleanupTimeout)

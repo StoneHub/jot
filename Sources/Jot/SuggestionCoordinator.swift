@@ -22,6 +22,8 @@ final class SuggestionCoordinator {
     private let notice: (String) -> Void
     private let card = SuggestionCard()
     private let gate = ModelCallGate(deadline: .seconds(3))
+    /// Apple Intelligence unless suggestions use the custom model. A window image goes only to Apple's on-device model.
+    private let model: ChosenModel
     private var requestTask: Task<Void, Never>?
     private var requestImageTask: Task<WindowImageCapture.Result, Never>?
     private var monitorTask: Task<Void, Never>?
@@ -63,11 +65,12 @@ final class SuggestionCoordinator {
          allowed: @escaping () -> Bool, readsScreen: @escaping () -> Bool = { true },
          includesWindowImage: @escaping () -> Bool = { false },
          window: @escaping () -> TimeInterval = { 600 }, matchesHeardSpeech: @escaping () -> Bool = { true },
-         userVoice: @escaping () -> UserVoice? = { nil }, notice: @escaping (String) -> Void) {
+         userVoice: @escaping () -> UserVoice? = { nil }, model: ChosenModel = ChosenModel(.suggestions),
+         notice: @escaping (String) -> Void) {
         self.input = input; self.store = store; self.history = history; self.agentContext = agentContext; self.allowed = allowed
         self.readsScreen = readsScreen; self.includesWindowImage = includesWindowImage
         self.window = window; self.matchesHeardSpeech = matchesHeardSpeech; self.notice = notice
-        self.userVoice = userVoice
+        self.userVoice = userVoice; self.model = model
         refreshKeyboard()
         sourceObserver = DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String), object: nil, queue: .main
@@ -279,7 +282,8 @@ final class SuggestionCoordinator {
                         return generated.text ?? SuggestionPrompt.abstainMarker
                     }
                 } else {
-                    generator = { try await AppleFMGeneration.generate($0) }
+                    let model = self.model
+                    generator = { try await model.generate($0) }
                 }
                 let result = await self.gate.call(request, deadline: deadline, generator: generator)
                 guard await self.isCurrent(token, field: field) else { return }
@@ -356,7 +360,7 @@ final class SuggestionCoordinator {
     private func windowImageCapture() -> WindowImageCapture? {
         let skipped: SuggestionHistoryEntry.WindowImageOutcome
         if !WindowImageCapture.permitted { skipped = .noPermission }
-        else if !AppleFMGeneration.acceptsImages { skipped = .unsupported }
+        else if model.usesCustomModel || !AppleFMGeneration.acceptsImages { skipped = .unsupported }
         else if let capture = input.windowImageCapture() { return capture }
         else { skipped = .noWindow }
         windowImage = skipped.rawValue
