@@ -43,7 +43,8 @@ struct ServiceControls: View {
         if service.isPaused {
             if service.pauseRequested { return "Finishing…" }
             if service.isTransitioning { return "Releasing models…" }
-            return service.modelsLoaded ? "Microphone off · models loaded" : "Models unloaded"
+            if service.modelsLoaded { return "Microphone off · models loaded" }
+            return service.modelsDownloaded ? "Models unloaded" : "Speech models not downloaded"
         }
         if service.modelState == .preparing { return "Loading models…" }
         return service.ambientEnabled ? "Saving speech locally" : "Starting microphone…"
@@ -62,6 +63,7 @@ struct ServiceControls: View {
                     if enabled { Task { await service.enableDictation() } } else { service.disableDictation() }
                 })).labelsHidden().toggleStyle(.switch)
             }.help("Hold \(service.shortcut.displayName) to dictate, while listening or paused. Double-tap Fn only requests suggestions when enabled.")
+            if service.dictationRequested && !service.modelsDownloaded { DictationModelsRow(service: service) }
             ControlRow(title: "Hold to talk", secondary: true) { ShortcutSettings(service: service) }
             ControlRow(title: "Keep Mac awake", caption: "While listening", secondary: true) {
                 Toggle("Keep Mac awake while listening", isOn: $service.keepMacAwakeWhileListening).labelsHidden().toggleStyle(.switch)
@@ -207,6 +209,22 @@ private struct MeetingControls: View {
         guard !title.isEmpty else { return }
         working = true
         Task { await service.startMeeting(title); working = false; naming = false; draft = "" }
+    }
+}
+
+/// Dictation switched on before any model download: the shortcut would only be refused, so the row offers the download.
+/// It loads the models with the microphone off, which is all a hold while paused needs.
+private struct DictationModelsRow: View {
+    @ObservedObject var service: SpeechService
+    private var downloading: Bool { service.modelState == .preparing }
+    var body: some View {
+        ControlRow(symbol: "arrow.down.circle", title: "Speech models needed",
+                   caption: downloading ? "Downloading…" : "\(service.shortcut.displayName) works after the download", secondary: true) {
+            Button("Download") { service.prepareModelsOnly() }.modifier(PrimaryGlassButton())
+                .disabled(downloading || service.ambientEnabled)
+        }
+        .help("Jot downloads about \(ModelCache.formatted(ModelCache.expectedBytes)) of speech models once, then dictates on this Mac. The microphone stays off.")
+        .accessibilityIdentifier("dictation-download-models")
     }
 }
 

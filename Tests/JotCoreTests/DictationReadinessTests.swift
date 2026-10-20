@@ -4,10 +4,10 @@ import XCTest
 final class DictationReadinessTests: XCTestCase {
     private func blocker(phase: ServiceLifecycle.Phase = .ready, modelsReady: Bool = true, ambientEnabled: Bool = true,
                          pauseRequested: Bool = false, dictationPending: Bool = false, dictationActive: Bool = false,
-                         diagnosticActive: Bool = false, microphoneStarting: Bool = false) -> String? {
+                         diagnosticActive: Bool = false, microphoneStarting: Bool = false, modelsDownloaded: Bool = true) -> String? {
         DictationReadiness.blocker(phase: phase, modelsReady: modelsReady, ambientEnabled: ambientEnabled,
             pauseRequested: pauseRequested, dictationPending: dictationPending, dictationActive: dictationActive,
-            diagnosticActive: diagnosticActive, microphoneStarting: microphoneStarting)
+            diagnosticActive: diagnosticActive, microphoneStarting: microphoneStarting, modelsDownloaded: modelsDownloaded)
     }
 
     func testReadyServiceHasNoBlocker() {
@@ -27,6 +27,15 @@ final class DictationReadinessTests: XCTestCase {
         XCTAssertEqual(blocker(modelsReady: false, ambientEnabled: false), "Jot is still loading. Try again in a moment.")
         XCTAssertEqual(blocker(phase: .pausing, ambientEnabled: false), "Jot is pausing. Wait for it to finish, then Resume.")
         XCTAssertEqual(blocker(pauseRequested: true), "Jot is pausing. Wait for it to finish, then Resume.")
+    }
+
+    func testFreshInstallSaysToDownloadInsteadOfResume() {
+        let missing = "Jot's speech models are not downloaded yet. Open Jot from the menu bar and choose Download."
+        XCTAssertEqual(blocker(phase: .paused, modelsReady: false, ambientEnabled: false, modelsDownloaded: false), missing)
+        XCTAssertEqual(blocker(phase: .failed, modelsReady: false, ambientEnabled: false, modelsDownloaded: false), missing)
+        XCTAssertEqual(blocker(phase: .starting, modelsReady: false, ambientEnabled: false, modelsDownloaded: false),
+                       "Jot is still loading. Try again in a moment.", "A download under way is loading, not missing")
+        XCTAssertEqual(blocker(pauseRequested: true, modelsDownloaded: false), "Jot is pausing. Wait for it to finish, then Resume.")
     }
 
     func testBusyStatesEachHaveTheirOwnWords() {
