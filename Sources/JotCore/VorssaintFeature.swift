@@ -54,10 +54,12 @@ public struct VorssaintPresentation: Sendable {
 
     /// Jot answers pause and resume before capture has finished changing, so
     /// the helper reads again until the snapshot shows what was asked for.
+    /// Pause settles only once Jot's icon has: "pausing" still saves speech
+    /// and unloads models, so the switch would flip back off early.
     public static func settled(after action: String, _ controls: ControlSnapshot) -> Bool {
         switch action {
         case "listen": isListening(controls) || controls.meetingActive
-        case "pause": !isListening(controls) && !controls.meetingActive
+        case "pause": ["paused", "failed"].contains(controls.mode) && !controls.meetingActive
         case "meeting.start": controls.meetingActive
         case "meeting.end": !controls.meetingActive
         default: true

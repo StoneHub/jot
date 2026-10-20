@@ -22,7 +22,10 @@ final class VorssaintFeatureTests: XCTestCase {
 
     func testActionsSettleOnlyOnceJotShowsTheRequestedState() {
         XCTAssertFalse(VorssaintPresentation.settled(after: "pause", controls(mode: "ambient")))
-        XCTAssertTrue(VorssaintPresentation.settled(after: "pause", controls(mode: "pausing")))
+        XCTAssertFalse(VorssaintPresentation.settled(after: "pause", controls(mode: "pausing")),
+                       "Pausing still saves speech and unloads models")
+        XCTAssertTrue(VorssaintPresentation.settled(after: "pause", controls(mode: "paused")))
+        XCTAssertTrue(VorssaintPresentation.settled(after: "pause", controls(mode: "failed")))
         XCTAssertFalse(VorssaintPresentation.settled(after: "pause", controls(mode: "paused", meeting: true)))
         XCTAssertFalse(VorssaintPresentation.settled(after: "listen", controls(mode: "paused")))
         XCTAssertTrue(VorssaintPresentation.settled(after: "listen", controls(mode: "starting")))
