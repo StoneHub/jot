@@ -263,6 +263,7 @@ final class SpeechService: ObservableObject {
             guard let self else { return "Jot is shutting down." }
             if self.preparingUpdate { return "Jot is finishing the update." }
             if self.switchingInput { return "Jot is switching microphones." }
+            if self.unloading != nil { return "Jot is releasing the models." }
             return DictationReadiness.blocker(phase: self.lifecycle.phase, modelsReady: self.modelState == .ready,
                 ambientEnabled: self.ambientEnabled, pauseRequested: self.pauseRequested, dictationPending: self.dictation.isPending,
                 dictationActive: self.dictation.isActive, diagnosticActive: self.diagnosticActive,
@@ -669,6 +670,13 @@ final class SpeechService: ObservableObject {
         unloading = Task {
             if let pausing { await pausing.value }
             while pauseRequested { try? await Task.sleep(for: .milliseconds(20)) }
+            // A hold while paused may still be recognizing with the microphone already off. Recognition needs the models,
+            // and a block finished after beginPause() is discarded, so let it finish and the dictation settle first.
+            while !transcriber.isIdle && lifecycle.phase == .ready {
+                transcriber.kick()
+                try? await Task.sleep(for: .milliseconds(20))
+            }
+            await dictation.waitForRecovery()
             // A pause during model loading already failed the start and released the models; the generation still moves on.
             guard let token = lifecycle.beginPause() else { unloading = nil; return }
             notice = "Releasing models…"; scheduleTimer()
@@ -690,7 +698,8 @@ final class SpeechService: ObservableObject {
     func holdBegan() {
         guard !switchingInput, !preparingUpdate else { return }
         if canHoldDictation { dictation.begin(); return }
-        guard microphoneOff else { return }
+        // Unload Models waits for the last hold to settle; a new one must not start the microphone under it.
+        guard microphoneOff, unloading == nil else { return }
         // Cleared before the start task runs, so a Resume in the meantime still counts.
         if !pausedHold.isStarting { listeningRequestedDuringHold = false }
         pausedHold.begin()
