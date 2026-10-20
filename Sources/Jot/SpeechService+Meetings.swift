@@ -14,6 +14,7 @@ extension SpeechService {
             guard ambientEnabled else { throw JotError.message("Ambient capture did not start.") }
             meetingTitle = trimmed
             let store = library.store, id = timeline.sessionID
+            meetingParts = [id]
             try await storeExecutor.submit { try store?.setTitle(sessionID: id, title: trimmed) }.value
             library.refreshSessions()
         } catch { meetingTitle = nil; notice = error.localizedDescription }
@@ -36,10 +37,12 @@ extension SpeechService {
         if meetingTitle != nil, id == timeline.activeSessionID, !trimmed.isEmpty { meetingTitle = trimmed }
     }
 
-    /// A meeting kept through an automatic pause records on into a new session under the same name. The earlier part stays in Sessions, and TranscriptExport.write adds " (2)" to a duplicate file name.
+    /// A meeting kept through an automatic pause records on into a new session under the same name. End meeting exports
+    /// every part, and TranscriptExport.write adds " (2)" to a duplicate file name.
     func continueMeeting() async throws {
         guard let meetingTitle, ambientEnabled else { return }
         let store = library.store, id = timeline.sessionID
+        if !meetingParts.contains(id) { meetingParts.append(id) }
         try await storeExecutor.submit { try store?.setTitle(sessionID: id, title: meetingTitle) }.value
         library.refreshSessions()
     }
@@ -48,18 +51,22 @@ extension SpeechService {
     static let meetingCleanupWait = LiveCleanup.livePhraseCleanupTimeout + .seconds(3)
 
     /// Closes and exports the named session while continuous listening immediately
-    /// continues in a fresh untitled session.
+    /// continues in a fresh untitled session. Returns the exported files, oldest part first, and none for a meeting with
+    /// nothing transcribed; a refusal or failed export throws, with the same text in the notice.
     @discardableResult
-    func endMeeting() async -> URL? {
+    func endMeeting() async throws -> [URL] {
+        func failure(_ message: String) -> JotError {
+            notice = message
+            return JotError.message(message)
+        }
         guard !pauseRequested else {
-            notice = "Wait for Pause to finish before exporting the meeting."
-            return nil
+            throw failure("Wait for Pause to finish before exporting the meeting.")
         }
         guard !dictation.isActive, !dictation.isPending else {
-            notice = "Finish the held dictation before ending the meeting."
-            return nil
+            throw failure("Finish the held dictation before ending the meeting.")
         }
         let id = timeline.sessionID
+        let parts = meetingParts.filter { $0 != id } + [id]
         let generation = lifecycle.generation
         if ambientEnabled { drainAudio(); timeline.flushAmbient(final: true) }
         let throughOffset = timeline.ambientOffset
@@ -73,36 +80,52 @@ extension SpeechService {
         if lifecycle.acceptsWork(generation) {
             await transcriber.waitUntilProcessed(sessionID: id, through: throughOffset)
             if !lifecycle.acceptsWork(generation) {
-                notice = "Meeting export interrupted. Saved transcripts remain in Sessions; no file was exported."
-                return nil
+                throw failure("Meeting export interrupted. Saved transcripts remain in Sessions; no file was exported.")
             }
         }
         // The last phrase is cleaned after it is recognized; the file waits for the cleaned text, up to about one phrase's
-        // cleanup deadline. A longer queue exports what is cleaned by then, and the rest as recognized.
-        if lifecycle.acceptsWork(generation), cleanup.isCleaning(session: id) {
+        // cleanup deadline. A longer queue exports what is cleaned by then, and the rest as recognized, and says so.
+        var cleanupUnfinished = false
+        // Pause does not wait for optional cleanup, so an earlier part may still be cleaning too.
+        let cleaning = { parts.contains { cleanup.isCleaning(session: $0) } }
+        if lifecycle.acceptsWork(generation), cleaning() {
             let waiting = "Cleaning up the meeting's last words before export…"
             notice = waiting
             let deadline = ContinuousClock.now + Self.meetingCleanupWait
             do {
                 try await MeetingExportWait.wait(isValid: { lifecycle.acceptsWork(generation) },
-                    isComplete: { !cleanup.isCleaning(session: id) || ContinuousClock.now >= deadline })
+                    isComplete: { !cleaning() || ContinuousClock.now >= deadline })
             } catch {
-                notice = "Meeting export interrupted. Saved transcripts remain in Sessions; no file was exported."
-                return nil
+                throw failure("Meeting export interrupted. Saved transcripts remain in Sessions; no file was exported.")
             }
             if notice == waiting { notice = "" }
+            cleanupUnfinished = cleaning()
         }
         library.refreshSessions()
-        // A meeting with nothing transcribed ends quietly; there is no file to show.
-        let store = library.store
-        let isEmpty: Bool?
-        do { isEmpty = try await storeExecutor.perform { try store?.session(id: id).isEmpty } }
-        catch { notice = error.localizedDescription; return nil }
-        guard isEmpty == false else { return nil }
+        // A meeting with nothing transcribed ends quietly; there is no file to show. Earlier parts were already
+        // drained by the automatic pause that ended them.
+        var files: [URL] = []
         do {
-            let url = try await library.exportSession(id)
-            NSWorkspace.shared.activateFileViewerSelecting([url])
-            return url
-        } catch { notice = error.localizedDescription; return nil }
+            for part in parts {
+                if let url = try await exportIfTranscribed(part) { files.append(url) }
+            }
+        } catch {
+            guard !files.isEmpty else { throw failure(error.localizedDescription) }
+            NSWorkspace.shared.activateFileViewerSelecting(files)
+            throw failure("Saved \(files.count) of the meeting's parts, then: \(error.localizedDescription)")
+        }
+        guard !files.isEmpty else { return [] }
+        NSWorkspace.shared.activateFileViewerSelecting(files)
+        var notes: [String] = []
+        if files.count > 1 { notes.append("The meeting was paused along the way, so it was saved as \(files.count) files.") }
+        if cleanupUnfinished { notes.append("Exported before cleanup finished: the last lines are as recognized. Export it again from Sessions once cleanup is done.") }
+        if !notes.isEmpty { notice = notes.joined(separator: " ") }
+        return files
+    }
+
+    private func exportIfTranscribed(_ id: String) async throws -> URL? {
+        let store = library.store
+        guard try await storeExecutor.perform({ try store?.session(id: id).isEmpty }) == false else { return nil }
+        return try await library.exportSession(id)
     }
 }

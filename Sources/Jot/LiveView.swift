@@ -144,7 +144,7 @@ struct LiveView: View {
             Button("Rename") { titleDraft = service.meetingTitle ?? ""; renaming = true }.modifier(GlassButton())
             Button(working ? "Saving…" : "End meeting") {
                 working = true
-                Task { await service.endMeeting(); working = false }
+                Task { _ = try? await service.endMeeting(); working = false }
             }.modifier(PrimaryGlassButton()).tint(.red).disabled(working).accessibilityIdentifier("live-end-meeting")
         } else if running {
             Button("Pause") { service.pause() }.modifier(GlassButton()).accessibilityIdentifier("live-stop")

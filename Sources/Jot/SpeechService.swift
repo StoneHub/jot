@@ -164,7 +164,10 @@ final class SpeechService: ObservableObject {
     @Published var downloadPrompt: Int64?
     /// Title of the meeting being recorded; nil when ambient is off or was started without a name.
     /// Set by the meeting calls in SpeechService+Meetings.swift, by Pause and by the update restore.
-    @Published var meetingTitle: String? { didSet { ControlEvents.signal() } }
+    @Published var meetingTitle: String? { didSet { if meetingTitle == nil { meetingParts = [] }; ControlEvents.signal() } }
+    /// Sessions the running meeting recorded into, oldest first: an automatic pause continues it in a new session.
+    /// End meeting exports each of them. Memory only; after an update relaunch only the parts from then on are known.
+    var meetingParts: [String] = []
     @Published private(set) var vocabulary = PersonalVocabulary()
     @Published private(set) var vocabularyLoadError: String?
     private let vocabularyPreferences = VocabularyPreferences()

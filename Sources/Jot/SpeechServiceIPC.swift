@@ -101,8 +101,9 @@ extension SpeechService {
             case "speech.meeting_end":
                 let id = timeline.sessionID
                 guard meetingTitle != nil || ambientEnabled else { throw JotError.message("No meeting or ambient capture is running") }
-                let file = await endMeeting()
-                result = ["sessionID": id, "file": file?.path ?? ""]
+                let files = try await endMeeting()
+                // "file" is the last part; "files" lists every part when an automatic pause split the meeting.
+                result = ["sessionID": id, "file": files.last?.path ?? "", "files": files.map(\.path)]
             case "sessions.title":
                 guard let id = params["sessionID"] as? String, let title = params["title"] as? String else { throw JotError.message("sessionID and title are required") }
                 try await setSessionTitle(id, title: title)

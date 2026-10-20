@@ -182,7 +182,7 @@ private struct MeetingControls: View {
             ControlRow(dot: service.ambientEnabled ? .red : Color.secondary, title: title, caption: caption) {
                 Button(working ? "Saving…" : "End") {
                     working = true
-                    Task { await service.endMeeting(); working = false }
+                    Task { _ = try? await service.endMeeting(); working = false }
                 }.modifier(PrimaryGlassButton()).disabled(working).accessibilityIdentifier("end-meeting")
             }
         } else if naming {
