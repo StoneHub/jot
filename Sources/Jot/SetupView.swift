@@ -165,6 +165,7 @@ struct SetupView: View {
             Text("Jot turns speech into text on this Mac. Recognition runs here, and audio is never uploaded. These steps take a few minutes; skip any of them and come back later.")
                 .fixedSize(horizontal: false, vertical: true)
             point("waveform", "Listening", "Resume starts listening: Jot saves a searchable transcript of what the microphone hears in Sessions. Pause stops it. Nothing listens until you choose Resume.")
+            point("menubar.rectangle", "Lives in the menu bar", "Jot runs from the waveform icon in the menu bar. Closing this window keeps Jot running, and it keeps listening if you chose Resume. Pause or Quit from that icon.")
             point("keyboard", "Hold to dictate", "Hold \(service.shortcut.displayName) in a text field, speak and release. Jot types your words where the cursor is and never presses Return.")
             point("internaldrive", "Kept on this Mac", "Transcripts stay in ~/Library/Application Support/Jot. Session audio is deleted after the speaker pass, unless you turn on keeping it for tuning, which keeps it on this Mac for up to 30 days.")
             point("arrow.down.circle", "One download", "Jot downloads about \(ModelCache.formatted(ModelCache.expectedBytes)) of speech models once, then works offline.")
@@ -442,7 +443,7 @@ struct SetupView: View {
                 if service.modelsLoaded { PauseResumeButton(service: service) }
             }
             SetupRow(state: .optional, title: "Apple Intelligence", detail: intelligenceSummary) { review(.intelligence) }
-            Text("Transcripts stay in ~/Library/Application Support/Jot. To come back here, choose Setup in the sidebar or Jot → Set Up Jot….")
+            Text("Closing this window keeps Jot running in the menu bar, and listening if it is on. Use the waveform icon there to pause, open this window or quit. Transcripts stay in ~/Library/Application Support/Jot. To come back here, choose Setup in the sidebar or Jot → Set Up Jot….")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
