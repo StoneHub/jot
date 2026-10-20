@@ -22,11 +22,7 @@ final class JotControllerPresence: ObservableObject {
     init(center: NotificationCenter = NSWorkspace.shared.notificationCenter,
          defaults: UserDefaults = .standard,
          alwaysShowKey: String,
-         controllerIsRunning: @escaping @MainActor () -> Bool = {
-             // The retired Vorssaint+Jot app stays recognized while it is still installed.
-             NSRunningApplication.runningApplications(withBundleIdentifier: "space.monroe.JotBar").contains { !$0.isTerminated }
-                 || JotControllerPresence.vorssaintRunsJot()
-         }) {
+         controllerIsRunning: @escaping @MainActor () -> Bool = { JotControllerPresence.vorssaintRunsJot() }) {
         self.controllerIsRunning = controllerIsRunning
         self.defaults = defaults
         self.alwaysShowKey = alwaysShowKey
