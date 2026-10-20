@@ -8,11 +8,13 @@ struct JotApp: App {
     @NSApplicationDelegateAdaptor(JotDelegate.self) var delegate
     @AppStorage(JotDefaultsKey.showMenuBarIcon) private var showMenuBarIcon = true
     @StateObject private var controller = JotControllerPresence(alwaysShowKey: JotDefaultsKey.showMenuBarIcon)
+    @AppStorage(JotDefaultsKey.accentColor) private var accent = JotAccent.system.rawValue
     var body: some Scene {
         Window("Jot", id: "main") {
             // Every page must fit this size: below it nothing lays out, above it nothing may overflow the window.
             TranscriptView(service: delegate.service, library: delegate.service.library, setup: delegate.setup, delegate: delegate)
                 .frame(minWidth: 520, minHeight: 420)
+                .environment(\.jotAccent, JotAccent(saved: accent).color)
         }
         .defaultSize(width: 920, height: 760)
         .commands {
@@ -25,6 +27,7 @@ struct JotApp: App {
         // disappear again when the controller returns.
         MenuBarExtra(isInserted: Binding(get: { controller.showsIcon(alwaysShow: showMenuBarIcon) }, set: { _ in })) {
             MenuControls(service: delegate.service, delegate: delegate)
+                .environment(\.jotAccent, JotAccent(saved: accent).color)
         } label: {
             JotMenuIconLabel(service: delegate.service)
         }.menuBarExtraStyle(.window)
@@ -116,12 +119,14 @@ final class JotDelegate: NSObject, NSApplicationDelegate {
     let service = SpeechService()
     let updater = AppUpdater()
     let setup = SetupFlow()
+    private let appearance = JotAppearanceFollower()
     weak var mainWindow: NSWindow?
     var openAction: (() -> Void)?
     private var closeObserver: NSObjectProtocol?
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
+        appearance.start()
         // A Release build outside /Applications installs itself there, or hands off to an installed copy that is not older.
         #if !DEBUG
         InstallLocation.settle()
