@@ -9,15 +9,24 @@ public actor SpeakerPass {
 
     public init() {}
 
-    /// Downloads the models once, then loads them from the same FluidAudio cache as the live models.
-    func prepare() async throws { _ = try await loadedManager() }
+    /// Makes sure the models are on disk, so a pass after the network goes away still runs. Loading waits for the first pass,
+    /// which releases them when it finishes: a listening day without a session end never holds the speaker models in memory.
+    func ensureDownloaded() async throws {
+        let directory = OfflineDiarizerModels.defaultModelsDirectory()
+        let repo = directory.appendingPathComponent(Repo.diarizer.folderName, isDirectory: true)
+        let missing = ModelNames.OfflineDiarizer.requiredModels.contains {
+            !FileManager.default.fileExists(atPath: repo.appendingPathComponent($0).path)
+        }
+        guard missing else { return }
+        try await ModelHub.download(.diarizer, to: directory, variant: "offline")
+    }
 
     public func unload() { manager = nil }
 
     /// Reads a session file straight from disk and deletes it whatever happens. A silent session is a result with no speakers, not an error.
     public func run(url: URL) async throws -> SpeakerPassResult {
         defer { try? FileManager.default.removeItem(at: url) }
-        // A pass queued by an automatic pause can start after Pause released the models; it loads them again and lets go of them when done.
+        // Nothing keeps the models loaded between passes: each pass loads them and lets go of them when done.
         let loadedForThisPass = manager == nil
         let manager = try await loadedManager()
         defer { if loadedForThisPass, self.manager === manager { self.manager = nil } }

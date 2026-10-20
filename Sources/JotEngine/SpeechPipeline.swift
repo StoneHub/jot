@@ -19,7 +19,7 @@ public actor SpeechPipeline {
     private var recognitionWindow = RecognitionCommitWindow()
     /// Last confirmed speaker of the previous ambient block, carried forward while audio stays continuous.
     private var lastSpeaker: String?
-    /// Prepared and released with the live models, but run on its own actor so a long pass never blocks live inference.
+    /// Downloaded with the live models and loaded only for a pass, on its own actor so a long pass never blocks live inference.
     public nonisolated let speakerPass = SpeakerPass()
     /// The owner's settings; the speech gate is read from them at each job.
     private let settings: JotSettings
@@ -49,7 +49,7 @@ public actor SpeechPipeline {
             diarizer = manager
         }
         try Task.checkCancellation()
-        try await speakerPass.prepare()
+        try await speakerPass.ensureDownloaded()
     }
 
     public func unload() async {
@@ -91,9 +91,13 @@ public actor SpeechPipeline {
         }
         // Conservative neural speech gate; uncertain speaker attribution does not suppress ASR.
         // It runs before the speaker model so quiet audio is held back from it rather than fed.
+        // Ambient audio whose every tenth of a second is under the capture's quiet level skips it too: a quiet
+        // room is most of a listening day. A held dictation always asks the voice detector, so a whisper still counts.
         var heardSpeech = false
         var speechProbability: Float?
-        if !recognitionSamples.isEmpty {
+        let audible = job.keepsFillers
+            || AudioLevel.loudestWindowRMS(recognitionSamples) >= Float(settings.double(JotSettings.silenceLevel))
+        if !recognitionSamples.isEmpty, audible {
             do {
                 let gate = Float(settings.double(JotSettings.speechGate))
                 speechProbability = try await vad.process(recognitionSamples).map(\.probability).max()

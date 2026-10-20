@@ -76,7 +76,7 @@ public final class JotSettings: @unchecked Sendable {
         .init(key: dropFillerOnlyBlocks, kind: .bool(true), summary: "Do not save a block that is only yeah, okay, mm-hmm or um unless it was clearly dictated"),
         .init(key: chunkMaximumSeconds, kind: .double(CaptureChunkScheduler.defaultMaximumSeconds, range: 1...15), summary: "Longest audio chunk sent for recognition, in seconds"),
         .init(key: chunkSilenceSeconds, kind: .double(CaptureChunkScheduler.defaultSilenceSeconds, range: 0.3...2), summary: "Seconds of quiet that close a chunk early"),
-        .init(key: silenceLevel, kind: .double(0.002, range: 0.0005...0.02), summary: "Microphone level below which audio counts as quiet"),
+        .init(key: silenceLevel, kind: .double(0.002, range: 0.0005...0.02), summary: "Microphone level below which audio counts as quiet and skips the voice detector"),
         .init(key: speechGate, kind: .double(0.2, range: 0.05...0.9), summary: "Voice-activity probability that lets a chunk reach the speaker model"),
         .init(key: phrasePause, kind: .double(phraseDefaults.pauseSeconds, range: 0.3...5), summary: "Seconds of pause that end a phrase sent to cleanup"),
         .init(key: phraseMaximumSeconds, kind: .double(phraseDefaults.maximumSeconds, range: 4...30), summary: "Longest phrase sent to cleanup, in seconds"),
