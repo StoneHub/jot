@@ -27,7 +27,7 @@ struct VocabularyView: View {
                         let result = service.vocabulary.applyingToDictation(sample)
                         Text(result)
                             .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(12).background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 10))
+                            .padding(12).modifier(WellSurface(radius: JotTheme.Radius.well))
                             .accessibilityLabel("Vocabulary preview result")
                             .accessibilityValue(result)
                     }
@@ -130,6 +130,6 @@ private struct VocabularyRow: View {
                 Spacer()
                 Button("Remove", role: .destructive, action: remove)
             }
-        }.padding(14).background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 14))
+        }.padding(JotTheme.Padding.row).modifier(WellSurface())
     }
 }

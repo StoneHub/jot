@@ -4,6 +4,7 @@ import JotCore
 
 /// The session being recorded, oldest row at the top and the newest at the bottom. Idle, it shows the tail of the last session with the same start controls.
 struct LiveView: View {
+    @Environment(\.jotAccent) private var accent
     @ObservedObject var service: SpeechService
     @ObservedObject var library: SessionLibrary
     @ObservedObject var timeline: ListeningTimeline
@@ -92,7 +93,7 @@ struct LiveView: View {
 
     private var status: some View {
         HStack(spacing: 10) {
-            Text("Live").font(.system(size: 26, weight: .bold, design: .rounded)).lineLimit(1)
+            Text("Live").font(JotTheme.Display.pageTitle).lineLimit(1)
             if let title = service.meetingTitle, !running {
                 chip("\(title) · Paused")
             } else if running {
@@ -203,9 +204,9 @@ struct LiveView: View {
                 Text(named ? TranscriptExport.speakerName(row) : "\(TranscriptExport.speakerName(row)) · name?")
                     .font(.caption.weight(.semibold)).lineLimit(1)
                     .padding(.horizontal, 9).padding(.vertical, 3)
-                    .foregroundStyle(named ? Color.primary : Color(nsColor: .controlAccentColor))
-                    .background(named ? Color.primary.opacity(0.08) : Color(nsColor: .controlAccentColor).opacity(0.12), in: Capsule())
-                    .overlay(Capsule().strokeBorder(Color(nsColor: .controlAccentColor).opacity(named ? 0 : 0.7), style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
+                    .foregroundStyle(named ? Color.primary : accent)
+                    .background(named ? Color.primary.opacity(0.08) : accent.opacity(0.12), in: Capsule())
+                    .overlay(Capsule().strokeBorder(accent.opacity(named ? 0 : 0.7), style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
             }.buttonStyle(.plain).help(named ? "Rename this speaker" : "Name this speaker")
         } else {
             Text(TranscriptExport.speakerName(row)).font(.caption.weight(.semibold)).foregroundStyle(.secondary)

@@ -8,14 +8,14 @@ struct ActivityLiveImpact: View {
     let service: SpeechService
     let width: CGFloat
     var body: some View {
-        ActivityCard {
+        JotCard {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 10) {
                     Label("Live on this Mac", systemImage: "waveform.path.ecg").font(.headline)
                     Spacer(minLength: 8)
                     Text("Latest").font(.caption.weight(.medium)).foregroundStyle(.tint)
                         .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(Color.accentColor.opacity(0.10), in: Capsule())
+                        .modifier(AccentFill(strength: JotTheme.Tint.wash, shape: Capsule()))
                 }
                 ResourceReadoutView(readout: service.resourceReadout) { resources in
                     VStack(alignment: .leading, spacing: 16) {
@@ -110,6 +110,7 @@ private struct ActivityResourceTrends: View {
 }
 
 private struct ActivityResourceChart: View {
+    @Environment(\.jotAccent) private var accent
     enum Metric { case cpu, memory }
     let snapshot: ActivityTrendSnapshot?
     let metric: Metric
@@ -121,7 +122,7 @@ private struct ActivityResourceChart: View {
                 Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                 if metric == .memory {
                     Spacer(minLength: 4)
-                    legend("Footprint", color: .accentColor, dashed: false)
+                    legend("Footprint", color: accent, dashed: false)
                     legend("Resident", color: .secondary, dashed: true)
                 }
             }
@@ -130,7 +131,7 @@ private struct ActivityResourceChart: View {
                     LineMark(x: .value("Minutes before latest reading", point.minutesBeforeLatest),
                              y: .value(metric == .cpu ? "CPU percent" : "Footprint MiB", metric == .cpu ? point.sample.cpuPercent : point.sample.footprintMiB),
                              series: .value("Series", "primary-\(point.segment)"))
-                        .foregroundStyle(Color.accentColor).lineStyle(StrokeStyle(lineWidth: 2))
+                        .foregroundStyle(accent).lineStyle(StrokeStyle(lineWidth: 2))
                     if metric == .memory {
                         LineMark(x: .value("Minutes before latest reading", point.minutesBeforeLatest), y: .value("Resident MiB", point.sample.residentMiB),
                                  series: .value("Series", "resident-\(point.segment)"))
@@ -139,7 +140,7 @@ private struct ActivityResourceChart: View {
                     if point.isolated {
                         PointMark(x: .value("Minutes before latest reading", point.minutesBeforeLatest),
                                   y: .value(metric == .cpu ? "CPU percent" : "Footprint MiB", metric == .cpu ? point.sample.cpuPercent : point.sample.footprintMiB))
-                            .foregroundStyle(Color.accentColor).symbolSize(22)
+                            .foregroundStyle(accent).symbolSize(22)
                         if metric == .memory {
                             PointMark(x: .value("Minutes before latest reading", point.minutesBeforeLatest), y: .value("Resident MiB", point.sample.residentMiB))
                                 .foregroundStyle(Color.secondary).symbolSize(22)

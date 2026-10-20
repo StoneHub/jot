@@ -25,6 +25,8 @@ These gates do not relax:
 
 Use the Mac's accent color and native Liquid Glass where available. Keep a material fallback for macOS 14–25.
 
+Take radii, accent tints, card padding and display type from `JotTheme` (`Sources/Jot/JotTheme.swift`), read the accent from `\.jotAccent`, and reuse the shared surfaces in `GlassStyles.swift` (`JotCard`, `GroupSurface`, `WellSurface`, `AccentFill`) instead of adding literals or private card types.
+
 Jot uses no DevFeedback overlay, commands, or view tags. Keep performance investigation in local reports and CLI diagnostics, outside the product UI, unless Monroe asks for a UI change.
 
 Before sharing an app with another Mac, run `./scripts/build-install.py --configuration Release --build-only`. Its checks must pass against the actual product. A signed local build is separate from notarization and Gatekeeper distribution proof.
