@@ -716,6 +716,8 @@ final class SpeechService: ObservableObject {
         guard await requestMic() else { throw JotError.message("Microphone permission is required.") }
         guard lifecycle.acceptsWork(token), !pauseRequested, !ambientEnabled, !Task.isCancelled else { return }
         guard try await capture.startRetrying(shouldContinue: { lifecycle.acceptsWork(token) && !pauseRequested && !Task.isCancelled }) else { return }
+        // Resume during a retry started listening in its own session with audio; the hold runs inside that one.
+        guard !ambientEnabled else { return }
         lastAudioAt = dependencies.now()
         guard !Task.isCancelled else { capture.stop(); return }
         // No audio file: a dictation of one voice needs no speaker pass.
