@@ -56,8 +56,11 @@ final class LiveCleanup {
         runningSession == session || cleanupQueue.contains { $0.sources.first?.sessionID == session }
     }
 
+    /// Live rows stay as recognized while the setting is off or macOS Low Power Mode is on; dictation cleanup is separate.
+    private var cleanupWanted: Bool { settings.bool(JotDefaultsKey.cleanUpTranscriptions) && !LowPowerListening.isOn }
+
     func scheduleCleanup(sources: [Transcript], final: Bool) {
-        guard settings.bool(JotDefaultsKey.cleanUpTranscriptions) else { phraseCleanup = PhraseCleanup(); return }
+        guard cleanupWanted else { phraseCleanup = PhraseCleanup(); return }
         phraseCleanup.limits.pauseSeconds = settings.double(JotSettings.phrasePause)
         phraseCleanup.limits.maximumSeconds = settings.double(JotSettings.phraseMaximumSeconds)
         phraseCleanup.limits.minimumSentenceWords = settings.int(JotSettings.phraseMinimumWords)
@@ -85,7 +88,7 @@ final class LiveCleanup {
                 let phrase = cleanupQueue.removeFirst()
                 runningSession = phrase.sources.first?.sessionID
                 defer { runningSession = nil }
-                guard settings.bool(JotDefaultsKey.cleanUpTranscriptions), let session = phrase.sources.first?.sessionID,
+                guard cleanupWanted, let session = phrase.sources.first?.sessionID,
                       !library.sessionIsDeleted(session) else {
                     cleanupBypassedCount += 1; cleanupCompletedCount += 1; continue
                 }

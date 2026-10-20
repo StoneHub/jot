@@ -334,6 +334,10 @@ final class SpeechService: ObservableObject {
         observers.append(NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.refreshCapabilities() }
         })
+        // Low Power Mode changes the drain cadence; the chunk length is read at each drain.
+        observers.append(NotificationCenter.default.addObserver(forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.scheduleTimer() }
+        })
         let center = NSWorkspace.shared.notificationCenter
         observers.append(center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
@@ -379,7 +383,7 @@ final class SpeechService: ObservableObject {
 
     /// Starting capture replaces the quiet timer immediately; Fn never waits for
     /// paused housekeeping to start its microphone or finish saved speech.
-    var tickInterval: TimeInterval { ambientEnabled ? 0.2 : 60 }
+    var tickInterval: TimeInterval { LowPowerListening.tickInterval(ambientEnabled ? 0.2 : 60) }
 
     /// Audio drains five times a second while listening. Paused housekeeping runs
     /// once a minute, while inference and recovery finish through their callbacks.

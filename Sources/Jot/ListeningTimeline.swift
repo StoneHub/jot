@@ -20,9 +20,10 @@ final class ListeningTimeline: ObservableObject {
     private var heardSinceFlush = false
     /// Shorter audio is dropped: recognition on it is noise.
     private static let minimumJobSamples = AudioClock.samples(seconds: 0.2)
-    /// Rebuilt from settings at each use, so a changed chunk length applies at the next drain.
+    /// Rebuilt from settings and Low Power Mode at each use, so a changed chunk length applies at the next drain.
     private var chunkScheduler: CaptureChunkScheduler {
-        CaptureChunkScheduler(sampleRate: AudioClock.sampleRate, maximumSeconds: settings.double(JotSettings.chunkMaximumSeconds),
+        CaptureChunkScheduler(sampleRate: AudioClock.sampleRate,
+            maximumSeconds: LowPowerListening.chunkMaximumSeconds(settings.double(JotSettings.chunkMaximumSeconds)),
             minimumSeconds: CaptureChunkScheduler.defaultMinimumSeconds, silenceSeconds: settings.double(JotSettings.chunkSilenceSeconds))
     }
     private let settings: JotSettings

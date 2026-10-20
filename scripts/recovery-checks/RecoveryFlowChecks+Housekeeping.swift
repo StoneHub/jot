@@ -130,7 +130,7 @@ extension RecoveryFlowChecks {
         service.keepAudioForSpeakerPass = false
         service.cleanUpTranscriptions = false
         service.beginRecoveryVerification(store: store, startedAt: probe.now)
-        precondition(service.tickInterval == 0.2, "Listening no longer drains audio five times a second")
+        precondition(service.tickInterval == LowPowerListening.tickInterval(0.2), "Listening no longer drains audio five times a second (twice in Low Power Mode)")
         // The first tick establishes the background check, then fast ticks must
         // not repeat authorization/Apple Intelligence queries before 60 seconds.
         microphone.lastAudio = probe.now
