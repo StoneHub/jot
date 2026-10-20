@@ -672,11 +672,14 @@ final class SpeechService: ObservableObject {
             while pauseRequested { try? await Task.sleep(for: .milliseconds(20)) }
             // A hold while paused may still be recognizing with the microphone already off. Recognition needs the models,
             // and a block finished after beginPause() is discarded, so let it finish and the dictation settle first.
-            while !transcriber.isIdle && lifecycle.phase == .ready {
+            // Capped, so a transcriber that never settles cannot hold Unload (and new holds) forever; past the cap the
+            // models are released anyway, as before this wait existed.
+            let settleDeadline = ContinuousClock.now + .seconds(10)
+            while !transcriber.isIdle && lifecycle.phase == .ready && ContinuousClock.now < settleDeadline {
                 transcriber.kick()
                 try? await Task.sleep(for: .milliseconds(20))
             }
-            await dictation.waitForRecovery()
+            if transcriber.isIdle { await dictation.waitForRecovery() }
             // A pause during model loading already failed the start and released the models; the generation still moves on.
             guard let token = lifecycle.beginPause() else { unloading = nil; return }
             notice = "Releasing models…"; scheduleTimer()
