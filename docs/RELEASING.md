@@ -11,8 +11,8 @@ python3 scripts/release.py patch --notes "What changed" --install
 `patch`, `minor`, `major`, or an explicit `X.Y.Z` picks the new version. The script, one printed line per step:
 
 1. Refuses unless it is on `main`, the tree is clean, `HEAD` equals `origin/main` after a fetch, `gh auth status` passes, and a signing identity is set.
-2. Bumps `JotVersion.current`, `project.yml`, and `Resources/Info.plist`. `CFBundleShortVersionString` is the version; `CFBundleVersion` is the number of existing `v*` tags plus one, so it increases every release. Writes `docs/release-notes/<version>.md` from `--notes`.
-3. Runs `swift test`, then `build-install.py --configuration Release --build-only`, and reads `build/release-proof.json`.
+2. Bumps `JotVersion.current`, `project.yml`, and `Resources/Info.plist`. `CFBundleShortVersionString` is the version; `CFBundleVersion` is the number of existing `v*` tags plus one, so it increases every release. Writes `docs/release-notes/<version>.md` from `--notes`. Without `--notes`, it uses the reviewed draft in `docs/release-notes/next.md`, drops the draft's title line, and renames the draft in the release commit. Draft user-facing notes there in PRs as changes land, so the release needs no notes typed at the terminal.
+3. Runs `swift test`, then `build-install.py --configuration Release --build-only`, and reads `build/release-proof.json`. The build check requires every bundled helper (`jot`, `jot-lab`, `jot-vorssaint`) and `VorssaintIntegration.json`, and for Release checks that each helper is signed by the release team with the hardened runtime, which notarization requires.
 4. Zips the product, submits it to Apple with `notarytool`, and waits for `Accepted` before continuing.
 5. Staples and validates the notarization ticket, verifies the signature and Gatekeeper assessment, then recreates `build/Jot-<version>.zip` and its checksum from the stapled app.
 6. Commits `Release <version>`, creates the annotated tag `v<version>` with the notes as its message, pushes `main --follow-tags`, and runs `gh release create` with the zip and checksum. The asset must be named `Jot-<version>.zip`; the updater asks for exactly that name.
@@ -57,4 +57,4 @@ Publish from the default branch after required checks pass. Keep public distribu
 
 ## Public release status
 
-GitHub releases v0.1.1 through v0.2.1 are marked prerelease because they were local testing builds, not notarized public artifacts. The first supported public release is waiting for a Developer ID Application certificate for owner team `N6GPP46885` and a matching `notarytool` keychain profile. The current Mac has Monroe's Apple Development certificate, which is valid for local development but cannot be notarized for distribution.
+Every GitHub release so far, v0.1.1 through v0.3.3, is marked prerelease because each was a local testing build, not a notarized public artifact. A `--local` release body starts with the requirements and the Gatekeeper and Applications steps a downloader needs. The first supported public release is waiting for a Developer ID Application certificate for owner team `N6GPP46885` and a matching `notarytool` keychain profile. The current Mac has Monroe's Apple Development certificate, which is valid for local development but cannot be notarized for distribution.

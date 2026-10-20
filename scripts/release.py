@@ -13,6 +13,13 @@ import sys
 from signing import local_signing_configuration, official_signing_configuration
 from packaged_product import validate_product_paths
 
+LOCAL_RELEASE_HEADER = '''> **Pre-release, not notarized.** Requires a Mac with Apple silicon and macOS 14 or later.
+> Unzip, move **Jot.app** to **Applications**, then open it from there. macOS will say it cannot verify the
+> developer: open **System Settings → Privacy & Security** and choose **Open Anyway** once.
+> Grant permissions only to the copy in Applications; the in-app updater replaces that copy.
+'''
+
+
 def install_packaged_product(installer, archive, checksum, team, version, build_number, executable_sha256, environment):
     """Install from the final published ZIP, using the original verified executable hash."""
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
@@ -34,7 +41,8 @@ def main():
     work = root / 'build'
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('bump', help='patch, minor, major, or an explicit X.Y.Z')
-    parser.add_argument('--notes', help='Release notes; written to docs/release-notes/<version>.md and used for the tag and release')
+    parser.add_argument('--notes', help='Release notes; written to docs/release-notes/<version>.md and used for the tag and release. '
+                        'Without it, the reviewed draft in docs/release-notes/next.md is used and renamed.')
     parser.add_argument('--install', action='store_true', help='Install the released product into /Applications afterwards')
     parser.add_argument('--local', action='store_true', help='Publish a pre-release signed with the local development identity, without notarization')
     parser.add_argument('--dry-run', action='store_true', help='Bump, test, build, and zip, then restore the tree without committing, tagging, or publishing')
@@ -54,8 +62,9 @@ def main():
         print(f'-> {message}', flush=True)
 
     # a. Preconditions: releases come only from a clean, pushed main with a working signing identity.
-    if not options.notes:
-        raise SystemExit('Pass --notes "text"; every release needs release notes.')
+    draft_file = root / 'docs/release-notes/next.md'
+    if not options.notes and not draft_file.is_file():
+        raise SystemExit('Pass --notes "text" or commit docs/release-notes/next.md; every release needs release notes.')
     if out(['git', 'branch', '--show-current']) != 'main':
         raise SystemExit('Switch to main; releases are cut from main only.')
     if out(['git', 'status', '--porcelain']):
@@ -104,6 +113,11 @@ def main():
     notes_file = root / f'docs/release-notes/{version}.md'
     if notes_file.exists():
         raise SystemExit(f'{notes_file.relative_to(root)} already exists.')
+    # The draft's first heading is a placeholder; the release file gets the real version.
+    draft = None if options.notes else draft_file.read_text()
+    notes = options.notes or re.sub(r'\A#[^\n]*\n', '', draft)
+    if not notes.strip():
+        raise SystemExit('Release notes are empty.')
     edits = {}
     def rewrite(path, pattern, replacement, count=1):
         text = path.read_text()
@@ -117,8 +131,11 @@ def main():
     rewrite(project_file, r"CFBundleVersion: '[^']+'", f"CFBundleVersion: '{build_number}'")
     rewrite(plist_file, r'(<key>CFBundleShortVersionString</key>\s*<string>)[^<]+', rf'\g<1>{version}')
     rewrite(plist_file, r'(<key>CFBundleVersion</key>\s*<string>)[^<]+', rf'\g<1>{build_number}')
+    if not options.notes:
+        edits[draft_file] = draft
+        draft_file.unlink()
     notes_file.parent.mkdir(parents=True, exist_ok=True)
-    notes_file.write_text(f'# Jot {version}\n\n{options.notes.strip()}\n')
+    notes_file.write_text(f'# Jot {version}\n\n{notes.strip()}\n')
     edits[notes_file] = None
     step(f'Version {previous} -> {version} (build {build_number}); notes in {notes_file.relative_to(root)}')
 
@@ -191,7 +208,12 @@ def main():
     # f. Publish. The asset must be named Jot-<version>.zip; AppUpdater looks for exactly that name.
     run(['git', 'push', 'origin', 'main', '--follow-tags'])
     step('Pushed main and tag')
-    publish = ['gh', 'release', 'create', tag, str(zip_path), str(checksum_path), '--title', f'Jot {version}', '--notes-file', str(notes_file)]
+    body = notes_file
+    if options.local:
+        # People downloading from the release page need these steps before the notes.
+        body = work / f'Jot-{version}-release-body.md'
+        body.write_text(LOCAL_RELEASE_HEADER + '\n' + notes_file.read_text())
+    publish = ['gh', 'release', 'create', tag, str(zip_path), str(checksum_path), '--title', f'Jot {version}', '--notes-file', str(body)]
     if options.local:
         publish.append('--prerelease')
     run(publish)

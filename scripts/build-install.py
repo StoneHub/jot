@@ -25,15 +25,36 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+# Executables copied into Contents/Helpers by the app target's postbuild script.
+# Vorssaint launches jot-vorssaint through Resources/VorssaintIntegration.json.
+HELPERS = ('jot', 'jot-lab', 'jot-vorssaint')
+BUNDLED_RESOURCES = ('VorssaintIntegration.json',)
+
+
 def product_info(source):
     validate_product_paths(source)
     info = plistlib.loads((source / 'Contents/Info.plist').read_bytes())
     if (source.name != 'Jot.app' or info.get('CFBundleIdentifier') != 'space.jot.app'
             or info.get('CFBundleExecutable') != 'Jot'
-            or not (source / 'Contents/MacOS/Jot').is_file()
-            or not (source / 'Contents/Helpers/jot').is_file()):
-        raise SystemExit('Expected a complete Jot.app product with its bundled CLI.')
+            or not (source / 'Contents/MacOS/Jot').is_file()):
+        raise SystemExit('Expected a complete Jot.app product.')
+    missing = [f'Contents/Helpers/{name}' for name in HELPERS if not (source / 'Contents/Helpers' / name).is_file()]
+    missing += [f'Contents/Resources/{name}' for name in BUNDLED_RESOURCES
+                if not (source / 'Contents/Resources' / name).is_file()]
+    if missing:
+        raise SystemExit('Jot.app is missing bundled files: ' + ', '.join(missing))
     return info
+
+
+def verify_release_helpers(source, team):
+    # Notarization rejects nested executables without hardened runtime; catch that before submitting.
+    for name in HELPERS:
+        helper = source / 'Contents/Helpers' / name
+        details = subprocess.run(['codesign', '-dv', str(helper)], capture_output=True, text=True, check=True).stderr
+        if f'TeamIdentifier={team}' not in details.splitlines():
+            raise SystemExit(f'{helper.name} is not signed by expected team {team}.')
+        if not re.search(r'^CodeDirectory .*flags=0x[0-9a-f]*\([^)]*\bruntime\b', details, re.MULTILINE):
+            raise SystemExit(f'{helper.name} is not signed with the hardened runtime.')
 
 
 def verify_product(source, configuration, team, expected=None):
@@ -51,6 +72,7 @@ def verify_product(source, configuration, team, expected=None):
                                                stderr=subprocess.DEVNULL)
         if plistlib.loads(entitlements).get('com.apple.security.get-task-allow'):
             raise SystemExit('Release product unexpectedly allows debugger attachment.')
+        verify_release_helpers(source, team)
     return info
 
 

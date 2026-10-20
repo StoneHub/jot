@@ -27,7 +27,7 @@ The Android app lives in [jot-android](https://github.com/StoneHub/jot-android),
 
 **Download status:** a public notarized app download is not available yet. Existing GitHub assets are prerelease builds for local testing. The first supported public release is being prepared; see the [release checklist](docs/RELEASING.md).
 
-Build and install Jot using the [instructions below](#build-and-install), then open it from Applications. Requires **Apple Silicon and macOS 14 or later**. The first model download needs internet.
+Build and install Jot using the [instructions below](#build-and-install), then open it from Applications. If you download a prerelease ZIP instead, move Jot.app to Applications before opening it; macOS asks you to allow it once under **System Settings → Privacy & Security → Open Anyway** because those builds are not notarized. Requires **Apple Silicon and macOS 14 or later**. The first model download needs internet.
 
 **Setup** opens on the first launch. It explains listening and dictation, downloads the speech models when you choose (the microphone stays off), asks for microphone access on the microphone page and Accessibility on the dictation page, shows the input level once you Resume, and walks you through a first dictation into another app. Apple Intelligence suggestions and cleanup are separate, optional choices at the end; Jot never turns Apple Intelligence on for you. Skip any step; an unfinished Setup reopens at launch where it left off, or at an earlier step whose permission or download is missing. **Finish Later** stops it opening at launch. Reopen it any time from **Setup** in the sidebar or **Jot → Set Up Jot…**. Installs that already have history or Jot preferences are not sent through Setup after an update.
 
@@ -63,9 +63,9 @@ Text insertion tries the field's Accessibility API, then direct Unicode keyboard
 
 When an ambient session or meeting ends, a speaker pass reads the whole session and relabels its rows by who spoke when, keeping their cleaned text; the notice in the window says how many speakers it found. **Activity** shows resource use and capture events. **General → Speakers & paragraphs** adjusts speaker grouping and paragraph breaks for new audio; **Regroup** in Sessions relabels a saved session from its speaker pass, or from the current settings when it has none. See the [tuning guide](docs/TUNING.md).
 
-**Updating Jot:** open **Models & updates** and press **Check for updates**. Jot reads the latest GitHub release; if it is newer, **Update** downloads it, checks the size, signature, and signing team against the running app, removes the quarantine flag, then quits and replaces `/Applications/Jot.app` before relaunching. Update is disabled while capture, dictation, inference, or model setup is running, and while the speaker pass or Regroup is relabeling a session. Each step is appended to `~/Library/Application Support/Jot/update.log`.
+**Updating Jot:** open **Models & updates** and press **Check for updates**. Jot reads the latest GitHub release; if it is newer, **Update Jot** downloads it, checks the size, signature, and signing team against the running app, removes the quarantine flag, then quits and replaces `/Applications/Jot.app` before relaunching. Update is disabled while capture, dictation, inference, or model setup is running, and while the speaker pass or Regroup is relabeling a session. Each step is appended to `~/Library/Application Support/Jot/update.log`.
 
-**Models & updates → Check updates** checks published model revisions. It does not download updates or verify that your cached weights match the latest release.
+**Models & updates → Check model updates** checks published model revisions. It does not download updates or verify that your cached weights match the latest release.
 
 ## Without Apple Intelligence
 
@@ -125,11 +125,11 @@ Transcripts use local SQLite storage protected by your account's file permission
 
 Choose a different microphone while listening; Jot saves the current speech and continues on the new input. The sidebar shows the input level. **Switch silent microphones** is on by default: after ten seconds with no input signal, Jot tries other connected microphones and keeps one that receives sound. Each alternative gets three seconds. If none has signal, Jot returns to the original choice and shows the no-signal message. A closed MacBook lid can silence the built-in microphone, so a hub or headset microphone can keep listening working. Virtual and aggregate inputs remain available for manual selection but are not automatic candidates.
 
-**Update** works while listening. Jot downloads and verifies the release first, then saves captured speech and finishes pending work before relaunching. Listening and a named meeting resume afterward; an app that was paused stays paused. If saving cannot finish within a minute, the update reports the problem and restores listening.
+**Update Jot** works while listening. Jot downloads and verifies the release first, then saves captured speech and finishes pending work before relaunching. Listening and a named meeting resume afterward; an app that was paused stays paused. If saving cannot finish within a minute, the update reports the problem and restores listening.
 
 ## CLI and MCP
 
-The installer adds `~/.local/bin/jot`. Jot must be running to use it.
+The source installer adds `~/.local/bin/jot`. For a downloaded build, link it yourself with `mkdir -p ~/.local/bin && ln -s /Applications/Jot.app/Contents/Helpers/jot ~/.local/bin/jot`. Jot must be running to use it.
 
 ```sh
 jot status
