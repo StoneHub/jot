@@ -14,6 +14,7 @@ extension SpeechService {
             guard ambientEnabled else { throw JotError.message("Ambient capture did not start.") }
             meetingTitle = trimmed
             let store = library.store, id = timeline.sessionID
+            meetingParts = [id]
             try await storeExecutor.submit { try store?.setTitle(sessionID: id, title: trimmed) }.value
             library.refreshSessions()
         } catch { meetingTitle = nil; notice = error.localizedDescription }
@@ -36,10 +37,12 @@ extension SpeechService {
         if meetingTitle != nil, id == timeline.activeSessionID, !trimmed.isEmpty { meetingTitle = trimmed }
     }
 
-    /// A meeting kept through an automatic pause records on into a new session under the same name. The earlier part stays in Sessions, and TranscriptExport.write adds " (2)" to a duplicate file name.
+    /// A meeting kept through an automatic pause records on into a new session under the same name. End meeting exports
+    /// every part, and TranscriptExport.write adds " (2)" to a duplicate file name.
     func continueMeeting() async throws {
         guard let meetingTitle, ambientEnabled else { return }
         let store = library.store, id = timeline.sessionID
+        if !meetingParts.contains(id) { meetingParts.append(id) }
         try await storeExecutor.submit { try store?.setTitle(sessionID: id, title: meetingTitle) }.value
         library.refreshSessions()
     }
@@ -63,6 +66,7 @@ extension SpeechService {
             throw failure("Finish the held dictation before ending the meeting.")
         }
         let id = timeline.sessionID
+        let earlierParts = meetingParts.filter { $0 != id }
         let generation = lifecycle.generation
         if ambientEnabled { drainAudio(); timeline.flushAmbient(final: true) }
         let throughOffset = timeline.ambientOffset
@@ -94,16 +98,23 @@ extension SpeechService {
             if notice == waiting { notice = "" }
         }
         library.refreshSessions()
-        // A meeting with nothing transcribed ends quietly; there is no file to show.
-        let store = library.store
-        let isEmpty: Bool?
-        do { isEmpty = try await storeExecutor.perform { try store?.session(id: id).isEmpty } }
-        catch { throw failure(error.localizedDescription) }
-        guard isEmpty == false else { return nil }
+        // A meeting with nothing transcribed ends quietly; there is no file to show. Earlier parts were already
+        // drained by the automatic pause that ended them.
+        var files: [URL] = []
         do {
-            let url = try await library.exportSession(id)
-            NSWorkspace.shared.activateFileViewerSelecting([url])
-            return url
+            for part in earlierParts + [id] {
+                if let url = try await exportIfTranscribed(part) { files.append(url) }
+            }
         } catch { throw failure(error.localizedDescription) }
+        guard let last = files.last else { return nil }
+        NSWorkspace.shared.activateFileViewerSelecting(files)
+        if files.count > 1 { notice = "The meeting was paused along the way, so it was saved as \(files.count) files." }
+        return last
+    }
+
+    private func exportIfTranscribed(_ id: String) async throws -> URL? {
+        let store = library.store
+        guard try await storeExecutor.perform({ try store?.session(id: id).isEmpty }) == false else { return nil }
+        return try await library.exportSession(id)
     }
 }
