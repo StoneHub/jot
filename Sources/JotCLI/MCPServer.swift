@@ -11,23 +11,44 @@ struct MCPServer {
     private static let supportedVersions = ["2025-06-18", "2025-03-26", "2024-11-05"]
 
     func run() throws {
-        var pending = Data()
+        var lines = LineReader()
         while true {
             // read(upToCount:) can wait to fill a buffer on pipes; POSIX read returns available bytes.
             var bytes = [UInt8](repeating: 0, count: 8192)
             let count = Darwin.read(STDIN_FILENO, &bytes, bytes.count)
             if count < 0 && errno == EINTR { continue }
             if count <= 0 { break }
-            pending.append(contentsOf: bytes.prefix(count))
+            for line in lines.append(bytes.prefix(count)) {
+                switch line {
+                case .oversized: try emit(error(id: NSNull(), code: -32600, message: "Request exceeds 1 MiB limit"))
+                case .frame(let frame): try process(frame)
+                }
+            }
+        }
+        if lines.hasPartialLine { FileHandle.standardError.write(Data("jot mcp: discarded incomplete final frame\n".utf8)) }
+    }
+
+    /// Splits stdin into newline-delimited frames. A line over the limit is dropped as it arrives rather than buffered, and reported once its newline comes, so one oversized request is refused without ending the session.
+    struct LineReader {
+        enum Line: Equatable { case frame(Data), oversized }
+        static let limit = 1_048_576
+        private var pending = Data()
+        private var discarding = false
+
+        var hasPartialLine: Bool { discarding || !pending.isEmpty }
+
+        mutating func append<Bytes: Sequence>(_ bytes: Bytes) -> [Line] where Bytes.Element == UInt8 {
+            pending.append(contentsOf: bytes)
+            var lines: [Line] = []
             while let newline = pending.firstIndex(of: 10) {
                 let frame = Data(pending[..<newline]); pending.removeSubrange(...newline)
-                if frame.count > 1_048_576 { try emit(error(id: NSNull(), code: -32600, message: "Request exceeds 1 MiB limit")); continue }
-                if frame.isEmpty { continue }
-                try process(frame)
+                if discarding || frame.count > Self.limit { lines.append(.oversized) }
+                else if !frame.isEmpty { lines.append(.frame(frame)) }
+                discarding = false
             }
-            guard pending.count <= 1_048_576 else { throw CLIError.usage("MCP request exceeds 1 MiB limit") }
+            if pending.count > Self.limit { pending.removeAll(); discarding = true }
+            return lines
         }
-        if !pending.isEmpty { FileHandle.standardError.write(Data("jot mcp: discarded incomplete final frame\n".utf8)) }
     }
 
     func process(_ data: Data) throws {
