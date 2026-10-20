@@ -19,7 +19,7 @@ public actor SpeechPipeline {
     private var recognitionWindow = RecognitionCommitWindow()
     /// Last confirmed speaker of the previous ambient block, carried forward while audio stays continuous.
     private var lastSpeaker: String?
-    /// Prepared and released with the live models, but run on its own actor so a long pass never blocks live inference.
+    /// Downloaded with the live models and loaded only for a pass, on its own actor so a long pass never blocks live inference.
     public nonisolated let speakerPass = SpeakerPass()
     /// The owner's settings; the speech gate is read from them at each job.
     private let settings: JotSettings
@@ -49,7 +49,7 @@ public actor SpeechPipeline {
             diarizer = manager
         }
         try Task.checkCancellation()
-        try await speakerPass.prepare()
+        try await speakerPass.ensureDownloaded()
     }
 
     public func unload() async {

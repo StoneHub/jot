@@ -20,7 +20,7 @@ Per-job records measure continuous recognition: audio duration, queue wait, infe
 
 Compare the same build configuration, model/capture state, and UI state. Footprint is the primary memory-cost measure; resident memory also includes reclaimable pages. Neither headline value is a complete accelerator-memory inventory. Sampled peak can miss brief spikes. Keep a baseline before speech, then take reports after ordinary dictation and idle periods. A restart resets counters and therefore does not prove an optimization saved memory.
 
-The next optimization candidates remain measurement-led: lazy preparation of the ambient speaker model and skipping unchanged history-document formatting. Neither change is included in this diagnostics implementation.
+The next optimization candidate remains measurement-led: skipping unchanged history-document formatting. The offline speaker pass models (pyannote and WeSpeaker) are downloaded when Jot prepares its models but loaded only while a pass runs, and released after it.
 
 ## Quiet listening CPU
 
