@@ -141,7 +141,11 @@ final class DictationInput {
 
     static var accessibilityGranted: Bool { AXIsProcessTrusted() }
 
+    /// Whether this run has already shown macOS's Accessibility prompt.
+    private(set) var accessibilityPrompted = false
+
     func requestAccessibility() {
+        accessibilityPrompted = true
         let options = ["AXTrustedCheckOptionPrompt": true]
         _ = AXIsProcessTrustedWithOptions(options as CFDictionary)
     }

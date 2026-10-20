@@ -20,21 +20,26 @@ extension SpeechService {
         }
     }
 
-    var permissionsMissing: Bool { micPermission != .authorized || !accessibilityGranted }
+    /// Only the Fn shortcut and suggestions read keys and fields. Someone who only listens never needs Accessibility, so it is
+    /// neither asked for nor reported missing until one of them is on.
+    var accessibilityWanted: Bool { dictationRequested || suggestionsEnabled }
+    var accessibilityMissing: Bool { accessibilityWanted && !accessibilityGranted }
+
+    var permissionsMissing: Bool { micPermission != .authorized || accessibilityMissing }
 
     /// Sentence for the persistent banner, naming exactly what is still off.
     var missingPermissionText: String {
         var names: [String] = []
         if micPermission != .authorized { names.append("Microphone") }
-        if !accessibilityGranted { names.append("Accessibility") }
+        if accessibilityMissing { names.append("Accessibility") }
         return names.joined(separator: " and ") + " access is off."
     }
 
-    /// Startup asks once for whatever is missing. macOS shows its own dialogs, each with an Open System Settings button.
+    /// Startup asks once for whatever is missing and wanted. macOS shows its own dialogs, each with an Open System Settings button.
     func promptForPermissionsAtLaunch() {
         Task {
             if micPermission == .notDetermined { _ = await requestMic() }
-            if !DictationInput.accessibilityGranted { input.requestAccessibility() }
+            if accessibilityWanted && !DictationInput.accessibilityGranted { input.requestAccessibility() }
             refreshPermissions()
         }
     }
@@ -51,9 +56,11 @@ extension SpeechService {
         openSettings("Privacy_Microphone")
     }
 
-    /// macOS's own Accessibility prompt, and the pane where Jot is switched on. Setup's dictation page uses it too.
+    /// macOS's own Accessibility prompt the first time, which lists Jot and has its own Open System Settings button. After
+    /// that, the pane where Jot is switched on, so one click never shows the prompt and the pane together. Setup's dictation
+    /// page uses it too.
     func fixAccessibilityPermission() {
-        input.requestAccessibility()
+        if !input.accessibilityPrompted { input.requestAccessibility(); return }
         openSettings("Privacy_Accessibility")
     }
 
