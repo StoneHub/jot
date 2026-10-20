@@ -35,17 +35,20 @@ public final class TranscriptStore: @unchecked Sendable {
         let connection = try SQLiteConnection(url: databaseURL)
         db = connection
         try db.execute("PRAGMA foreign_keys=ON")
-        try db.execute(Self.schema)
-        try db.execute(TranscriptChangeFeed.schema)
+        // Schema, migration and format commit together. Run one by one, a crash after the tables but before the format left a version-0 file that every later launch refused.
+        try connection.transaction {
+            try connection.execute(Self.schema)
+            try connection.execute(TranscriptChangeFeed.schema)
+            if version == 7 {
+                // Rows saved at format 7 join the change feed once, in spoken order. The triggers keep it current from then on.
+                try connection.execute("INSERT INTO transcript_changes(transcript_id) SELECT t.id FROM transcripts t WHERE NOT EXISTS (SELECT 1 FROM transcript_changes c WHERE c.transcript_id = t.id) ORDER BY (t.started_at + t.start_seconds), t.id")
+            }
+            try connection.execute("PRAGMA user_version=\(Self.format)")
+        }
         let identity = try connection.prepare("SELECT generation FROM transcript_feed_identity WHERE singleton = 1")
         defer { sqlite3_finalize(identity) }
         guard sqlite3_step(identity) == SQLITE_ROW, let generation = connection.column(identity, 0) else { throw connection.error() }
         self.generation = generation
-        if version == 7 {
-            // Rows saved at format 7 join the change feed once, in spoken order. The triggers keep it current from then on.
-            try db.transaction { try db.execute("INSERT INTO transcript_changes(transcript_id) SELECT t.id FROM transcripts t WHERE NOT EXISTS (SELECT 1 FROM transcript_changes c WHERE c.transcript_id = t.id) ORDER BY (t.started_at + t.start_seconds), t.id") }
-        }
-        try db.execute("PRAGMA user_version=\(Self.format)")
     }
 
     /// The files whose sizes contribute to local storage diagnostics.
@@ -251,12 +254,9 @@ public final class TranscriptStore: @unchecked Sendable {
         switch mode { case "dictation"?: return " AND t.mode = 'dictation'"; case "ambient"?: return " AND t.mode = 'ambient'"; default: return "" }
     }
 
-    /// Every row of one session in spoken order (absolute start time, then id), for Live, Sessions, and export. One query on the session's time index. Bounded at the newest 10,000 rows so a response stays inside the socket frame limit.
+    /// Every row of one session in spoken order (absolute start time, then id), for Live, Sessions, and export. One query on the session's time index. Unbounded, so an all-day session exports whole; the IPC server refuses a response over its frame limit rather than this read cutting the start off.
     public func session(id: String) throws -> [Transcript] {
-        try db.locked {
-            let newestFirst = try rows(where: "WHERE t.session_id = ?", value: id, limit: 10_000, offset: 0)
-            return newestFirst.reversed()
-        }
+        try db.locked { try rows(where: "WHERE t.session_id = ?", value: id, limit: -1, offset: 0, oldestFirst: true) }
     }
 
     public func read(id: String) throws -> Transcript? {
@@ -414,8 +414,10 @@ public final class TranscriptStore: @unchecked Sendable {
         }
     }
 
-    private func rows(where clause: String, value: String?, limit: Int, offset: Int) throws -> [Transcript] {
-        let stmt = try db.prepare("SELECT t.id,t.session_id,t.started_at,t.start_seconds,t.end_seconds,COALESCE(r.text,t.text),t.speaker_id,t.mode,l.name FROM transcripts t LEFT JOIN transcript_readable r ON r.transcript_id=t.id LEFT JOIN speaker_labels l ON t.session_id=l.session_id AND t.speaker_id=l.speaker_id \(clause) ORDER BY (t.started_at + t.start_seconds) DESC,t.id DESC LIMIT ? OFFSET ?")
+    /// Newest first unless `oldestFirst`. A negative limit reads every matching row.
+    private func rows(where clause: String, value: String?, limit: Int, offset: Int, oldestFirst: Bool = false) throws -> [Transcript] {
+        let order = oldestFirst ? "ASC" : "DESC"
+        let stmt = try db.prepare("SELECT t.id,t.session_id,t.started_at,t.start_seconds,t.end_seconds,COALESCE(r.text,t.text),t.speaker_id,t.mode,l.name FROM transcripts t LEFT JOIN transcript_readable r ON r.transcript_id=t.id LEFT JOIN speaker_labels l ON t.session_id=l.session_id AND t.speaker_id=l.speaker_id \(clause) ORDER BY (t.started_at + t.start_seconds) \(order),t.id \(order) LIMIT ? OFFSET ?")
         defer { sqlite3_finalize(stmt) }
         var index: Int32 = 1
         if let value { db.bind(value, to: index, in: stmt); index += 1 }
