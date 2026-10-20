@@ -187,6 +187,26 @@ enum CaptureFlowChecks {
         service.prepare(confirmingDownload: true)
         await service.waitForPreparation()
         precondition(service.ambientEnabled && service.meetingTitle == "Weekly sync", "The meeting continued as \(service.meetingTitle ?? "nil") after an automatic pause")
+
+        // speech.meeting_end answers a refusal with an error and keeps the meeting; once it can end, the result names the
+        // last file and lists every part's file (none here when nothing was transcribed).
+        service.holdBegan()
+        let holdDeadline = Date().addingTimeInterval(2)
+        while !service.dictation.isActive && Date() < holdDeadline { try await Task.sleep(for: .milliseconds(5)) }
+        precondition(service.dictation.isActive, "A hold while listening did not begin a dictation")
+        let endRequest = try JSONSerialization.data(withJSONObject: ["method": "speech.meeting_end", "params": [String: Any]()])
+        let refusedEnd = try JSONSerialization.jsonObject(with: await service.handle(endRequest)) as? [String: Any]
+        precondition(refusedEnd?["ok"] as? Bool == false && (refusedEnd?["error"] as? String)?.isEmpty == false,
+                     "End meeting during a hold was not reported as an error: \(refusedEnd ?? [:])")
+        precondition(service.meetingTitle == "Weekly sync", "A refused End meeting still ended the meeting")
+        service.holdEnded(releasedAt: ProcessInfo.processInfo.systemUptime)
+        await service.dictation.waitForRecovery()
+        while service.dictation.isPending { try await Task.sleep(for: .milliseconds(10)) }
+        let endedResponse = try JSONSerialization.jsonObject(with: await service.handle(endRequest)) as? [String: Any]
+        let ended = endedResponse?["result"] as? [String: Any]
+        precondition(endedResponse?["ok"] as? Bool == true && ended?["file"] is String && ended?["files"] is [String] && service.meetingTitle == nil,
+                     "End meeting over the socket did not answer with file and files: \(endedResponse ?? [:])")
+        print("PASS: speech.meeting_end reports a refusal as an error and answers with file and files once the meeting ends.")
         service.pause()
         while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
         print("PASS: a failed microphone start retries, reports after the last try, explains a blocked shortcut press, and Resume restarts capture.")
