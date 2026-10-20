@@ -35,6 +35,7 @@ final class SpeechService: ObservableObject {
         window: { [weak self] in TimeInterval((self?.suggestionWindowMinutes ?? 10) * 60) },
         matchesHeardSpeech: { [weak self] in self?.suggestionHeardMatches == true },
         userVoice: { [weak self] in self?.speakers.userVoice },
+        model: ChosenModel(.suggestions, settings: settings),
         notice: { [weak self] in self?.notice = $0 })
     lazy var timeline: ListeningTimeline = ListeningTimeline(settings: settings, library: library, speakers: speakers,
         transcriber: transcriber, now: dependencies.now,
@@ -43,7 +44,7 @@ final class SpeechService: ObservableObject {
         recordEvent: { [unowned self] in recordEvent($0, $1, duration: $2, session: nil) },
         setNotice: { [unowned self] in notice = $0 }, markDictationGap: { [weak self] in self?.dictation.markGap($0) })
     lazy var cleanup: LiveCleanup = LiveCleanup(owner: self, library: library, settings: settings,
-        clean: dependencies.cleanup, availability: dependencies.intelligenceAvailability,
+        clean: dependencies.cleanup, availability: { [unowned self] in modelAvailability(.cleanup) },
         activityChanged: { [unowned self] in refreshShortcutEligibility() },
         workerFinished: { [unowned self] in if canInstallUpdate { objectWillChange.send() } })
     lazy var transcriber: Transcriber = Transcriber(owner: self, library: library, cleanup: cleanup, pipeline: pipeline, settings: settings,
@@ -63,7 +64,7 @@ final class SpeechService: ObservableObject {
     init(dependencies: SpeechServiceDependencies = .live, settings: JotSettings = .standard) {
         self.dependencies = dependencies
         self.settings = settings
-        cleanupAvailability = dependencies.intelligenceAvailability()
+        cleanupAvailability = ChosenModel(.cleanup, settings: settings).availability(orApple: dependencies.intelligenceAvailability())
         capture = CaptureController(microphone: dependencies.makeMicrophone(), retry: dependencies.microphoneRetry,
             availableDevices: dependencies.availableInputs, defaultDeviceUID: dependencies.defaultInputUID)
         capture.onNotice = { [weak self] in self?.notice = $0 }
@@ -93,7 +94,7 @@ final class SpeechService: ObservableObject {
         if preparingUpdate { return "Jot is finishing the update." }
         if switchingInput { return "Jot is switching microphones." }
         if !suggestionsEnabled { return "Suggestions are off in General." }
-        if let reason = dependencies.intelligenceAvailability().suggestionBlocker { return reason }
+        if let reason = modelAvailability(.suggestions).suggestionBlocker { return reason }
         if dictation.isActive || dictation.isPending { return "No suggestion while a dictation is in progress." }
         if diagnosticActive { return "No suggestion while diagnostics run." }
         if preparing { return "No suggestion while Jot is loading models." }
@@ -257,7 +258,7 @@ final class SpeechService: ObservableObject {
         result.onSuggestionRefused = { [weak self] in
             guard let self else { return }
             self.suggestions.refuse(self.suggestionBlocker ?? "Suggestions are not available on this keyboard layout.",
-                                    anchorToField: self.suggestionsEnabled && self.dependencies.intelligenceAvailability() == .available)
+                                    anchorToField: self.suggestionsEnabled && self.modelAvailability(.suggestions) == .available)
         }
         result.onSuggestionAccept = { [weak self] in self?.suggestions.accept() }
         result.onSuggestionDismiss = { [weak self] action in self?.suggestions.dismiss(action: action) }
@@ -497,7 +498,7 @@ final class SpeechService: ObservableObject {
     func refreshCapabilities() {
         lastCapabilityCheckTime = dependencies.now()
         refreshPermissions()
-        let availability = dependencies.intelligenceAvailability()
+        let availability = modelAvailability(.cleanup)
         if cleanupAvailability != availability {
             cleanupAvailability = availability
             refreshShortcutEligibility()

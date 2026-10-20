@@ -30,6 +30,9 @@ extension SpeechService {
             if !keepAudioForSpeakerPass { timeline.discardSessionAudio() }
         case JotSettings.speakerConfidence, JotSettings.minimumSpeakerTurn, JotSettings.hideFillerRows:
             library.refreshHistory()
+        case let changed where JotSettings.customModelKeys.contains(changed):
+            refreshCapabilities()
+            suggestions.dismiss(action: .settingsChanged)
         case JotSettings.paragraphPause:
             // Live groups by the paragraph pause alone, so a change to any other tuning value leaves it as it is.
             library.refreshHistory(); library.reloadLive()
@@ -59,8 +62,41 @@ extension SpeechService {
         get { settings.bool(JotDefaultsKey.suggestionWindowImage) }
         set { save(JotDefaultsKey.suggestionWindowImage, newValue) }
     }
-    /// The model is ready and takes images: macOS 27 or later with a model that has vision.
-    var windowImageSupported: Bool { AppleFMGeneration.acceptsImages }
+    /// The model is ready and takes images: Apple Intelligence on macOS 27 or later with a model that has vision.
+    /// A custom model never receives the image.
+    var windowImageSupported: Bool { !settings.bool(JotSettings.customModelForSuggestions) && AppleFMGeneration.acceptsImages }
+
+    /// Whether a feature's model can run: Apple Intelligence, as the dependencies report it, or the custom model.
+    func modelAvailability(_ feature: ChosenModel.Feature) -> CleanupAvailability {
+        ChosenModel(feature, settings: settings).availability(orApple: dependencies.intelligenceAvailability())
+    }
+    var suggestionAvailability: CleanupAvailability { modelAvailability(.suggestions) }
+
+    var customModelForCleanup: Bool {
+        get { settings.bool(JotSettings.customModelForCleanup) }
+        set { save(JotSettings.customModelForCleanup, newValue) }
+    }
+    var customModelForSuggestions: Bool {
+        get { settings.bool(JotSettings.customModelForSuggestions) }
+        set { save(JotSettings.customModelForSuggestions, newValue) }
+    }
+    var customModelFormat: RemoteModelConfiguration.Format {
+        get { RemoteModelConfiguration.Format(rawValue: settings.text(JotSettings.customModelFormat)) ?? .openAICompatible }
+        set { saveText(JotSettings.customModelFormat, newValue.rawValue) }
+    }
+    var customModelEndpoint: String {
+        get { settings.text(JotSettings.customModelEndpoint) }
+        set { saveText(JotSettings.customModelEndpoint, newValue) }
+    }
+    var customModelName: String {
+        get { settings.text(JotSettings.customModelName) }
+        set { saveText(JotSettings.customModelName, newValue) }
+    }
+    /// Blank or oversized text is refused, so the field shows the saved value again.
+    private func saveText(_ key: String, _ value: String) {
+        let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if (try? settings.set(key, value)) == nil { objectWillChange.send() } else { settingChanged(key) }
+    }
     /// A selection rewrite can restore quoted words from matching speech within the context window.
     var suggestionHeardMatches: Bool {
         get { settings.bool(JotDefaultsKey.suggestionHeardMatches) }

@@ -44,7 +44,7 @@ public enum SuggestionPresentation: Equatable, Sendable {
                 case .reply: return .notice(text: "No suggestion from this context.", reason: detail)
                 }
             }
-        case .unavailable: return .notice(text: "No suggestion: Apple Intelligence is unavailable.", reason: "model-unavailable")
+        case .unavailable: return .notice(text: "No suggestion: the model is unavailable.", reason: "model-unavailable")
         case .timedOut: return .notice(text: "No suggestion: the model took too long.", reason: "timed-out")
         case .blocked: return .notice(text: "No suggestion: the previous request is still ending.", reason: "blocked")
         case .failed: return .notice(text: "No suggestion: the model could not complete the request.", reason: "model-failed")
