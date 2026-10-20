@@ -13,11 +13,20 @@ import sys
 from signing import local_signing_configuration, official_signing_configuration
 from packaged_product import validate_product_paths
 
-LOCAL_RELEASE_HEADER = '''> **Pre-release, not notarized.** Requires a Mac with Apple silicon and macOS 14 or later.
-> Unzip, move **Jot.app** to **Applications**, then open it from there. macOS will say it cannot verify the
-> developer: open **System Settings → Privacy & Security** and choose **Open Anyway** once.
-> Grant permissions only to the copy in Applications; the in-app updater replaces that copy.
-'''
+INSTALL_SECTION = """## Install
+
+Requires a Mac with Apple silicon and macOS 14 or later. Unzip, move **Jot.app** to **Applications**, then open it from there. Grant permissions to that copy; Jot's updater replaces it in place.
+"""
+LOCAL_INSTALL_NOTE = """
+This pre-release is not notarized. The first time you open it, macOS says it cannot verify the developer: open **System Settings → Privacy & Security** and choose **Open Anyway** once.
+"""
+
+
+def release_body(notes, local):
+    """GitHub release text: the notes first, because Jot's updater shows their first line, then install steps."""
+    # The release title already names the version, so drop the notes file's own heading.
+    text = re.sub(r'\A#[^\n]*\n', '', notes).strip()
+    return f'{text}\n\n{INSTALL_SECTION}{LOCAL_INSTALL_NOTE if local else ""}'
 
 
 def install_packaged_product(installer, archive, checksum, team, version, build_number, executable_sha256, environment):
@@ -187,11 +196,15 @@ def main():
         checksum_path.write_text(f'{digest}  {zip_path.name}\n')
         step(f'Zipped {zip_path.relative_to(root)} ({zip_path.stat().st_size} bytes, sha256 {digest})')
 
+        body_path = work / f'Jot-{version}-release.md'
+        body_path.write_text(release_body(notes_file.read_text(), options.local))
         changed = [str(p.relative_to(root)) for p in edits] + ['Jot.xcodeproj/project.pbxproj']
         if options.dry_run:
+            step(f'Dry run: release page text is in {body_path.relative_to(root)}; the updater will show: '
+                 f'{next((line for line in body_path.read_text().splitlines() if line.strip()), "(nothing)")}')
             step('Dry run: would commit ' + ', '.join(changed))
             step(f'Dry run: would {"tag" if options.local else "notarize, staple, tag"} {tag} and push main --follow-tags')
-            step(f'Dry run: would run gh release create {tag} {zip_path.name} {checksum_path.name} --title "Jot {version}" --notes-file {notes_file.relative_to(root)}')
+            step(f'Dry run: would run gh release create {tag} {zip_path.name} {checksum_path.name} --title "Jot {version}" --notes-file {body_path.relative_to(root)}')
             restore()
             step('Dry run: tree restored')
             sys.exit(0)
@@ -208,12 +221,7 @@ def main():
     # f. Publish. The asset must be named Jot-<version>.zip; AppUpdater looks for exactly that name.
     run(['git', 'push', 'origin', 'main', '--follow-tags'])
     step('Pushed main and tag')
-    body = notes_file
-    if options.local:
-        # People downloading from the release page need these steps before the notes.
-        body = work / f'Jot-{version}-release-body.md'
-        body.write_text(LOCAL_RELEASE_HEADER + '\n' + notes_file.read_text())
-    publish = ['gh', 'release', 'create', tag, str(zip_path), str(checksum_path), '--title', f'Jot {version}', '--notes-file', str(body)]
+    publish = ['gh', 'release', 'create', tag, str(zip_path), str(checksum_path), '--title', f'Jot {version}', '--notes-file', str(body_path)]
     if options.local:
         publish.append('--prerelease')
     run(publish)

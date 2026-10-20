@@ -87,5 +87,17 @@ class ReleaseNotesTests(unittest.TestCase):
                 self.assertIn('0.3.3', (self.root / 'project.yml').read_text())
 
 
+    def test_release_body_leads_with_notes_for_the_updater_and_ends_with_install_steps(self):
+        notes = '# Jot 0.3.4\n\nFixed the thing.\n'
+        for local in (False, True):
+            with self.subTest(local=local):
+                body = self.release.release_body(notes, local)
+                # AppUpdater shows the first non-empty line of the release body.
+                self.assertEqual(next(line for line in body.splitlines() if line.strip()), 'Fixed the thing.')
+                self.assertNotIn('# Jot 0.3.4', body)
+                self.assertIn('## Install', body)
+                self.assertEqual('Open Anyway' in body, local)
+
+
 if __name__ == '__main__':
     unittest.main()
