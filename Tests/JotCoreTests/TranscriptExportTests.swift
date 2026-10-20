@@ -126,6 +126,50 @@ final class TranscriptExportTests: XCTestCase {
         XCTAssertTrue(try String(contentsOf: repeatedURL).contains("Updated meeting"))
     }
 
+    func testDictationRowsInAListeningSessionShowWhenTheyWereSpoken() {
+        // A dictation row keeps its hold's own start with offset 0; ambient rows count from the session start.
+        let dictation = Transcript(sessionID: "s", startedAt: started.addingTimeInterval(65), startSeconds: 0, endSeconds: 2, text: "typed note", mode: "dictation")
+        let rows = [row(0, 3, "Morning all.", speaker: "speaker-1"), dictation, row(70, 72, "Next item.", speaker: "speaker-1")]
+        let timed = TranscriptExport.sessionTimed(rows)
+        XCTAssertEqual(timed.map(\.startSeconds), [0, 65, 70])
+        XCTAssertEqual(timed[1].endSeconds, 67)
+        XCTAssertEqual(timed.map { $0.startedAt.addingTimeInterval($0.startSeconds) }, rows.map { $0.startedAt.addingTimeInterval($0.startSeconds) }, "Absolute times are unchanged")
+        let session = TranscriptSession(sessionID: "s", startedAt: started, lastTranscriptAt: started.addingTimeInterval(72), transcriptCount: 3)
+        let text = TranscriptExport.markdown(session: session, rows: rows)
+        XCTAssertTrue(text.contains("**[0:01:05] Unattributed:** typed note"), text)
+        XCTAssertEqual(TranscriptExport.readingParagraphs(rows, tuning: .init()).map(\.startSeconds), [0, 65, 70])
+        // A dictation spoken before the first ambient row moves the clock back rather than sharing 0:00:00 with it.
+        let early = Transcript(sessionID: "s", startedAt: started.addingTimeInterval(-4), startSeconds: 0, endSeconds: 1, text: "early", mode: "dictation")
+        XCTAssertEqual(TranscriptExport.sessionTimed([early] + rows).map(\.startSeconds), [0, 4, 69, 74])
+        // A session of dictation rows alone keeps its rows as they are.
+        XCTAssertEqual(TranscriptExport.sessionTimed([dictation]), [dictation])
+    }
+
+    func testRowsThatCleanupEmptiedLeaveNoBlankParagraph() {
+        let rows = [row(0, 1, "Hello.", speaker: "speaker-1"), row(1.2, 1.5, " ", speaker: "speaker-2"), row(5, 6, "", speaker: nil), row(9, 10, "Bye.", speaker: "speaker-1")]
+        XCTAssertEqual(TranscriptExport.readingParagraphs(rows, tuning: .init()).map(\.text), ["Hello.", "Bye."])
+        let session = TranscriptSession(sessionID: "s", startedAt: started, lastTranscriptAt: started.addingTimeInterval(10), transcriptCount: 4)
+        let text = TranscriptExport.markdown(session: session, rows: rows)
+        XCTAssertFalse(text.contains(":** \n"))
+        XCTAssertTrue(text.contains("2 segments"), text)
+    }
+
+    func testLongTitlesKeepTheFileNameWithinTheFileSystemLimit() throws {
+        let titles = [String(repeating: "👨‍👩‍👧‍👦", count: 80), String(repeating: "한", count: 80), String(repeating: "e\u{301}", count: 300), String(repeating: "a", count: 200)]
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        for title in titles {
+            let session = TranscriptSession(sessionID: "s", startedAt: started, lastTranscriptAt: started, transcriptCount: 1, title: title)
+            let name = TranscriptExport.fileName(for: session)
+            XCTAssertLessThanOrEqual(name.decomposedStringWithCanonicalMapping.utf8.count, 230, name)
+            XCTAssertTrue(name.hasSuffix(".md"))
+            XCTAssertNotEqual(name, TranscriptExport.fileName(for: TranscriptSession(sessionID: "s", startedAt: started, lastTranscriptAt: started, transcriptCount: 1)), "A long title is shortened, not dropped")
+            // Twice, so the second file takes the " (2)" suffix.
+            for _ in 0..<2 { _ = try TranscriptExport.write(session: session, rows: [row(0, 1, "hi", speaker: nil)], directory: directory) }
+        }
+        XCTAssertTrue(TranscriptExport.fileName(for: TranscriptSession(sessionID: "s", startedAt: started, lastTranscriptAt: started, transcriptCount: 1, title: "Short")).hasSuffix(" Short.md"))
+    }
+
     func testSessionReadReturnsEveryRowInOrderBeyondOnePage() throws {
         let directory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

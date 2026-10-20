@@ -31,17 +31,38 @@ public enum TranscriptExport {
         paragraph.endSeconds = max(paragraph.endSeconds, row.endSeconds)
     }
 
-    /// The paragraphs Sessions shows and Markdown exports: continuations folded and rows merged at the tuning's paragraph pause.
+    /// The paragraphs Sessions shows and Markdown exports: rows put on the session's clock, rows that cleanup emptied left out, continuations folded, and rows merged at the tuning's paragraph pause.
     public static func readingParagraphs(_ rows: [Transcript], tuning: TranscriptionTuning) -> [Transcript] {
         let pause = tuning.bounded.paragraphPause
-        return paragraphs(TranscriptGrouping.foldContinuations(rows, gap: pause), mergeWithin: pause)
+        let spoken = sessionTimed(rows).filter(isSpoken)
+        return paragraphs(TranscriptGrouping.foldContinuations(spoken, gap: pause), mergeWithin: pause)
     }
 
+    /// Ambient rows share the session's start and count seconds from it, but a dictation row saved into a listening session keeps its hold's own start with an offset of 0. Every row is moved onto the start of the session's earliest ambient row, so a dictation shows when it was spoken rather than at 0:00:00. A row spoken before that start moves the clock back to it, so no two rows share a clamped 0:00:00. A session without ambient rows is returned as it is.
+    public static func sessionTimed(_ rows: [Transcript]) -> [Transcript] {
+        guard let ambient = rows.filter({ $0.mode == "ambient" }).map(\.startedAt).min() else { return rows }
+        let start = rows.map { $0.startedAt.addingTimeInterval($0.startSeconds) }.reduce(ambient) { min($0, $1) }
+        return rows.map { row in
+            let shift = row.startedAt.timeIntervalSince(start)
+            guard shift != 0 else { return row }
+            var timed = row
+            timed.startedAt = start
+            timed.startSeconds = max(0, row.startSeconds + shift)
+            timed.endSeconds = max(timed.startSeconds, row.endSeconds + shift)
+            return timed
+        }
+    }
+
+    /// False for a row that phrase cleanup emptied; it has nothing to show.
+    static func isSpoken(_ row: Transcript) -> Bool { !row.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
     public static func markdown(session: TranscriptSession, rows: [Transcript], tuning: TranscriptionTuning = TranscriptionTuning()) -> String {
-        let merged = readingParagraphs(rows, tuning: tuning)
-        let duration = rows.map(\.endSeconds).max() ?? 0
+        let timed = sessionTimed(rows)
+        let merged = readingParagraphs(timed, tuning: tuning)
+        let duration = timed.map(\.endSeconds).max() ?? 0
+        let segments = timed.filter(isSpoken).count
         var lines = ["# \(session.title ?? "Session") \(timestamp(session.startedAt))", "",
-                     "Session \(session.sessionID). \(rows.count) segments, \(clock(duration)) of audio, ending \(timestamp(session.lastTranscriptAt)).",
+                     "Session \(session.sessionID). \(segments) segments, \(clock(duration)) of audio, ending \(timestamp(session.lastTranscriptAt)).",
                      "Speakers without a name are Jot's automatic groupings. Timestamps are offsets from session start.", ""]
         for row in merged {
             lines.append("**[\(clock(row.startSeconds))] \(speakerName(row)):** \(row.text)")
@@ -54,8 +75,15 @@ public enum TranscriptExport {
     public static func fileName(for session: TranscriptSession) -> String {
         let stamp = fileStamp.string(from: session.startedAt)
         let unsafe = CharacterSet(charactersIn: "/:\\?%*|\"<>").union(.newlines)
-        let title = (session.title ?? "").components(separatedBy: unsafe).joined(separator: " ").split(separator: " ", omittingEmptySubsequences: true).joined(separator: " ")
-        return (title.isEmpty ? "\(stamp) Session" : "\(stamp) \(title.prefix(80))") + ".md"
+        let title = fileTitle((session.title ?? "").components(separatedBy: unsafe).joined(separator: " ").split(separator: " ", omittingEmptySubsequences: true).joined(separator: " "))
+        return (title.isEmpty ? "\(stamp) Session" : "\(stamp) \(title)") + ".md"
+    }
+
+    /// macOS allows 255 bytes in a file name, counted in the decomposed UTF-8 the file system stores, and 80 characters of emoji or Hangul can be far more. The title keeps whole characters within 200 of those bytes, which leaves room for the stamp, a " (2)" suffix and the extension.
+    static func fileTitle(_ title: String) -> String {
+        var kept = title.prefix(80)
+        while String(kept).decomposedStringWithCanonicalMapping.utf8.count > 200 { kept.removeLast() }
+        return kept.trimmingCharacters(in: .whitespaces)
     }
 
     /// Exclusive creation preserves earlier exports, including files edited outside Jot.
