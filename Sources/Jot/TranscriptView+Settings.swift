@@ -17,18 +17,18 @@ private struct SettingsGroup<Rows: View>: View {
                 if beta {
                     Text("Beta").font(.caption2.weight(.bold)).textCase(.uppercase).foregroundStyle(.purple)
                         .padding(.horizontal, 6).padding(.vertical, 1)
-                        .background(.purple.opacity(0.15), in: RoundedRectangle(cornerRadius: 5))
+                        .background(.purple.opacity(0.15), in: RoundedRectangle(cornerRadius: JotTheme.Radius.badge))
                 }
                 if let info { InfoButton(title: title, detail: info) }
             }.padding(.leading, 4)
             VStack(spacing: 0) { rows() }
-                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+                .modifier(GroupSurface())
         }
     }
 }
 
 private struct RowDivider: View {
-    var body: some View { Divider().padding(.leading, 14) }
+    var body: some View { Divider().padding(.leading, JotTheme.Padding.row) }
 }
 
 /// A setting's name and (i) on the left and its control on the right, or the control under the name when the row is too narrow for both. An indented row depends on the one above; a row that cannot change dims its name and disables its control, while its (i) still works.

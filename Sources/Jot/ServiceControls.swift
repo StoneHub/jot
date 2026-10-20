@@ -283,6 +283,7 @@ struct ResourceReadoutView<Content: View>: View {
 }
 
 struct MenuControls: View {
+    @Environment(\.jotAccent) private var accent
     @ObservedObject var service: SpeechService
     let delegate: JotDelegate
     @Environment(\.openWindow) private var openWindow
@@ -297,7 +298,7 @@ struct MenuControls: View {
                 }.modifier(GlassButton())
             }
             ServiceControls(service: service, compact: true)
-                .padding(18).modifier(GlassSurface(tint: Color(nsColor: .controlAccentColor).opacity(0.04)))
+                .padding(JotTheme.Padding.card).modifier(GlassSurface(accent: JotTheme.Tint.panel))
             HStack {
                 ResourceReadoutView(readout: service.resourceReadout) { resources in
                     Text(String(format: "CPU %.1f%% · %.0f MB", resources.processCPUPercent, resources.residentMiB))
@@ -312,6 +313,6 @@ struct MenuControls: View {
             }
             if service.ambientEnabled { LastSentence(library: service.library, timeline: service.timeline) }
         }.padding(18).frame(width: 350)
-            .modifier(GlassStage()).background(JotBackdrop()).tint(Color(nsColor: .controlAccentColor))
+            .modifier(GlassStage()).background(JotBackdrop()).tint(accent)
     }
 }

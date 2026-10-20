@@ -33,7 +33,7 @@ RECOVERY_TRIGGERS = ('Sources/JotCore/', 'Sources/JotEngine/', 'scripts/check-re
                      'Package.swift', 'Package.resolved')
 # These presentation files do not own capture, persistence or delivery. New/unknown app files stay conservative.
 PRESENTATION_FILES = {f'Sources/Jot/{name}.swift' for name in (
-    'ActivityLiveImpact', 'ActivityView', 'GlassStyles', 'InfoButton', 'LiveTranscriptText', 'LiveView', 'ModelsUpdatesView',
+    'ActivityLiveImpact', 'ActivityView', 'GlassStyles', 'InfoButton', 'JotTheme', 'LiveTranscriptText', 'LiveView', 'ModelsUpdatesView',
     'PeopleView', 'SessionsView', 'SetupView', 'ShortcutSettings', 'SuggestionCard', 'TranscriptView',
     'TranscriptView+Settings', 'VocabularyView')}
 TOOL_TESTS = {

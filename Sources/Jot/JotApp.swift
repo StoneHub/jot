@@ -92,6 +92,7 @@ private enum JotMenuIcon {
 }
 
 struct JotBrand: View {
+    @Environment(\.jotAccent) private var accent
     var compact = false
     var body: some View {
         HStack(spacing: 12) {
@@ -99,8 +100,8 @@ struct JotBrand: View {
                 .renderingMode(.template).resizable().scaledToFit()
                 .foregroundStyle(.white).padding(10)
                 .frame(width: compact ? 40 : 48, height: compact ? 40 : 48)
-                .background(Color(nsColor: .controlAccentColor).gradient, in: RoundedRectangle(cornerRadius: 14))
-                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.3)))
+                .background(accent.gradient, in: RoundedRectangle(cornerRadius: JotTheme.Radius.panel))
+                .overlay(RoundedRectangle(cornerRadius: JotTheme.Radius.panel).strokeBorder(.white.opacity(JotTheme.Tint.stroke)))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Jot").font(compact ? .title2.weight(.bold) : .largeTitle.weight(.bold))

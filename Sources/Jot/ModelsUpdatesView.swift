@@ -19,7 +19,7 @@ struct AppUpdateCard: View {
     let install: () -> Void
 
     var body: some View {
-        ModelsCardSurface {
+        JotCard {
             VStack(alignment: .leading, spacing: 14) {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 16) { identity.fixedSize(); Spacer(minLength: 8); actions.fixedSize() }
@@ -61,12 +61,12 @@ struct AppUpdateCard: View {
 
     private var identity: some View {
         HStack(spacing: 12) {
-            Image(systemName: "waveform.circle.fill").font(.system(size: 34))
+            Image(systemName: "waveform.circle.fill").font(JotTheme.Display.identityIcon)
                 .foregroundStyle(.tint).frame(width: 48, height: 48)
-                .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 14))
+                .modifier(AccentFill(strength: JotTheme.Tint.wash, shape: RoundedRectangle(cornerRadius: JotTheme.Radius.panel)))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
-                Text("Jot").font(.system(size: 23, weight: .semibold, design: .rounded))
+                Text("Jot").font(JotTheme.Display.brand)
                 Text("Version \(JotVersion.current) on this Mac").font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -198,12 +198,12 @@ private struct PublishedModelCard: View {
     }
 
     var body: some View {
-        ModelsCardSurface {
+        JotCard {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 10) {
                     Image(systemName: symbol).font(.title3).foregroundStyle(.tint)
                         .frame(width: 38, height: 38)
-                        .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 11))
+                        .modifier(AccentFill(strength: JotTheme.Tint.wash, shape: RoundedRectangle(cornerRadius: JotTheme.Radius.icon)))
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(name).font(.headline)
@@ -251,6 +251,7 @@ private struct PublishedModelCard: View {
 }
 
 private struct ModelsStatusBadge: View {
+    @Environment(\.jotAccent) private var accent
     let title: String
     let symbol: String
     var warning = false
@@ -258,15 +259,7 @@ private struct ModelsStatusBadge: View {
         Label(title, systemImage: symbol).font(.caption.weight(.medium))
             .foregroundStyle(warning ? Color.orange : Color.secondary)
             .padding(.horizontal, 8).padding(.vertical, 4)
-            .background((warning ? Color.orange : Color.accentColor).opacity(0.08), in: Capsule())
+            .background((warning ? Color.orange : accent).opacity(JotTheme.Tint.chip), in: Capsule())
             .fixedSize(horizontal: false, vertical: true)
-    }
-}
-
-private struct ModelsCardSurface<Content: View>: View {
-    @ViewBuilder var content: () -> Content
-    var body: some View {
-        content().padding(18).frame(maxWidth: .infinity, alignment: .leading)
-            .modifier(GlassSurface(tint: Color(nsColor: .controlAccentColor).opacity(0.03), radius: 16))
     }
 }

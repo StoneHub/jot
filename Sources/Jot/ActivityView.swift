@@ -61,6 +61,7 @@ final class ActivityInsightsLoader: ObservableObject {
 }
 
 struct ActivityView: View {
+    @Environment(\.jotAccent) private var accent
     let service: SpeechService
     let library: SessionLibrary
     @StateObject private var insights: ActivityInsightsLoader
@@ -167,11 +168,11 @@ struct ActivityView: View {
     }
 
     private func dictationSummary(_ report: ActivityReport) -> some View {
-        ActivityCard {
+        JotCard {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(report.dictation.wordCount.formatted())
-                        .font(.system(size: 42, weight: .semibold, design: .rounded)).monospacedDigit()
+                        .font(JotTheme.Display.stat).monospacedDigit()
                         .foregroundStyle(.tint)
                     Text("saved dictation words").font(.headline).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -189,7 +190,7 @@ struct ActivityView: View {
     }
 
     private func dailyChart(_ report: ActivityReport) -> some View {
-        ActivityCard {
+        JotCard {
             VStack(alignment: .leading, spacing: 14) {
                 Label("Dictation by day", systemImage: "chart.xyaxis.line").font(.headline)
                 if report.dictation.wordCount == 0 {
@@ -201,13 +202,13 @@ struct ActivityView: View {
                 } else {
                     Chart(report.daily) { day in
                         AreaMark(x: .value("Day", day.date), y: .value("Saved dictation words", day.dictation.wordCount))
-                            .foregroundStyle(LinearGradient(colors: [Color.accentColor.opacity(0.18), Color.accentColor.opacity(0.02)], startPoint: .top, endPoint: .bottom))
+                            .foregroundStyle(LinearGradient(colors: [accent.opacity(0.18), accent.opacity(0.02)], startPoint: .top, endPoint: .bottom))
                             .accessibilityHidden(true)
                         LineMark(x: .value("Day", day.date), y: .value("Saved dictation words", day.dictation.wordCount))
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundStyle(accent)
                             .lineStyle(StrokeStyle(lineWidth: 2.5))
                         PointMark(x: .value("Day", day.date), y: .value("Saved dictation words", day.dictation.wordCount))
-                            .foregroundStyle(Color.accentColor).symbolSize(report.days == 7 ? 28 : 14)
+                            .foregroundStyle(accent).symbolSize(report.days == 7 ? 28 : 14)
                             .accessibilityLabel(day.date.formatted(date: .abbreviated, time: .omitted))
                             .accessibilityValue("\(day.dictation.wordCount.formatted()) saved dictation words")
                         if let selectedDay = selectedDay(in: report), selectedDay.id == day.id {
@@ -245,7 +246,7 @@ struct ActivityView: View {
     }
 
     private func speechDetails(_ report: ActivityReport) -> some View {
-        ActivityCard {
+        JotCard {
             VStack(alignment: .leading, spacing: 14) {
                 Label("Dictation rhythm", systemImage: "waveform").font(.headline)
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), alignment: .leading)], alignment: .leading, spacing: 16) {
@@ -259,7 +260,7 @@ struct ActivityView: View {
     }
 
     private func ambientSummary(_ report: ActivityReport) -> some View {
-        ActivityCard {
+        JotCard {
             VStack(alignment: .leading, spacing: 14) {
                 Label("Ambient listening", systemImage: "ear").font(.headline)
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), alignment: .leading)], alignment: .leading, spacing: 16) {
@@ -275,13 +276,6 @@ struct ActivityView: View {
 
 }
 
-struct ActivityCard<Content: View>: View {
-    @ViewBuilder var content: () -> Content
-    var body: some View {
-        content().padding(18).frame(maxWidth: .infinity, alignment: .leading)
-            .modifier(GlassSurface(tint: Color(nsColor: .controlAccentColor).opacity(0.03), radius: 16))
-    }
-}
 
 struct ActivityStat: View {
     let title: String

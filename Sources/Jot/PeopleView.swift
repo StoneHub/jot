@@ -26,7 +26,7 @@ struct PeopleView: View {
                     Button("Forget", systemImage: "trash", role: .destructive) { speakers.forgetUserVoice() }
                         .labelStyle(.iconOnly).modifier(GlassButton()).help("Forget your voice. Jot learns it again from your next dictations.")
                 }.padding(14).frame(maxWidth: 820, alignment: .leading)
-                    .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+                    .modifier(GroupSurface())
             }
             ForEach(speakers.people) { person in
                 HStack(spacing: 10) {
@@ -46,7 +46,7 @@ struct PeopleView: View {
                             .labelStyle(.iconOnly).modifier(GlassButton()).help("Forget this voice")
                     }
                 }.padding(14).frame(maxWidth: 820, alignment: .leading)
-                    .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+                    .modifier(GroupSurface())
             }
         }.frame(maxWidth: .infinity, alignment: .topLeading)
         .onAppear { speakers.refreshPeople() }

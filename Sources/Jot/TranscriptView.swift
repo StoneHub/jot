@@ -19,7 +19,7 @@ private struct NoticeToast: View {
             Text(notice).font(.callout).lineLimit(3).fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 14).padding(.vertical, 9)
-        .modifier(GlassSurface(radius: 12))
+        .modifier(GlassSurface(radius: JotTheme.Radius.group))
         .frame(maxWidth: 440, alignment: .trailing)
         .opacity(visible && !notice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 1 : 0)
         .allowsHitTesting(false)
@@ -35,6 +35,7 @@ private struct NoticeToast: View {
 }
 
 struct TranscriptView: View {
+    @Environment(\.jotAccent) private var accent
     @ObservedObject var service: SpeechService
     @ObservedObject var library: SessionLibrary
     @ObservedObject var setup: SetupFlow
@@ -91,7 +92,7 @@ struct TranscriptView: View {
                         }
                         .frame(maxHeight: window.size.height * 0.45)
                         .fixedSize(horizontal: false, vertical: true)
-                        .modifier(GlassSurface(tint: Color(nsColor: .controlAccentColor).opacity(0.04)))
+                        .modifier(GlassSurface(accent: JotTheme.Tint.panel))
                         .clipped()
                     }
                     // Live draws its own title row so the recording chips sit beside it.
@@ -114,7 +115,7 @@ struct TranscriptView: View {
             .padding(16)
         }
         .background(JotBackdrop())
-        .tint(Color(nsColor: .controlAccentColor))
+        .tint(accent)
         .background(WindowAttachment(attach: delegate.attach))
         .onAppear { delegate.openAction = { openWindow(id: "main") }; showRequestedSetup() }
         .onDisappear { copyReset?.cancel() }
@@ -138,7 +139,7 @@ struct TranscriptView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     JotBrand().padding(.horizontal, 8)
                     ServiceControls(service: service)
-                        .padding(18).modifier(GlassSurface(tint: Color(nsColor: .controlAccentColor).opacity(0.04)))
+                        .padding(JotTheme.Padding.card).modifier(GlassSurface(accent: JotTheme.Tint.panel))
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(Section.allCases.filter { !$0.isSetting }, id: \.self) { item in navigationRow(item) }
                         Text("Settings").font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
@@ -181,7 +182,7 @@ struct TranscriptView: View {
     /// The title keeps its width first; the Dictations buttons drop their words when the row runs short.
     private var titleRow: some View {
         HStack {
-            Text(section.rawValue).font(.system(size: 26, weight: .bold, design: .rounded)).lineLimit(1).layoutPriority(2)
+            Text(section.rawValue).font(JotTheme.Display.pageTitle).lineLimit(1).layoutPriority(2)
             if let info = section.info { InfoButton(title: section.rawValue, detail: info) }
             Spacer(minLength: 8)
             if section == .dictations {
@@ -222,7 +223,7 @@ struct TranscriptView: View {
                 if let count = count(item) { countPill(count) }
             }
             .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, item.isSetting ? 8 : 12)
-            .contentShape(RoundedRectangle(cornerRadius: 14))
+            .contentShape(RoundedRectangle(cornerRadius: JotTheme.Radius.panel))
             .modifier(NavigationSurface(selected: section == item))
         }.buttonStyle(.plain)
     }
@@ -236,7 +237,7 @@ struct TranscriptView: View {
                 .overlay(alignment: .topTrailing) {
                     if item == .live && service.ambientEnabled { Circle().fill(.red).frame(width: 7, height: 7).padding(4) }
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 12))
+                .contentShape(RoundedRectangle(cornerRadius: JotTheme.Radius.group))
                 .modifier(NavigationSurface(selected: section == item))
         }
         .buttonStyle(.plain)
@@ -319,7 +320,7 @@ struct TranscriptView: View {
                                         }
                                     }.labelStyle(.iconOnly).buttonStyle(.plain).help("Delete this transcript")
                                 }
-                            }.padding(14).background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 14))
+                            }.padding(JotTheme.Padding.row).modifier(WellSurface())
                         }
                         if library.hasMoreHistory {
                             Button("Load more") { library.loadMoreHistory() }.frame(maxWidth: .infinity)
