@@ -75,7 +75,7 @@ final class SuggestionPresentationTests: XCTestCase {
     func testModelFailuresAreNoticesAndCancellationDismisses() throws {
         let draft = try blank()
         XCTAssertEqual(decide(.unavailable("not ready"), mode: .reply, draft: draft),
-                       .notice(text: "No suggestion: Apple Intelligence is unavailable.", reason: "model-unavailable"))
+                       .notice(text: "No suggestion: the model is unavailable.", reason: "model-unavailable"))
         XCTAssertEqual(decide(.timedOut, mode: .reply, draft: draft),
                        .notice(text: "No suggestion: the model took too long.", reason: "timed-out"))
         XCTAssertEqual(decide(.blocked, mode: .reply, draft: draft),
