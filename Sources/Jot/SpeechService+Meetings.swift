@@ -84,7 +84,8 @@ extension SpeechService {
             }
         }
         // The last phrase is cleaned after it is recognized; the file waits for the cleaned text, up to about one phrase's
-        // cleanup deadline. A longer queue exports what is cleaned by then, and the rest as recognized.
+        // cleanup deadline. A longer queue exports what is cleaned by then, and the rest as recognized, and says so.
+        var cleanupUnfinished = false
         if lifecycle.acceptsWork(generation), cleanup.isCleaning(session: id) {
             let waiting = "Cleaning up the meeting's last words before export…"
             notice = waiting
@@ -96,6 +97,7 @@ extension SpeechService {
                 throw failure("Meeting export interrupted. Saved transcripts remain in Sessions; no file was exported.")
             }
             if notice == waiting { notice = "" }
+            cleanupUnfinished = cleanup.isCleaning(session: id)
         }
         library.refreshSessions()
         // A meeting with nothing transcribed ends quietly; there is no file to show. Earlier parts were already
@@ -108,7 +110,10 @@ extension SpeechService {
         } catch { throw failure(error.localizedDescription) }
         guard let last = files.last else { return nil }
         NSWorkspace.shared.activateFileViewerSelecting(files)
-        if files.count > 1 { notice = "The meeting was paused along the way, so it was saved as \(files.count) files." }
+        var notes: [String] = []
+        if files.count > 1 { notes.append("The meeting was paused along the way, so it was saved as \(files.count) files.") }
+        if cleanupUnfinished { notes.append("Exported before cleanup finished: the last lines are as recognized. Export it again from Sessions once cleanup is done.") }
+        if !notes.isEmpty { notice = notes.joined(separator: " ") }
         return last
     }
 
