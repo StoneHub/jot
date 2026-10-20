@@ -62,6 +62,16 @@ final class ListeningStateTests: XCTestCase {
         }
     }
 
+    /// Readers of the reported mode agree with the state: listening, dictating and starting count as on.
+    func testReportedModeListensLikeTheState() {
+        for row in table {
+            let state = ListeningState(phase: row.phase, generation: row.generation, microphoneOn: row.microphoneOn, dictationActive: row.dictationActive)
+            XCTAssertEqual(ListeningState.listens(mode: row.mode), state.isListening || state == .starting, "listens for \(row.mode)")
+        }
+        XCTAssertEqual(table.filter { ListeningState.listens(mode: $0.mode) }.map(\.mode).sorted(), ["ambient", "dictation", "dictation", "starting"])
+        XCTAssertFalse(ListeningState.listens(mode: "unknown"))
+    }
+
     /// Every phase appears in the table, so a new phase cannot go unmapped.
     func testTableCoversEveryPhase() {
         let phases: [ServiceLifecycle.Phase] = [.paused, .starting, .ready, .pausing, .failed]

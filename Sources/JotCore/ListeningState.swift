@@ -69,4 +69,10 @@ public enum ListeningState: Equatable, Sendable {
 
     /// The microphone is on, with or without a held dictation.
     public var isListening: Bool { self == .listening || self == .dictating }
+
+    /// Whether a reported `mode` means listening is on or Resume is turning it on. Readers of `jot status`
+    /// and `speech.controls` ask this rather than matching mode strings, so a renamed mode cannot drift.
+    public static func listens(mode: String) -> Bool {
+        [ListeningState.starting, .listening, .dictating].contains { $0.mode == mode }
+    }
 }
