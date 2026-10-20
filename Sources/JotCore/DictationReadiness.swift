@@ -3,11 +3,14 @@ import Foundation
 /// Why a dictation shortcut press cannot start right now, in words the notice can show.
 public enum DictationReadiness {
     /// With the models loaded, a hold while paused starts the microphone for the hold, so a microphone that is merely off
-    /// is not a blocker; one that is still starting is.
+    /// is not a blocker; one that is still starting is. A fresh install has no models to load, so it says what to download.
     public static func blocker(phase: ServiceLifecycle.Phase, modelsReady: Bool, ambientEnabled: Bool,
                                pauseRequested: Bool, dictationPending: Bool, dictationActive: Bool,
-                               diagnosticActive: Bool, microphoneStarting: Bool = false) -> String? {
+                               diagnosticActive: Bool, microphoneStarting: Bool = false, modelsDownloaded: Bool = true) -> String? {
         if pauseRequested || phase == .pausing { return "Jot is pausing. Wait for it to finish, then Resume." }
+        if (phase == .paused || phase == .failed) && !modelsDownloaded {
+            return "Jot's speech models are not downloaded yet. Open Jot from the menu bar and choose Download."
+        }
         if phase == .paused || phase == .failed { return "Jot is paused. Choose Resume to dictate." }
         if phase == .starting || !modelsReady { return "Jot is still loading. Try again in a moment." }
         if !ambientEnabled && microphoneStarting { return "The microphone is starting. Try again in a moment." }

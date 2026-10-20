@@ -260,7 +260,7 @@ final class SpeechService: ObservableObject {
             return DictationReadiness.blocker(phase: self.lifecycle.phase, modelsReady: self.modelState == .ready,
                 ambientEnabled: self.ambientEnabled, pauseRequested: self.pauseRequested, dictationPending: self.dictation.isPending,
                 dictationActive: self.dictation.isActive, diagnosticActive: self.diagnosticActive,
-                microphoneStarting: self.preparing || self.pausedHold.isStarting)
+                microphoneStarting: self.preparing || self.pausedHold.isStarting, modelsDownloaded: self.modelsDownloaded)
         }
         result.onError = { [weak self] error in
             self?.notice = error.localizedDescription
@@ -354,6 +354,9 @@ final class SpeechService: ObservableObject {
     var isTransitioning: Bool { pauseRequested || listeningState.isChanging || preparing }
     /// The speech models are resident, so Resume only starts the microphone.
     var modelsLoaded: Bool { listeningState.modelsLoaded }
+    /// The speech models are resident or at least partly on disk. A fresh install has neither: nothing can listen or
+    /// dictate until a download, and Resume asks before starting one.
+    var modelsDownloaded: Bool { modelsLoaded || cachedModelBytes > 0 }
     var keepAwakeActive: Bool { keepAwake.isActive }
 
     private func resumeAfterSleepIfReady() {

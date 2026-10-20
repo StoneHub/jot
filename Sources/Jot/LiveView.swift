@@ -51,6 +51,7 @@ struct LiveView: View {
                 }
             } else {
                 Text("Not listening").font(.callout).foregroundStyle(.secondary)
+                idleHint
                 if !shown.isEmpty {
                     Text("Last session").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                     feed(Array(shown.suffix(5)))
@@ -101,6 +102,24 @@ struct LiveView: View {
                 if speakerCount > 0 { chip("\(speakerCount) speaker\(speakerCount == 1 ? "" : "s")") }
                 if !recognized.isEmpty { chip("recognized \(recognized.joined(separator: ", "))", color: .green, dot: true) }
             }
+        }
+    }
+
+    /// Paused with nothing to show, the page says what comes next instead of staying blank.
+    @ViewBuilder private var idleHint: some View {
+        if !service.modelsDownloaded {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Jot needs its speech models before it can listen or dictate. They download once, about \(ModelCache.formatted(ModelCache.expectedBytes)), then everything runs on this Mac.")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Button(service.modelState == .preparing ? "Downloading…" : "Download models") { service.prepareModelsOnly() }
+                    .modifier(PrimaryGlassButton()).disabled(service.modelState == .preparing || service.ambientEnabled)
+                    .accessibilityIdentifier("live-download-models")
+            }.frame(maxWidth: 520, alignment: .leading)
+        } else if shown.isEmpty {
+            Text(service.dictationRequested
+                 ? "Choose Resume to transcribe what the microphone hears, or hold \(service.shortcut.displayName) to dictate into any app."
+                 : "Choose Resume to transcribe what the microphone hears. Lines appear here as you speak.")
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).frame(maxWidth: 520, alignment: .leading)
         }
     }
 
