@@ -42,7 +42,7 @@ private struct ShortcutEditor: View {
                 .font(.callout).fixedSize(horizontal: false, vertical: true)
             Text("Press shortcut…").font(.title3.monospaced())
                 .frame(maxWidth: .infinity).padding(12)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: JotTheme.Radius.control))
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
             Text("Choose a shortcut you don’t use in other apps.")
                 .font(.caption).foregroundStyle(.secondary)

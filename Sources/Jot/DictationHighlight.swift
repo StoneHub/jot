@@ -104,16 +104,16 @@ private final class OutlineView: NSView {
         super.init(frame: frame)
         wantsLayer = true
         layer?.borderWidth = 2.5
-        layer?.cornerRadius = 8
+        layer?.cornerRadius = JotTheme.Radius.control
         layer?.masksToBounds = true
-        layer?.borderColor = NSColor.controlAccentColor.cgColor
+        layer?.borderColor = JotAccent.current.nsColor.cgColor
         band.startPoint = CGPoint(x: 0, y: 0.5); band.endPoint = CGPoint(x: 1, y: 0.5)
         band.opacity = 0
         layer?.addSublayer(band)
         pulse()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-    override func updateLayer() { layer?.borderColor = NSColor.controlAccentColor.cgColor }
+    override func updateLayer() { layer?.borderColor = JotAccent.current.nsColor.cgColor }
 
     override func layout() {
         super.layout()
@@ -153,7 +153,7 @@ private final class OutlineView: NSView {
     func sweep(loop: Bool = false) {
         guard let layer else { return }
         stop()
-        let accent = NSColor.controlAccentColor
+        let accent = JotAccent.current.nsColor
         band.frame = layer.bounds
         band.colors = [accent.withAlphaComponent(0).cgColor, accent.withAlphaComponent(0.32).cgColor, accent.withAlphaComponent(0).cgColor]
         band.opacity = 1
