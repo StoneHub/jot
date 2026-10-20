@@ -36,7 +36,7 @@ final class MCPToolsTests: XCTestCase {
 
     func testSinceTakesAnOptionalCursorSessionAndLimit() throws {
         let since = try tool("transcripts_since")
-        XCTAssertEqual(since.method, "transcripts.since")
+        XCTAssertEqual(since.method, .transcriptsSince)
         XCTAssertTrue(since.readOnly)
         XCTAssertNoThrow(try since.validate(arguments: [:]))
         XCTAssertNoThrow(try since.validate(arguments: decode(#"{"cursor": 0}"#)))
@@ -65,7 +65,7 @@ final class MCPToolsTests: XCTestCase {
     }
     func testActivityReportIsBoundedReadOnlyAndValidatesSocketArguments() throws {
         let activity = try tool("activity_report")
-        XCTAssertEqual(activity.method, "activity.report")
+        XCTAssertEqual(activity.method, .activityReport)
         XCTAssertTrue(activity.readOnly)
         XCTAssertNoThrow(try activity.validate(arguments: [:]))
         XCTAssertNoThrow(try activity.validate(arguments: decode(#"{"days": 7}"#)))
@@ -77,7 +77,7 @@ final class MCPToolsTests: XCTestCase {
     }
     func testForgetUsesTheCanonicalSocketMethod() throws {
         let tool = try XCTUnwrap(MCPTool.catalog.first { $0.name == "people_forget" })
-        XCTAssertEqual(tool.method, "people.forget")
+        XCTAssertEqual(tool.method, .peopleForget)
     }
 
 }

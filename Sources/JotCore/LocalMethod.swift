@@ -39,6 +39,6 @@ public enum LocalMethod: String, CaseIterable, Sendable {
     case peopleDelete = "people.delete"
     case speakersLabel = "speakers.label"
 
-    /// Methods that can wait on a model download, a file's recognition or a meeting's last speech, so clients allow them longer.
-    public var isLongRunning: Bool { [.modelsPrepare, .speechTranscribeFile, .speechMeetingEnd].contains(self) }
+    /// Methods that can wait on a model download or load, a file's recognition or a meeting's last speech, so clients allow them longer.
+    public var isLongRunning: Bool { [.modelsPrepare, .speechTranscribeFile, .speechStart, .speechMeetingStart, .speechMeetingEnd].contains(self) }
 }

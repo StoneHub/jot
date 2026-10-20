@@ -13,9 +13,9 @@ struct JotCLI {
             if args.count >= 2, args[0] == "settings", args[1] == "import" { try SettingsImport.run(Array(args.dropFirst(2))); return }
             if args.isEmpty || ["help", "--help", "-h"].contains(args[0]) { print(usage); return }
             let (method, params) = try command(args)
-            let data = try LocalServiceClient().request(method: method, params: params)
+            let data = try LocalServiceClient().request(method, params: params)
             let object = try JSONSerialization.jsonObject(with: data)
-            if method == "transcripts.export", params["format"] == nil, let response = object as? [String: Any],
+            if method == .transcriptsExport, params["format"] == nil, let response = object as? [String: Any],
                let text = (response["result"] as? [String: Any])?["text"] as? String { print(text); return }
             let pretty = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
             print(String(decoding: pretty, as: UTF8.self))
@@ -75,48 +75,48 @@ struct JotCLI {
     Explicit live command listening uses the agent's normal permission rules.
     """
 
-    private static func command(_ args: [String]) throws -> (String, [String: Any]) {
+    private static func command(_ args: [String]) throws -> (LocalMethod, [String: Any]) {
         guard let first = args.first else { throw CLIError.usage(usage) }
         switch first {
         case "activity":
-            if args.count == 1 { return ("activity.report", [:]) }
+            if args.count == 1 { return (.activityReport, [:]) }
             guard args.count == 3, args[1] == "--days", let days = Int(args[2]), [7, 30].contains(days) else {
                 throw CLIError.usage("Use: jot activity [--days 7|30]")
             }
-            return ("activity.report", ["days": days])
+            return (.activityReport, ["days": days])
         case "status", "controls", "start", "pause", "resume", "diagnostics":
-            guard args.count == 1 else { throw CLIError.usage("Unexpected arguments for \(first)") }
-            return ("speech." + first, [:])
+            guard args.count == 1, let method = LocalMethod(rawValue: "speech." + first) else { throw CLIError.usage("Unexpected arguments for \(first)") }
+            return (method, [:])
         case "clear-history":
             guard args.count == 1 else { throw CLIError.usage("Use: jot clear-history") }
-            return ("transcripts.clear", [:])
+            return (.transcriptsClear, [:])
         case "delete-session":
             guard args.count == 2 else { throw CLIError.usage("Use: jot delete-session <session-id>") }
-            return ("transcripts.delete_session", ["sessionID": args[1]])
+            return (.transcriptsDeleteSession, ["sessionID": args[1]])
         case "meeting":
-            if args.count >= 3, args[1] == "start" { return ("speech.meeting_start", ["title": args.dropFirst(2).joined(separator: " ")]) }
-            if args.count == 2, args[1] == "end" { return ("speech.meeting_end", [:]) }
+            if args.count >= 3, args[1] == "start" { return (.speechMeetingStart, ["title": args.dropFirst(2).joined(separator: " ")]) }
+            if args.count == 2, args[1] == "end" { return (.speechMeetingEnd, [:]) }
             throw CLIError.usage("Use: jot meeting start <title> | jot meeting end")
         case "title":
             guard args.count >= 3 else { throw CLIError.usage("Use: jot title <session-id> <title>") }
-            return ("sessions.title", ["sessionID": args[1], "title": args.dropFirst(2).joined(separator: " ")])
+            return (.sessionsTitle, ["sessionID": args[1], "title": args.dropFirst(2).joined(separator: " ")])
         case "models":
             guard args.count == 2, ["prepare", "check", "unload"].contains(args[1]) else { throw CLIError.usage("Use: jot models prepare|check|unload") }
             return ("models." + args[1], [:])
         case "transcribe-file":
             guard args.count == 2 else { throw CLIError.usage("Use: jot transcribe-file <path>") }
             let path = URL(fileURLWithPath: (args[1] as NSString).expandingTildeInPath).standardizedFileURL.path
-            return ("speech.transcribe_file", ["path": path])
+            return (.speechTranscribeFile, ["path": path])
         case "recent", "sessions":
             let parsed = try pagination(Array(args.dropFirst()))
             guard parsed.words.isEmpty else { throw CLIError.usage("Unexpected argument: \(parsed.words.joined(separator: " "))") }
             guard first != "sessions" || parsed.params["offset"] == nil else { throw CLIError.usage("Sessions supports --limit only") }
-            return ("transcripts." + first, parsed.params)
+            return (first == "sessions" ? .transcriptsSessions : .transcriptsRecent, parsed.params)
         case "search":
             let parsed = try pagination(Array(args.dropFirst()))
             guard !parsed.words.isEmpty else { throw CLIError.usage("Use: jot search <query> [--limit N] [--offset N]") }
             var params = parsed.params; params["query"] = parsed.words.joined(separator: " ")
-            return ("transcripts.search", params)
+            return (.transcriptsSearch, params)
         case "events":
             var rest = Array(args.dropFirst()); var sessionID: String?
             if let index = rest.firstIndex(of: "--session") {
@@ -127,13 +127,13 @@ struct JotCLI {
             guard parsed.words.isEmpty else { throw CLIError.usage("Use: jot events [--session ID] [--limit N] [--offset N]") }
             var params = parsed.params
             if let sessionID { params["sessionID"] = sessionID }
-            return ("transcripts.events", params)
+            return (.transcriptsEvents, params)
         case "suggestions":
             let parsed = try pagination(Array(args.dropFirst()))
             guard parsed.words.isEmpty, parsed.params["offset"] == nil else {
                 throw CLIError.usage("Use: jot suggestions [--limit N]")
             }
-            return ("suggestions.recent", parsed.params)
+            return (.suggestionsRecent, parsed.params)
         case "since":
             var rest = Array(args.dropFirst()); var params: [String: Any] = [:]
             if let index = rest.firstIndex(of: "--session") {
@@ -152,23 +152,23 @@ struct JotCLI {
             let parsed = try pagination(rest)
             guard parsed.words.isEmpty, parsed.params["offset"] == nil else { throw CLIError.usage("Use: jot since [--cursor N] [--generation ID] [--session ID] [--limit N]") }
             params.merge(parsed.params) { current, _ in current }
-            return ("transcripts.since", params)
+            return (.transcriptsSince, params)
         case "read":
             guard args.count == 2 else { throw CLIError.usage("Use: jot read <transcript-id>") }
-            return ("transcripts.read", ["id": args[1]])
+            return (.transcriptsRead, ["id": args[1]])
         case "export":
             guard args.count == 2 || (args.count == 3 && args[2] == "--json") else { throw CLIError.usage("Use: jot export <session-id> [--json]") }
             var params: [String: Any] = ["sessionID": args[1]]
             if args.count == 3 { params["format"] = "json" }
-            return ("transcripts.export", params)
+            return (.transcriptsExport, params)
         case "settings":
-            if args.count == 1 { return ("settings.get", [:]) }
-            if args.count == 4, args[1] == "set" { return ("settings.set", ["key": args[2], "value": args[3]]) }
-            if args.count == 3, args[1] == "reset" { return ("settings.reset", ["key": args[2]]) }
+            if args.count == 1 { return (.settingsGet, [:]) }
+            if args.count == 4, args[1] == "set" { return (.settingsSet, ["key": args[2], "value": args[3]]) }
+            if args.count == 3, args[1] == "reset" { return (.settingsReset, ["key": args[2]]) }
             throw CLIError.usage("Use: jot settings, jot settings set <key> <value>, or jot settings reset <key>")
         case "context":
             let use = "Use: jot context add --role user|assistant --source <app> [--conversation ID] <text | -> | jot context clear"
-            if args.count == 2, args[1] == "clear" { return ("context.clear", [:]) }
+            if args.count == 2, args[1] == "clear" { return (.contextClear, [:]) }
             guard args.count >= 2, args[1] == "add" else { throw CLIError.usage(use) }
             var rest = Array(args.dropFirst(2)); var params: [String: Any] = [:]
             for option in ["--role", "--source", "--conversation"] {
@@ -180,16 +180,16 @@ struct JotCLI {
             if rest == ["-"] {
                 params["text"] = String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self)
             } else { params["text"] = rest.joined(separator: " ") }
-            return ("context.add", params)
+            return (.contextAdd, params)
         case "people":
             guard args.count == 1 else { throw CLIError.usage("Use: jot people") }
-            return ("people.list", [:])
+            return (.peopleList, [:])
         case "forget":
             guard args.count == 2 else { throw CLIError.usage("Use: jot forget <person-id>") }
-            return ("people.forget", ["id": args[1]])
+            return (.peopleForget, ["id": args[1]])
         case "label":
             guard args.count >= 4 else { throw CLIError.usage("Use: jot label <session-id> <speaker-id> <name>") }
-            return ("speakers.label", ["sessionID": args[1], "speakerID": args[2], "name": args.dropFirst(3).joined(separator: " ")])
+            return (.speakersLabel, ["sessionID": args[1], "speakerID": args[2], "name": args.dropFirst(3).joined(separator: " ")])
         default: throw CLIError.usage("Unknown command '\(first)'. Run jot --help.")
         }
     }
@@ -229,6 +229,6 @@ private enum AgentContextCommand {
         if let eventID = hook.eventID { params["eventID"] = eventID }
         if let turn = hook.turn { params["turn"] = turn }
         if let cwd = hook.cwd { params["cwd"] = cwd }
-        _ = try? LocalServiceClient().request(method: "context.hook", params: params, timeout: 2)
+        _ = try? LocalServiceClient().request(.contextHook, params: params, timeout: 2)
     }
 }

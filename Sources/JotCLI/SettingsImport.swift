@@ -22,7 +22,7 @@ enum SettingsImport {
         guard args.count == 2 else { throw CLIError.usage("Use: jot settings import <variants.json> <variant name>") }
         let url = URL(fileURLWithPath: (args[0] as NSString).expandingTildeInPath)
         for params in try requests(Data(contentsOf: url), variant: args[1]) {
-            let data = try LocalServiceClient().request(method: "settings.set", params: params)
+            let data = try LocalServiceClient().request(.settingsSet, params: params)
             let response = try JSONSerialization.jsonObject(with: data) as? [String: Any]
             guard response?["ok"] as? Bool == true else {
                 throw CLIError.usage("\(params["key"] ?? ""): \((response?["error"] as? String) ?? "the app refused it")")

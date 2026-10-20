@@ -68,7 +68,7 @@ struct MCPServer {
         case "ping": try emit(result(id: id, value: [:]))
         case "tools/list":
             let list: [[String: Any]] = MCPTool.catalog.map { tool in
-                ["name": tool.name, "description": tool.description, "inputSchema": ["type": "object", "properties": tool.properties, "required": tool.required, "additionalProperties": false], "annotations": ["readOnlyHint": tool.readOnly, "destructiveHint": tool.method == "people.forget", "openWorldHint": tool.method == "models.prepare"]]
+                ["name": tool.name, "description": tool.description, "inputSchema": ["type": "object", "properties": tool.properties, "required": tool.required, "additionalProperties": false], "annotations": ["readOnlyHint": tool.readOnly, "destructiveHint": tool.method == .peopleForget, "openWorldHint": tool.method == .modelsPrepare]]
             }
             try emit(result(id: id, value: ["tools": list]))
         case "tools/call":
@@ -76,7 +76,7 @@ struct MCPServer {
             let arguments = params["arguments"] as? [String: Any] ?? [:]
             do {
                 try tool.validate(arguments: arguments)
-                let response = try self.request(tool.method, arguments)
+                let response = try self.request(tool.method.rawValue, arguments)
                 let object = try JSONSerialization.jsonObject(with: response) as? [String: Any]
                 try emit(result(id: id, value: ["content": [["type": "text", "text": String(decoding: response, as: UTF8.self)]], "isError": object?["ok"] as? Bool == false]))
             } catch {
