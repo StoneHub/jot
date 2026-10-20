@@ -92,7 +92,10 @@ extension SpeechService {
                 samplePerformance(); result = try object(diagnostics.report)
             case "speech.start": try await startAmbient(); result = try await status()
             case "speech.pause": pause(); result = try await status()
-            case "speech.resume": _ = prepareFromCommand(); result = try await status()
+            case "speech.resume":
+                // A click in another app's UI is not consent to a download: it gets the same prompt as Resume in Jot.
+                if params["askBeforeDownload"] as? Bool == true { prepare() } else { _ = prepareFromCommand() }
+                var resumed = try await status(); resumed["downloadPrompt"] = downloadPrompt != nil; result = resumed
             case "speech.meeting_start":
                 guard let title = params["title"] as? String else { throw JotError.message("Meeting needs a title") }
                 await startMeeting(title)

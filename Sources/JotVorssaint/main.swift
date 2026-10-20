@@ -42,7 +42,10 @@ while let line = readLine() {
         if let jot = NSRunningApplication.runningApplications(withBundleIdentifier: "space.jot.app").first(where: { !$0.isTerminated }) {
             switch action {
             case "quit": jot.terminate()
-            case "listen": _ = try call("speech.resume")
+            case "listen":
+                // A fresh install has no models; Jot asks before downloading them, so show it where that question is.
+                let resumed = try call("speech.resume", ["askBeforeDownload": true]) as? [String: Any]
+                if resumed?["downloadPrompt"] as? Bool == true { NSWorkspace.shared.open(app) }
             case "pause": _ = try call("speech.pause")
             case "meeting.start":
                 let title = (request["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
