@@ -12,6 +12,9 @@ public struct ControlSnapshot: Codable, Equatable, Sendable {
     public let suggestionSequence: Int
     public let inputLevel: Double
 
+    /// Listening is on or starting. Computed, so it never changes the encoded reply.
+    public var listening: Bool { ListeningState.listens(mode: mode) }
+
     public init(mode: String, meetingActive: Bool, dictation: DictationAttempt.State?,
                 dictationSequence: UInt64, suggestion: String, suggestionSequence: Int, inputLevel: Double) {
         version = 1

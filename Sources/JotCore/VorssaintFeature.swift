@@ -65,6 +65,6 @@ public struct VorssaintPresentation: Sendable {
     }
 
     private static func isListening(_ controls: ControlSnapshot) -> Bool {
-        ["ambient", "dictation", "starting"].contains(controls.mode)
+        controls.listening
     }
 }
