@@ -6,6 +6,7 @@
   "symbol": "waveform",
   "summary": "Control Jot and show speech activity. Jot owns capture and stays independently available.",
   "adapter": "Contents/Helpers/jot-vorssaint",
+  "changeNotification": "space.jot.app.controlsChanged",
   "toggles": [
     { "id": "listening", "title": "Listening", "onAction": "listen", "offAction": "pause" }
   ],

@@ -9,16 +9,17 @@ final class DictationCoordinator {
     /// The listening state, and with it the menu icon, reads this through the service; a change redraws it rather than relying on the notice set nearby.
     private(set) var isActive = false {
         willSet { stateWillChange() }
-        didSet { stateChanged() }
+        didSet { stateChanged(); ControlEvents.signal() }
     }
     /// The shortcut button, the microphone picker and Update read this through the service, and a release can end with no other service change, so a change redraws them. It changes a few times per hold.
     private(set) var isPending = false {
         willSet { stateWillChange() }
-        didSet { stateChanged() }
+        didSet { stateChanged(); ControlEvents.signal() }
     }
     private var ticket = UUID()
     private var started = Date()
-    private(set) var currentAttempt: DictationAttempt?
+    /// External controllers read capture, recognition and delivery from this; the hint lets them read at once.
+    private(set) var currentAttempt: DictationAttempt? { didSet { if oldValue?.state != currentAttempt?.state { ControlEvents.signal() } } }
     private var attemptEndOffset: Double?
     private var recoveryTask: Task<Void, Never>?
     private var discardedAttemptIDs = Set<String>()
