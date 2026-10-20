@@ -77,7 +77,7 @@ extension SpeechService {
                 result = try object(ControlSnapshot(mode: mode, meetingActive: meetingTitle != nil,
                     dictation: phase, dictationSequence: controlSequence,
                     suggestion: suggestion["outcome"] as? String ?? "idle",
-                    suggestionSequence: suggestion["requests"] as? Int ?? 0, inputLevel: Double(capture.inputLevel) / 100))
+                    suggestionSequence: suggestion["requests"] as? Int ?? 0, inputLevel: ControlSnapshot.inputLevel(meter: capture.inputLevel)))
             case "speech.status": result = try await status()
             case "activity.report":
                 let days = try ActivityRequest.days(arguments: params)

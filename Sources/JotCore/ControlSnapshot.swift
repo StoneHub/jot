@@ -23,6 +23,11 @@ public struct ControlSnapshot: Codable, Equatable, Sendable {
         self.suggestionSequence = suggestionSequence
         self.inputLevel = inputLevel.isFinite ? min(1, max(0, inputLevel)) : 0
     }
+
+    /// Maps the microphone meter (0 to `MicrophoneSignal.maxLevel`) onto the 0...1 wire level.
+    public static func inputLevel(meter: Int) -> Double {
+        Double(meter) / Double(MicrophoneSignal.maxLevel)
+    }
 }
 
 public enum ControlEvents {

@@ -20,4 +20,13 @@ final class ControlSnapshotTests: XCTestCase {
             XCTAssertNoThrow(try JSONEncoder().encode(snapshot))
         }
     }
+
+    func testMeterFullScaleMapsToFullLevel() {
+        XCTAssertEqual(ControlSnapshot.inputLevel(meter: MicrophoneSignal.maxLevel), 1.0)
+        XCTAssertEqual(ControlSnapshot.inputLevel(meter: MicrophoneSignal.maxLevel / 2), 0.5)
+        XCTAssertEqual(ControlSnapshot.inputLevel(meter: 0), 0)
+        let loud = ControlSnapshot(mode: "dictation", meetingActive: false, dictation: .capturing, dictationSequence: 1,
+            suggestion: "idle", suggestionSequence: 0, inputLevel: ControlSnapshot.inputLevel(meter: MicrophoneSignal.maxLevel + 3))
+        XCTAssertEqual(loud.inputLevel, 1.0, "An out-of-range meter still clamps to full scale")
+    }
 }

@@ -144,9 +144,9 @@ struct MicrophoneRow: View {
             }
             .help("Change input while listening. Jot saves captured speech and continues on the selected microphone.")
             if service.ambientEnabled {
-                ProgressView(value: Double(capture.inputLevel), total: 8)
+                ProgressView(value: Double(capture.inputLevel), total: Double(MicrophoneSignal.maxLevel))
                     .accessibilityLabel("Microphone input level")
-                    .accessibilityValue("\(capture.inputLevel) of 8")
+                    .accessibilityValue("\(capture.inputLevel) of \(MicrophoneSignal.maxLevel)")
                     .padding(.leading, 30)
             }
             Toggle("Switch silent microphones", isOn: $service.automaticMicrophone)
