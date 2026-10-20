@@ -12,7 +12,7 @@
   "actions": [
     { "id": "open", "title": "Open Jot" },
     { "id": "listen", "title": "Listen" },
-    { "id": "pause", "title": "Don’t listen", "confirmation": "Stop listening and end any active meeting?" },
+    { "id": "pause", "title": "Don’t listen" },
     { "id": "meeting.start", "title": "Start Meeting", "textPrompt": "Meeting title" },
     { "id": "meeting.end", "title": "End Meeting" },
     { "id": "quit", "title": "Quit Jot" }
