@@ -79,6 +79,52 @@ private struct SettingToggle: View {
     }
 }
 
+/// Light, dark or the Mac's choice, and the accent Jot tints with. Both save through JotSettings, so choosing the default leaves no key, and a change from `jot settings` shows here at once.
+private struct AppearanceSettings: View {
+    @AppStorage(JotDefaultsKey.appearance) private var appearance = JotAppearance.system.rawValue
+    @AppStorage(JotDefaultsKey.accentColor) private var accent = JotAccent.system.rawValue
+    var body: some View {
+        SettingsGroup(title: "Appearance", symbol: "paintpalette") {
+            SettingRow(title: "Appearance", info: "System follows the Mac's Light or Dark setting. Light or Dark keeps Jot's windows and panels that way whatever the Mac uses.") {
+                Picker("Appearance", selection: Binding(get: { JotAppearance(saved: appearance) }, set: { save(JotDefaultsKey.appearance, $0.rawValue) })) {
+                    ForEach(JotAppearance.allCases) { Text($0.title).tag($0) }
+                }.labelsHidden().pickerStyle(.segmented).fixedSize()
+            }
+            RowDivider()
+            SettingRow(title: "Accent color", info: "Tints Jot's buttons, cards and charts. The first choice follows the accent color in System Settings → Appearance.") {
+                HStack(spacing: 6) {
+                    ForEach(JotAccent.allCases) { option in
+                        AccentSwatch(option: option, selected: JotAccent(saved: accent) == option) { save(JotDefaultsKey.accentColor, option.rawValue) }
+                    }
+                }
+            }
+        }
+    }
+    private func save(_ key: String, _ value: String) { try? JotSettings.standard.set(key, value) }
+}
+
+/// One accent choice. The Mac's own accent shows as a color wheel, as System Settings draws its multicolor choice.
+private struct AccentSwatch: View {
+    let option: JotAccent
+    let selected: Bool
+    let choose: () -> Void
+    var body: some View {
+        Button(action: choose) {
+            swatch.frame(width: 18, height: 18).padding(3)
+                .overlay(Circle().strokeBorder(selected ? Color.primary.opacity(0.55) : .clear, lineWidth: 2))
+        }
+        .buttonStyle(.plain).help(option.title)
+        .accessibilityLabel(option.title).accessibilityAddTraits(selected ? .isSelected : [])
+    }
+    @ViewBuilder private var swatch: some View {
+        if option == .system {
+            Circle().fill(AngularGradient(colors: [.red, .orange, .yellow, .green, .blue, .purple, .pink, .red], center: .center))
+        } else {
+            Circle().fill(option.color)
+        }
+    }
+}
+
 extension TranscriptView {
     var activity: some View {
         ActivityView(service: service, library: library)
@@ -92,6 +138,7 @@ extension TranscriptView {
                 recoverySettings
                 listeningSettings
                 speakerSettings
+                AppearanceSettings()
                 SettingsGroup(title: "App", symbol: "menubar.rectangle") {
                     SettingToggle(title: "Always show menu bar icon", info: "When off, Jot hides its icon while Vorssaint shows Jot in its Dynamic Island. The icon returns when that feature is turned off or Vorssaint quits.",
                                   isOn: $showMenuBarIcon)

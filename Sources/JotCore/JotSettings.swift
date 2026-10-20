@@ -55,6 +55,8 @@ public final class JotSettings: @unchecked Sendable {
         .init(key: listenQuietGap, kind: .double(TranscriptListenConfiguration.defaultQuietGap, range: 3...60), summary: "Seconds without a new speaker row that finish a jot listen command"),
         .init(key: listenLookbackMinutes, kind: .int(TranscriptListenConfiguration.defaultLookbackMinutes, range: 1...60, choices: nil), summary: "Minutes of preceding speech in jot listen context mode"),
         .init(key: JotDefaultsKey.showMenuBarIcon, kind: .bool(true), summary: "Always show Jot's menu bar icon; otherwise hide only while Vorssaint's Jot feature is on"),
+        .init(key: JotDefaultsKey.appearance, kind: .text("system", maximumLength: 16), summary: "Window appearance: system, light or dark"),
+        .init(key: JotDefaultsKey.accentColor, kind: .text("system", maximumLength: 16), summary: "Accent color: system, blue, purple, pink, orange or green"),
         .init(key: JotDefaultsKey.automaticMicrophone, kind: .bool(true), summary: "Try other connected microphones when the current input has no signal"),
         .init(key: JotDefaultsKey.cleanUpDictation, kind: .bool(false), summary: "Clean up dictation with Apple Intelligence before inserting it"),
         .init(key: JotDefaultsKey.highlightTargetField, kind: .bool(true), summary: "Outline the field dictation goes into"),
