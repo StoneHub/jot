@@ -1,10 +1,6 @@
 import Foundation
-import AppleFM
-#if canImport(FoundationModels)
-import FoundationModels
-#endif
 
-/// One local request at a time, with no cleanup backlog and a caller deadline.
+/// One model request at a time, with no cleanup backlog and a caller deadline.
 /// A slow model may finish cancelling after the deadline; later calls then bypass it.
 @MainActor
 public final class TranscriptCleanup {
@@ -15,12 +11,16 @@ public final class TranscriptCleanup {
     /// Live phrases and dictation share user settings; dictation also keeps fragments as fragments.
     private let settings: JotSettings
     private let purpose: Purpose
+    private let provider: GenerationProvider
     private let modelAvailability: @MainActor () -> CleanupAvailability
+    /// `availability` overrides the provider's own, as the recovery harness does.
     public init(settings: JotSettings = .standard, purpose: Purpose = .transcript,
-                availability: @escaping @MainActor () -> CleanupAvailability = { TranscriptCleanup.availability }) {
+                provider: GenerationProvider = AppleIntelligenceProvider(),
+                availability: (@MainActor () -> CleanupAvailability)? = nil) {
         self.settings = settings
         self.purpose = purpose
-        self.modelAvailability = availability
+        self.provider = provider
+        self.modelAvailability = availability ?? { provider.availability }
     }
 
     var instructions: String {
@@ -36,15 +36,8 @@ public final class TranscriptCleanup {
     /// Release a waiting speech worker immediately when dictation takes priority.
     public func cancel() { interrupt?() }
 
-    public static var availability: CleanupAvailability {
-        switch AppleFMClient().modelAvailability {
-        case .available: return .available
-        case .unsupportedOS: return .olderSystem
-        case .deviceNotEligible: return .deviceNotEligible
-        case .appleIntelligenceNotEnabled: return .notEnabled
-        case .modelNotReady, .unavailable: return .modelNotReady
-        }
-    }
+    /// Apple Intelligence's availability, the default provider's.
+    public static var availability: CleanupAvailability { AppleIntelligenceProvider().availability }
 
     public func clean(_ texts: [String], timeout: Duration = .seconds(2), generator: Generator? = nil) async -> [String] {
         await cleanWithOutcome(texts, timeout: timeout, generator: generator).texts
@@ -96,22 +89,8 @@ public final class TranscriptCleanup {
     }
 
     private func generate(_ texts: [String]) async throws -> [String] {
-        #if canImport(FoundationModels)
-        if #available(macOS 26.0, *) {
-            let input = String(decoding: try JSONEncoder().encode(texts), as: UTF8.self)
-            return try await AppleFMClient().generate(instructions: instructions, prompt: input,
-                generating: CleanedTranscripts.self,
-                options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: settings.int(JotSettings.cleanupMaximumTokens))).texts
-        }
-        #endif
-        return texts
+        let input = String(decoding: try JSONEncoder().encode(texts), as: UTF8.self)
+        return try await provider.generateTexts(ModelRequest(instructions: instructions, prompt: input,
+            maximumResponseTokens: settings.int(JotSettings.cleanupMaximumTokens)))
     }
 }
-
-#if canImport(FoundationModels)
-@available(macOS 26.0, *)
-@Generable
-private struct CleanedTranscripts {
-    var texts: [String]
-}
-#endif
