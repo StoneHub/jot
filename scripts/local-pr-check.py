@@ -41,7 +41,7 @@ TOOL_TESTS = {
     'scripts/signing.py': ('test_signing.py', 'test_packaged_install.py', 'test_release_install.py'),
     'scripts/build-install.py': ('test_packaged_install.py', 'test_release_install.py', 'test_build_cleanup.py'),
     'scripts/packaged_product.py': ('test_packaged_install.py', 'test_release_install.py'),
-    'scripts/release.py': ('test_release_install.py',),
+    'scripts/release.py': ('test_release_install.py', 'test_release_notes.py'),
     'scripts/check-suggestion-fixtures.py': ('test_suggestion_fixtures.py',),
     'scripts/check-suggestion-results.py': ('test_suggestion_results.py',),
     'Sources/JotLab/main.swift': ('test_lab_output_paths.py', 'test_lab_signal_cleanup.py'),

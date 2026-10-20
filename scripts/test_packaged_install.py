@@ -33,7 +33,10 @@ class PackagedInstallTests(unittest.TestCase):
         (self.app / 'Contents/MacOS').mkdir(parents=True)
         (self.app / 'Contents/Helpers').mkdir()
         (self.app / 'Contents/MacOS/Jot').write_bytes(b'synthetic packaged executable')
-        (self.app / 'Contents/Helpers/jot').write_bytes(b'synthetic helper')
+        for helper in ('jot', 'jot-lab', 'jot-vorssaint'):
+            (self.app / 'Contents/Helpers' / helper).write_bytes(b'synthetic helper')
+        (self.app / 'Contents/Resources').mkdir()
+        (self.app / 'Contents/Resources/VorssaintIntegration.json').write_text('{}')
         self.info = dict(CFBundleIdentifier='space.jot.app', CFBundleExecutable='Jot',
                          CFBundleShortVersionString='0.2.14', CFBundleVersion='21')
         self.write_info()
@@ -51,6 +54,7 @@ class PackagedInstallTests(unittest.TestCase):
         self.expected = dict(version='0.2.14', build='21', sha256=self.sha)
         self.current = dict(microphoneRunning=False, queuedAudioSeconds=0, models='ready',
                             resources=dict(processID=9876))
+        self.signature = 'CodeDirectory v=20500 size=1 flags=0x10000(runtime) hashes=1+1\nTeamIdentifier=FIXTURETEAM\n'
         self.commands = []
         self.run = patch('subprocess.run', side_effect=self.fake_run).start()
         self.addCleanup(patch.stopall)
@@ -71,7 +75,7 @@ class PackagedInstallTests(unittest.TestCase):
             shutil.copytree(command[1], command[2])
         if command[-1] == 'status':
             return subprocess.CompletedProcess(command, 0, json.dumps(dict(result=self.current)), '')
-        return subprocess.CompletedProcess(command, 0, '', 'TeamIdentifier=FIXTURETEAM\n')
+        return subprocess.CompletedProcess(command, 0, '', self.signature)
 
     def fake_output(self, command, **kwargs):
         self.commands.append(command)
@@ -243,11 +247,28 @@ class PackagedInstallTests(unittest.TestCase):
                 self.installer.main(args)
             build.assert_not_called()
 
+    def test_missing_vorssaint_helper_or_manifest_is_rejected(self):
+        for missing in ('Contents/Helpers/jot-vorssaint', 'Contents/Resources/VorssaintIntegration.json'):
+            with self.subTest(missing=missing):
+                contents = (self.app / missing).read_bytes()
+                (self.app / missing).unlink()
+                with self.assertRaises(SystemExit) as raised:
+                    self.installer.verify_product(self.app, 'Release', 'FIXTURETEAM')
+                self.assertIn(missing, str(raised.exception))
+                (self.app / missing).write_bytes(contents)
+
+    def test_release_helper_without_hardened_runtime_is_rejected(self):
+        self.signature = 'CodeDirectory v=20500 size=1 flags=0x0(none) hashes=1+1\nTeamIdentifier=FIXTURETEAM\n'
+        with self.assertRaises(SystemExit) as raised:
+            self.installer.verify_product(self.app, 'Release', 'FIXTURETEAM')
+        self.assertIn('hardened runtime', str(raised.exception))
+        self.installer.verify_product(self.app, 'Debug', 'FIXTURETEAM')
+
     def test_product_verification_does_not_build_or_read_signing_identities(self):
         with patch.object(sys, 'argv', ['build-install.py', *self.args]), \
                 patch('subprocess.run') as run, patch('subprocess.check_output') as output, \
                 patch('signing.local_signing_configuration', side_effect=AssertionError('identity lookup')):
-            run.return_value = subprocess.CompletedProcess([], 0, '', 'TeamIdentifier=FIXTURETEAM\n')
+            run.return_value = subprocess.CompletedProcess([], 0, '', self.signature)
             output.return_value = plistlib.dumps({})
             installer = load_script('build-install')
             installer.work = self.base / 'work'
