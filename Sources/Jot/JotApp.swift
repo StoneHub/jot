@@ -7,7 +7,7 @@ import JotCore
 struct JotApp: App {
     @NSApplicationDelegateAdaptor(JotDelegate.self) var delegate
     @AppStorage(JotDefaultsKey.showMenuBarIcon) private var showMenuBarIcon = true
-    @StateObject private var controller = JotControllerPresence()
+    @StateObject private var controller = JotControllerPresence(alwaysShowKey: JotDefaultsKey.showMenuBarIcon)
     var body: some Scene {
         Window("Jot", id: "main") {
             // Every page must fit this size: below it nothing lays out, above it nothing may overflow the window.
