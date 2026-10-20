@@ -16,6 +16,8 @@ final class ListeningTimeline: ObservableObject {
     /// The session's audio on disk for the speaker pass; nil while no ambient session runs.
     private var sessionAudio: SessionAudioFile?
     private var consecutiveSilentSamples = 0
+    /// Whether the buffered audio has had a drain above the quiet level. Only such a buffer closes early on silence.
+    private var heardSinceFlush = false
     /// Shorter audio is dropped: recognition on it is noise.
     private static let minimumJobSamples = AudioClock.samples(seconds: 0.2)
     /// Rebuilt from settings at each use, so a changed chunk length applies at the next drain.
@@ -57,7 +59,7 @@ final class ListeningTimeline: ObservableObject {
     /// Starts a new session on the listening timeline: a fresh id and clock, an empty buffer, and an audio file for the speaker pass when it keeps audio.
     func beginSession(at start: Date, withAudio: Bool = true) {
         sessionID = UUID().uuidString; sessionStarted = start; ambientOffset = 0; activeSessionID = sessionID
-        ambient = []; consecutiveSilentSamples = 0; lastAmbientRowAt = nil
+        ambient = []; consecutiveSilentSamples = 0; heardSinceFlush = false; lastAmbientRowAt = nil
         if withAudio, settings.bool(JotDefaultsKey.keepAudioForSpeakerPass) { sessionAudio = SessionAudioFile(sessionID: sessionID) }
     }
 
@@ -69,21 +71,26 @@ final class ListeningTimeline: ObservableObject {
             droppedAudio(lostSeconds)
             recordEvent(.audioGap, "Capture queue overflow discarded audio.", lostSeconds)
             // End attribution continuity rather than silently stitching across lost audio.
-            ambientOffset += AudioClock.seconds(samples: ambient.count + dropped); ambient = []
+            ambientOffset += AudioClock.seconds(samples: ambient.count + dropped); ambient = []; heardSinceFlush = false
             sessionAudio?.appendSilence(samples: dropped)
             setNotice("Audio backlog overflow: a gap was recorded.")
             markDictationGap("Some microphone audio was lost before recognition. Saved dictation remains available to retry.")
         }
         if isListening() {
+            let quiet = rms < Float(settings.double(JotSettings.silenceLevel))
+            // A quiet room has no sentence to deliver, so its audio waits for the hard limit instead of closing
+            // a chunk every silence. Sound closes the quiet audio at once, so speech still starts a chunk of its own.
+            if !quiet, !heardSinceFlush, !ambient.isEmpty { flushAmbient(final: true) }
             ambient.append(contentsOf: samples)
             sessionAudio?.append(samples)
-            consecutiveSilentSamples = rms < Float(settings.double(JotSettings.silenceLevel)) ? consecutiveSilentSamples + samples.count : 0
+            consecutiveSilentSamples = quiet ? consecutiveSilentSamples + samples.count : 0
+            if !quiet { heardSinceFlush = true }
             // Enqueue every complete bounded block, retaining the tail. A silence can
             // close the tail early so sentence delivery usually beats the hard limit.
             while ambient.count >= chunkScheduler.maximumSamples {
                 flushAmbient(sampleCount: chunkScheduler.maximumSamples)
             }
-            if chunkScheduler.shouldFlush(bufferedSamples: ambient.count,
+            if heardSinceFlush, chunkScheduler.shouldFlush(bufferedSamples: ambient.count,
                 consecutiveSilentSamples: consecutiveSilentSamples) { flushAmbient(final: true) }
         }
     }
@@ -114,7 +121,7 @@ final class ListeningTimeline: ObservableObject {
         let count = min(sampleCount ?? ambient.count, ambient.count)
         let samples = Array(ambient.prefix(count))
         ambient.removeFirst(count)
-        if ambient.isEmpty { consecutiveSilentSamples = 0 }
+        if ambient.isEmpty { consecutiveSilentSamples = 0; heardSinceFlush = false }
         let start = ambientOffset; ambientOffset += AudioClock.seconds(samples: samples.count)
         guard final || samples.count >= Self.minimumJobSamples else { return }
         if transcriber.jobs.count >= 40 && !final {
