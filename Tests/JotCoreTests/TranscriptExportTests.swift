@@ -138,6 +138,9 @@ final class TranscriptExportTests: XCTestCase {
         let text = TranscriptExport.markdown(session: session, rows: rows)
         XCTAssertTrue(text.contains("**[0:01:05] Unattributed:** typed note"), text)
         XCTAssertEqual(TranscriptExport.readingParagraphs(rows, tuning: .init()).map(\.startSeconds), [0, 65, 70])
+        // A dictation spoken before the first ambient row moves the clock back rather than sharing 0:00:00 with it.
+        let early = Transcript(sessionID: "s", startedAt: started.addingTimeInterval(-4), startSeconds: 0, endSeconds: 1, text: "early", mode: "dictation")
+        XCTAssertEqual(TranscriptExport.sessionTimed([early] + rows).map(\.startSeconds), [0, 4, 69, 74])
         // A session of dictation rows alone keeps its rows as they are.
         XCTAssertEqual(TranscriptExport.sessionTimed([dictation]), [dictation])
     }
@@ -146,7 +149,9 @@ final class TranscriptExportTests: XCTestCase {
         let rows = [row(0, 1, "Hello.", speaker: "speaker-1"), row(1.2, 1.5, " ", speaker: "speaker-2"), row(5, 6, "", speaker: nil), row(9, 10, "Bye.", speaker: "speaker-1")]
         XCTAssertEqual(TranscriptExport.readingParagraphs(rows, tuning: .init()).map(\.text), ["Hello.", "Bye."])
         let session = TranscriptSession(sessionID: "s", startedAt: started, lastTranscriptAt: started.addingTimeInterval(10), transcriptCount: 4)
-        XCTAssertFalse(TranscriptExport.markdown(session: session, rows: rows).contains(":** \n"))
+        let text = TranscriptExport.markdown(session: session, rows: rows)
+        XCTAssertFalse(text.contains(":** \n"))
+        XCTAssertTrue(text.contains("2 segments"), text)
     }
 
     func testLongTitlesKeepTheFileNameWithinTheFileSystemLimit() throws {

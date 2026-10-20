@@ -34,13 +34,14 @@ public enum TranscriptExport {
     /// The paragraphs Sessions shows and Markdown exports: rows put on the session's clock, rows that cleanup emptied left out, continuations folded, and rows merged at the tuning's paragraph pause.
     public static func readingParagraphs(_ rows: [Transcript], tuning: TranscriptionTuning) -> [Transcript] {
         let pause = tuning.bounded.paragraphPause
-        let spoken = sessionTimed(rows).filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let spoken = sessionTimed(rows).filter(isSpoken)
         return paragraphs(TranscriptGrouping.foldContinuations(spoken, gap: pause), mergeWithin: pause)
     }
 
-    /// Ambient rows share the session's start and count seconds from it, but a dictation row saved into a listening session keeps its hold's own start with an offset of 0. Every row is moved onto the start of the session's earliest ambient row, so a dictation shows when it was spoken rather than at 0:00:00. A session without ambient rows is returned as it is.
+    /// Ambient rows share the session's start and count seconds from it, but a dictation row saved into a listening session keeps its hold's own start with an offset of 0. Every row is moved onto the start of the session's earliest ambient row, so a dictation shows when it was spoken rather than at 0:00:00. A row spoken before that start moves the clock back to it, so no two rows share a clamped 0:00:00. A session without ambient rows is returned as it is.
     public static func sessionTimed(_ rows: [Transcript]) -> [Transcript] {
-        guard let start = rows.filter({ $0.mode == "ambient" }).map(\.startedAt).min() else { return rows }
+        guard let ambient = rows.filter({ $0.mode == "ambient" }).map(\.startedAt).min() else { return rows }
+        let start = rows.map { $0.startedAt.addingTimeInterval($0.startSeconds) }.reduce(ambient) { min($0, $1) }
         return rows.map { row in
             let shift = row.startedAt.timeIntervalSince(start)
             guard shift != 0 else { return row }
@@ -52,12 +53,16 @@ public enum TranscriptExport {
         }
     }
 
+    /// False for a row that phrase cleanup emptied; it has nothing to show.
+    static func isSpoken(_ row: Transcript) -> Bool { !row.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
     public static func markdown(session: TranscriptSession, rows: [Transcript], tuning: TranscriptionTuning = TranscriptionTuning()) -> String {
         let timed = sessionTimed(rows)
         let merged = readingParagraphs(timed, tuning: tuning)
         let duration = timed.map(\.endSeconds).max() ?? 0
+        let segments = timed.filter(isSpoken).count
         var lines = ["# \(session.title ?? "Session") \(timestamp(session.startedAt))", "",
-                     "Session \(session.sessionID). \(rows.count) segments, \(clock(duration)) of audio, ending \(timestamp(session.lastTranscriptAt)).",
+                     "Session \(session.sessionID). \(segments) segments, \(clock(duration)) of audio, ending \(timestamp(session.lastTranscriptAt)).",
                      "Speakers without a name are Jot's automatic groupings. Timestamps are offsets from session start.", ""]
         for row in merged {
             lines.append("**[\(clock(row.startSeconds))] \(speakerName(row)):** \(row.text)")
