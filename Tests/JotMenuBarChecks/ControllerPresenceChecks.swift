@@ -8,12 +8,16 @@ struct ControllerPresenceChecks {
         var reads = 0
     }
 
+    static let key = "showMenuBarIcon"
+
     @MainActor
     static func main() {
         if CommandLine.arguments.contains("--live") {
             _ = NSApplication.shared
             NSApp.setActivationPolicy(.prohibited)
-            let presence = JotControllerPresence()
+            let defaults = UserDefaults(suiteName: "ControllerPresenceChecks.live")!
+            defaults.set(false, forKey: key)
+            let presence = JotControllerPresence(defaults: defaults, alwaysShowKey: key)
             let initial = presence.isRunning
             var states = [initial]
             FileHandle.standardOutput.write(Data("Initial controller presence: \(initial)\n".utf8))
@@ -31,12 +35,25 @@ struct ControllerPresenceChecks {
         }
         let center = NotificationCenter()
         let fixture = Fixture()
-        let presence = JotControllerPresence(center: center, controllerIsRunning: {
+        let defaults = UserDefaults(suiteName: "ControllerPresenceChecks")!
+        defaults.removePersistentDomain(forName: "ControllerPresenceChecks")
+        let presence = JotControllerPresence(center: center, defaults: defaults, alwaysShowKey: key, controllerIsRunning: {
             fixture.reads += 1
             return fixture.running
         })
         precondition(presence.showsIcon(alwaysShow: false), "No controller at launch must leave Jot accessible")
         precondition(presence.showsIcon(alwaysShow: true))
+
+        func settle(_ condition: () -> Bool) -> Bool {
+            let deadline = Date().addingTimeInterval(1)
+            while !condition() && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+            return condition()
+        }
+        precondition(!presence.isReconciling, "Always show (the default) needs no polling")
+        defaults.set(false, forKey: key)
+        precondition(settle { presence.isReconciling }, "Turning always-show off must start reconciliation")
+        defaults.set(true, forKey: key)
+        precondition(settle { !presence.isReconciling }, "Turning always-show on must stop reconciliation")
 
         func notify(_ name: Notification.Name) {
             let previous = fixture.reads
@@ -64,8 +81,8 @@ struct ControllerPresenceChecks {
         notify(NSWorkspace.didLaunchApplicationNotification)
         precondition(!presence.showsIcon(alwaysShow: false), "Fallback must not overwrite the hidden preference")
 
-        let alreadyRunning = JotControllerPresence(center: center, controllerIsRunning: { true })
+        let alreadyRunning = JotControllerPresence(center: center, defaults: defaults, alwaysShowKey: key, controllerIsRunning: { true })
         precondition(!alreadyRunning.showsIcon(alwaysShow: false), "Detect an already-running controller at Jot launch")
-        print("Controller presence checks passed: initial state, launch, unrelated exit, controller exit, relaunch, preference override")
+        print("Controller presence checks passed: initial state, launch, unrelated exit, controller exit, relaunch, preference override, polling only while always-show is off")
     }
 }
