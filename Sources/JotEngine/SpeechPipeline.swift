@@ -91,9 +91,13 @@ public actor SpeechPipeline {
         }
         // Conservative neural speech gate; uncertain speaker attribution does not suppress ASR.
         // It runs before the speaker model so quiet audio is held back from it rather than fed.
+        // Ambient audio whose every tenth of a second is under the capture's quiet level skips it too: a quiet
+        // room is most of a listening day. A held dictation always asks the voice detector, so a whisper still counts.
         var heardSpeech = false
         var speechProbability: Float?
-        if !recognitionSamples.isEmpty {
+        let audible = job.keepsFillers
+            || AudioLevel.loudestWindowRMS(recognitionSamples) >= Float(settings.double(JotSettings.silenceLevel))
+        if !recognitionSamples.isEmpty, audible {
             do {
                 let gate = Float(settings.double(JotSettings.speechGate))
                 speechProbability = try await vad.process(recognitionSamples).map(\.probability).max()
