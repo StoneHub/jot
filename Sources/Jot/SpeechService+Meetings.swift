@@ -87,7 +87,8 @@ extension SpeechService {
         // cleanup deadline. A longer queue exports what is cleaned by then, and the rest as recognized, and says so.
         var cleanupUnfinished = false
         // Pause does not wait for optional cleanup, so an earlier part may still be cleaning too.
-        let cleaning = { parts.contains { cleanup.isCleaning(session: $0) } }
+        let liveCleanup = self.cleanup
+        let cleaning = { parts.contains { liveCleanup.isCleaning(session: $0) } }
         if lifecycle.acceptsWork(generation), cleaning() {
             let waiting = "Cleaning up the meeting's last words before export…"
             notice = waiting

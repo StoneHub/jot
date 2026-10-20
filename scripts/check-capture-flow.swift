@@ -243,6 +243,23 @@ enum CaptureFlowChecks {
         while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
         print("PASS: a hold while paused ignores a second press, stops on a release during its start, yields to Pause, and keeps listening after Resume.")
 
+        // An automatic pause keeps the listening intent for Resume; a hold and release in the meantime must not take it as one.
+        service.prepare(confirmingDownload: true)
+        await service.waitForPreparation()
+        service.pause(automatic: true)
+        while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
+        precondition(service.ambientRequested && !microphone.running, "An automatic pause did not keep the listening intent with the microphone off")
+        service.holdBegan()
+        while !service.dictation.isActive { try await Task.sleep(for: .milliseconds(5)) }
+        service.holdEnded(releasedAt: ProcessInfo.processInfo.systemUptime)
+        await service.dictation.waitForRecovery()
+        precondition(!microphone.running && !service.ambientEnabled && !service.holdOnlyCapture,
+                     "A hold after an automatic pause left the microphone on at release")
+        precondition(service.ambientRequested, "A hold after an automatic pause dropped the listening intent kept for Resume")
+        service.pause()
+        while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
+        print("PASS: a hold after an automatic pause stops the microphone at release and keeps the listening intent for Resume.")
+
         // Paused, the hooks are refused and the models are still loaded; Unload Models is the only release, and Resume after it loads them again.
         let hook: [String: Any] = ["method": "context.hook", "params": ["role": "user", "source": "codex", "conversation": "c1", "text": "hello"]]
         let refusedData = await service.handle(try JSONSerialization.data(withJSONObject: hook))

@@ -145,6 +145,9 @@ final class SpeechService: ObservableObject {
     }
 
     @Published var ambientRequested = false
+    /// Resume or Start asked for listening while a hold-only microphone was on. An automatic pause keeps
+    /// `ambientRequested` set without anyone asking, so that alone must not keep the microphone after the hold.
+    private var listeningRequestedDuringHold = false
     @Published private(set) var ambientEnabled = false { didSet { ControlEvents.signal() } }
     /// Where listening stands, read from the lifecycle, the microphone and a held dictation. `jot status` reports its mode and model state.
     var listeningState: ListeningState {
@@ -404,6 +407,7 @@ final class SpeechService: ObservableObject {
         sleepResume.cancel()
         if !switchingInput { capture.resetInputSearch() }
         if listen {
+            if pausedHold.isActive || pausedHold.isStarting { listeningRequestedDuringHold = true }
             ambientRequested = true
             UserDefaults.standard.set(false, forKey: JotDefaultsKey.servicePaused)
             markPerformance(.resume)
@@ -598,6 +602,7 @@ final class SpeechService: ObservableObject {
 
     func startAmbient() async throws {
         guard !preparingUpdate else { throw JotError.message("Jot is finishing the update.") }
+        if pausedHold.isActive || pausedHold.isStarting { listeningRequestedDuringHold = true }
         ambientRequested = true
         UserDefaults.standard.set(false, forKey: JotDefaultsKey.servicePaused)
         if lifecycle.phase == .paused || lifecycle.phase == .failed { prepare() }
@@ -686,6 +691,8 @@ final class SpeechService: ObservableObject {
         guard !switchingInput, !preparingUpdate else { return }
         if canHoldDictation { dictation.begin(); return }
         guard microphoneOff else { return }
+        // Cleared before the start task runs, so a Resume in the meantime still counts.
+        if !pausedHold.isStarting { listeningRequestedDuringHold = false }
         pausedHold.begin()
     }
 
@@ -709,6 +716,8 @@ final class SpeechService: ObservableObject {
         guard await requestMic() else { throw JotError.message("Microphone permission is required.") }
         guard lifecycle.acceptsWork(token), !pauseRequested, !ambientEnabled, !Task.isCancelled else { return }
         guard try await capture.startRetrying(shouldContinue: { lifecycle.acceptsWork(token) && !pauseRequested && !Task.isCancelled }) else { return }
+        // Resume during a retry started listening in its own session with audio; the hold runs inside that one.
+        guard !ambientEnabled else { return }
         lastAudioAt = dependencies.now()
         guard !Task.isCancelled else { capture.stop(); return }
         // No audio file: a dictation of one voice needs no speaker pass.
@@ -720,9 +729,11 @@ final class SpeechService: ObservableObject {
 
     /// Ends a hold-only capture: the microphone stops, the hold's session closes, and Jot is paused again. If listening was
     /// requested meanwhile, the microphone stays on and the session simply continues. Called by `pausedHold` after it has
-    /// cleared its own state.
+    /// cleared its own state. After an automatic pause, the kept listening intent still waits for Resume.
     private func stopHoldCapture() {
-        guard !ambientRequested, ambientEnabled || capture.running else { return }
+        let keepListening = ambientRequested && listeningRequestedDuringHold
+        listeningRequestedDuringHold = false
+        guard !keepListening, ambientEnabled || capture.running else { return }
         capture.stop(); drainAudio()
         timeline.flushAmbient(final: true)
         timeline.endSessionAudio(runPass: false)
