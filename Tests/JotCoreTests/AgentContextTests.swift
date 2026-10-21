@@ -76,12 +76,12 @@ final class AgentContextTests: XCTestCase {
 
     func testTheSocketToolsAcceptTheirArguments() throws {
         let add = try XCTUnwrap(MCPTool.catalog.first { $0.name == "context_add" })
-        XCTAssertEqual(add.method, "context.add")
+        XCTAssertEqual(add.method, .contextAdd)
         XCTAssertFalse(add.readOnly)
         XCTAssertNoThrow(try add.validate(arguments: ["role": "user", "source": "claude-code", "text": "hi"]))
         XCTAssertThrowsError(try add.validate(arguments: ["role": "user", "source": "claude-code"]))
         XCTAssertThrowsError(try add.validate(arguments: ["role": "user", "source": "claude-code", "text": "hi", "extra": 1]))
-        XCTAssertEqual(MCPTool.catalog.first { $0.name == "context_clear" }?.method, "context.clear")
+        XCTAssertEqual(MCPTool.catalog.first { $0.name == "context_clear" }?.method, .contextClear)
     }
 
     func testDuplicateHookEventIsStoredOnceAndClearInvalidatesIt() throws {

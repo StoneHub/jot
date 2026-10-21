@@ -17,8 +17,8 @@ struct HelperError: LocalizedError {
 }
 
 /// Actions keep the client's per-method timeouts: Start Meeting may wait for the models and End Meeting for the backlog.
-func call(_ method: String, _ params: [String: Any] = [:], timeout: Int? = nil) throws -> Any {
-    let data = try client.request(method: method, params: params, timeout: timeout)
+func call(_ method: LocalMethod, _ params: [String: Any] = [:], timeout: Int? = nil) throws -> Any {
+    let data = try client.request(method, params: params, timeout: timeout)
     guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any], let ok = object["ok"] as? Bool
     else { throw HelperError("Jot returned an invalid response.") }
     guard ok else { throw HelperError(object["error"] as? String ?? "Jot could not do that.") }
@@ -26,7 +26,7 @@ func call(_ method: String, _ params: [String: Any] = [:], timeout: Int? = nil) 
 }
 
 func controls() throws -> ControlSnapshot {
-    try JSONDecoder().decode(ControlSnapshot.self, from: JSONSerialization.data(withJSONObject: call("speech.controls", timeout: 2)))
+    try JSONDecoder().decode(ControlSnapshot.self, from: JSONSerialization.data(withJSONObject: call(.speechControls, timeout: 2)))
 }
 
 while let line = readLine() {
@@ -45,14 +45,14 @@ while let line = readLine() {
             case "quit": jot.terminate()
             case "listen":
                 // A fresh install has no models; Jot asks before downloading them, so show it where that question is.
-                let resumed = try call("speech.resume", ["askBeforeDownload": true]) as? [String: Any]
+                let resumed = try call(.speechResume, ["askBeforeDownload": true]) as? [String: Any]
                 if resumed?["downloadPrompt"] as? Bool == true { NSWorkspace.shared.open(app) }
-            case "pause": _ = try call("speech.pause")
+            case "pause": _ = try call(.speechPause)
             case "meeting.start":
                 let title = (request["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !title.isEmpty, title.count <= 200 else { throw HelperError("Give the meeting a title.") }
-                _ = try call("speech.meeting_start", ["title": title])
-            case "meeting.end": _ = try call("speech.meeting_end")
+                _ = try call(.speechMeetingStart, ["title": title])
+            case "meeting.end": _ = try call(.speechMeetingEnd)
             default: break
             }
             var state = try controls()

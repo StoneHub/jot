@@ -64,10 +64,6 @@ final class LocalDispatchTests: XCTestCase {
             "transcripts.sessions", "transcripts.since", "transcripts.read", "transcripts.export", "suggestions.recent",
             "context.add", "context.hook", "context.clear", "people.list", "people.forget", "people.delete", "speakers.label",
         ])
-        XCTAssertEqual(LocalMethod.allCases.filter(\.isLongRunning), [.speechMeetingEnd, .speechTranscribeFile, .modelsPrepare])
-    }
-
-    func testEveryMCPToolCallsAMethodTheServiceAnswers() {
-        for tool in MCPTool.catalog { XCTAssertNotNil(LocalMethod(rawValue: tool.method), tool.name) }
+        XCTAssertEqual(LocalMethod.allCases.filter(\.isLongRunning), [.speechStart, .speechMeetingStart, .speechMeetingEnd, .speechTranscribeFile, .modelsPrepare])
     }
 }

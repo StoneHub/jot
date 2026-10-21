@@ -15,9 +15,9 @@ struct ListenCommand {
         let options = try ListenOptions(args)
         let deadline = options.timeout.map { uptime() + $0 }
         func expired() -> Bool { deadline.map { uptime() >= $0 } ?? false }
-        func call(_ method: String, _ params: [String: Any] = [:]) throws -> Any {
+        func call(_ method: LocalMethod, _ params: [String: Any] = [:]) throws -> Any {
             let seconds = deadline.map { max(1, min(30, Int(ceil($0 - uptime())))) } ?? 30
-            let data = try request(method, params, seconds)
+            let data = try request(method.rawValue, params, seconds)
             guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let ok = object["ok"] as? Bool else { throw ListenError("Invalid Jot response") }
             guard ok else { throw ListenError(object["error"] as? String ?? "Jot request failed") }
@@ -25,7 +25,7 @@ struct ListenCommand {
             return result
         }
         func page(_ params: [String: Any]) throws -> TranscriptChanges {
-            let result = try call("transcripts.since", params)
+            let result = try call(.transcriptsSince, params)
             let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
             return try decoder.decode(TranscriptChanges.self, from: JSONSerialization.data(withJSONObject: result))
         }
@@ -38,7 +38,7 @@ struct ListenCommand {
         }
         do {
             guard !expired() else { return }
-            let settings = try call("settings.get") as? [String: Any]
+            let settings = try call(.settingsGet) as? [String: Any]
             let configuration = options.configuration(settings?["settings"] as? [[String: Any]] ?? [])
             let subscribedAt = wallTime()
             var current = try page([:]) // omitted cursor subscribes at head
@@ -54,7 +54,7 @@ struct ListenCommand {
                 let cutoff = wallTime().addingTimeInterval(-Double(configuration.lookbackMinutes * 60))
                 var offset = 0, bytes = 0
                 snapshot: while !expired(), context.count < TranscriptListener.maximumRows {
-                    let result = try call("transcripts.recent", ["limit": 200, "offset": offset])
+                    let result = try call(.transcriptsRecent, ["limit": 200, "offset": offset])
                     let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
                     let rows = try decoder.decode([Transcript].self, from: JSONSerialization.data(withJSONObject: result))
                     for row in rows {
@@ -84,7 +84,7 @@ struct ListenCommand {
                     continue
                 }
                 if current.hasMore { continue } // quiet-gap never fires between pages
-                let status = try call("speech.controls") as? [String: Any] // mode only; speech.status also counts storage and tuning audio
+                let status = try call(.speechControls) as? [String: Any] // mode only; speech.status also counts storage and tuning audio
                 guard !expired() else { return }
                 let isPaused = status?["mode"] as? String == "paused"
                 if isPaused, !paused {
