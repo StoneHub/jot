@@ -11,17 +11,30 @@ The Worker stores no IP address, install ID, user agent or text, and request log
 
 ## Deploy (once)
 
-Needs Node 18 or later and a Cloudflare account. From a Mac:
+Jot's Worker is already deployed: `wrangler.toml` holds its D1 `database_id`, and `UsageReport.endpoint` holds its URL. To redeploy after changing `src/`, run `npx wrangler deploy` from this folder.
+
+To set it up on a new Cloudflare account, you need Node 18 or later. Run the steps in two blocks, because the second block needs an id that the first one prints. First, from a Mac:
 
 ```sh
-cd ~/Developer/jot/services/analytics
-npx wrangler login
-npx wrangler d1 create jot-analytics        # copy the printed database_id into wrangler.toml
-npx wrangler d1 execute jot-analytics --remote --file schema.sql
-npx wrangler deploy                          # prints the Worker's https://jot-analytics.<account>.workers.dev URL
+cd ~/Developer/jot/services/analytics && npx wrangler login
+cd ~/Developer/jot/services/analytics && npx wrangler d1 create jot-analytics
 ```
 
-Jot sends to that URL plus `/v1/usage`. Free-plan limits (100,000 Worker requests and 100,000 D1 row writes a day at the time of writing) cover one report per Mac per day for thousands of Macs.
+Put the `database_id` it prints into `wrangler.toml`, replacing the current one. Then run:
+
+```sh
+cd ~/Developer/jot/services/analytics && npx wrangler d1 execute jot-analytics --remote --yes --command "$(grep -v '^--' schema.sql)"
+cd ~/Developer/jot/services/analytics && npx wrangler d1 execute jot-analytics --remote --command "SELECT name FROM sqlite_master WHERE type='table'"
+cd ~/Developer/jot/services/analytics && npx wrangler deploy
+```
+
+The second line should list `usage` and `reports`. The deploy prints the Worker's `https://jot-analytics.<account>.workers.dev` URL. Set `UsageReport.endpoint` to that URL plus `/v1/usage`.
+
+The schema goes in with `--command` rather than `--file`, for two reasons:
+- `--file` goes through D1's import API, which returned an authentication error for an OAuth login on 2026-10-21.
+- The comment lines are dropped first because wrangler reads a `--command` value that starts with `--` as a flag.
+
+Free-plan limits (100,000 Worker requests and 100,000 D1 row writes a day at the time of writing) cover one report per Mac per day for thousands of Macs.
 
 ## Look at the numbers
 
