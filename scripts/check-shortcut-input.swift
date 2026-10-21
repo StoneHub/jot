@@ -21,7 +21,8 @@ enum ShortcutInputChecks {
         precondition(chord.decideForTesting(.keyDown, keyCode: 49, modifiers: shortcut.modifiers, at: 1) ==
             .init(consume: true, actions: [.typed, .start]))
         precondition(chord.decideForTesting(.keyDown, keyCode: 49, modifiers: shortcut.modifiers,
-            repeating: true, at: 1.1).consume)
+            repeating: true, at: 1.1) == .init(consume: true, actions: []),
+            "A held chord's auto-repeat must be consumed without counting as typing, which cancels the field lookup")
         precondition(chord.decideForTesting(.keyUp, keyCode: 49, modifiers: shortcut.modifiers, at: 1.5) ==
             .init(consume: true, actions: [.stop(1.5)]))
 
@@ -36,6 +37,6 @@ enum ShortcutInputChecks {
         precondition(ticket.accepts(generation: 7, frontmostPID: 123))
         precondition(!ticket.accepts(generation: 8, frontmostPID: 123), "Cancelled press must reject its late AX result")
         precondition(!ticket.accepts(generation: 7, frontmostPID: 456), "Focus moved to another app")
-        print("PASS: shortcut tap ordering, Fn pass-through, chord consumption, disabled state and stale target gates.")
+        print("PASS: shortcut tap ordering, Fn pass-through, chord consumption and repeat, disabled state and stale target gates.")
     }
 }
