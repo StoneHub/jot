@@ -48,10 +48,18 @@ Names come only from fixed codes in `UsageCounter` (`Sources/JotCore/UsageCounte
 | `suggestion.requested` | A suggestion request began. |
 | `suggestion.outcome.<outcome>`, `suggestion.action.<action>` | A suggestion request finished, once each, by its final `SuggestionHistoryEntry` outcome and, when one ended it, its action. |
 
+To start the counters over, use **Reset counters** on the Activity screen's "How dictation went" card, or:
+
+```sh
+jot activity --reset-counters
+```
+
+Its socket method is `usage.reset`, with no arguments. It deletes every count and leaves saved history unchanged.
+
 ## Activity screen
 
 Live resource and pipeline statistics lead the screen. CPU and memory line charts use the bounded performance samples already collected by Jot, separately from the selected 7/30-day usage window. They do not start a sampler, load transcript history, or persist new telemetry. Capture events remain available through the agent API and are not shown in Activity.
 
-The usage cards use the available window width, pairing related cards in wide layouts and stacking them in narrow layouts.
+The "How dictation went" card summarizes the selected period's counters: holds, verified and unverified insertions, dictation cleanup changes, saved-dictation reviews and suggestions taken. The usage cards use the available window width, pairing related cards in wide layouts and stacking them in narrow layouts.
 
 Activity refreshes on entry, on return to the active app, and when the selected period changes. While that tab remains active, charts refresh once a minute and aggregate history refreshes every five minutes. Leaving the tab or making the app inactive cancels those refresh loops. Diagnostic logging is independent of the tab and retains at most one sample per minute; paused service housekeeping runs once a minute. Permission and Apple Intelligence availability checks also run once a minute, with immediate revalidation when Jot becomes active and live checks at the relevant request paths. Models remain loaded and the shortcut remains event-driven for immediate held dictation.

@@ -58,7 +58,7 @@ final class LocalDispatchTests: XCTestCase {
     func testWireNamesAreStable() {
         XCTAssertEqual(LocalMethod.allCases.map(\.rawValue), [
             "speech.controls", "speech.status", "speech.diagnostics", "speech.start", "speech.pause", "speech.resume",
-            "speech.meeting_start", "speech.meeting_end", "speech.transcribe_file", "activity.report",
+            "speech.meeting_start", "speech.meeting_end", "speech.transcribe_file", "activity.report", "usage.reset",
             "models.prepare", "models.unload", "models.check", "sessions.title", "sessions.notes", "settings.get", "settings.set", "settings.reset",
             "transcripts.clear", "transcripts.delete_session", "transcripts.search", "transcripts.recent", "transcripts.events",
             "transcripts.sessions", "transcripts.since", "transcripts.wait", "transcripts.read", "transcripts.export", "suggestions.recent",

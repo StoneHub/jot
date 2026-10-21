@@ -13,6 +13,7 @@ public enum LocalMethod: String, CaseIterable, Sendable {
     case speechMeetingEnd = "speech.meeting_end"
     case speechTranscribeFile = "speech.transcribe_file"
     case activityReport = "activity.report"
+    case usageReset = "usage.reset"
     case modelsPrepare = "models.prepare"
     case modelsUnload = "models.unload"
     case modelsCheck = "models.check"

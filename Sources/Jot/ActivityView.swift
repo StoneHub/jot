@@ -134,7 +134,7 @@ struct ActivityView: View {
     @ViewBuilder private func usage(_ report: ActivityReport, wide: Bool) -> some View {
         if wide {
             HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 16) { dictationSummary(report); speechDetails(report) }
+                VStack(alignment: .leading, spacing: 16) { dictationSummary(report); speechDetails(report); counters(report) }
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                 VStack(alignment: .leading, spacing: 16) { dailyChart(report); ambientSummary(report) }
                     .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -144,8 +144,17 @@ struct ActivityView: View {
                 dictationSummary(report)
                 dailyChart(report)
                 speechDetails(report)
+                counters(report)
                 ambientSummary(report)
             }
+        }
+    }
+
+    private func counters(_ report: ActivityReport) -> some View {
+        ActivityCounters(counters: report.counters) {
+            // A failed reset leaves the counts as they were, and the refresh shows them.
+            try? await library.resetUsage()
+            await insights.refresh(library: library, days: days)
         }
     }
 

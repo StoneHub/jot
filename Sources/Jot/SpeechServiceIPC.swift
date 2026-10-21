@@ -99,6 +99,7 @@ extension SpeechService {
             let now = Date(), calendar = Calendar.current
             let report = try await storeExecutor.perform { try store.activity(days: days, now: now, calendar: calendar) }
             result = try object(report)
+        case .usageReset: try await library.resetUsage(); result = ["reset": true]
         case .modelsPrepare: result = ["state": modelState.rawValue, "downloadBytes": prepareFromCommand()]
         case .modelsUnload: unloadModels(); result = try await status()
         case .modelsCheck: checkModelUpdates(); if let modelCheck { await modelCheck.value }; result = try object(modelUpdates)

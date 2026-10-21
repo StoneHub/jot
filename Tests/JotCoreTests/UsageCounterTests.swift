@@ -42,6 +42,16 @@ final class UsageCounterTests: XCTestCase {
         XCTAssertEqual(report.counters, ["dictation.completed": 1])
     }
 
+    func testResetClearsCountersAndKeepsHistory() throws {
+        let store = try TranscriptStore(directory: directory)
+        try store.append(Transcript(id: "d1", sessionID: "s1", startedAt: try date(9, hour: 9), startSeconds: 0, endSeconds: 2, text: "hello there", mode: "dictation"))
+        try store.countUsage([.dictation(.completed)], at: date(9, hour: 9), calendar: calendar)
+        try store.resetUsage()
+        let report = try store.activity(now: date(9), calendar: calendar)
+        XCTAssertEqual(report.counters, [:])
+        XCTAssertEqual(report.dictation.wordCount, 2)
+    }
+
     func testOldDaysArePrunedOnWrite() throws {
         let store = try TranscriptStore(directory: directory)
         try store.countUsage([.suggestionRequested], at: date(1, month: 1), calendar: calendar)
