@@ -79,20 +79,35 @@ Speakers without a name are Jot's automatic groupings. Timestamps are offsets fr
 
 `jot export <session-id> --json` (and MCP `transcripts_export` with `format: "json"`) answers with the session's rows, under `result`, as a JSON array of `{id, sessionID, startedAt (ISO 8601), startSeconds, endSeconds, text, mode ("ambient" or "dictation"), speakerID?, speakerLabel?}`, with continuations folded but paragraphs not merged. This is the socket's answer, not a file format: before Android reads or writes sessions, wrap it in a `{"format": "jot.session", "version": 1, ...}` file and specify it here.
 
-## Cleanup rules (each app has its own copy today)
+## Cleanup checks (`jot.cleanup-checks`, version 1)
 
-Both apps use a small on-device model to remove filler and fix punctuation, and both keep the original text when the result looks unsafe. The prompts and checks were written separately and differ:
+Both apps use a small on-device model to remove filler and fix punctuation, and both keep the original text when the result looks unsafe. The checks below decide "unsafe". They are a conservative fallback that rejects known dangerous edits, not a proof that the meaning is unchanged.
+
+Status: the Mac's `CleanupValidation` implements them, and `CleanupContractTests` runs the shared corpus [`docs/contract/cleanup-checks-v1.json`](contract/cleanup-checks-v1.json) against it. Android's `CleanupChecks` predates this and differs (table below). It should adopt these rules and run the same corpus in a JVM unit test, which needs no phone.
+
+A candidate is accepted only when all of these hold:
+
+1. **Not empty.** The candidate, trimmed of whitespace and line breaks, is non-empty.
+2. **Not much longer.** The trimmed candidate is at most max(120, 2 × the source's length) UTF-8 bytes.
+3. **Same protected words in the same order.** Both texts are lowercased, `’` becomes `'`, and they are split at every character that is not a letter, mark, digit, `'`, `.` or `,`. Leading and trailing `.` and `,` are then stripped from each piece. A piece is protected when it contains a digit, or is one of these words:
+   - Numbers: zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand million billion trillion first second third half quarter percent point
+   - Negations and hedges: no not never cannot can't don't doesn't didn't won't wouldn't shouldn't isn't aren't wasn't weren't haven't hasn't hadn't maybe probably possibly might unless
+
+   A protected word that repeats the one right before it counts once, so removing an accidental "three, three" passes. The two sequences must be equal. Spelling a number differently ("twenty five" and "25", "2.5" and "2,5") therefore rejects.
+
+The corpus file is `{"format": "jot.cleanup-checks", "version": 1, "cases": [{"name", "source", "candidate", "accept"}]}`. Every case is synthetic. An app passes when its check returns `accept` for every case. Add a case for each bug either app's checks let through.
+
+Where the apps differ today:
 
 | | Mac (`JotSettings.defaultCleanupInstructions`, `CleanupValidation`) | Android (`CleanupNpu.kt`, `CleanupChecks`) |
 | --- | --- | --- |
 | Input | Batches of transcript entries, returned as `texts` | One dictation up to 1,200 characters |
-| Rejects empty output | Yes | Yes |
-| Rejects long output | Over max(120, 2 × input) UTF-8 bytes | Warns over max(80, 2 × input) characters |
-| Numbers | The sequence of digit tokens and number words (zero…trillion, first, half, percent, point…) must match | The sequence of digit runs must match |
-| Negations and hedges | The sequence of negations and hedges (not, never, can't, maybe, probably, unless…) must match | The count of ten negations must match |
+| Long output | Rejected over max(120, 2 × input) UTF-8 bytes | Warns over max(80, 2 × input) characters |
+| Numbers | Rule 3: digit pieces and number words | The sequence of digit runs |
+| Negations and hedges | Rule 3: the full list, in order | The count of ten negations |
 | Control text | Not checked | Rejects `<think>` and `<|` |
 
-The shared target is one written rule set and one synthetic test corpus (source, accepted and rejected outputs) under `docs/contract/` that both apps' tests run. Until that lands, change one app's rules only together with this table.
+Android's control text check is a good addition. Adding it to the shared rules takes version 2 of the corpus, because a Mac that ignored it would accept cases Android rejects. The prompts differ too, because their inputs differ, and they are not part of the contract. Their outputs are what the checks guard.
 
 ## Changing this contract
 

@@ -1,0 +1,108 @@
+{
+  "cases": [
+    {
+      "accept": true,
+      "candidate": "So I think we should ship it.",
+      "name": "filler and punctuation",
+      "source": "Um so I think we should, uh, ship it"
+    },
+    {
+      "accept": true,
+      "candidate": "Send the red folder on Tuesday.",
+      "name": "capitalization",
+      "source": "send the red folder on tuesday"
+    },
+    {
+      "accept": true,
+      "candidate": "I can probably test tomorrow.",
+      "name": "accidental repetition",
+      "source": "Um I can, I can probably test tomorrow."
+    },
+    {
+      "accept": true,
+      "candidate": "The meeting is at three thirty.",
+      "name": "repeated number word",
+      "source": "The meeting is at three, three thirty."
+    },
+    {
+      "accept": true,
+      "candidate": "I don't know yet.",
+      "name": "curly apostrophe",
+      "source": "I don’t know yet"
+    },
+    {
+      "accept": true,
+      "candidate": "It costs $4.50.",
+      "name": "currency symbol around a number",
+      "source": "It costs 4.50 dollars."
+    },
+    {
+      "accept": false,
+      "candidate": "",
+      "name": "empty output",
+      "source": "Okay."
+    },
+    {
+      "accept": false,
+      "candidate": "   \n",
+      "name": "whitespace only output",
+      "source": "Okay."
+    },
+    {
+      "accept": false,
+      "candidate": "Ship Friday.",
+      "name": "dropped negation",
+      "source": "Do not ship Friday."
+    },
+    {
+      "accept": false,
+      "candidate": "Don't ship it Friday.",
+      "name": "added negation",
+      "source": "Ship it Friday."
+    },
+    {
+      "accept": false,
+      "candidate": "I can test tomorrow.",
+      "name": "dropped hedge",
+      "source": "I can probably test tomorrow."
+    },
+    {
+      "accept": false,
+      "candidate": "Maybe Tuesday, never on Monday.",
+      "name": "negation and hedge reordered",
+      "source": "Never on Monday, maybe Tuesday."
+    },
+    {
+      "accept": false,
+      "candidate": "Budget: 15000.",
+      "name": "digits changed",
+      "source": "Budget: 1500."
+    },
+    {
+      "accept": false,
+      "candidate": "About fifty thousand users signed up.",
+      "name": "number word changed",
+      "source": "About five thousand users signed up."
+    },
+    {
+      "accept": false,
+      "candidate": "25 people came.",
+      "name": "number words turned into digits",
+      "source": "twenty five people came"
+    },
+    {
+      "accept": false,
+      "candidate": "Version 2,5 ships today.",
+      "name": "decimal separator changed",
+      "source": "Version 2.5 ships today."
+    },
+    {
+      "accept": false,
+      "candidate": "Yes, and I would also like to add that this is a really good idea and that we should all be very happy about it today, because it really helps everyone on the team.",
+      "name": "output grew past the limit",
+      "source": "Yes."
+    }
+  ],
+  "format": "jot.cleanup-checks",
+  "version": 1
+}
