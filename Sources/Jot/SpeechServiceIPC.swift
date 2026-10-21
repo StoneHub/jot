@@ -62,6 +62,20 @@ extension SpeechService {
         return result
     }
 
+    /// `transcripts.wait` requests in progress, held to `TranscriptWait.maximumWaiters`.
+    private static var transcriptWaiters = 0
+
+    /// The cursor, generation and session filter `transcripts.since` and `transcripts.wait` share.
+    private func feedPosition(_ params: [String: Any]) throws -> (cursor: Int?, generation: String?, sessionID: String?) {
+        let cursor = params["cursor"] as? Int
+        guard params["cursor"] == nil || (cursor != nil && cursor! >= 0) else { throw JotError.message("cursor must be a nonnegative integer") }
+        let generation = params["generation"] as? String
+        guard params["generation"] == nil || generation?.isEmpty == false else { throw JotError.message("generation must be a nonempty string") }
+        let sessionID = params["sessionID"] as? String
+        guard params["sessionID"] == nil || sessionID?.isEmpty == false else { throw JotError.message("sessionID must be a nonempty string") }
+        return (cursor, generation, sessionID)
+    }
+
     func handle(_ data: Data) async -> Data {
         await LocalDispatch.handle(data) { try await respond(to: $0) }
     }
@@ -137,16 +151,29 @@ extension SpeechService {
             let store = library.store
             result = try await readOffMain { try store?.sessions(limit: limit) ?? [] }
         case .transcriptsSince:
-            let cursor = params["cursor"] as? Int
-            guard params["cursor"] == nil || (cursor != nil && cursor! >= 0) else { throw JotError.message("cursor must be a nonnegative integer") }
-            let generation = params["generation"] as? String
-            guard params["generation"] == nil || generation?.isEmpty == false else { throw JotError.message("generation must be a nonempty string") }
-            let sessionID = params["sessionID"] as? String
-            guard params["sessionID"] == nil || sessionID?.isEmpty == false else { throw JotError.message("sessionID must be a nonempty string") }
+            let (cursor, generation, sessionID) = try feedPosition(params)
             let store = library.store
             result = try await readOffMain {
                 try store?.changes(since: cursor.map(Int64.init), generation: generation, sessionID: sessionID, limit: limit) ?? TranscriptChanges(rows: [], cursor: Int64(cursor ?? 0), hasMore: false)
             }
+        case .transcriptsWait:
+            let (cursor, generation, sessionID) = try feedPosition(params)
+            let timeout = try TranscriptWait.timeout(params)
+            guard Self.transcriptWaiters < TranscriptWait.maximumWaiters else { throw JotError.message("\(TranscriptWait.maximumWaiters) clients are already waiting; retry later or poll transcripts.since") }
+            Self.transcriptWaiters += 1
+            defer { Self.transcriptWaiters -= 1 }
+            let store = library.store
+            let outcome = try await TranscriptWait.run(cursor: cursor.map(Int64.init), generation: generation, timeout: timeout,
+                now: { ProcessInfo.processInfo.systemUptime },
+                read: { cursor, generation in
+                    try await Task.detached(priority: .userInitiated) {
+                        try store?.changes(since: cursor, generation: generation, sessionID: sessionID, limit: limit) ?? TranscriptChanges(rows: [], cursor: cursor ?? 0, hasMore: false)
+                    }.value
+                },
+                sleep: { try await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) })
+            var page = try object(outcome.page) as? [String: Any] ?? [:]
+            page["timedOut"] = outcome.timedOut
+            result = page
         case .transcriptsRead:
             guard let id = params["id"] as? String else { throw JotError.message("id is required") }
             let store = library.store

@@ -27,6 +27,7 @@ public enum LocalMethod: String, CaseIterable, Sendable {
     case transcriptsEvents = "transcripts.events"
     case transcriptsSessions = "transcripts.sessions"
     case transcriptsSince = "transcripts.since"
+    case transcriptsWait = "transcripts.wait"
     case transcriptsRead = "transcripts.read"
     case transcriptsExport = "transcripts.export"
     case suggestionsRecent = "suggestions.recent"
@@ -39,6 +40,6 @@ public enum LocalMethod: String, CaseIterable, Sendable {
     case peopleDelete = "people.delete"
     case speakersLabel = "speakers.label"
 
-    /// Methods that can wait on a model download or load, a file's recognition or a meeting's last speech, so clients allow them longer.
-    public var isLongRunning: Bool { [.modelsPrepare, .speechTranscribeFile, .speechStart, .speechMeetingStart, .speechMeetingEnd].contains(self) }
+    /// Methods that can wait on a model download or load, a file's recognition, a meeting's last speech or new transcript changes, so clients allow them longer.
+    public var isLongRunning: Bool { [.modelsPrepare, .speechTranscribeFile, .speechStart, .speechMeetingStart, .speechMeetingEnd, .transcriptsWait].contains(self) }
 }

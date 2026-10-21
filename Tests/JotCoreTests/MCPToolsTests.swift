@@ -52,6 +52,21 @@ final class MCPToolsTests: XCTestCase {
         try assertRejects("transcripts_since", #"{"offset": 5}"#, "Unknown argument: offset")
     }
 
+    func testWaitTakesTheFeedPositionAndABoundedTimeout() throws {
+        let wait = try tool("transcripts_wait")
+        XCTAssertEqual(wait.method, .transcriptsWait)
+        XCTAssertTrue(wait.readOnly)
+        XCTAssertTrue(wait.method.isLongRunning)
+        XCTAssertNoThrow(try wait.validate(arguments: [:]))
+        XCTAssertNoThrow(try wait.validate(arguments: decode(#"{"cursor": 7, "generation": "g", "sessionID": "s1", "limit": 200, "timeoutSeconds": 110}"#)))
+        XCTAssertNoThrow(try wait.validate(arguments: decode(#"{"timeoutSeconds": 0}"#)))
+        try assertRejects("transcripts_wait", #"{"timeoutSeconds": 111}"#, "timeoutSeconds exceeds its maximum")
+        try assertRejects("transcripts_wait", #"{"timeoutSeconds": -1}"#, "timeoutSeconds must be a nonnegative integer")
+        try assertRejects("transcripts_wait", #"{"timeoutSeconds": true}"#, "timeoutSeconds must be a nonnegative integer")
+        try assertRejects("transcripts_wait", #"{"cursor": "3"}"#, "cursor must be a nonnegative integer")
+        try assertRejects("transcripts_wait", #"{"offset": 1}"#, "Unknown argument: offset")
+    }
+
     func testNamesAndMethodsAreUniqueAndRequiredKeysAreDeclared() {
         let names = MCPTool.catalog.map(\.name), methods = MCPTool.catalog.map(\.method)
         XCTAssertEqual(Set(names).count, names.count)
@@ -61,7 +76,7 @@ final class MCPToolsTests: XCTestCase {
 
     func testOnlyReadingToolsAreReadOnly() {
         XCTAssertEqual(MCPTool.catalog.filter(\.readOnly).map(\.name), ["speech_status", "activity_report", "transcripts_search", "transcripts_recent",
-                                                                        "transcripts_since", "transcripts_read", "transcripts_sessions", "transcripts_export", "transcripts_events", "people_list"])
+                                                                        "transcripts_since", "transcripts_wait", "transcripts_read", "transcripts_sessions", "transcripts_export", "transcripts_events", "people_list"])
     }
     func testActivityReportIsBoundedReadOnlyAndValidatesSocketArguments() throws {
         let activity = try tool("activity_report")
