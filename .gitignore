@@ -11,3 +11,5 @@ work/
 
 __pycache__/
 *.pyc
+# Wrangler state from deploying the analytics Worker (services/analytics)
+services/analytics/.wrangler/
