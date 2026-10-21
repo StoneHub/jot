@@ -9,8 +9,8 @@ public final class LocalServiceServer: @unchecked Sendable {
     public typealias Handler = @Sendable (Data) async -> Data
     public typealias PeerPredicate = @Sendable (String) -> Bool
     /// What the Vorssaint helper may call: text-free controls and the switch's actions.
-    public static let helperMethods: Set<String> = ["speech.controls", "speech.pause", "speech.resume",
-                                                    "speech.meeting_start", "speech.meeting_end"]
+    public static let helperMethods = Set([LocalMethod.speechControls, .speechPause, .speechResume,
+                                           .speechMeetingStart, .speechMeetingEnd].map(\.rawValue))
     private static let log = Logger(subsystem: "space.jot.app", category: "local-service")
     private let socketURL: URL
     private let handler: Handler
