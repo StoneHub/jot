@@ -4,7 +4,7 @@ import Foundation
 /// `jot-vorssaint` helper while the feature is on and exchanges one JSON line
 /// per request. Replies carry only what `ControlSnapshot` carries, so no meeting
 /// title, target app or audio reaches the host, and transcript text only as the
-/// opt-in preview.
+/// preview, which is on by default and off with Share transcript preview.
 ///
 /// The host names the contract version in each request and gets the same version back. Version 2 adds, each only
 /// when it has a value, `startedAt` (the meeting's start, ISO 8601), `notice` (a `ControlNotice` code) and `preview`
