@@ -7,8 +7,8 @@ public struct MCPTool {
     public let description: String
     public let properties: [String: Any]
     public let required: [String]
-    /// Tools that only read transcripts, status, or remembered voices.
-    public var readOnly: Bool { method.rawValue.hasPrefix("transcripts.") || [.speechStatus, .activityReport, .sessionsNotes, .peopleList].contains(method) }
+    /// Tools that only read transcripts, status, notes, remembered voices or vocabulary.
+    public var readOnly: Bool { method.rawValue.hasPrefix("transcripts.") || [.speechStatus, .activityReport, .sessionsNotes, .peopleList, .vocabularyList].contains(method) }
 
     init(_ name: String, _ method: LocalMethod, _ description: String, _ properties: [String: Any], _ required: [String]) {
         self.name = name; self.method = method; self.description = description; self.properties = properties; self.required = required
@@ -41,6 +41,9 @@ public struct MCPTool {
         MCPTool("context_add", .contextAdd, "Give Jot one message from the current agent conversation, so a suggestion the user requests can draw on it. Kept in memory for the suggestion window only, never saved. Role is user or assistant; source names the app.", ["role": ["type": "string", "maxLength": 9], "source": ["type": "string", "maxLength": 64], "conversation": ["type": "string", "maxLength": 200], "text": ["type": "string", "maxLength": 8192]], ["role", "source", "text"]),
         MCPTool("context_clear", .contextClear, "Forget every agent message Jot is holding for suggestions.", [:], []),
         MCPTool("people_list", .peopleList, "List the voices Jot remembers: id, name, and how many voice samples each holds. The first row, id \"you\", is the user's own voice learned from dictation once Jot has learned it. Embeddings are not returned.", [:], []),
+        MCPTool("vocabulary_list", .vocabularyList, "List the user's personal vocabulary: each entry's id, preferred spelling, the heard phrase it replaces (empty means it fixes the capitalization of the preferred spelling), and whether it is enabled. Dictation applies enabled entries before inserting text.", [:], []),
+        MCPTool("vocabulary_save", .vocabularySave, "Add a vocabulary entry when the user asks, or edit one by id. preferred is the spelling to insert; heard is the phrase recognition produces, such as \"jot\" for Jot or \"see plus plus\" for C++; omit heard to fix capitalization only. Editing keeps fields you leave out. Applies to the next dictation.", ["id": ["type": "string"], "preferred": ["type": "string", "maxLength": 200], "heard": ["type": "string", "maxLength": 200], "enabled": ["type": "boolean"]], []),
+        MCPTool("vocabulary_remove", .vocabularyRemove, "Remove one vocabulary entry by id when the user asks.", ["id": ["type": "string"]], ["id"]),
         MCPTool("people_forget", .peopleForget, "Forget one remembered voice by id when the user asks; id \"you\" forgets the user's own learned voice. Names already written into sessions stay.", ["id": ["type": "string"]], ["id"])
     ] }
     public static var limitSchema: [String: Any] { ["type": "integer", "minimum": 1, "maximum": 200, "default": 50] }
@@ -52,7 +55,9 @@ public struct MCPTool {
         for key in required where arguments[key] == nil { throw MCPToolError.invalid("Missing argument: \(key)") }
         for (key, value) in arguments {
             guard let schema = properties[key] as? [String: Any] else { continue }
-            if schema["type"] as? String == "string" {
+            if schema["type"] as? String == "boolean" {
+                guard let flag = value as? NSNumber, CFGetTypeID(flag) == CFBooleanGetTypeID() else { throw MCPToolError.invalid("\(key) must be true or false") }
+            } else if schema["type"] as? String == "string" {
                 guard let string = value as? String, !string.isEmpty else { throw MCPToolError.invalid("\(key) must be a nonempty string") }
                 if let maximum = schema["maxLength"] as? Int, string.count > maximum { throw MCPToolError.invalid("\(key) is too long") }
             } else {

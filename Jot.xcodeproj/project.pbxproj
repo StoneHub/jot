@@ -482,6 +482,7 @@
 		FDDB1C44F2D46693D68E7763 /* FieldInsertionReadback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 419957505FDADA9EC1F97F1B /* FieldInsertionReadback.swift */; };
 		FDDFD60A787B8C6899F75E1C /* SpeakerPassResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A5260FABD83BB1B61C7AA29 /* SpeakerPassResult.swift */; };
 		FE004F3E87FE916B6C2DA938 /* SuggestionPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD9DA69C44C08A69E9538F78 /* SuggestionPrompt.swift */; };
+		FE3F9DADA0F4A0B0B9C6B8C9 /* VocabularyRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3321DB93DE84C38CD3A6D3E0 /* VocabularyRequest.swift */; };
 		FE9F5EDB81D0373A91704F8A /* RecoveryFlowChecks+FailureAndCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70F0AB0F8B42B72DB6BAD8A0 /* RecoveryFlowChecks+FailureAndCleanup.swift */; };
 		FFC80F23F1459D2F666D0C11 /* DictationInput+Accessibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE390AF5C97475F71AD2918D /* DictationInput+Accessibility.swift */; };
 /* End PBXBuildFile section */
@@ -665,6 +666,7 @@
 		3078D9C965950A3E9ED18B49 /* SetupProgress.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupProgress.swift; sourceTree = "<group>"; };
 		31F7EE07CA30F7AAD14BDAB9 /* AudioInputDeviceWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioInputDeviceWatcher.swift; sourceTree = "<group>"; };
 		329EA9649EEFF355ABA6A205 /* JotVorssaint */ = {isa = PBXFileReference; includeInIndex = 0; path = JotVorssaint; sourceTree = BUILT_PRODUCTS_DIR; };
+		3321DB93DE84C38CD3A6D3E0 /* VocabularyRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabularyRequest.swift; sourceTree = "<group>"; };
 		35E6B986F9E9763E984076A4 /* WindowImageGeneration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowImageGeneration.swift; sourceTree = "<group>"; };
 		36EED2B8F9A3A149CE94E3D2 /* SemanticVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticVersion.swift; sourceTree = "<group>"; };
 		376C255B9F520C8BBE2CD76A /* TranscriptListenConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptListenConfiguration.swift; sourceTree = "<group>"; };
@@ -1343,6 +1345,7 @@
 				C34AF98B190AE8AD30B25C75 /* VocabularyError.swift */,
 				F13ACF0544750F59352B8382 /* VocabularyPatternCache.swift */,
 				6377DB9D5C692E4E97A8BE65 /* VocabularyPreferences.swift */,
+				3321DB93DE84C38CD3A6D3E0 /* VocabularyRequest.swift */,
 				64EA31B889F5FAAE4DD86464 /* VorssaintFeature.swift */,
 				35E6B986F9E9763E984076A4 /* WindowImageGeneration.swift */,
 				4F839A8A3345995EC3FF4F95 /* WindowImageGeometry.swift */,
@@ -1975,6 +1978,7 @@
 				3E7F950DED6000E6A39CDA4E /* VocabularyError.swift in Sources */,
 				1916303AD706B15000CF6DDA /* VocabularyPatternCache.swift in Sources */,
 				05618F73F3D294B80EC9AEDE /* VocabularyPreferences.swift in Sources */,
+				FE3F9DADA0F4A0B0B9C6B8C9 /* VocabularyRequest.swift in Sources */,
 				31B15D9DEDF1E69DD66BFBF2 /* VorssaintFeature.swift in Sources */,
 				B42C227281EA9DC25271DA8B /* WindowImageGeneration.swift in Sources */,
 				F3A5DDA2D07BE624C47FD821 /* WindowImageGeometry.swift in Sources */,

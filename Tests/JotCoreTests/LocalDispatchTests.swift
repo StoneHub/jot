@@ -62,7 +62,7 @@ final class LocalDispatchTests: XCTestCase {
             "models.prepare", "models.unload", "models.check", "sessions.title", "sessions.notes", "settings.get", "settings.set", "settings.reset",
             "transcripts.clear", "transcripts.delete_session", "transcripts.search", "transcripts.recent", "transcripts.events",
             "transcripts.sessions", "transcripts.since", "transcripts.wait", "transcripts.read", "transcripts.export", "suggestions.recent",
-            "context.add", "context.hook", "context.clear", "people.list", "people.forget", "people.delete", "speakers.label",
+            "context.add", "context.hook", "context.clear", "people.list", "people.forget", "people.delete", "speakers.label", "vocabulary.list", "vocabulary.save", "vocabulary.remove",
         ])
         XCTAssertEqual(LocalMethod.allCases.filter(\.isLongRunning), [.speechStart, .speechMeetingStart, .speechMeetingEnd, .speechTranscribeFile, .modelsPrepare, .sessionsNotes, .transcriptsWait])
     }

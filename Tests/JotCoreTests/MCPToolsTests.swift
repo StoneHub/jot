@@ -67,6 +67,18 @@ final class MCPToolsTests: XCTestCase {
         try assertRejects("transcripts_wait", #"{"offset": 1}"#, "Unknown argument: offset")
     }
 
+    func testVocabularyToolsTakeBooleansAndBoundedText() throws {
+        XCTAssertTrue(try tool("vocabulary_list").readOnly)
+        let save = try tool("vocabulary_save")
+        XCTAssertFalse(save.readOnly)
+        XCTAssertNoThrow(try save.validate(arguments: decode(#"{"preferred": "Jot", "heard": "jot", "enabled": false}"#)))
+        XCTAssertNoThrow(try save.validate(arguments: decode(#"{"id": "8B0F2C1E-6B1A-4C55-9E3B-1C1F4A7E2D10", "enabled": true}"#)))
+        try assertRejects("vocabulary_save", #"{"preferred": "Jot", "enabled": 1}"#, "enabled must be true or false")
+        try assertRejects("vocabulary_save", #"{"preferred": "Jot", "enabled": "yes"}"#, "enabled must be true or false")
+        try assertRejects("vocabulary_save", #"{"preferred": "\#(String(repeating: "a", count: 201))"}"#, "preferred is too long")
+        try assertRejects("vocabulary_remove", #"{}"#, "Missing argument: id")
+    }
+
     func testNamesAndMethodsAreUniqueAndRequiredKeysAreDeclared() {
         let names = MCPTool.catalog.map(\.name), methods = MCPTool.catalog.map(\.method)
         XCTAssertEqual(Set(names).count, names.count)
@@ -76,7 +88,7 @@ final class MCPToolsTests: XCTestCase {
 
     func testOnlyReadingToolsAreReadOnly() {
         XCTAssertEqual(MCPTool.catalog.filter(\.readOnly).map(\.name), ["speech_status", "activity_report", "sessions_notes", "transcripts_search", "transcripts_recent",
-                                                                        "transcripts_since", "transcripts_wait", "transcripts_read", "transcripts_sessions", "transcripts_export", "transcripts_events", "people_list"])
+                                                                        "transcripts_since", "transcripts_wait", "transcripts_read", "transcripts_sessions", "transcripts_export", "transcripts_events", "people_list", "vocabulary_list"])
     }
     func testActivityReportIsBoundedReadOnlyAndValidatesSocketArguments() throws {
         let activity = try tool("activity_report")
