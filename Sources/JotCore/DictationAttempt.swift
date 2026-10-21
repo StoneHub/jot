@@ -11,13 +11,6 @@ public struct DictationAttempt: Codable, Equatable, Sendable, Identifiable {
         case deliveryUnverified
         case delivered
         case discarded
-
-        public var isRecoverable: Bool {
-            switch self {
-            case .capturing, .recognizing, .ready, .deliveryFailed, .deliveryUnverified: true
-            default: false
-            }
-        }
     }
 
     public var id: String

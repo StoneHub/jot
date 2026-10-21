@@ -113,11 +113,6 @@ final class MicrophoneCapture: MicrophoneSource, @unchecked Sendable {
         return result
     }
 
-    func discardBufferedAudio() {
-        lock.lock(); defer { lock.unlock() }
-        pending.removeAll(keepingCapacity: false); dropped = 0; rms = 0
-    }
-
     func stop() {
         engine.stop()
         if tapInstalled { engine.inputNode.removeTap(onBus: 0); tapInstalled = false }
