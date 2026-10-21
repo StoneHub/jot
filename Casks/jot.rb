@@ -20,14 +20,13 @@ cask "jot" do
   # flag only after the signature verifies and names Jot's team; anything else keeps Gatekeeper's check.
   postflight do
     app = "#{appdir}/Jot.app"
-    verified = system_command("/usr/bin/codesign", args: ["--verify", "--deep", "--strict", app]).success?
-    details = system_command("/usr/bin/codesign", args: ["-dv", app], print_stderr: false)
-    team = details.stderr[/^TeamIdentifier=(\S+)$/, 1]
-    if verified && team == "N6GPP46885"
+    # The requirement ties the team to an Apple-issued leaf certificate; AppUpdater.officialRequirement is the same.
+    requirement = 'anchor apple generic and certificate leaf[subject.OU] = "N6GPP46885"'
+    verify = system_command("/usr/bin/codesign", args: ["--verify", "--deep", "--strict", "-R=#{requirement}", app])
+    if verify.success?
       system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", app]
     else
-      opoo "Jot's signature did not verify for team N6GPP46885 (found #{team.inspect}); " \
-           "macOS will ask before the first launch."
+      opoo "Jot's signature does not meet the requirement for team N6GPP46885; macOS will ask before the first launch."
     end
   end
 
