@@ -57,4 +57,11 @@ final class UsageReportTests: XCTestCase {
         }
         XCTAssertEqual(try store.usageCounts(from: "2026-10-19", through: "2026-10-20"), ["2026-10-19": ["suggestion.requested": 1]])
     }
+
+    /// The Worker answers only POST /v1/usage, over HTTPS.
+    func testEndpointIsTheWorkersReportRoute() throws {
+        let endpoint = try XCTUnwrap(UsageReport.endpoint)
+        XCTAssertEqual(endpoint.scheme, "https")
+        XCTAssertEqual(endpoint.path, "/v1/usage")
+    }
 }

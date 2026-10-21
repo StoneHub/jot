@@ -15,8 +15,8 @@ public struct UsageReport: Codable, Sendable, Equatable {
     public let arch: String
     public let days: [Day]
 
-    /// The deployed Worker's report URL. Nil until the Worker is deployed, and nothing is sent while it is nil.
-    public static let endpoint: URL? = nil
+    /// The deployed Worker's report URL (services/analytics). Nothing is sent while it is nil.
+    public static let endpoint = URL(string: "https://jot-analytics.monroesawesome.workers.dev/v1/usage")
     /// The Worker refuses more days than this in one report and days older than `maximumAgeDays`; the reporter reads a
     /// little less than that, since the Worker's date can run up to a day ahead of the Mac's.
     public static let maximumDays = 7

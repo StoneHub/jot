@@ -8,5 +8,5 @@ enabled = false
 [[d1_databases]]
 binding = "DB"
 database_name = "jot-analytics"
-# Filled in by `wrangler d1 create jot-analytics` (see README.md).
-database_id = "REPLACE_WITH_DATABASE_ID"
+# Created with `wrangler d1 create jot-analytics` (see README.md). A database id is not a secret: deploying needs the account login too.
+database_id = "663e42e9-7115-463d-8939-35b62f2eac65"

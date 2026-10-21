@@ -29,4 +29,4 @@ Transcript text, audio, cleaned text, suggestions, field contents, app names or 
 
 Sharing is on by default. Setup says so, and **Settings → Privacy → Share anonymous usage counts** turns it off (`jot settings set shareUsage false` does the same). Days that finish while it is off are never sent, even after it is turned back on. The first run after installing only marks yesterday as done, so a new install's first report is the next day's. Turning sharing off leaves the counters on the Mac for Activity.
 
-Nothing is sent until `UsageReport.endpoint` (`Sources/JotCore/UsageReport.swift`) names the deployed Worker.
+Reports go to `UsageReport.endpoint` (`Sources/JotCore/UsageReport.swift`), the Worker deployed from `services/analytics` at `https://jot-analytics.monroesawesome.workers.dev/v1/usage`. Setting it to nil stops all sending.
