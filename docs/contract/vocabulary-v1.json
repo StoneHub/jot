@@ -1,0 +1,21 @@
+{
+  "entries" : [
+    {
+      "enabled" : true,
+      "heard" : "",
+      "preferred" : "SwiftUI"
+    },
+    {
+      "enabled" : true,
+      "heard" : "see plus plus",
+      "preferred" : "C++"
+    },
+    {
+      "enabled" : false,
+      "heard" : "mon row",
+      "preferred" : "Monroe"
+    }
+  ],
+  "format" : "jot.vocabulary",
+  "version" : 1
+}

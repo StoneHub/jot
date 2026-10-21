@@ -110,6 +110,8 @@ Jot converts explicit spoken symbol names such as `forward slash`, `at sign`, `u
 
 Personal vocabulary is then applied before Fn dictation is inserted into your target app, using the entries enabled when that dictation began. Personal entries stay in Jot's local preferences; this does not train or change the recognition model.
 
+To move your vocabulary to another Mac, run `jot vocabulary export > vocabulary.json` and, on the other Mac, `jot vocabulary import vocabulary.json`. Import adds entries and skips any phrase already in the list; nothing is changed or removed. The file stays wherever you put it. Its format is the one Jot for Android will read, described in [the shared contract](docs/SHARED-CONTRACT.md).
+
 ## Tune it to the conversation
 
 Choose a preset or adjust speaker confidence, minimum turn length, and pauses between paragraphs. Hide filler-only rows while keeping the original text.
@@ -158,6 +160,7 @@ jot notes <session-id>           # Summary, decisions and action items, written 
 jot people                       # Voices Jot remembers
 jot forget <person-id>           # Forget one voice; session names stay
 jot vocabulary                   # Personal vocabulary; add <spelling> [--heard <phrase>] or remove <id>
+jot vocabulary export > vocabulary.json   # Versioned file; import <file> adds its new entries
 jot diagnostics            # Local performance report, no captured content
 jot settings                     # Every setting, its default, and whether you changed it
 jot settings set paragraphPause 2   # Applies at once; jot settings reset <key> follows the default again
