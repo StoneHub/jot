@@ -22,12 +22,14 @@ final class InstallPlacementTests: XCTestCase {
     func testNewerDownloadOffersReplaceInsteadOfOpeningTheOlderCopy() {
         XCTAssertEqual(decide(), .offerReplace(installed: SemanticVersion.parse("0.3.3")!))
         XCTAssertEqual(decide(installedRunning: true), .installedRunning)
+        XCTAssertEqual(decide(declined: true), .offerReplace(installed: SemanticVersion.parse("0.3.3")!),
+                       "Declining a first install does not stop a newer copy offering to replace an older one")
     }
 
     func testSameOrOlderCopyOpensTheInstalledOne() {
         XCTAssertEqual(decide(running: "0.3.3"), .openInstalled)
         XCTAssertEqual(decide(running: "0.3.2"), .openInstalled)
         XCTAssertEqual(decide(installed: nil), .openInstalled, "An unreadable installed version keeps the old hand-off")
-        XCTAssertEqual(decide(declined: true), .openInstalled, "Declining a first install does not hide an installed copy")
+        XCTAssertEqual(decide(running: "0.3.3", declined: true), .openInstalled, "Declining a first install does not hide an installed copy")
     }
 }
