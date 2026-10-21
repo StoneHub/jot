@@ -155,7 +155,7 @@ final class ShortcutEventTap: @unchecked Sendable {
         if newTap != nil, newSource != nil {
             // Sleeps until a key event or stop(); the timeout is only a backstop, not a poll.
             while lock.withLock({ running }) {
-                CFRunLoopRunInMode(.defaultMode, 5, false)
+                CFRunLoopRunInMode(.defaultMode, 1, false)
             }
         }
         lock.withLock {
