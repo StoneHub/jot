@@ -213,7 +213,9 @@ final class ShortcutEventTap: @unchecked Sendable {
         case .none: break
         }
         if suggestion.consume { return Decision(consume: true, actions: actions) }
-        if kind == .keyDown && !suggestion.screenshot { actions.append(.typed) }
+        // Auto-repeat of a held chord shortcut's own key is not typing; it must not cancel the hold's field lookup.
+        let shortcutRepeat = repeating && recording && config.shortcut.keyCode == keyCode
+        if kind == .keyDown && !suggestion.screenshot && !shortcutRepeat { actions.append(.typed) }
         if let request = config.suggestionShortcut, request.keyCode == keyCode,
            request.modifiers == unmodifiedFn, !allowed {
             if kind == .keyDown && !repeating { actions.append(.suggestionRefused) }
