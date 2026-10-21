@@ -22,7 +22,8 @@ public struct PersonalVocabulary: Codable, Equatable, Sendable {
 
     public mutating func remove(_ id: UUID) { entries.removeAll { $0.id == id } }
 
-    private static func matchKey(_ value: String) -> String {
+    /// How two phrases compare: case and runs of whitespace do not count. An import uses it to find entries the list already has.
+    static func matchKey(_ value: String) -> String {
         value.split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased()
     }
 

@@ -11,6 +11,7 @@ struct JotCLI {
             if args.first == "mcp" { try MCPServer().run(); return }
             if args.first == "lab" { try LabCommand.run(Array(args.dropFirst())) }
             if args.count >= 2, args[0] == "settings", args[1] == "import" { try SettingsImport.run(Array(args.dropFirst(2))); return }
+            if args.count >= 2, args[0] == "vocabulary", ["export", "import"].contains(args[1]) { try VocabularyTransfer.run(Array(args.dropFirst())); return }
             if args.isEmpty || ["help", "--help", "-h"].contains(args[0]) { print(usage); return }
             let (method, params) = try command(args)
             let data = try LocalServiceClient().request(method, params: params)
@@ -62,6 +63,9 @@ struct JotCLI {
     jot vocabulary                     Personal vocabulary dictation applies
     jot vocabulary add <spelling> [--heard <phrase>]
     jot vocabulary remove <id>
+    jot vocabulary export > <file.json> Versioned vocabulary file for another Mac or Jot for Android
+    jot vocabulary import <file.json | ->
+                                       Add the file's entries; entries whose phrase Jot has are kept as they are
     jot forget <person-id>             Forget one remembered voice; session names stay
     jot diagnostics                    Bounded performance report; no captured content
     jot lab <audio> --variants <file.json> --out <dir> [--captions <file.srt|.vtt>]
@@ -195,7 +199,7 @@ struct JotCLI {
             } else { params["text"] = rest.joined(separator: " ") }
             return (.contextAdd, params)
         case "vocabulary":
-            let use = "Use: jot vocabulary, jot vocabulary add <spelling> [--heard <phrase>], or jot vocabulary remove <id>"
+            let use = "Use: jot vocabulary, jot vocabulary add <spelling> [--heard <phrase>], jot vocabulary remove <id>, jot vocabulary export, or jot vocabulary import <file>"
             if args.count == 1 { return (.vocabularyList, [:]) }
             if args.count == 3, args[1] == "remove" { return (.vocabularyRemove, ["id": args[2]]) }
             guard args.count >= 3, args[1] == "add" else { throw CLIError.usage(use) }

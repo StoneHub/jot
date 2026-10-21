@@ -342,6 +342,7 @@
 		B542C3A25DF4D48218C05DD4 /* SuggestionDraftSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2435CA90A7F439503A804B79 /* SuggestionDraftSnapshot.swift */; };
 		B57C5BFBEEB6A1893A461DF9 /* SavedSuggestionInteraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 972C32437B75A2F1E380916A /* SavedSuggestionInteraction.swift */; };
 		B5936C02C5E2864E400D1C5A /* UsageCounter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81B533FB95E04B9DC3812CC0 /* UsageCounter.swift */; };
+		B59548A3A6707222421810CF /* VocabularyTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC6C2F4DF58BDF92B957904F /* VocabularyTransfer.swift */; };
 		B59F8FF8754066A4E21E0AED /* ScreenText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2489F7534B23FECFD6C1A472 /* ScreenText.swift */; };
 		B60324BDAD436C13A805A5B8 /* CaptureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C898180408412523C4E31E37 /* CaptureController.swift */; };
 		B64E540EDB82AA0DA92AEE1A /* SpeechServiceDependencies.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDAC26C059DEAE2398D1B2F3 /* SpeechServiceDependencies.swift */; };
@@ -484,6 +485,7 @@
 		FE004F3E87FE916B6C2DA938 /* SuggestionPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD9DA69C44C08A69E9538F78 /* SuggestionPrompt.swift */; };
 		FE3F9DADA0F4A0B0B9C6B8C9 /* VocabularyRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3321DB93DE84C38CD3A6D3E0 /* VocabularyRequest.swift */; };
 		FE9F5EDB81D0373A91704F8A /* RecoveryFlowChecks+FailureAndCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70F0AB0F8B42B72DB6BAD8A0 /* RecoveryFlowChecks+FailureAndCleanup.swift */; };
+		FF6CCEA087E4CE7CAF09AB82 /* VocabularyFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B4EA83AAF05D9A3C9A59670 /* VocabularyFile.swift */; };
 		FFC80F23F1459D2F666D0C11 /* DictationInput+Accessibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE390AF5C97475F71AD2918D /* DictationInput+Accessibility.swift */; };
 /* End PBXBuildFile section */
 
@@ -658,6 +660,7 @@
 		28AE551FCAA2CAED947E1EAE /* MemoryDefaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryDefaults.swift; sourceTree = "<group>"; };
 		2AF537A90CCFD9AEEF273426 /* ThirdPartyNotices.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ThirdPartyNotices.txt; sourceTree = "<group>"; };
 		2B277E5F8CDF99C4DA21F4D1 /* ControlSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlSnapshot.swift; sourceTree = "<group>"; };
+		2B4EA83AAF05D9A3C9A59670 /* VocabularyFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabularyFile.swift; sourceTree = "<group>"; };
 		2D3E2A8F0476055DA69DA674 /* VocabularyEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabularyEntry.swift; sourceTree = "<group>"; };
 		2D6BAC2FBEA770A74E3E8409 /* JotLab */ = {isa = PBXFileReference; includeInIndex = 0; path = JotLab; sourceTree = BUILT_PRODUCTS_DIR; };
 		2DA4BC7B9CB344B1C9ACF3E8 /* SpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechService.swift; sourceTree = "<group>"; };
@@ -896,6 +899,7 @@
 		EA5056B84E7AD6B092886919 /* check-recovery-flow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "check-recovery-flow.swift"; sourceTree = "<group>"; };
 		EB3AB1D693CA7BEC64B47137 /* ExclusionReason.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExclusionReason.swift; sourceTree = "<group>"; };
 		EBA0F84BDC3CF425D094A331 /* JotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JotApp.swift; sourceTree = "<group>"; };
+		EC6C2F4DF58BDF92B957904F /* VocabularyTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabularyTransfer.swift; sourceTree = "<group>"; };
 		EDD68923576B49C8E0509214 /* SuggestionRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionRequest.swift; sourceTree = "<group>"; };
 		F071532743028065D94AB99B /* WindowImageCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowImageCapture.swift; sourceTree = "<group>"; };
 		F13ACF0544750F59352B8382 /* VocabularyPatternCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabularyPatternCache.swift; sourceTree = "<group>"; };
@@ -1343,6 +1347,7 @@
 				BEE0D4A32940C28F6C72D68D /* UserVoiceStore.swift */,
 				2D3E2A8F0476055DA69DA674 /* VocabularyEntry.swift */,
 				C34AF98B190AE8AD30B25C75 /* VocabularyError.swift */,
+				2B4EA83AAF05D9A3C9A59670 /* VocabularyFile.swift */,
 				F13ACF0544750F59352B8382 /* VocabularyPatternCache.swift */,
 				6377DB9D5C692E4E97A8BE65 /* VocabularyPreferences.swift */,
 				3321DB93DE84C38CD3A6D3E0 /* VocabularyRequest.swift */,
@@ -1382,6 +1387,7 @@
 				C3A6C0E6D4390B51F5EF3B06 /* MCPInstructions.swift */,
 				71EF94231FF8167AE8FB7F96 /* MCPServer.swift */,
 				12FD7C3A2AB9A0D631EB43AB /* SettingsImport.swift */,
+				EC6C2F4DF58BDF92B957904F /* VocabularyTransfer.swift */,
 			);
 			name = JotCLI;
 			path = Sources/JotCLI;
@@ -1703,6 +1709,7 @@
 				1065516243BA2B972D73899B /* MCPInstructions.swift in Sources */,
 				C459A6157EBC0A760BE2491D /* MCPServer.swift in Sources */,
 				7E95AF1C0F6CBAA227D80723 /* SettingsImport.swift in Sources */,
+				B59548A3A6707222421810CF /* VocabularyTransfer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1976,6 +1983,7 @@
 				330CF17CE150D5474557F32D /* UserVoiceStore.swift in Sources */,
 				0F04B2A258C0F94B2BCA8680 /* VocabularyEntry.swift in Sources */,
 				3E7F950DED6000E6A39CDA4E /* VocabularyError.swift in Sources */,
+				FF6CCEA087E4CE7CAF09AB82 /* VocabularyFile.swift in Sources */,
 				1916303AD706B15000CF6DDA /* VocabularyPatternCache.swift in Sources */,
 				05618F73F3D294B80EC9AEDE /* VocabularyPreferences.swift in Sources */,
 				FE3F9DADA0F4A0B0B9C6B8C9 /* VocabularyRequest.swift in Sources */,
