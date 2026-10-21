@@ -15,6 +15,7 @@ final class ChosenModelTests: XCTestCase {
             let model = ChosenModel(feature, settings: settings, apple: FixedProvider(), key: { _ in XCTFail("No key is read for Apple"); return nil })
             XCTAssertFalse(model.usesCustomModel)
             XCTAssertTrue(model.isOnDevice)
+            XCTAssertEqual(model.displayName, "Apple on-device")
             XCTAssertEqual(model.availability(orApple: .notEnabled), .notEnabled)
             let text = try await model.generate(ModelRequest(instructions: "", prompt: "", maximumResponseTokens: 1))
             XCTAssertEqual(text, "apple")
@@ -31,6 +32,8 @@ final class ChosenModelTests: XCTestCase {
         XCTAssertTrue(suggestions.current is RemoteModelProvider)
         XCTAssertTrue(suggestions.isOnDevice, "The default endpoint is Ollama on this Mac")
         XCTAssertEqual(suggestions.availability(orApple: .notEnabled), .available)
+        XCTAssertEqual(suggestions.displayName, "llama3.2", "Status names the custom model, not Apple's")
+        XCTAssertEqual(ChosenModel(.cleanup, settings: settings, apple: FixedProvider()).displayName, "Apple on-device")
 
         try settings.set(JotSettings.customModelEndpoint, "https://api.example.com/v1")
         XCTAssertFalse(suggestions.isOnDevice)

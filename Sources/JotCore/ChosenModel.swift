@@ -28,6 +28,8 @@ public struct ChosenModel: GenerationProvider {
     }
 
     public var usesCustomModel: Bool { settings.bool(feature.settingKey) }
+    /// The model's name as `jot status` and `jot notes` report it.
+    public var displayName: String { usesCustomModel ? settings.text(JotSettings.customModelName) : "Apple on-device" }
 
     /// The provider for a request made now.
     public var current: any GenerationProvider {
