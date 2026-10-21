@@ -125,6 +125,12 @@ struct TranscriptView: View {
         // A fresh start opens Live; changing microphones leaves the current tab and selection alone. Setup stays on screen while its level check or trial dictation starts the microphone.
         .onChange(of: service.livePresentationRevision) { _, _ in if section != .setup { section = .live } }
         .onChange(of: setup.requested) { _, requested in if requested { showRequestedSetup() } }
+        // Publishes its current value on appear too, so a request made before the window opened still lands.
+        .onReceive(delegate.updater.$revealRequested) { requested in
+            guard requested else { return }
+            delegate.updater.revealRequested = false
+            section = .models
+        }
     }
 
     /// Launch and the Set Up Jot command ask for setup; the request waits until this window is open to show it.
@@ -221,6 +227,7 @@ struct TranscriptView: View {
                     .foregroundStyle(item.isSetting && section != item ? Color.secondary : Color.primary)
                 Spacer(minLength: 0)
                 if item == .live && service.ambientEnabled { Circle().fill(.red).frame(width: 8, height: 8).accessibilityLabel("Recording") }
+                if item == .models { AppUpdateDot(updater: delegate.updater, size: 8) }
                 if let count = count(item) { countPill(count) }
             }
             .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, item.isSetting ? 8 : 12)
@@ -237,6 +244,7 @@ struct TranscriptView: View {
                 .frame(width: 40, height: item.isSetting ? 32 : 38)
                 .overlay(alignment: .topTrailing) {
                     if item == .live && service.ambientEnabled { Circle().fill(.red).frame(width: 7, height: 7).padding(4) }
+                    if item == .models { AppUpdateDot(updater: delegate.updater, size: 7).padding(4) }
                 }
                 .contentShape(RoundedRectangle(cornerRadius: JotTheme.Radius.group))
                 .modifier(NavigationSurface(selected: section == item))

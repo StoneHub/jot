@@ -304,6 +304,10 @@ struct MenuControls: View {
             }
             ServiceControls(service: service, compact: true)
                 .padding(JotTheme.Padding.card).modifier(GlassSurface(accent: JotTheme.Tint.panel))
+            AppUpdateMenuLine(updater: delegate.updater) {
+                delegate.openAction = { openWindow(id: "main") }
+                delegate.showUpdates()
+            }
             HStack {
                 ResourceReadoutView(readout: service.resourceReadout) { resources in
                     Text(String(format: "CPU %.1f%% · %.0f MB", resources.processCPUPercent, resources.residentMiB))

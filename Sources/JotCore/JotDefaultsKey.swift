@@ -8,6 +8,9 @@ public enum JotDefaultsKey {
     public static let shareUsage = "shareUsage"
     /// The newest local day (`yyyy-MM-dd`) whose usage counts were sent, or skipped while sharing was off.
     public static let usageReportedThrough = "usageReportedThrough"
+    public static let checkForUpdates = "checkForUpdates"
+    /// When Jot last got an answer from GitHub about its newest release, from the daily check or Check for updates.
+    public static let lastUpdateCheck = "lastUpdateCheck"
     public static let cleanUpTranscriptions = "cleanUpTranscriptions"
     /// Historical storage key: keep its value so custom-shortcut preferences survive.
     public static let dictationRequested = "fnRequested"
