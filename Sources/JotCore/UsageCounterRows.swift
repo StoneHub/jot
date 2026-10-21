@@ -38,6 +38,11 @@ enum UsageCounterRows {
         }
     }
 
+    /// Deletes every count. History and everything else in the database stay.
+    static func reset(_ db: SQLiteConnection) throws {
+        try db.locked { try db.execute("DELETE FROM usage_counters") }
+    }
+
     /// Counts by day key and name for the given days. Caller holds the lock.
     static func counts(_ db: SQLiteConnection, days: [String]) throws -> [String: [String: Int]] {
         guard let first = days.min(), let last = days.max() else { return [:] }

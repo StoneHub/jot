@@ -30,6 +30,7 @@ struct JotCLI {
 
     jot status                         Listening state, permissions, models, and system impact
     jot activity [--days 7|30]          Local usage totals and daily chart data, without transcript text
+    jot activity --reset-counters      Start the usage counters over; saved history is kept
     jot start                          Resume continuous listening
     jot pause                          Stop listening and end any meeting; the models stay loaded
     jot resume                         Start listening; loads the models only if they are not loaded
@@ -83,8 +84,9 @@ struct JotCLI {
         switch first {
         case "activity":
             if args.count == 1 { return (.activityReport, [:]) }
+            if args.count == 2, args[1] == "--reset-counters" { return (.usageReset, [:]) }
             guard args.count == 3, args[1] == "--days", let days = Int(args[2]), [7, 30].contains(days) else {
-                throw CLIError.usage("Use: jot activity [--days 7|30]")
+                throw CLIError.usage("Use: jot activity [--days 7|30] | jot activity --reset-counters")
             }
             return (.activityReport, ["days": days])
         case "status", "controls", "start", "pause", "resume", "diagnostics":

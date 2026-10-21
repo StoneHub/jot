@@ -406,6 +406,11 @@ public final class TranscriptStore: @unchecked Sendable {
         try UsageCounterRows.add(db, counters, at: date, calendar: calendar)
     }
 
+    /// Starts the usage counters over. Saved history is unchanged.
+    public func resetUsage() throws {
+        try UsageCounterRows.reset(db)
+    }
+
     public func metrics() throws -> StoreMetrics {
         try db.locked {
             let stmt = try db.prepare("SELECT COUNT(*),COUNT(DISTINCT session_id) FROM transcripts")
