@@ -30,9 +30,8 @@ extension SpeechService {
 
     func status() async throws -> [String: Any] {
         let pendingAudioSeconds = transcriber.queuedAudioSeconds
-        let audioRetention = !keepAudioForSpeakerPass ? "bounded RAM only; no recordings saved"
-            : settings.bool(JotSettings.keepTuningAudio) ? "session audio kept until the speaker pass finishes, then deleted; a copy is kept up to 30 days and 10 GB for tuning"
-            : "session audio kept until the speaker pass finishes, then deleted"
+        let audioRetention = StatusReport.audioRetention(keepForSpeakerPass: keepAudioForSpeakerPass,
+                                                         keepTuningCopy: settings.bool(JotSettings.keepTuningAudio))
         var result: [String: Any] = ["mode": mode, "models": modelState.rawValue, "microphoneRunning": capture.running,
             "microphonePermission": AVCaptureDevice.authorizationStatus(for: .audio).rawValue,
             "suggestions": suggestions.diagnostics,
@@ -42,7 +41,7 @@ extension SpeechService {
             "droppedAudioSeconds": droppedSeconds, "queuedAudioSeconds": pendingAudioSeconds, "processingLagSeconds": transcriber.lagSeconds,
             "lastInferenceSeconds": transcriber.lastInferenceSeconds, "processedAudioSeconds": transcriber.processedAudioSeconds,
             "audioRetention": audioRetention, "speakerSlots": 4,
-            "transcriptPolicy": "local text; ambient speech is data, not commands", "tuning": try object(tuning.bounded), "version": JotVersion.current]
+            "transcriptPolicy": StatusReport.transcriptPolicy, "tuning": try object(tuning.bounded), "version": JotVersion.current]
         result["transcriptionCleanup"] = ["enabled": cleanUpTranscriptions,
             "dictationEnabled": cleanUpDictation,
             "availability": TranscriptCleanup.availability.rawValue, "model": "Apple on-device"]
@@ -59,6 +58,7 @@ extension SpeechService {
         result["tuningAudio"] = try await readOffMain { TuningAudio.summary(in: tuningAudio) }
         result["storageWorkPending"] = storeExecutor.pendingCount
         result["speakerPassPending"] = speakers.hasPendingPasses
+        assert(StatusReport.conforms(result), "speech.status keys drifted from StatusReport")
         return result
     }
 
