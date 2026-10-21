@@ -44,7 +44,7 @@ extension SpeechService {
             "transcriptPolicy": StatusReport.transcriptPolicy, "tuning": try object(tuning.bounded), "version": JotVersion.current]
         result["transcriptionCleanup"] = ["enabled": cleanUpTranscriptions,
             "dictationEnabled": cleanUpDictation,
-            "availability": TranscriptCleanup.availability.rawValue, "model": "Apple on-device"]
+            "availability": cleanupAvailability.rawValue, "model": ChosenModel(.cleanup, settings: settings).displayName]
         result["microphone"] = ["selected": capture.inputName, "signalLevel": capture.inputLevel,
             "noSignal": capture.inputIsSilent, "findingInput": capture.findingInput, "switching": switchingInput,
             "automatic": automaticMicrophone]
@@ -152,7 +152,7 @@ extension SpeechService {
                 await gate.call(request) { try await model.generate($0) }
             }
             result = ["sessionID": id, "title": session.title ?? "", "notes": notes.text, "parts": notes.parts,
-                      "onDevice": model.isOnDevice, "model": model.usesCustomModel ? settings.text(JotSettings.customModelName) : "Apple on-device"]
+                      "onDevice": model.isOnDevice, "model": model.displayName]
         case .settingsGet: result = ["settings": settings.report(), "revision": JotSettings.revision]
         case .settingsSet:
             guard let key = params["key"] as? String, let value = params["value"] else { throw JotError.message("key and value are required") }
