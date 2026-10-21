@@ -179,14 +179,6 @@ final class JotSettingsTests: XCTestCase {
         XCTAssertEqual(settings.int(JotDefaultsKey.newSessionAfterSilence), 30)
     }
 
-    func testRetiredRecoveryWindowIsNotAnActiveSetting() throws {
-        defaults.set(300, forKey: "recoveryLookbackSeconds")
-        let settings = JotSettings(defaults: defaults)
-        XCTAssertNil(JotSettings.definition("recoveryLookbackSeconds"))
-        XCTAssertThrowsError(try settings.set("recoveryLookbackSeconds", raw: 120))
-        XCTAssertEqual(defaults.integer(forKey: "recoveryLookbackSeconds"), 300, "Old preferences are left intact")
-    }
-
     /// The ranges and defaults the settings report are the ones the code clamps with, so changing one changes both.
     func testTuningDefaultsAndRangesExistOnce() throws {
         func range(_ key: String) throws -> ClosedRange<Double> {

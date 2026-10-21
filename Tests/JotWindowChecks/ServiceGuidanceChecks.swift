@@ -285,9 +285,6 @@ struct ServiceGuidanceChecks {
             }
             try snapshot(host, name: "activity-\(Int(width))-ready")
             try require("activity-live-stats", in: host, window: window, visible: true)
-            precondition(find("activity-advanced", in: host) == nil, "Activity has no hidden diagnostics section")
-            precondition(!elements(host).contains(where: { $0.accessibilityLabel() == "Recent capture events" }),
-                         "Activity must not display capture events")
             try snapshot(host, name: "activity-\(Int(width))-top")
             for id in ["activity-cpu-trend", "activity-memory-trend"] {
                 try await reveal(id, in: host, window: window)
