@@ -70,22 +70,24 @@ extension RecoveryFlowChecks {
         let service = SpeechService(dependencies: dependencies)
         service.keepAudioForSpeakerPass = false
         service.cleanUpTranscriptions = false
+        // Digital silence waits for the chunk limit, so the shortest one keeps chunks closing during the run.
+        service.settings.set(JotSettings.chunkMaximumSeconds, 1.0)
         service.beginRecoveryVerification(store: store, startedAt: probe.now)
-        defer { service.shutdown() }
+        defer { service.shutdown(); try? service.settings.reset(JotSettings.chunkMaximumSeconds) }
         var changes = 0
         // TranscriptView observes the service, the library and the timeline; a publish from any of them redraws the whole window.
         let counter = service.objectWillChange.merge(with: service.library.objectWillChange, service.timeline.objectWillChange).sink { changes += 1 }
         defer { counter.cancel() }
-        // Five seconds of digital silence, drained and ticked every 0.2 seconds like the timer. Every 0.8 seconds the silence closes a chunk, and recognition finds no speech in it. The status second lands on a chunk close at 3.2 seconds, as it does about every four seconds of quiet in the app.
+        // Five seconds of digital silence, drained and ticked every 0.2 seconds like the timer. Every second the chunk limit closes a chunk, and recognition finds no speech in it. Each status second lands on a chunk close, the coincidence that used to redraw the window.
         for _ in 1...25 {
             probe.now += 0.2
             microphone.lastAudio = probe.now
             service.tickRecoveryVerification()
             await service.waitForRecoveryVerification()
         }
-        precondition(recognitions == 6, "Five seconds of silence ran \(recognitions) recognitions, not six")
+        precondition(recognitions == 5, "Five seconds of silence ran \(recognitions) recognitions, not five")
         precondition(changes == 0, "Resource-only ticks told the whole window to redraw \(changes) times")
-        print("PASS: resource-only ticks and six recognitions that find no speech do not invalidate the whole window, even when the status second lands on a chunk close.")
+        print("PASS: resource-only ticks and five recognitions that find no speech do not invalidate the whole window, even when the status second lands on a chunk close.")
 
         service.pause()
         while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
