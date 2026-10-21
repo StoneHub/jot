@@ -342,8 +342,14 @@ final class SpeechService: ObservableObject {
         observers.append(center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                self.sleepResume.willSleep(ambientRunning: self.ambientEnabled)
-                self.recordEvent(.sleep, "Capture paused because the Mac is sleeping."); self.pause(automatic: true); self.notice = "Paused for sleep."
+                // Listening that is still starting (models loading, microphone retries) resumes after wake as well; a
+                // hold-only microphone while paused does not, unless Resume was asked for during the hold.
+                let listening = self.ambientEnabled && (!self.holdOnlyCapture || self.listeningRequestedDuringHold)
+                self.sleepResume.willSleep(ambientRunning: listening || (self.ambientRequested && self.preparing))
+                let interrupted = self.ambientEnabled || self.preparing || self.capture.running
+                if interrupted { self.recordEvent(.sleep, "Capture paused because the Mac is sleeping.") }
+                self.pause(automatic: true)
+                if interrupted { self.notice = "Paused for sleep." }
             }
         })
         observers.append(center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
