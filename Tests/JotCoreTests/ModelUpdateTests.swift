@@ -17,4 +17,13 @@ final class ModelUpdateTests: XCTestCase {
         XCTAssertTrue(try first.applying(b, at: Date()).changedSinceLastCheck)
         XCTAssertThrowsError(try first.applying(Data("{\"sha\":\"invalid\"}".utf8), at: Date()))
     }
+    func testRestoringKeepsThisBuildsModelsAndTheirSavedChecks() throws {
+        let sha = Data("{\"sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}".utf8)
+        let checked = try ModelUpdate.defaults[0].applying(sha, at: Date())
+        let retired = ModelUpdate(name: "Retired", repository: "Example/retired-model")
+        let restored = ModelUpdate.restoring([retired, checked])
+        XCTAssertEqual(restored.map(\.repository), ModelUpdate.defaults.map(\.repository))
+        XCTAssertEqual(restored[0].revision, checked.revision)
+        XCTAssertNil(restored[1].revision)
+    }
 }

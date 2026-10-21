@@ -27,6 +27,18 @@ public struct ModelUpdate: Codable, Sendable, Identifiable {
         ModelUpdate(name: "Sortformer · Speakers", repository: "FluidInference/diar-streaming-sortformer-coreml"),
         ModelUpdate(name: "Silero · Speech detection", repository: "FluidInference/silero-vad-coreml")
     ] }
+    /// The models this build uses, with the last check results saved for the same repositories. A saved list from an
+    /// older build must not decide which repositories are checked.
+    public static func restoring(_ saved: [ModelUpdate]) -> [ModelUpdate] {
+        defaults.map { model in
+            guard let previous = saved.first(where: { $0.repository == model.repository }) else { return model }
+            var result = model
+            result.revision = previous.revision; result.publishedAt = previous.publishedAt
+            result.checkedAt = previous.checkedAt; result.changedSinceLastCheck = previous.changedSinceLastCheck
+            result.error = previous.error
+            return result
+        }
+    }
     public func applying(_ data: Data, at date: Date) throws -> ModelUpdate {
         struct Published: Decodable { let sha: String; let lastModified: String? }
         let response = try JSONDecoder().decode(Published.self, from: data)
