@@ -1,7 +1,7 @@
 import AppKit
 
-@main
-struct ControllerPresenceChecks {
+/// Run by JotWindowChecks when JOT_CONTROLLER_PRESENCE_CHECKS=1; add --live to watch a real controller quit and relaunch.
+enum ControllerPresenceChecks {
     @MainActor
     final class Fixture {
         var running = false
@@ -11,7 +11,7 @@ struct ControllerPresenceChecks {
     static let key = "showMenuBarIcon"
 
     @MainActor
-    static func main() {
+    static func run() {
         if CommandLine.arguments.contains("--live") {
             _ = NSApplication.shared
             NSApp.setActivationPolicy(.prohibited)

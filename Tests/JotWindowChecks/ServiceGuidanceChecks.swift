@@ -27,6 +27,10 @@ struct ServiceGuidanceChecks {
               ModelCache.bytesOnDisk() == 0 else {
             fatalError("Use a fresh CFFIXED_USER_HOME; never run against the user's Jot data or models")
         }
+        if ProcessInfo.processInfo.environment["JOT_CONTROLLER_PRESENCE_CHECKS"] == "1" {
+            ControllerPresenceChecks.run()
+            exit(0)
+        }
         let app = NSApplication.shared
         app.setActivationPolicy(.regular)
         Task {
