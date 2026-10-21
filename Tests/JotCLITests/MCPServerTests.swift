@@ -100,4 +100,20 @@ final class MCPServerTests: XCTestCase {
         try server.process(JSONSerialization.data(withJSONObject: ["jsonrpc": "2.0", "method": "notifications/initialized"]))
         XCTAssertEqual(frames, []); XCTAssertEqual(calls, 0)
     }
+    func testOversizedLineIsRefusedAndTheSessionReadsOn() {
+        var reader = MCPServer.LineReader()
+        let limit = MCPServer.LineReader.limit
+        let ping = Data(#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#.utf8)
+        // An oversized line arriving in pieces, as a pipe delivers it, then a normal request.
+        XCTAssertEqual(reader.append(Data(repeating: 65, count: limit)), [])
+        XCTAssertEqual(reader.append(Data(repeating: 65, count: 8192)), [])
+        XCTAssertTrue(reader.hasPartialLine)
+        XCTAssertEqual(reader.append(Data(repeating: 65, count: 8192) + [10] + ping + [10]), [.oversized, .frame(ping)])
+        XCTAssertFalse(reader.hasPartialLine)
+        // An oversized line whose newline arrives with it, blank lines, and a frame split across reads.
+        XCTAssertEqual(reader.append(Data(repeating: 66, count: limit + 1) + [10, 10] + ping.prefix(5)), [.oversized])
+        XCTAssertEqual(reader.append(ping.dropFirst(5) + [10]), [.frame(ping)])
+        // A line of exactly the limit is still a request.
+        XCTAssertEqual(reader.append(Data(repeating: 67, count: limit) + [10]), [.frame(Data(repeating: 67, count: limit))])
+    }
 }
