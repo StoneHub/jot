@@ -12,6 +12,18 @@ final class ControlSnapshotTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(ControlSnapshot.self, from: data), snapshot)
     }
 
+    /// `jot controls` prints this reply. Version 1 must stay byte-identical, so pin the exact sorted framing the socket sends.
+    func testVersionOneReplyBytesAreUnchanged() throws {
+        let snapshot = ControlProjection.controls(mode: "dictation", meetingActive: true, dictationActive: true, dictationPending: false,
+            lastAttempt: nil, dictationSequence: 3, suggestion: ["outcome": "ready", "requests": 2], inputLevel: 0.5,
+            meetingStartedAt: Date(timeIntervalSince1970: 1_792_600_000), notice: .meetingExporting)
+        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601 // as SpeechServiceIPC encodes
+        let result = try JSONSerialization.jsonObject(with: encoder.encode(snapshot))
+        let reply = try JSONSerialization.data(withJSONObject: ["ok": true, "result": result], options: [.sortedKeys]) // as LocalDispatch frames
+        XCTAssertEqual(String(decoding: reply, as: UTF8.self),
+            #"{"ok":true,"result":{"dictation":"capturing","dictationSequence":3,"inputLevel":0.5,"meetingActive":true,"mode":"dictation","suggestion":"ready","suggestionSequence":2,"version":1}}"#)
+    }
+
     func testLevelIsFiniteAndBoundedWithoutReadingAudio() throws {
         for (input, expected) in [(Double.nan, 0.0), (.infinity, 0), (-1, 0), (3, 1)] {
             let snapshot = ControlSnapshot(mode: "paused", meetingActive: false, dictation: nil,
