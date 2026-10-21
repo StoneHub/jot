@@ -12,7 +12,7 @@ cask "jot" do
   # Jot's own updater replaces /Applications/Jot.app, so brew upgrade leaves it to that.
   auto_updates true
   depends_on arch: :arm64
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   app "Jot.app"
 
@@ -26,5 +26,6 @@ cask "jot" do
     notarized releases ship.
   EOS
 
-  # No zap stanza: Jot's folder in Application Support holds transcripts and voices, which uninstalling must never delete.
+  # No zap stanza: Jot's folder in Application Support holds transcripts and voices,
+  # which uninstalling must never delete.
 end
