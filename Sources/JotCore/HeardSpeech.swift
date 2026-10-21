@@ -48,12 +48,6 @@ public enum HeardSpeech {
             revision: Int(ContentHash.sha256(best.text).prefix(12), radix: 16) ?? 1, status: .current, text: best.text))
     }
 
-    /// Add a matched quote without repeating a grouped speech turn or exceeding the prompt source bounds.
-    public static func adding(_ match: Match?, to selected: [SuggestionSource],
-                              members: (SuggestionSource) -> [Transcript] = { _ in [] }, limits: SelectionLimits = .window) -> [SuggestionSource] {
-        addition(match, to: selected, members: members, limits: limits).selected
-    }
-
     public struct Addition: Sendable {
         public let selected: [SuggestionSource]
         /// Selected speech replaced by the matching heard sentence because it shares backing rows.
