@@ -4,7 +4,7 @@ import Foundation
 /// and scripts read, so a key cannot be renamed or dropped without a test failing.
 public enum StatusReport {
     /// Keys present in every report.
-    public static let keys: Set<String> = [
+    public static let keys: Set<String> = Set([
         "mode", "models", "servicePhase", "notice", "sessionID", "version",
         "microphoneRunning", "microphonePermission", "microphone", "accessibilityGranted",
         "dictationEnabled", "dictationShortcut", "dictationRequested", "dictationInput", "dictationRecovery",
@@ -12,7 +12,7 @@ public enum StatusReport {
         "inferenceRunning", "speakerPassRunning", "speakerPassPending", "speakerSlots", "suggestions", "transcriptionCleanup",
         "droppedAudioSeconds", "queuedAudioSeconds", "processingLagSeconds", "lastInferenceSeconds", "processedAudioSeconds",
         "audioRetention", "transcriptPolicy", "resources", "tuning", "tuningAudio", "storageWorkPending",
-    ].union(aliases.keys)
+    ]).union(aliases.keys)
     /// Keys present only once there is something to report: a delivery, heard audio, a transcript, or open history.
     public static let optionalKeys: Set<String> = ["lastDelivery", "lastAudioAt", "lastTranscriptAt", "storage"]
     /// Older names still reported for scripts written before the shortcut could be other than Fn, keyed to the current name.
