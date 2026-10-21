@@ -16,14 +16,26 @@ cask "jot" do
 
   app "Jot.app"
 
-  # Releases are not notarized yet. The cask leaves the quarantine flag alone, so Gatekeeper still checks the first
-  # launch and the person approves it themselves.
+  # Releases are not notarized yet, so Gatekeeper would block the first launch. Like Jot's updater, clear the quarantine
+  # flag only after the signature verifies and names Jot's team; anything else keeps Gatekeeper's check.
+  postflight do
+    app = "#{appdir}/Jot.app"
+    verified = system_command("/usr/bin/codesign", args: ["--verify", "--deep", "--strict", app]).success?
+    details = system_command("/usr/bin/codesign", args: ["-dv", app], print_stderr: false)
+    team = details.stderr[/^TeamIdentifier=(\S+)$/, 1]
+    if verified && team == "N6GPP46885"
+      system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", app]
+    else
+      opoo "Jot's signature did not verify for team N6GPP46885 (found #{team.inspect}); " \
+           "macOS will ask before the first launch."
+    end
+  end
+
   caveats <<~EOS
-    Jot releases are not notarized yet, so macOS blocks the first launch with
-    "Apple could not verify Jot is free of malware". If you trust this build,
-    open System Settings > Privacy & Security and choose Open Anyway for Jot,
-    once. Builds signed for development may not open on every Mac until
-    notarized releases ship.
+    Jot releases are not notarized yet. The cask checks the signature and
+    signing team, then clears the quarantine flag so Jot opens without the
+    Open Anyway prompt. Builds signed for development may not open on every
+    Mac until notarized releases ship.
   EOS
 
   # No zap stanza: Jot's folder in Application Support holds transcripts and voices,
