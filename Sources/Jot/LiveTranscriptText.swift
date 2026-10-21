@@ -90,7 +90,7 @@ struct LiveTranscriptText: NSViewRepresentable {
                 // flicker. An accent wash that lingers past it catches peripheral vision.
                 if let layer = view.layer {
                     let wash = CABasicAnimation(keyPath: "backgroundColor")
-                    wash.fromValue = NSColor.controlAccentColor.withAlphaComponent(0.32).cgColor
+                    wash.fromValue = JotAccent.current.nsColor.withAlphaComponent(0.32).cgColor
                     wash.toValue = NSColor.clear.cgColor
                     wash.duration = 1.1
                     wash.timingFunction = CAMediaTimingFunction(name: .easeOut)

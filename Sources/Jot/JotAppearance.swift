@@ -23,17 +23,21 @@ enum JotAccent: String, CaseIterable, Identifiable {
     case system, blue, purple, pink, orange, green
     var id: String { rawValue }
     var title: String { self == .system ? "Mac accent color" : rawValue.capitalized }
-    var color: Color {
+    var color: Color { Color(nsColor: nsColor) }
+    /// For AppKit layers such as the field outline, which redraw from it rather than from the SwiftUI environment.
+    var nsColor: NSColor {
         switch self {
-        case .system: JotTheme.systemAccent
-        case .blue: Color(nsColor: .systemBlue)
-        case .purple: Color(nsColor: .systemPurple)
-        case .pink: Color(nsColor: .systemPink)
-        case .orange: Color(nsColor: .systemOrange)
-        case .green: Color(nsColor: .systemGreen)
+        case .system: .controlAccentColor
+        case .blue: .systemBlue
+        case .purple: .systemPurple
+        case .pink: .systemPink
+        case .orange: .systemOrange
+        case .green: .systemGreen
         }
     }
     init(saved: String) { self = Self(rawValue: saved) ?? .system }
+    /// The saved choice, for code outside a SwiftUI view.
+    static var current: JotAccent { JotAccent(saved: UserDefaults.standard.string(forKey: JotDefaultsKey.accentColor) ?? "") }
 }
 
 /// Keeps NSApp's appearance on the saved setting, so every window, the menu bar panel and the floating panels follow it,

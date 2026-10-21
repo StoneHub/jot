@@ -52,7 +52,7 @@ private struct SetupRow<Action: View>: View {
             action().fixedSize()
         }
         .padding(14)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+        .modifier(GroupSurface())
     }
 }
 
@@ -74,7 +74,7 @@ private struct SetupToggle: View {
                 .accessibilityHint(detail)
         }
         .padding(14)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+        .modifier(GroupSurface())
     }
 }
 
@@ -209,7 +209,7 @@ struct SetupView: View {
                 }
             }
             .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+            .modifier(GroupSurface())
             Text("Listening and dictation need the models. To download later, skip this step; Resume asks before it downloads.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
@@ -280,7 +280,7 @@ struct SetupView: View {
             SetupRow(state: microphoneState, title: "Microphone access", detail: microphoneDetail) { microphoneAction }
             MicrophoneRow(service: service, capture: service.capture)
                 .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+                .modifier(GroupSurface())
             SetupRow(state: .optional, title: "Check the input level", detail: levelDetail) { levelAction }
         }
     }
