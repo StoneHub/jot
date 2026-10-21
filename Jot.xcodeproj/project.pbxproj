@@ -265,6 +265,7 @@
 		8C22551C93964C1F782644B4 /* SuggestionPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = 263330C29B40BADBC9CFB45D /* SuggestionPlan.swift */; };
 		8C32184E4F180B4DA2685255 /* WindowImageCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = F071532743028065D94AB99B /* WindowImageCapture.swift */; };
 		8D158826D0202473AF4A5FE1 /* SuggestionHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BCB88E7AF3431E116F525DD /* SuggestionHistory.swift */; };
+		8E9083C971854BC68FD44CA4 /* LowPowerListening.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47860E010F5FDA72580A4F75 /* LowPowerListening.swift */; };
 		8ECF272D673CB0FA7BB5D3C1 /* ShortcutSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B091B8659394C293AB6A5B14 /* ShortcutSettings.swift */; };
 		8EEFAE0286CAEC73A835809C /* ScreenContextReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0235B93AAE4DB4CA1923BCA3 /* ScreenContextReader.swift */; };
 		8EF28A78E5F76B97289D3D9B /* DictationShortcut.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7415694705568E2457081A4F /* DictationShortcut.swift */; };
@@ -663,6 +664,7 @@
 		42DC104ED584B73B2825CC5A /* ModelRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelRequest.swift; sourceTree = "<group>"; };
 		430D66DFC41D44579283FEB3 /* SuggestionFieldReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionFieldReader.swift; sourceTree = "<group>"; };
 		4422DB4116BDAC296134D678 /* ProcessedOutput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessedOutput.swift; sourceTree = "<group>"; };
+		47860E010F5FDA72580A4F75 /* LowPowerListening.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LowPowerListening.swift; sourceTree = "<group>"; };
 		4953B5AFA5D7C37672976007 /* LabError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabError.swift; sourceTree = "<group>"; };
 		49802E2F37EF1F2C700AA7B4 /* SuggestionTarget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionTarget.swift; sourceTree = "<group>"; };
 		4A6943067E4E73D56E69890D /* DictationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationCoordinator.swift; sourceTree = "<group>"; };
@@ -1191,6 +1193,7 @@
 				9C74FC1946E109F1AEAE2BDF /* LocalServiceError.swift */,
 				B2D73EB405288D6A0729196E /* LocalServiceServer.swift */,
 				DE991C5F6571FC9DC77CF68F /* LocalSocket.swift */,
+				47860E010F5FDA72580A4F75 /* LowPowerListening.swift */,
 				00B4F5D92D25351C93A3E99B /* MachTimebase.swift */,
 				831B9DB139EB44CC567DDB15 /* MCPTool.swift */,
 				9D88E5362DB1C5BD3F14268C /* MCPToolError.swift */,
@@ -1814,6 +1817,7 @@
 				F999859D3C6A44874171104D /* LocalServiceError.swift in Sources */,
 				EBB351BB11634CFD4C7884BA /* LocalServiceServer.swift in Sources */,
 				657B07BC282A99D43F9CCCAF /* LocalSocket.swift in Sources */,
+				8E9083C971854BC68FD44CA4 /* LowPowerListening.swift in Sources */,
 				7B32805CDCDC94BE7199B1F3 /* MCPTool.swift in Sources */,
 				A2845DB398D14D162E3E91C3 /* MCPToolError.swift in Sources */,
 				A6DB3AD1B2BD456A7B73ECC5 /* MachTimebase.swift in Sources */,
