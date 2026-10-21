@@ -4,8 +4,12 @@ import Foundation
 /// `jot-vorssaint` helper while the feature is on and exchanges one JSON line
 /// per request. Replies carry only what `ControlSnapshot` carries: no
 /// transcript, meeting title, target app or audio reaches the host.
+///
+/// The host names the contract version in each request and gets the same version back. Version 2 adds, each only
+/// when it has a value, `startedAt` (the meeting's start, ISO 8601) and `notice` (a `ControlNotice` code).
 public struct VorssaintPresentation: Sendable {
     public static let actions: Set<String> = ["open", "quit", "listen", "pause", "meeting.start", "meeting.end"]
+    public static let versions: ClosedRange<Int> = 1...2
 
     private var instance = UUID().uuidString
     private var process: Int32?
@@ -17,7 +21,7 @@ public struct VorssaintPresentation: Sendable {
 
     /// The host's view of one snapshot. A new Jot process starts a new
     /// instance, so the host drops prompts opened against the old one.
-    public mutating func reply(_ controls: ControlSnapshot, process: Int32, now: Date = Date()) -> [String: Any] {
+    public mutating func reply(_ controls: ControlSnapshot, process: Int32, version: Int = 1, now: Date = Date()) -> [String: Any] {
         if self.process != process { self = VorssaintPresentation(); self.process = process }
         let listening = Self.isListening(controls)
         let meeting = controls.meetingActive
@@ -46,11 +50,19 @@ public struct VorssaintPresentation: Sendable {
         }
         dictation = (controls.dictationSequence, controls.dictation)
         suggestion = (controls.suggestionSequence, controls.suggestion)
-        return ["version": 1, "instance": instance, "status": status, "phase": phase, "level": controls.inputLevel,
-                "toggleValues": ["listening": listening || meeting],
+        var reply: [String: Any] = ["version": version, "instance": instance, "status": status, "phase": phase,
+                "level": controls.inputLevel, "toggleValues": ["listening": listening || meeting],
                 "enabledActions": ["open", "quit", listening || meeting ? "pause" : "listen",
                                    meeting ? "meeting.end" : "meeting.start"]]
+        if version >= 2 {
+            if meeting, let started = controls.meetingStartedAt { reply["startedAt"] = Self.timestamp(started) }
+            if let notice = controls.notice { reply["notice"] = notice }
+        }
+        return reply
     }
+
+    /// UTC, whole seconds: `2026-10-21T14:33:38Z`.
+    private static func timestamp(_ date: Date) -> String { ISO8601DateFormatter().string(from: date) }
 
     /// Jot answers pause and resume before capture has finished changing, so
     /// the helper reads again until the snapshot shows what was asked for.

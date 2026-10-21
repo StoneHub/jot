@@ -23,4 +23,17 @@ final class ControlProjectionTests: XCTestCase {
         XCTAssertEqual(quiet.suggestion, "idle")
         XCTAssertEqual(quiet.suggestionSequence, 0)
     }
+
+    func testProjectionPassesTheVersionTwoFieldsOnlyWhenAskedFor() {
+        let started = Date(timeIntervalSince1970: 1_792_600_000)
+        func project(_ version: Int) -> ControlSnapshot {
+            ControlProjection.controls(version: version, mode: "ambient", meetingActive: true, dictationActive: false,
+                dictationPending: false, lastAttempt: nil, dictationSequence: 0, suggestion: [:], inputLevel: 0,
+                meetingStartedAt: started, notice: .pausedForSleep)
+        }
+        XCTAssertEqual(project(2).meetingStartedAt, started)
+        XCTAssertEqual(project(2).notice, "paused.sleep")
+        XCTAssertNil(project(1).meetingStartedAt)
+        XCTAssertNil(project(1).notice)
+    }
 }

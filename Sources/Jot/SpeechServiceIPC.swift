@@ -88,10 +88,11 @@ extension SpeechService {
         var result: Any = [:]
         switch request.method {
         case .speechControls:
-            result = try object(ControlProjection.controls(mode: mode, meetingActive: meetingTitle != nil,
-                dictationActive: dictation.isActive, dictationPending: dictation.isPending,
+            result = try object(ControlProjection.controls(version: ControlSnapshot.requestedVersion(params), mode: mode,
+                meetingActive: meetingTitle != nil, dictationActive: dictation.isActive, dictationPending: dictation.isPending,
                 lastAttempt: dictation.currentAttempt?.state, dictationSequence: controlSequence,
-                suggestion: suggestions.diagnostics, inputLevel: ControlSnapshot.inputLevel(meter: capture.inputLevel)))
+                suggestion: suggestions.diagnostics, inputLevel: ControlSnapshot.inputLevel(meter: capture.inputLevel),
+                meetingStartedAt: meetingStartedAt, notice: noticeCode))
         case .speechStatus: result = try await status()
         case .activityReport:
             let days = try ActivityRequest.days(arguments: params)

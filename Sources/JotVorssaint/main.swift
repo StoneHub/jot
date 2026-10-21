@@ -25,18 +25,22 @@ func call(_ method: LocalMethod, _ params: [String: Any] = [:], timeout: Int? = 
     return object["result"] ?? [:]
 }
 
+/// Always the latest snapshot; `VorssaintPresentation` leaves out what the host's version does not know.
 func controls() throws -> ControlSnapshot {
-    try JSONDecoder().decode(ControlSnapshot.self, from: JSONSerialization.data(withJSONObject: call(.speechControls, timeout: 2)))
+    try ControlSnapshot.decode(JSONSerialization.data(withJSONObject:
+        call(.speechControls, ["version": ControlSnapshot.latestVersion], timeout: 2)))
 }
 
 while let line = readLine() {
     guard line.utf8.count <= 4096 else { exit(2) }
     revision += 1
-    var reply: [String: Any] = ["version": 1, "instance": "jot-not-running", "status": "Open Jot to connect",
+    let request = (try? JSONSerialization.jsonObject(with: Data(line.utf8))) as? [String: Any]
+    // Answer in the version the host asked for; a request this helper cannot read gets a version 1 error.
+    let version = (request?["version"] as? Int).flatMap { VorssaintPresentation.versions.contains($0) ? $0 : nil }
+    var reply: [String: Any] = ["version": version ?? 1, "instance": "jot-not-running", "status": "Open Jot to connect",
                                 "phase": "idle", "level": 0, "enabledActions": ["open"]]
     do {
-        guard let request = try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
-              request["version"] as? Int == 1, let action = request["action"] as? String,
+        guard let request, let version, let action = request["action"] as? String,
               action == "observe" || VorssaintPresentation.actions.contains(action)
         else { throw HelperError("Vorssaint sent a request this Jot does not support.") }
         if action == "open" { NSWorkspace.shared.open(app) }
@@ -61,7 +65,7 @@ while let line = readLine() {
                 Thread.sleep(forTimeInterval: 0.1)
                 state = try controls()
             }
-            reply.merge(presentation.reply(state, process: jot.processIdentifier)) { $1 }
+            reply.merge(presentation.reply(state, process: jot.processIdentifier, version: version)) { $1 }
         } else if action != "observe" && action != "open" {
             throw HelperError("Open Jot to connect.")
         }

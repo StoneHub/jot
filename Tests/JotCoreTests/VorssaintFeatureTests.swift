@@ -3,9 +3,11 @@ import XCTest
 
 final class VorssaintFeatureTests: XCTestCase {
     private func controls(mode: String = "paused", meeting: Bool = false, dictation: DictationAttempt.State? = nil,
-                          dictationSequence: UInt64 = 0, suggestion: String = "idle", suggestionSequence: Int = 0) -> ControlSnapshot {
-        ControlSnapshot(mode: mode, meetingActive: meeting, dictation: dictation, dictationSequence: dictationSequence,
-                        suggestion: suggestion, suggestionSequence: suggestionSequence, inputLevel: 0.25)
+                          dictationSequence: UInt64 = 0, suggestion: String = "idle", suggestionSequence: Int = 0,
+                          startedAt: Date? = nil, notice: ControlNotice? = nil) -> ControlSnapshot {
+        ControlSnapshot(version: 2, mode: mode, meetingActive: meeting, dictation: dictation, dictationSequence: dictationSequence,
+                        suggestion: suggestion, suggestionSequence: suggestionSequence, inputLevel: 0.25,
+                        meetingStartedAt: startedAt, notice: notice)
     }
 
     func testListeningSwitchFollowsModeAndMeeting() {
@@ -59,7 +61,22 @@ final class VorssaintFeatureTests: XCTestCase {
 
     func testRepliesCarryNoTextFromJot() {
         var presentation = VorssaintPresentation()
-        let reply = presentation.reply(controls(mode: "ambient", meeting: true), process: 1)
-        XCTAssertEqual(Set(reply.keys), ["version", "instance", "status", "phase", "level", "toggleValues", "enabledActions"])
+        let started = Date(timeIntervalSince1970: 1_792_600_000)
+        let reply = presentation.reply(controls(mode: "ambient", meeting: true, startedAt: started, notice: .meetingExporting), process: 1)
+        XCTAssertEqual(Set(reply.keys), ["version", "instance", "status", "phase", "level", "toggleValues", "enabledActions"],
+                       "A version 1 host gets only the version 1 keys")
+        XCTAssertEqual(reply["version"] as? Int, 1)
+    }
+
+    func testVersionTwoRepliesAddTheMeetingStartAndNoticeCode() {
+        var presentation = VorssaintPresentation()
+        let started = Date(timeIntervalSince1970: 1_792_600_000)
+        let meeting = presentation.reply(controls(mode: "ambient", meeting: true, startedAt: started, notice: .meetingExporting),
+                                         process: 1, version: 2)
+        XCTAssertEqual(meeting["version"] as? Int, 2)
+        XCTAssertEqual(meeting["startedAt"] as? String, "2026-10-21T16:26:40Z")
+        XCTAssertEqual(meeting["notice"] as? String, "meeting.exporting")
+        let quiet = presentation.reply(controls(mode: "ambient"), process: 1, version: 2)
+        XCTAssertEqual(Set(quiet.keys), ["version", "instance", "status", "phase", "level", "toggleValues", "enabledActions"])
     }
 }
