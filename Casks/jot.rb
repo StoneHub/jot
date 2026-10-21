@@ -16,12 +16,15 @@ cask "jot" do
 
   app "Jot.app"
 
-  # Releases are not notarized yet, so Gatekeeper would refuse the first launch. Jot's updater clears the same flag
-  # on every update after checking the signing team; this does it once for the copy Homebrew installed.
-  postflight do
-    system_command "/usr/bin/xattr",
-                   args: ["-dr", "com.apple.quarantine", "#{appdir}/Jot.app"]
-  end
+  # Releases are not notarized yet. The cask leaves the quarantine flag alone, so Gatekeeper still checks the first
+  # launch and the person approves it themselves.
+  caveats <<~EOS
+    Jot releases are not notarized yet, so macOS blocks the first launch with
+    "Apple could not verify Jot is free of malware". If you trust this build,
+    open System Settings > Privacy & Security and choose Open Anyway for Jot,
+    once. Builds signed for development may not open on every Mac until
+    notarized releases ship.
+  EOS
 
   # No zap stanza: Jot's folder in Application Support holds transcripts and voices, which uninstalling must never delete.
 end

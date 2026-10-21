@@ -9,7 +9,7 @@ brew tap stonehub/jot https://github.com/StoneHub/jot
 brew install --cask stonehub/jot/jot
 ```
 
-Tapping clones this repository. The explicit URL is required because the repository is not named `homebrew-jot`. If your Homebrew asks you to trust the tap before a cask can run its install step, run `brew trust stonehub/jot` first. That step is the `postflight` block below, and it runs nothing else.
+Tapping clones this repository. The explicit URL is required because the repository is not named `homebrew-jot`. The cask runs no install scripts of its own.
 
 Jot updates itself (**Models & updates**, plus the daily check in **General → Privacy**). The cask says `auto_updates true`, so `brew upgrade` leaves Jot alone and Homebrew's recorded version can lag behind the app. `brew uninstall --cask jot` removes `/Applications/Jot.app` only. The cask has no `zap` stanza, so transcripts, voices and settings stay in `~/Library/Application Support/Jot` and Jot's preferences.
 
@@ -20,10 +20,10 @@ Requirements match the ZIP: Apple silicon and macOS 14 or later.
 Every release so far is a `--local` pre-release, signed with a development certificate and not notarized ([RELEASING.md](RELEASING.md#local-pre-releases)). That means:
 
 - **Homebrew's own cask repository will not take Jot.** Since 2026-09-01 it disables casks that fail Gatekeeper, and `--no-quarantine` is gone. That is why the cask lives in this repository's tap.
-- **The cask clears the quarantine flag itself.** `postflight` runs `xattr -dr com.apple.quarantine` on the installed app, which is what Jot's updater already does after it checks the signing team. Without it, the first launch stops at "cannot verify the developer".
-- **It still runs only where the development build runs.** Clearing quarantine skips the Gatekeeper prompt; it does not make a development-signed build valid on every Mac. Treat the cask as a convenience for testers until the first notarized release.
+- **Gatekeeper still checks the first launch.** The cask keeps the quarantine flag Homebrew sets, so macOS blocks the first open of an unnotarized build. You decide: **System Settings → Privacy & Security → Open Anyway** for Jot, once. The cask's `caveats` print the same steps after install. The cask never strips quarantine for you, because that would skip Gatekeeper without the signing-team check the in-app updater makes.
+- **It still runs only where the development build runs.** Open Anyway does not make a development-signed build valid on every Mac. Treat the cask as a convenience for testers until the first notarized release.
 
-Once a release is notarized and stapled (Developer ID certificate for team `N6GPP46885` plus `JOT_NOTARY_PROFILE`), delete the `postflight` block. Gatekeeper then accepts the download as it is. The cask could also be submitted to `homebrew/cask` once Jot meets its notability rules.
+Once a release is notarized and stapled (Developer ID certificate for team `N6GPP46885` plus `JOT_NOTARY_PROFILE`), delete the `caveats` block; Gatekeeper then accepts the download with no prompt. The cask could also be submitted to `homebrew/cask` once Jot meets its notability rules.
 
 ## How the cask stays current
 
