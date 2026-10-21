@@ -7,7 +7,7 @@ public struct SuggestionHistoryEntry: Codable, Sendable, Equatable {
     public enum Purpose: String, Codable, Sendable { case agentPrompt, textEntry, singleLine }
     public enum Plan: String, Codable, Sendable { case reply, continuation, draft, needsNotes }
     public enum Mode: String, Codable, Sendable { case reply, continuation, draft, none }
-    public enum Outcome: String, Codable, Sendable {
+    public enum Outcome: String, Codable, Sendable, CaseIterable {
         case requested, loading, ready, noSuggestion, unavailable, timedOut, blocked, failed
         case inserted, insertionUnverified, insertionCancelled
     }
@@ -51,7 +51,7 @@ public struct SuggestionHistoryEntry: Codable, Sendable, Equatable {
             }
         }
     }
-    public enum Action: String, Codable, Sendable {
+    public enum Action: String, Codable, Sendable, CaseIterable {
         case acceptedVerified, acceptedUnverified, escape, typedOver, focusChanged
         case expired, sourcesChanged, settingsChanged, keyboardSourceChanged, newRequest, serviceStopped
     }

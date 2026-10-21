@@ -2,15 +2,15 @@
 // It stores no IP address, install ID, user agent or text: only counter names, counts and version strings,
 // and it keeps no per-request row, so two reports can never be linked to one Mac.
 
+import { COUNTERS } from "./counters.js";
+
 export const MAX_BODY_BYTES = 16 * 1024;
 export const MAX_DAYS = 7;
-export const MAX_COUNTERS = 128;
 export const MAX_COUNT = 100_000;
 /// How far back a finished day may be, so a Mac that slept for a week still reports it.
 export const MAX_AGE_DAYS = 35;
 
-const NAME = /^[a-z][A-Za-z]*(\.[A-Za-z]+)+$/;
-const VERSION = /^[0-9][0-9A-Za-z.\-]{0,31}$/;
+const VERSION = /^\d{1,4}(\.\d{1,4}){0,3}$/;
 const ARCH = new Set(["arm64", "x86_64"]);
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -34,10 +34,10 @@ export function validate(body, today) {
         const counters = entry.counters;
         if (typeof counters !== "object" || counters === null || Array.isArray(counters)) return { error: "invalid counters" };
         const names = Object.keys(counters);
-        if (names.length > MAX_COUNTERS) return { error: "too many counters" };
+        if (names.length > COUNTERS.size) return { error: "too many counters" };
         for (const name of names) {
             const count = counters[name];
-            if (name.length > 64 || !NAME.test(name)) return { error: "invalid counter name" };
+            if (!COUNTERS.has(name)) return { error: "unknown counter name" };
             if (!Number.isInteger(count) || count < 0 || count > MAX_COUNT) return { error: "invalid count" };
         }
     }
@@ -50,19 +50,16 @@ export function shiftDay(day, offset) {
     return date.toISOString().slice(0, 10);
 }
 
+/// Two statements per day, whatever the number of counters, so a week of reports stays far below D1's
+/// per-invocation statement limit. The day's counters go in as one validated JSON object read by json_each.
 export function statements(db, report) {
     const { app, os, arch } = report;
-    const result = [];
-    for (const { day, counters } of report.days) {
-        result.push(db.prepare("INSERT INTO reports(day,app,os,arch,macs) VALUES(?1,?2,?3,?4,1) ON CONFLICT(day,app,os,arch) DO UPDATE SET macs=macs+1")
-            .bind(day, app, os, arch));
-        for (const [name, count] of Object.entries(counters)) {
-            if (count === 0) continue;
-            result.push(db.prepare("INSERT INTO usage(day,name,app,os,arch,count) VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(day,name,app,os,arch) DO UPDATE SET count=count+excluded.count")
-                .bind(day, name, app, os, arch, count));
-        }
-    }
-    return result;
+    return report.days.flatMap(({ day, counters }) => [
+        db.prepare("INSERT INTO reports(day,app,os,arch,macs) VALUES(?1,?2,?3,?4,1) ON CONFLICT(day,app,os,arch) DO UPDATE SET macs=macs+1")
+            .bind(day, app, os, arch),
+        db.prepare("INSERT INTO usage(day,name,app,os,arch,count) SELECT ?1,key,?2,?3,?4,value FROM json_each(?5) WHERE value > 0 ON CONFLICT(day,name,app,os,arch) DO UPDATE SET count=count+excluded.count")
+            .bind(day, app, os, arch, JSON.stringify(counters)),
+    ]);
 }
 
 export default {
@@ -70,6 +67,8 @@ export default {
         const url = new URL(request.url);
         if (url.pathname !== "/v1/usage") return new Response(null, { status: 404 });
         if (request.method !== "POST") return new Response(null, { status: 405, headers: { allow: "POST" } });
+        // Refuse a declared oversized body before reading it; a body without a length is checked once read.
+        if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return new Response("too large", { status: 413 });
         const text = await request.text();
         if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) return new Response("too large", { status: 413 });
         let body;

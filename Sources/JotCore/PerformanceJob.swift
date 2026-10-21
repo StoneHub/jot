@@ -2,7 +2,7 @@ import Foundation
 
 public struct PerformanceJob: Codable, Sendable {
     public enum Mode: String, Codable, Sendable { case dictation, ambient }
-    public enum Outcome: String, Codable, Sendable { case completed, noSpeech, fillerOnly, cancelled, failed, deliveryUnverified }
+    public enum Outcome: String, Codable, Sendable, CaseIterable { case completed, noSpeech, fillerOnly, cancelled, failed, deliveryUnverified }
     public var elapsedSeconds: Double
     public var mode: Mode
     public var outcome: Outcome

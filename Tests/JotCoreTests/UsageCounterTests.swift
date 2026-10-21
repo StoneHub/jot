@@ -64,22 +64,24 @@ final class UsageCounterTests: XCTestCase {
     }
 
     func testNamesComeOnlyFromFixedCodes() {
-        var counters: [UsageCounter] = [.liveCleanup(applied: true), .liveCleanup(applied: false),
-                                        .savedDictationReviewed, .savedDictationCopied, .suggestionRequested]
-        counters += [PerformanceJob.Outcome.completed, .noSpeech, .fillerOnly, .cancelled, .failed, .deliveryUnverified].map { UsageCounter.dictation($0) }
-        counters += [UsageCounter.Insertion.accessibility, .unicode, .clipboard, .unverified, .failed].map { UsageCounter.insertion($0) }
-        counters += [CleanupResult.Outcome.changed, .unchanged, .busy, .cancelled, .empty, .oversized, .unavailable,
-                     .invalidCount, .rejectedEdits, .modelError, .timedOut].map { UsageCounter.dictationCleanup($0) }
-        counters += [SuggestionHistoryEntry.Outcome.requested, .loading, .ready, .noSuggestion, .unavailable, .timedOut, .blocked,
-                     .failed, .inserted, .insertionUnverified, .insertionCancelled].map { UsageCounter.suggestionOutcome($0) }
-        counters += [SuggestionHistoryEntry.Action.acceptedVerified, .acceptedUnverified, .escape, .typedOver, .focusChanged,
-                     .expired, .sourcesChanged, .settingsChanged, .keyboardSourceChanged, .newRequest, .serviceStopped].map { UsageCounter.suggestionAction($0) }
-        let names = counters.map(\.name)
+        let names = UsageCounter.allCases.map(\.name)
+        XCTAssertEqual(names.count, 49)
         XCTAssertEqual(Set(names).count, names.count, "Every counter has its own name")
         for name in names {
             XCTAssertNotNil(name.range(of: "^[a-z][A-Za-z]*(\\.[A-Za-z]+)+$", options: .regularExpression), name)
             XCTAssertLessThanOrEqual(name.utf8.count, 64, name)
         }
+    }
+
+    /// The Worker refuses names it does not list, so a counter added here must be added there too.
+    func testAnalyticsWorkerAllowsExactlyTheseNames() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(contentsOf: root.appendingPathComponent("services/analytics/src/counters.js"), encoding: .utf8)
+        let regex = try NSRegularExpression(pattern: "^\\s+\"([A-Za-z.]+)\",$", options: .anchorsMatchLines)
+        let listed = regex.matches(in: source, range: NSRange(source.startIndex..., in: source)).compactMap {
+            Range($0.range(at: 1), in: source).map { String(source[$0]) }
+        }
+        XCTAssertEqual(listed, UsageCounter.allCases.map(\.name))
     }
 
     func testInsertionPathsMapToCounters() {
