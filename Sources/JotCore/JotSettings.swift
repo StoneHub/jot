@@ -46,10 +46,11 @@ public final class JotSettings: @unchecked Sendable {
     /// Off unless turned on in Settings: each feature sends text to the custom model only after its own switch.
     public static let customModelForCleanup = "customModelForCleanup"
     public static let customModelForSuggestions = "customModelForSuggestions"
+    public static let customModelForNotes = "customModelForNotes"
     public static let customModelFormat = "customModelFormat"
     public static let customModelEndpoint = "customModelEndpoint"
     public static let customModelName = "customModelName"
-    public static let customModelKeys = [customModelForCleanup, customModelForSuggestions, customModelFormat, customModelEndpoint, customModelName]
+    public static let customModelKeys = [customModelForCleanup, customModelForSuggestions, customModelForNotes, customModelFormat, customModelEndpoint, customModelName]
     public static let revisionKey = "settingsRevision"
 
     /// The code defaults the definitions below point at, so each lives in the type that uses it.
@@ -94,6 +95,7 @@ public final class JotSettings: @unchecked Sendable {
         .init(key: cleanupInstructions, kind: .text(defaultCleanupInstructions, maximumLength: 4000), summary: "Instructions the cleanup model follows"),
         .init(key: customModelForCleanup, kind: .bool(false), summary: "Clean up with the custom model instead of Apple Intelligence; sends the text to its endpoint"),
         .init(key: customModelForSuggestions, kind: .bool(false), summary: "Draft suggestions with the custom model instead of Apple Intelligence; sends the field and its context to its endpoint"),
+        .init(key: customModelForNotes, kind: .bool(false), summary: "Write session notes with the custom model instead of Apple Intelligence; sends the session's transcript to its endpoint"),
         .init(key: customModelFormat, kind: .text(RemoteModelConfiguration.Format.openAICompatible.rawValue, maximumLength: 16), summary: "Custom model API: openai (OpenAI-compatible, such as Ollama or LM Studio) or anthropic"),
         .init(key: customModelEndpoint, kind: .text("http://localhost:11434/v1", maximumLength: 512), summary: "Custom model base URL; plain http only for this Mac"),
         .init(key: customModelName, kind: .text("llama3.2", maximumLength: 128), summary: "Custom model name the endpoint expects"),

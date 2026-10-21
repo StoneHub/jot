@@ -75,7 +75,7 @@ final class MCPToolsTests: XCTestCase {
     }
 
     func testOnlyReadingToolsAreReadOnly() {
-        XCTAssertEqual(MCPTool.catalog.filter(\.readOnly).map(\.name), ["speech_status", "activity_report", "transcripts_search", "transcripts_recent",
+        XCTAssertEqual(MCPTool.catalog.filter(\.readOnly).map(\.name), ["speech_status", "activity_report", "sessions_notes", "transcripts_search", "transcripts_recent",
                                                                         "transcripts_since", "transcripts_wait", "transcripts_read", "transcripts_sessions", "transcripts_export", "transcripts_events", "people_list"])
     }
     func testActivityReportIsBoundedReadOnlyAndValidatesSocketArguments() throws {

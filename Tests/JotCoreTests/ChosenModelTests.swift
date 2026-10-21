@@ -11,7 +11,7 @@ final class ChosenModelTests: XCTestCase {
 
     func testAppleIntelligenceStaysTheDefaultForEveryFeature() async throws {
         let settings = JotSettings(defaults: MemoryDefaults())
-        for feature in [ChosenModel.Feature.cleanup, .suggestions] {
+        for feature in [ChosenModel.Feature.cleanup, .suggestions, .notes] {
             let model = ChosenModel(feature, settings: settings, apple: FixedProvider(), key: { _ in XCTFail("No key is read for Apple"); return nil })
             XCTAssertFalse(model.usesCustomModel)
             XCTAssertTrue(model.isOnDevice)
@@ -25,6 +25,7 @@ final class ChosenModelTests: XCTestCase {
         let settings = JotSettings(defaults: MemoryDefaults())
         settings.set(JotSettings.customModelForSuggestions, true)
         XCTAssertFalse(ChosenModel(.cleanup, settings: settings, apple: FixedProvider()).usesCustomModel)
+        XCTAssertFalse(ChosenModel(.notes, settings: settings, apple: FixedProvider()).usesCustomModel)
         let suggestions = ChosenModel(.suggestions, settings: settings, apple: FixedProvider(), key: { _ in nil })
         XCTAssertTrue(suggestions.usesCustomModel)
         XCTAssertTrue(suggestions.current is RemoteModelProvider)

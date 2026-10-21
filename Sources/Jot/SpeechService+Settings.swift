@@ -80,6 +80,10 @@ extension SpeechService {
         get { settings.bool(JotSettings.customModelForSuggestions) }
         set { save(JotSettings.customModelForSuggestions, newValue) }
     }
+    var customModelForNotes: Bool {
+        get { settings.bool(JotSettings.customModelForNotes) }
+        set { save(JotSettings.customModelForNotes, newValue) }
+    }
     var customModelFormat: RemoteModelConfiguration.Format {
         get { RemoteModelConfiguration.Format(rawValue: settings.text(JotSettings.customModelFormat)) ?? .openAICompatible }
         set { saveText(JotSettings.customModelFormat, newValue.rawValue) }

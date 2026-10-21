@@ -75,9 +75,9 @@ Suggestions and the two **Clean up with Apple Intelligence** switches are indepe
 
 ## Custom model (optional)
 
-Cleanup and suggestions can use a model you choose instead of Apple Intelligence: a server on this Mac, such as [Ollama](https://ollama.com) or LM Studio, or a hosted API with your own key. Set it up in **General → Custom model**: pick **OpenAI-compatible** (Ollama, LM Studio, llama.cpp and most hosted APIs) or **Anthropic**, enter the base URL and model name, and save a key if the service needs one. **Test connection** sends one short request with no transcript text.
+Cleanup, suggestions and session notes can use a model you choose instead of Apple Intelligence: a server on this Mac, such as [Ollama](https://ollama.com) or LM Studio, or a hosted API with your own key. Set it up in **General → Custom model**: pick **OpenAI-compatible** (Ollama, LM Studio, llama.cpp and most hosted APIs) or **Anthropic**, enter the base URL and model name, and save a key if the service needs one. **Test connection** sends one short request with no transcript text.
 
-Nothing changes until you switch on **Use for cleanup** or **Use for suggestions**; each is off by default and independent. With one on, the text that feature uses goes to that endpoint. For cleanup that is each live phrase and each dictation it cleans. For suggestions it is the field, the visible conversation and matching speech. A server on this Mac keeps the text on this Mac; a hosted endpoint receives it under that provider's terms. Audio, speech recognition, speaker processing and saved history never leave the Mac, and window images go only to Apple Intelligence. Keys are kept in your login Keychain, not in settings or logs. Plain `http` is accepted only for a server on this Mac. The same validation applies to every model: cleanup that changes a number or a negation is discarded and the recognized text is kept.
+Nothing changes until you switch on **Use for cleanup**, **Use for suggestions** or **Use for session notes**; each is off by default and independent. With one on, the text that feature uses goes to that endpoint. For cleanup that is each live phrase and each dictation it cleans. For suggestions it is the field, the visible conversation and matching speech. For notes it is the whole session, each time an agent or `jot notes` asks. A server on this Mac keeps the text on this Mac; a hosted endpoint receives it under that provider's terms. Audio, speech recognition, speaker processing and saved history never leave the Mac, and window images go only to Apple Intelligence. Keys are kept in your login Keychain, not in settings or logs. Plain `http` is accepted only for a server on this Mac. The same validation applies to every model: cleanup that changes a number or a negation is discarded and the recognized text is kept.
 
 ## Suggestions
 
@@ -154,6 +154,7 @@ jot meeting end                  # Saves Markdown to ~/Documents/Jot Sessions
 jot sessions
 jot export <session-id>          # Whole session as Markdown; add --json for rows
 jot title <session-id> <title>
+jot notes <session-id>           # Summary, decisions and action items, written on request and not saved
 jot people                       # Voices Jot remembers
 jot forget <person-id>           # Forget one voice; session names stay
 jot diagnostics            # Local performance report, no captured content

@@ -15,6 +15,17 @@ public enum CleanupAvailability: String, Sendable, CaseIterable {
         }
     }
 
+    public var notesBlocker: String? {
+        switch self {
+        case .available: return nil
+        case .olderSystem: return "Session notes require macOS 26 or later, or a custom model for notes."
+        case .deviceNotEligible: return "Apple Intelligence is unavailable on this Mac. Switch notes to a custom model in Settings to write them."
+        case .notEnabled: return "Apple Intelligence is off in macOS. Turn it on, or switch notes to a custom model in Settings."
+        case .modelNotReady: return "Apple Intelligence is not ready. Try again later."
+        case .notConfigured: return "The custom model needs an endpoint and a model name before it can write notes."
+        }
+    }
+
     public var suggestionBlocker: String? {
         switch self {
         case .available: return nil

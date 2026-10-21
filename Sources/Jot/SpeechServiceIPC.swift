@@ -65,6 +65,9 @@ extension SpeechService {
     /// `transcripts.wait` requests in progress, held to `TranscriptWait.maximumWaiters`.
     private static var transcriptWaiters = 0
 
+    /// True while `sessions.notes` runs: one session's notes at a time.
+    private static var writingNotes = false
+
     /// The cursor, generation and session filter `transcripts.since` and `transcripts.wait` share.
     private func feedPosition(_ params: [String: Any]) throws -> (cursor: Int?, generation: String?, sessionID: String?) {
         let cursor = params["cursor"] as? Int
@@ -122,6 +125,20 @@ extension SpeechService {
             guard let id = params["sessionID"] as? String, let title = params["title"] as? String else { throw JotError.message("sessionID and title are required") }
             try await setSessionTitle(id, title: title)
             result = ["sessionID": id, "title": title]
+        case .sessionsNotes:
+            guard let id = params["sessionID"] as? String, !id.isEmpty else { throw JotError.message("sessionID is required") }
+            if let blocker = modelAvailability(.notes).notesBlocker { throw JotError.message(blocker) }
+            guard !Self.writingNotes else { throw JotError.message("Jot is already writing notes; try again when they finish.") }
+            Self.writingNotes = true
+            defer { Self.writingNotes = false }
+            let (session, rows) = try await library.exportable(id)
+            let model = ChosenModel(.notes, settings: settings)
+            let gate = ModelCallGate(deadline: SessionNotes.deadline)
+            let notes = try await SessionNotes.write(rows, tuning: tuning) { request in
+                await gate.call(request) { try await model.generate($0) }
+            }
+            result = ["sessionID": id, "title": session.title ?? "", "notes": notes.text, "parts": notes.parts,
+                      "onDevice": model.isOnDevice, "model": model.usesCustomModel ? settings.text(JotSettings.customModelName) : "Apple on-device"]
         case .settingsGet: result = ["settings": settings.report(), "revision": JotSettings.revision]
         case .settingsSet:
             guard let key = params["key"] as? String, let value = params["value"] else { throw JotError.message("key and value are required") }
