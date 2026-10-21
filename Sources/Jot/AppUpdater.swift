@@ -59,6 +59,8 @@ final class AppUpdater: ObservableObject {
         Task {
             let staging = FileManager.default.temporaryDirectory.appending(path: "jot-update-\(UUID().uuidString)")
             do {
+                // Before the download, so an account that can't replace the app isn't told so only after the whole zip.
+                try Self.checkReplaceable()
                 try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
                 log("update \(JotVersion.current) -> \(release.version); staging \(staging.path)")
                 let zip = try await download(release, to: staging)
@@ -120,6 +122,15 @@ final class AppUpdater: ObservableObject {
         guard bundleVersion == version else { throw UpdateError("Downloaded app reports version \(bundleVersion?.description ?? "unknown"), expected \(version).") }
     }
 
+    /// The swap moves the installed app aside after Jot quits; check that it can while Jot is still running,
+    /// so an update that cannot finish fails here instead of leaving Jot closed.
+    private static func checkReplaceable() throws {
+        let folder = (installPath as NSString).deletingLastPathComponent
+        guard access(folder, W_OK) == 0, access(installPath, F_OK) != 0 || access(installPath, W_OK) == 0 else {
+            throw UpdateError("Jot can't replace \(installPath) without an administrator. Download the update from the release page instead.")
+        }
+    }
+
     /// The running app cannot replace itself, so a detached shell script does the swap after this process exits.
     private func swap(_ bundle: URL, staging: URL) throws {
         let script = staging.appending(path: "swap.sh")
@@ -130,7 +141,7 @@ final class AppUpdater: ObservableObject {
         while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
         note "app pid $pid exited"
         if [ -e "$target" ]; then
-            mv "$target" "$previous" || { note "could not move the current app aside"; exit 1; }
+            mv "$target" "$previous" || { note "could not move the current app aside; relaunching it"; open "$target"; exit 1; }
             note "moved current app to $previous"
         fi
         if mv "$new" "$target"; then
@@ -147,6 +158,8 @@ final class AppUpdater: ObservableObject {
         open "$target" && note "launched $target"
         # One Jot on disk: the copy kept for rollback goes once the new app has launched.
         [ -e "$previous" ] && rm -rf "$previous" && note "removed the previous app"
+        # The staging folder holds the zip, this script and any rejected app; keep it only if no app is in place.
+        [ -e "$target" ] && rm -rf "$(dirname "$new")" && note "removed the staging folder"
         """
         try text.write(to: script, atomically: true, encoding: .utf8)
         let previous = staging.appending(path: "Jot-previous.app")
