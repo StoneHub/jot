@@ -16,7 +16,8 @@ struct HelperError: LocalizedError {
     init(_ message: String) { errorDescription = message }
 }
 
-func call(_ method: String, _ params: [String: Any] = [:], timeout: Int = 30) throws -> Any {
+/// Actions keep the client's per-method timeouts: Start Meeting may wait for the models and End Meeting for the backlog.
+func call(_ method: String, _ params: [String: Any] = [:], timeout: Int? = nil) throws -> Any {
     let data = try client.request(method: method, params: params, timeout: timeout)
     guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any], let ok = object["ok"] as? Bool
     else { throw HelperError("Jot returned an invalid response.") }
