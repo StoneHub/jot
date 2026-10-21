@@ -97,6 +97,7 @@ def main():
     version_file = root / 'Sources/JotCore/JotVersion.swift'
     project_file = root / 'project.yml'
     plist_file = root / 'Resources/Info.plist'
+    cask_file = root / 'Casks/jot.rb'
     current = re.search(r'current = "(\d+)\.(\d+)\.(\d+)"', version_file.read_text())
     if not current:
         raise SystemExit('Cannot read JotVersion.current from Sources/JotCore/JotVersion.swift.')
@@ -195,6 +196,9 @@ def main():
         checksum_path = work / f'Jot-{version}.zip.sha256'
         checksum_path.write_text(f'{digest}  {zip_path.name}\n')
         step(f'Zipped {zip_path.relative_to(root)} ({zip_path.stat().st_size} bytes, sha256 {digest})')
+        # The Homebrew cask names this exact ZIP, so it changes in the release commit; Homebrew reads it from main.
+        rewrite(cask_file, r'version "[^"]+"', f'version "{version}"')
+        rewrite(cask_file, r'sha256 "[0-9a-f]{64}"', f'sha256 "{digest}"')
 
         body_path = work / f'Jot-{version}-release.md'
         body_path.write_text(release_body(notes_file.read_text(), options.local))
