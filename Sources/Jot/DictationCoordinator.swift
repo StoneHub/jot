@@ -258,7 +258,7 @@ final class DictationCoordinator {
         defer { if !isActive && currentAttempt?.id == id { highlight.hide() } }
         // Every released hold records one timing; one that never finishes is recorded as cancelled.
         var timing = Timing(released: released)
-        defer { recordPerformance(timing.job) }
+        defer { recordPerformance(timing.job); library.countUsage([.dictation(timing.outcome)]) }
         guard let started = currentAttempt, started.id == id else { return }
         timing.holdSeconds = max(0, (started.endedAt ?? started.startedAt).timeIntervalSince(started.startedAt))
         await transcriber.waitUntilProcessed(sessionID: started.sessionID, through: throughOffset)
@@ -359,6 +359,7 @@ final class DictationCoordinator {
         do {
             let delivery = try await deliver(input, attempt.text)
             let finished = Timing.now
+            library.countUsage([.delivery(verified: delivery.verified, path: delivery.path)])
             let timing = (outcome: delivery.verified ? PerformanceJob.Outcome.completed : .deliveryUnverified,
                           seconds: max(0, finished - began), finishedUptime: finished)
             guard await isCurrentAfterDeletion(attempt.id, session: attempt.sessionID) else { return nil }
@@ -385,6 +386,7 @@ final class DictationCoordinator {
             return timing
         } catch {
             let finished = Timing.now
+            library.countUsage([.insertion(.failed)])
             guard await isCurrentAfterDeletion(attempt.id, session: attempt.sessionID) else { return nil }
             attempt.state = .deliveryFailed; attempt.updatedAt = now()
             try? await save(attempt)

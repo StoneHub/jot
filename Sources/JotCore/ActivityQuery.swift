@@ -1,7 +1,7 @@
 import Foundation
 import SQLite3
 
-/// The Activity page's read: word counts, speech time, sessions and verified deliveries per day, for 7 or 30 days.
+/// The Activity page's read: word counts, speech time, sessions, verified deliveries and usage counters per day, for 7 or 30 days.
 /// `TranscriptStore.activity` calls it with the store's connection; it reads and changes nothing else.
 enum ActivityQuery {
     static func report(_ db: SQLiteConnection, days: Int, now: Date, calendar: Calendar) throws -> ActivityReport {
@@ -67,11 +67,13 @@ enum ActivityQuery {
                 let day = calendar.startOfDay(for: Date(timeIntervalSince1970: sqlite3_column_double(attempts, 0)))
                 if let index = indices[day] { deliveries[index] += 1 }
             }
+            let keys = dates.map { UsageCounterRows.day($0, calendar: calendar) }
+            let counters = try UsageCounterRows.counts(db, days: keys)
             return ActivityReport(generatedAt: now, windowStart: start, windowEnd: now, days: days,
                 timeZoneIdentifier: calendar.timeZone.identifier, dictation: dictation.summary, ambient: ambient.summary,
                 verifiedDictationDeliveries: deliveries.reduce(0, +), daily: dates.enumerated().map { index, date in
                     ActivityDay(date: date, dictation: dailyDictation[index].summary, ambient: dailyAmbient[index].summary,
-                                verifiedDictationDeliveries: deliveries[index])
+                                verifiedDictationDeliveries: deliveries[index], counters: counters[keys[index]] ?? [:])
                 })
         }
     }

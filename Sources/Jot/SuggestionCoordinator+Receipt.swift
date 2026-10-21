@@ -30,6 +30,8 @@ extension SuggestionCoordinator {
         var reason: SuggestionHistoryEntry.Reason?
         var action: SuggestionHistoryEntry.Action?
         var complete = false
+        /// Set once the usage counters have this request's outcome, so a later update cannot count it again.
+        var counted = false
 
         func entry() -> SuggestionHistoryEntry {
             SuggestionHistoryEntry(id: id, revision: revision, startedAt: startedAt,

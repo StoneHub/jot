@@ -28,6 +28,7 @@ final class SpeechService: ObservableObject {
     let agentContext = AgentContext()
     lazy var suggestions: SuggestionCoordinator = SuggestionCoordinator(input: input, store: { [weak self] in self?.library.store },
         history: { [weak self] in self?.suggestionHistory },
+        countUsage: { [weak self] in self?.library.countUsage($0) },
         agentContext: agentContext,
         allowed: { [weak self] in self?.canRequestSuggestion == true },
         readsScreen: { [weak self] in self?.suggestionScreenContext == true },

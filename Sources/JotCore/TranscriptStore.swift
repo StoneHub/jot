@@ -56,7 +56,7 @@ public final class TranscriptStore: @unchecked Sendable {
         [databaseURL.path + "-wal", databaseURL.path + "-shm", databaseURL.path]
     }
 
-    /// Every table and index. Opening an existing database changes nothing, since each statement is IF NOT EXISTS. SpeakerPassStore and PeopleStore use their tables over connections of their own.
+    /// Every table and index. Opening an existing database changes nothing, since each statement is IF NOT EXISTS; a table added here (such as usage_counters) needs no format change, because older builds of the same format ignore it. SpeakerPassStore and PeopleStore use their tables over connections of their own.
     /// A session speaker's embedding is 256 Float32 little-endian, the size WeSpeaker produces, and its duration is that speaker's total speech in the session. A person's embedding is the same kind of vector at unit length, and sample_count is how many were averaged into it.
     private static let schema = """
         CREATE TABLE IF NOT EXISTS transcripts (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, started_at REAL NOT NULL, start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, text TEXT NOT NULL, speaker_id TEXT, mode TEXT NOT NULL CHECK(mode IN ('ambient','dictation')));
@@ -75,6 +75,7 @@ public final class TranscriptStore: @unchecked Sendable {
         CREATE TABLE IF NOT EXISTS dictation_attempts (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, started_at REAL NOT NULL, ended_at REAL, text TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('capturing','recognizing','ready','deliveryFailed','deliveryUnverified','delivered','discarded')), has_gap INTEGER NOT NULL DEFAULT 0, updated_at REAL NOT NULL);
         CREATE INDEX IF NOT EXISTS dictation_attempt_state_time ON dictation_attempts(state, updated_at DESC);
         CREATE TABLE IF NOT EXISTS people (id TEXT PRIMARY KEY, name TEXT NOT NULL, embedding BLOB NOT NULL, sample_count INTEGER NOT NULL CHECK(sample_count >= 1), created_at REAL NOT NULL, updated_at REAL NOT NULL);
+        CREATE TABLE IF NOT EXISTS usage_counters (day TEXT NOT NULL CHECK(length(day) = 10), name TEXT NOT NULL CHECK(length(name) <= 64), count INTEGER NOT NULL CHECK(count >= 0), PRIMARY KEY(day, name));
         """
 
     /// Omit the cursor to subscribe at the current head; explicit 0 replays retained history. Pass the returned generation alongside the numeric cursor to detect a rebuilt database even after its new head passes the old cursor. Legacy numeric cursors retain their behavior. Rows and tombstones share the page limit and sequence order; a session filter still advances over unrelated changes.
@@ -398,6 +399,11 @@ public final class TranscriptStore: @unchecked Sendable {
     /// absolute-time index bounds the read; no history, capture, or schema is changed.
     public func activity(days: Int = 7, now: Date = Date(), calendar: Calendar = .current) throws -> ActivityReport {
         try ActivityQuery.report(db, days: days, now: now, calendar: calendar)
+    }
+
+    /// Adds one to each counter for the local day of `date`. Counters carry names only, never text, and history deletion leaves them.
+    public func countUsage(_ counters: [UsageCounter], at date: Date = Date(), calendar: Calendar = .current) throws {
+        try UsageCounterRows.add(db, counters, at: date, calendar: calendar)
     }
 
     public func metrics() throws -> StoreMetrics {

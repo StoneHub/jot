@@ -31,6 +31,7 @@ struct SavedDictationReview: View {
                 Button(copied ? "Copied" : "Copy text") {
                     NSPasteboard.general.clearContents()
                     copied = NSPasteboard.general.setString(attempt.text, forType: .string)
+                    if copied { service.library.countUsage([.savedDictationCopied]) }
                 }.modifier(GlassButton()).accessibilityIdentifier("copy-saved-dictation")
                 Text("Paste it where you want it. Copying keeps this saved dictation available.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -43,7 +44,10 @@ struct SavedDictationReview: View {
         }
         .padding(24).frame(width: 420)
         .task {
-            do { attempt = try await service.dictation.savedDictationForReview() }
+            do {
+                attempt = try await service.dictation.savedDictationForReview()
+                if attempt != nil { service.library.countUsage([.savedDictationReviewed]) }
+            }
             catch { self.error = error.localizedDescription }
             loading = false
         }

@@ -48,11 +48,13 @@ public struct ActivityDay: Codable, Sendable, Equatable, Identifiable {
     public let dictation: ActivityModeSummary
     public let ambient: ActivityModeSummary
     public let verifiedDictationDeliveries: Int
+    /// That day's usage counters by name; counters with no count that day are absent.
+    public let counters: [String: Int]
 
     public init(date: Date, dictation: ActivityModeSummary = .init(), ambient: ActivityModeSummary = .init(),
-                verifiedDictationDeliveries: Int = 0) {
+                verifiedDictationDeliveries: Int = 0, counters: [String: Int] = [:]) {
         self.date = date; self.dictation = dictation; self.ambient = ambient
-        self.verifiedDictationDeliveries = verifiedDictationDeliveries
+        self.verifiedDictationDeliveries = verifiedDictationDeliveries; self.counters = counters
     }
 }
 
@@ -67,6 +69,8 @@ public struct ActivityReport: Codable, Sendable, Equatable {
     public let dictation: ActivityModeSummary
     public let ambient: ActivityModeSummary
     public let verifiedDictationDeliveries: Int
+    /// Usage counters summed over the window's days, by name.
+    public let counters: [String: Int]
     public let daily: [ActivityDay]
     public let measurementNotes: [String]
 
@@ -78,6 +82,7 @@ public struct ActivityReport: Codable, Sendable, Equatable {
         self.days = days; self.timeZoneIdentifier = timeZoneIdentifier
         self.dictation = dictation; self.ambient = ambient
         self.verifiedDictationDeliveries = verifiedDictationDeliveries; self.daily = daily
+        counters = daily.reduce(into: [:]) { total, day in total.merge(day.counters, uniquingKeysWith: +) }
         measurementNotes = [
             "Retained history only; deleting history changes these totals. No transcript text, audio, speaker names, session identifiers, or app identities are included.",
             "Rows are included and assigned to a local calendar day by their absolute start time, from windowStart through windowEnd. Today is partial. Rows starting before the window are excluded.",
@@ -86,7 +91,8 @@ public struct ActivityReport: Codable, Sendable, Equatable {
             "Dictation and ambient are separate views of saved speech and can overlap. Do not add them to estimate unique spoken words or time.",
             "wordsPerMinute uses timedWordCount from positive-duration rows divided by speechWindowSeconds; zero-duration words are excluded. No duration, or a clipped/nonfinite row end, yields null because full text cannot be attributed to partial time.",
             "sessionCount counts distinct saved session identifiers per mode, not dictation attempts. activeDays counts days with saved rows.",
-            "verifiedDictationDeliveries counts retained attempts whose current state is delivered, by latest successful verification updatedAt; retries can change the day. Older history may have no delivery records. This is not every hold or every attempted insertion."
+            "verifiedDictationDeliveries counts retained attempts whose current state is delivered, by latest successful verification updatedAt; retries can change the day. Older history may have no delivery records. This is not every hold or every attempted insertion.",
+            "counters are local usage counts kept by name and local calendar day as events happen, separately from history: deleting history does not change them, and they hold no text or identities. A day is the Mac's local date when the event was counted. dictation.* names count released holds by how they ended; insertion.*, cleanup.*, savedDictation.* and suggestion.* count those events. Counting began with the build that added them, so earlier days read zero."
         ]
     }
 }
