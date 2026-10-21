@@ -56,9 +56,13 @@ final class SpeechService: ObservableObject {
             if !ambientEnabled && canInstallUpdate { objectWillChange.send() }
             samplePerformance()
         },
-        recordedRows: { [weak self] job in
-            guard let self else { return }
-            if job.sessionID == self.timeline.sessionID { self.timeline.lastAmbientRowAt = self.dependencies.now() }
+        recordedRows: { [weak self] job, rows in
+            guard let self, job.sessionID == self.timeline.sessionID else { return }
+            self.timeline.lastAmbientRowAt = self.dependencies.now()
+            if let row = rows.last(where: { $0.mode == "ambient" }) {
+                self.lastAmbientRow = row
+                if self.settings.bool(JotDefaultsKey.shareTranscriptPreview) { ControlEvents.signal() }
+            }
         }, recognitionCompleted: { [weak self] in self?.dictation.updateAttemptText(for: $0) },
         recognitionFailed: { [weak self] in self?.dictation.noteRecognitionFailure(for: $0) })
 
@@ -186,6 +190,8 @@ final class SpeechService: ObservableObject {
             ControlEvents.signal()
         }
     }
+    /// The newest row saved while listening, for the Island's transcript preview. Memory only.
+    var lastAmbientRow: Transcript?
     /// When the running meeting began. Renames and the automatic pauses that keep a meeting keep its start; after an
     /// update relaunch it restarts from the restore, since the handoff carries only the title.
     private(set) var meetingStartedAt: Date?

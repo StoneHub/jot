@@ -2,11 +2,13 @@ import Foundation
 
 /// Jot's feature in Vorssaint's Dynamic Island. Vorssaint starts the bundled
 /// `jot-vorssaint` helper while the feature is on and exchanges one JSON line
-/// per request. Replies carry only what `ControlSnapshot` carries: no
-/// transcript, meeting title, target app or audio reaches the host.
+/// per request. Replies carry only what `ControlSnapshot` carries, so no meeting
+/// title, target app or audio reaches the host, and transcript text only as the
+/// opt-in preview.
 ///
 /// The host names the contract version in each request and gets the same version back. Version 2 adds, each only
-/// when it has a value, `startedAt` (the meeting's start, ISO 8601) and `notice` (a `ControlNotice` code).
+/// when it has a value, `startedAt` (the meeting's start, ISO 8601), `notice` (a `ControlNotice` code) and `preview`
+/// (`TranscriptPreview`, only while Share transcript preview is on).
 public struct VorssaintPresentation: Sendable {
     public static let actions: Set<String> = ["open", "quit", "listen", "pause", "meeting.start", "meeting.end"]
     public static let versions: ClosedRange<Int> = 1...2
@@ -21,7 +23,8 @@ public struct VorssaintPresentation: Sendable {
 
     /// The host's view of one snapshot. A new Jot process starts a new
     /// instance, so the host drops prompts opened against the old one.
-    public mutating func reply(_ controls: ControlSnapshot, process: Int32, version: Int = 1, now: Date = Date()) -> [String: Any] {
+    public mutating func reply(_ controls: ControlSnapshot, process: Int32, version: Int = 1, preview: String? = nil,
+                               now: Date = Date()) -> [String: Any] {
         if self.process != process { self = VorssaintPresentation(); self.process = process }
         let listening = Self.isListening(controls)
         let meeting = controls.meetingActive
@@ -57,6 +60,7 @@ public struct VorssaintPresentation: Sendable {
         if version >= 2 {
             if meeting, let started = controls.meetingStartedAt { reply["startedAt"] = Self.timestamp(started) }
             if let notice = controls.notice { reply["notice"] = notice }
+            if let preview, !preview.isEmpty { reply["preview"] = String(preview.prefix(TranscriptPreview.maximumLength)) }
         }
         return reply
     }

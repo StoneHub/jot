@@ -145,11 +145,14 @@ extension TranscriptView {
                 listeningSettings
                 speakerSettings
                 AppearanceSettings()
-                // The choice only matters next to Vorssaint; once it is off, it stays visible so it can be turned back on.
-                if !showMenuBarIcon || Self.vorssaintRunning {
+                // These choices only matter next to Vorssaint; once one is off, they stay visible so it can be turned back on.
+                if !showMenuBarIcon || !shareTranscriptPreview || Self.vorssaintRunning {
                     SettingsGroup(title: "App", symbol: "menubar.rectangle") {
                         SettingToggle(title: "Always show menu bar icon", info: "When off, Jot hides its icon while Vorssaint shows Jot in its Dynamic Island. The icon returns when that feature is turned off or Vorssaint quits.",
                                       isOn: $showMenuBarIcon)
+                        RowDivider()
+                        SettingToggle(title: "Share transcript preview", info: "While Jot listens, Vorssaint's Dynamic Island shows the last line it heard, up to 180 characters with the speaker's name. Only Jot's Vorssaint helper can read it, and Vorssaint does not save it. Dictation is never shown.",
+                                      isOn: $shareTranscriptPreview)
                     }
                 }
             }.frame(maxWidth: 680, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)

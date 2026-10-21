@@ -81,6 +81,9 @@ final class LocalServiceTests: XCTestCase {
         try server.start(); defer { server.stop() }
         let object = try JSONSerialization.jsonObject(with: LocalServiceClient(socketURL: socketURL).request(method: "speech.status")) as? [String: Any]
         XCTAssertEqual(object?["ok"] as? Bool, true)
+        let preview = try JSONSerialization.jsonObject(with: LocalServiceClient(socketURL: socketURL).request(method: "speech.preview")) as? [String: Any]
+        XCTAssertEqual(preview?["ok"] as? Bool, false, "Only the Vorssaint helper reads the transcript preview")
+        XCTAssertTrue((preview?["error"] as? String)?.contains("helper") == true)
     }
 
     func testBundledHelperMatchesOnlyThatAppsHelper() {
