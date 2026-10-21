@@ -130,6 +130,11 @@ extension TranscriptView {
         ActivityView(service: service, library: library)
     }
 
+    /// Vorssaint's apps share this bundle prefix; JotControllerPresence matches the same one.
+    static var vorssaintRunning: Bool {
+        NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier?.hasPrefix("com.vorssaint.utils") == true }
+    }
+
     var general: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
@@ -140,9 +145,12 @@ extension TranscriptView {
                 listeningSettings
                 speakerSettings
                 AppearanceSettings()
-                SettingsGroup(title: "App", symbol: "menubar.rectangle") {
-                    SettingToggle(title: "Always show menu bar icon", info: "When off, Jot hides its icon while Vorssaint shows Jot in its Dynamic Island. The icon returns when that feature is turned off or Vorssaint quits.",
-                                  isOn: $showMenuBarIcon)
+                // The choice only matters next to Vorssaint; once it is off, it stays visible so it can be turned back on.
+                if !showMenuBarIcon || Self.vorssaintRunning {
+                    SettingsGroup(title: "App", symbol: "menubar.rectangle") {
+                        SettingToggle(title: "Always show menu bar icon", info: "When off, Jot hides its icon while Vorssaint shows Jot in its Dynamic Island. The icon returns when that feature is turned off or Vorssaint quits.",
+                                      isOn: $showMenuBarIcon)
+                    }
                 }
             }.frame(maxWidth: 680, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -210,7 +218,7 @@ extension TranscriptView {
                 }.labelsHidden().pickerStyle(.menu).fixedSize()
             }
             RowDivider()
-            SettingToggle(title: cleanupTitle, info: cleanupInfo("Makes live speech and meetings more readable."),
+            SettingToggle(title: cleanupTitle, info: cleanupInfo("Makes live speech and meetings more readable. Paused while the Mac is in Low Power Mode."),
                           isOn: $service.cleanUpTranscriptions, unavailable: service.cleanupAvailability != .available)
             RowDivider()
             SettingToggle(title: "Keep audio for speaker pass", info: "Keeps session audio until the speaker pass finishes, then deletes it. When off, audio never touches disk and no speaker pass runs.",

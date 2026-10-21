@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import JotCore
 
 @MainActor
 final class SuggestionCard {
@@ -64,11 +65,13 @@ private final class CardModel: ObservableObject {
 
 private struct SuggestionCardView: View {
     @ObservedObject var model: CardModel
+    /// The panel sits outside Jot's windows, so it reads the accent setting itself.
+    @AppStorage(JotDefaultsKey.accentColor) private var accent = JotAccent.system.rawValue
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 if model.loading { ProgressView().controlSize(.small) }
-                else { Image(systemName: "text.bubble").foregroundStyle(Color.accentColor) }
+                else { Image(systemName: "text.bubble").foregroundStyle(JotAccent(saved: accent).color) }
                 Text(model.title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             }
             Text(model.text).font(.body).fixedSize(horizontal: false, vertical: true)
@@ -80,17 +83,21 @@ private struct SuggestionCardView: View {
         }
         .frame(width: 388, alignment: .leading).padding(16)
         .modifier(CardMaterial())
+        .environment(\.jotAccent, JotAccent(saved: accent).color)
         .accessibilityElement(children: .combine)
     }
 }
 
+/// GlassSurface plus an accent edge on the material fallback, so the floating card stands out over any app.
 private struct CardMaterial: ViewModifier {
+    @Environment(\.jotAccent) private var accent
     @ViewBuilder func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: JotTheme.Radius.card)
         if #available(macOS 26.0, *) {
-            content.glassEffect(.regular.tint(.accentColor.opacity(0.08)), in: RoundedRectangle(cornerRadius: 16))
+            content.glassEffect(.regular.tint(accent.opacity(JotTheme.Tint.chip)), in: shape)
         } else {
-            content.background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.accentColor.opacity(0.3)))
+            content.background(.regularMaterial, in: shape)
+                .overlay(shape.stroke(accent.opacity(JotTheme.Tint.stroke)))
         }
     }
 }

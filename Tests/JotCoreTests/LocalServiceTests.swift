@@ -1,6 +1,7 @@
 import XCTest
 @testable import JotCore
 import Darwin
+import os
 
 final class LocalServiceTests: XCTestCase {
     private var directory: URL!
@@ -50,5 +51,42 @@ final class LocalServiceTests: XCTestCase {
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: response) as? [String: Any])
         XCTAssertEqual(object["ok"] as? Bool, false)
         XCTAssertTrue((object["error"] as? String)?.contains("size limit") == true)
+    }
+
+    func testHelperPeerReachesOnlyControlMethods() throws {
+        let socketURL = directory.appendingPathComponent("service.sock")
+        let seen = OSAllocatedUnfairLock(initialState: [String]())
+        let server = LocalServiceServer(socketURL: socketURL, isHelper: { path in
+            seen.withLock { $0.append(path) }; return true
+        }) { _ in Data(#"{"ok":true,"result":{}}"#.utf8) }
+        try server.start(); defer { server.stop() }
+        let client = LocalServiceClient(socketURL: socketURL)
+        for method in LocalServiceServer.helperMethods.sorted() {
+            let object = try JSONSerialization.jsonObject(with: client.request(method: method)) as? [String: Any]
+            XCTAssertEqual(object?["ok"] as? Bool, true, method)
+        }
+        for method in ["speech.status", "transcripts.search", "transcripts.recent", "activity.report", "speech.start"] {
+            let object = try JSONSerialization.jsonObject(with: client.request(method: method)) as? [String: Any]
+            XCTAssertEqual(object?["ok"] as? Bool, false, method)
+            XCTAssertTrue((object?["error"] as? String)?.contains("helper") == true, method)
+        }
+        let paths = seen.withLock { $0 }
+        XCTAssertFalse(paths.isEmpty)
+        XCTAssertTrue(paths.allSatisfy { FileManager.default.isExecutableFile(atPath: $0) }, "The predicate sees the peer's executable")
+    }
+
+    func testOtherPeersKeepEveryMethod() throws {
+        let socketURL = directory.appendingPathComponent("service.sock")
+        let server = LocalServiceServer(socketURL: socketURL, isHelper: { _ in false }) { _ in Data(#"{"ok":true,"result":{}}"#.utf8) }
+        try server.start(); defer { server.stop() }
+        let object = try JSONSerialization.jsonObject(with: LocalServiceClient(socketURL: socketURL).request(method: "speech.status")) as? [String: Any]
+        XCTAssertEqual(object?["ok"] as? Bool, true)
+    }
+
+    func testBundledHelperMatchesOnlyThatAppsHelper() {
+        let match = LocalServiceServer.bundledHelper(in: URL(fileURLWithPath: "/Applications/Jot.app"))
+        XCTAssertTrue(match("/Applications/Jot.app/Contents/Helpers/jot-vorssaint"))
+        XCTAssertFalse(match("/Applications/Jot.app/Contents/Helpers/jot"))
+        XCTAssertFalse(match("/tmp/jot-vorssaint"))
     }
 }
