@@ -17,6 +17,8 @@ struct JotCLI {
             let object = try JSONSerialization.jsonObject(with: data)
             if method == .transcriptsExport, params["format"] == nil, let response = object as? [String: Any],
                let text = (response["result"] as? [String: Any])?["text"] as? String { print(text); return }
+            if method == .sessionsNotes, let response = object as? [String: Any],
+               let notes = (response["result"] as? [String: Any])?["notes"] as? String { print(notes); return }
             let pretty = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
             print(String(decoding: pretty, as: UTF8.self))
             if let response = object as? [String: Any], response["ok"] as? Bool == false { exit(1) }
@@ -34,6 +36,7 @@ struct JotCLI {
     jot meeting start <title>          Ambient capture with a name; exports when it ends
     jot meeting end                    Stop, wait for the last audio, save Markdown to ~/Documents/Jot Sessions
     jot title <session-id> <title>     Name or rename a session
+    jot notes <session-id>             Write a session's summary, decisions and action items
     jot search <query> [--limit N] [--offset N]
     jot recent [--limit N] [--offset N]
     jot sessions [--limit N]
@@ -102,6 +105,9 @@ struct JotCLI {
         case "title":
             guard args.count >= 3 else { throw CLIError.usage("Use: jot title <session-id> <title>") }
             return (.sessionsTitle, ["sessionID": args[1], "title": args.dropFirst(2).joined(separator: " ")])
+        case "notes":
+            guard args.count == 2 else { throw CLIError.usage("Use: jot notes <session-id>") }
+            return (.sessionsNotes, ["sessionID": args[1]])
         case "models":
             guard args.count == 2, ["prepare", "check", "unload"].contains(args[1]) else { throw CLIError.usage("Use: jot models prepare|check|unload") }
             return (args[1] == "prepare" ? LocalMethod.modelsPrepare : args[1] == "check" ? .modelsCheck : .modelsUnload, [:])

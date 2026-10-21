@@ -4,11 +4,12 @@ import Foundation
 /// each request, so a change in Settings or `jot settings` applies to the next one without rebuilding any owner.
 public struct ChosenModel: GenerationProvider {
     public enum Feature: Sendable {
-        case cleanup, suggestions
+        case cleanup, suggestions, notes
         public var settingKey: String {
             switch self {
             case .cleanup: return JotSettings.customModelForCleanup
             case .suggestions: return JotSettings.customModelForSuggestions
+            case .notes: return JotSettings.customModelForNotes
             }
         }
     }

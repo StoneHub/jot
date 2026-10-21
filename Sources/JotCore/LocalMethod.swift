@@ -17,6 +17,7 @@ public enum LocalMethod: String, CaseIterable, Sendable {
     case modelsUnload = "models.unload"
     case modelsCheck = "models.check"
     case sessionsTitle = "sessions.title"
+    case sessionsNotes = "sessions.notes"
     case settingsGet = "settings.get"
     case settingsSet = "settings.set"
     case settingsReset = "settings.reset"
@@ -40,6 +41,6 @@ public enum LocalMethod: String, CaseIterable, Sendable {
     case peopleDelete = "people.delete"
     case speakersLabel = "speakers.label"
 
-    /// Methods that can wait on a model download or load, a file's recognition, a meeting's last speech or new transcript changes, so clients allow them longer.
-    public var isLongRunning: Bool { [.modelsPrepare, .speechTranscribeFile, .speechStart, .speechMeetingStart, .speechMeetingEnd, .transcriptsWait].contains(self) }
+    /// Methods that can wait on a model download or load, a file's recognition, a meeting's last speech, new transcript changes or session notes, so clients allow them longer.
+    public var isLongRunning: Bool { [.modelsPrepare, .speechTranscribeFile, .speechStart, .speechMeetingStart, .speechMeetingEnd, .transcriptsWait, .sessionsNotes].contains(self) }
 }

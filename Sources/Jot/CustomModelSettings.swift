@@ -14,7 +14,7 @@ struct CustomModelSettings: View {
 
     var body: some View {
         SettingsGroup(title: "Custom model", symbol: "server.rack", info: "Use a model server on this Mac, such as Ollama or LM Studio, or a hosted API with your own key, in place of Apple Intelligence. Speech recognition and audio always stay on this Mac.") {
-            Text("Off unless you switch a feature on below. Audio never leaves this Mac. A feature switched on sends the text it uses to this endpoint: cleanup sends each live phrase and each dictation it cleans; suggestions send the field, the visible conversation and matching speech. Window images go only to Apple Intelligence.")
+            Text("Off unless you switch a feature on below. Audio never leaves this Mac. A feature switched on sends the text it uses to this endpoint: cleanup sends each live phrase and each dictation it cleans; suggestions send the field, the visible conversation and matching speech; notes send the whole session when an agent asks for them. Window images go only to Apple Intelligence.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(JotTheme.Padding.row)
             SettingRow(title: "API", info: "OpenAI-compatible covers Ollama, LM Studio, llama.cpp and most hosted APIs. Anthropic uses its Messages API.") {
                 Picker("API", selection: $service.customModelFormat) {
@@ -57,6 +57,9 @@ struct CustomModelSettings: View {
             RowDivider()
             SettingToggle(title: "Use for suggestions", info: "Double-tap Fn drafts use this model instead of Apple Intelligence, without a window image. " + Self.destination(service, usesCustomModel: true),
                           isOn: $service.customModelForSuggestions)
+            RowDivider()
+            SettingToggle(title: "Use for session notes", info: "Notes an agent asks for with sessions_notes or jot notes use this model instead of Apple Intelligence. " + Self.destination(service, usesCustomModel: true),
+                          isOn: $service.customModelForNotes)
         }
         .onAppear { endpoint = service.customModelEndpoint; model = service.customModelName; refreshKey() }
         .onChange(of: service.customModelFormat) { _, _ in refreshKey(); testResult = nil }

@@ -68,7 +68,7 @@ struct MCPServer {
         case "ping": try emit(result(id: id, value: [:]))
         case "tools/list":
             let list: [[String: Any]] = MCPTool.catalog.map { tool in
-                ["name": tool.name, "description": tool.description, "inputSchema": ["type": "object", "properties": tool.properties, "required": tool.required, "additionalProperties": false], "annotations": ["readOnlyHint": tool.readOnly, "destructiveHint": tool.method == .peopleForget, "openWorldHint": tool.method == .modelsPrepare]]
+                ["name": tool.name, "description": tool.description, "inputSchema": ["type": "object", "properties": tool.properties, "required": tool.required, "additionalProperties": false], "annotations": ["readOnlyHint": tool.readOnly, "destructiveHint": tool.method == .peopleForget, "openWorldHint": [LocalMethod.modelsPrepare, .sessionsNotes].contains(tool.method)]]
             }
             try emit(result(id: id, value: ["tools": list]))
         case "tools/call":
