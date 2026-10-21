@@ -171,6 +171,8 @@ class ReleaseInstallTests(unittest.TestCase):
         (self.root / 'Sources/JotCore/JotVersion.swift').write_text('let current = "0.2.13"\n')
         (self.root / 'project.yml').write_text("CFBundleShortVersionString: '0.2.13'\nCFBundleVersion: '20'\n")
         (self.root / 'Resources/Info.plist').write_bytes(plistlib.dumps(dict(CFBundleShortVersionString='0.2.13', CFBundleVersion='20')))
+        (self.root / 'Casks').mkdir()
+        (self.root / 'Casks/jot.rb').write_text(f'cask "jot" do\n  version "0.2.13"\n  sha256 "{"0" * 64}"\nend\n')
         product = self.root / 'build/product/Jot.app'
         (product / 'Contents/MacOS/Jot').write_bytes(b'synthetic release executable')
         sha = hashlib.sha256((product / 'Contents/MacOS/Jot').read_bytes()).hexdigest()
@@ -218,6 +220,11 @@ class ReleaseInstallTests(unittest.TestCase):
         extraction = next(command for command in self.commands if command[:3] == ['ditto', '-x', '-k'])
         self.assertEqual(Path(extraction[3]).resolve(), (self.root / 'build/Jot-0.2.14.zip').resolve())
         self.assertFalse(Path(extraction[4]).exists())
+        # The cask in the release commit names the published ZIP.
+        zip_digest = hashlib.sha256(b'synthetic release zip').hexdigest()
+        self.assertEqual((self.root / 'Casks/jot.rb').read_text(), f'cask "jot" do\n  version "0.2.14"\n  sha256 "{zip_digest}"\nend\n')
+        self.assertIn(['git', 'add', '--', 'Sources/JotCore/JotVersion.swift', 'project.yml', 'Resources/Info.plist',
+                       'docs/release-notes/0.2.14.md', 'Casks/jot.rb', 'Jot.xcodeproj/project.pbxproj'], self.commands)
 
 
 if __name__ == '__main__':

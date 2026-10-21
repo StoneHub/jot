@@ -30,6 +30,8 @@ python3 scripts/release.py patch --notes "What changed" --local --install
 
 It runs the same steps without notarization and marks the GitHub release as a pre-release. The in-app updater accepts it: it strips the quarantine flag and requires the download's TeamIdentifier to match the running app, so the build installs on Macs that trust that development certificate and nowhere else.
 
+Each release also rewrites `version` and `sha256` in the Homebrew cask, `Casks/jot.rb`, in the release commit; see [HOMEBREW.md](HOMEBREW.md).
+
 `--dry-run` verifies the owner certificate, tests and builds the app, creates an unstapled candidate ZIP, prints the remaining notarization and publication work, and restores the tree without submitting or publishing.
 
 The packaged-product installer requires all four `--expected-team`, `--expected-version`, `--expected-build` and `--expected-sha256` arguments, plus `--configuration Release`. The extracted Jot.app must be a real directory directly inside the extraction directory. Every bundle entry must resolve within that app; contained framework symlinks remain valid, while external, dangling and cyclic symlink targets are refused. The installer repeats these checks on the supplied path before reading metadata, then checks Jot's bundle identifier, executable, bundled CLI, signature, team, release entitlements and feedback exclusion before stopping any runtime. `--build-only` verifies a supplied product without installing it. The ordinary source-build command still builds and resolves its product through Xcode build settings.
