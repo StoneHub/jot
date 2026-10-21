@@ -263,6 +263,18 @@ extension SpeechService {
             guard let id = params["id"] as? String else { throw JotError.message("id is required") }
             if id == "you" { speakers.forgetUserVoice() } else { let store = speakers.peopleStore; try await storeExecutor.submit { try store?.delete(id: id) }.value; speakers.refreshPeople() }
             result = ["deleted": true]
+        case .vocabularyList:
+            var listed: [String: Any] = ["entries": try object(vocabulary.entries)]
+            if let vocabularyLoadError { listed["loadError"] = vocabularyLoadError }
+            result = listed
+        case .vocabularySave:
+            let entry = try VocabularyRequest.entry(params, in: vocabulary)
+            try saveVocabularyEntry(entry)
+            result = try object(vocabulary.entries.first { $0.id == entry.id } ?? entry)
+        case .vocabularyRemove:
+            let id = try VocabularyRequest.id(params, in: vocabulary)
+            try removeVocabularyEntry(id)
+            result = ["removed": id.uuidString]
         case .speakersLabel:
             guard let session = params["sessionID"] as? String, let speaker = params["speakerID"] as? String, let name = params["name"] as? String else { throw JotError.message("sessionID, speakerID and name are required") }
             // The name is saved before the voice is remembered, so Live shows it even when remembering the voice fails.

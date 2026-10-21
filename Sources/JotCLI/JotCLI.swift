@@ -58,6 +58,9 @@ struct JotCLI {
     jot agent-context --source claude-code|codex
                                        Quiet local hook ingress; reads one JSON event on stdin
     jot people                         Voices Jot remembers
+    jot vocabulary                     Personal vocabulary dictation applies
+    jot vocabulary add <spelling> [--heard <phrase>]
+    jot vocabulary remove <id>
     jot forget <person-id>             Forget one remembered voice; session names stay
     jot diagnostics                    Bounded performance report; no captured content
     jot lab <audio> --variants <file.json> --out <dir> [--captions <file.srt|.vtt>]
@@ -189,6 +192,19 @@ struct JotCLI {
                 params["text"] = String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self)
             } else { params["text"] = rest.joined(separator: " ") }
             return (.contextAdd, params)
+        case "vocabulary":
+            let use = "Use: jot vocabulary, jot vocabulary add <spelling> [--heard <phrase>], or jot vocabulary remove <id>"
+            if args.count == 1 { return (.vocabularyList, [:]) }
+            if args.count == 3, args[1] == "remove" { return (.vocabularyRemove, ["id": args[2]]) }
+            guard args.count >= 3, args[1] == "add" else { throw CLIError.usage(use) }
+            var rest = Array(args.dropFirst(2)); var params: [String: Any] = [:]
+            if let index = rest.firstIndex(of: "--heard") {
+                guard index + 1 < rest.count, index > 0 else { throw CLIError.usage(use) }
+                params["heard"] = rest[(index + 1)...].joined(separator: " "); rest.removeSubrange(index...)
+            }
+            guard !rest.isEmpty else { throw CLIError.usage(use) }
+            params["preferred"] = rest.joined(separator: " ")
+            return (.vocabularySave, params)
         case "people":
             guard args.count == 1 else { throw CLIError.usage("Use: jot people") }
             return (.peopleList, [:])
