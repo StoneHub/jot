@@ -59,8 +59,6 @@ struct LiveTranscriptText: NSViewRepresentable {
         private var revision: Int?
         private var pending: (String, Int, Bool)?
         private var applying = false
-        private(set) var transitionCount = 0
-        private(set) var highlightCount = 0
 
         func receive(_ text: String, revision: Int, reduceMotion: Bool) {
             pending = (text, revision, reduceMotion)
@@ -85,7 +83,6 @@ struct LiveTranscriptText: NSViewRepresentable {
                 transition.type = .fade; transition.duration = 0.28
                 transition.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 view.layer?.add(transition, forKey: "phrase-cleanup")
-                transitionCount += 1
                 // The wording often barely changes, so the crossfade alone reads as a
                 // flicker. An accent wash that lingers past it catches peripheral vision.
                 if let layer = view.layer {
@@ -95,7 +92,6 @@ struct LiveTranscriptText: NSViewRepresentable {
                     wash.duration = 1.1
                     wash.timingFunction = CAMediaTimingFunction(name: .easeOut)
                     layer.add(wash, forKey: "phrase-cleanup-wash")
-                    highlightCount += 1
                 }
             }
             applying = true
