@@ -512,8 +512,12 @@ final class SuggestionCoordinator {
                 let result: DictationInput.DeliveryResult
                 if let seed { result = try await self.input.replace(seed, with: text, expected: field) }
                 else { result = try await self.input.insert(text, expected: field) }
+                // Dismissed during the insert (Fn, Escape, typing): its receipt is complete, and receipt and outcome
+                // now belong to whatever came next, so only the insertion itself is counted.
+                if result.verified { self.insertions += 1 }
+                guard token == self.generation else { return }
                 if result.verified {
-                    self.insertions += 1; self.outcome = "inserted"
+                    self.outcome = "inserted"
                     self.updateReceipt { $0.outcome = .inserted }
                     self.dismiss(action: .acceptedVerified)
                 } else {
@@ -523,15 +527,15 @@ final class SuggestionCoordinator {
                     self.notice("Insertion could not be verified. Check the field before retrying.")
                 }
             } catch DictationInput.InputError.selectionUnavailable {
+                guard token == self.generation else { return }
                 self.outcome = "selection-unavailable"
                 self.updateReceipt { $0.outcome = .insertionCancelled; $0.reason = .selectionUnavailable }
-                guard token == self.generation else { return }
                 self.dismiss(action: .focusChanged)
                 self.notice(DictationInput.InputError.selectionUnavailable.localizedDescription)
             } catch {
+                guard token == self.generation else { return }
                 self.outcome = "insertion-cancelled"
                 self.updateReceipt { $0.outcome = .insertionCancelled; $0.reason = .insertionCancelled }
-                guard token == self.generation else { return }
                 self.dismiss(action: .focusChanged)
                 self.notice("Nothing inserted: the target changed.")
             }
