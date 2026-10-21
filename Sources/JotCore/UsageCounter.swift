@@ -2,7 +2,7 @@ import Foundation
 
 /// One local usage counter, kept as a count per local day. Every name is built from these cases and the fixed outcome
 /// enums they carry, so no transcript, field, app or model text can reach the table. Nothing here leaves the Mac.
-public enum UsageCounter: Sendable, Hashable {
+public enum UsageCounter: Sendable, Hashable, CaseIterable {
     /// How a released dictation hold ended. Together they count every hold, independent of later deletion.
     case dictation(PerformanceJob.Outcome)
     /// How a hold's text reached its field, or that it did not.
@@ -21,8 +21,17 @@ public enum UsageCounter: Sendable, Hashable {
     /// What ended a shown suggestion, counted once when its receipt completes.
     case suggestionAction(SuggestionHistoryEntry.Action)
 
-    public enum Insertion: String, Sendable {
+    public enum Insertion: String, Sendable, CaseIterable {
         case accessibility, unicode, clipboard, unverified, failed
+    }
+
+    /// Every counter, in a fixed order. The analytics Worker allowlists exactly these names (services/analytics/src/counters.js).
+    public static var allCases: [UsageCounter] {
+        PerformanceJob.Outcome.allCases.map(UsageCounter.dictation) + Insertion.allCases.map(UsageCounter.insertion)
+            + CleanupResult.Outcome.allCases.map(UsageCounter.dictationCleanup)
+            + [.liveCleanup(applied: true), .liveCleanup(applied: false), .savedDictationReviewed, .savedDictationCopied, .suggestionRequested]
+            + SuggestionHistoryEntry.Outcome.allCases.map(UsageCounter.suggestionOutcome)
+            + SuggestionHistoryEntry.Action.allCases.map(UsageCounter.suggestionAction)
     }
 
     /// A delivery result's path and verification as a counter. A verified path this build does not name counts as
