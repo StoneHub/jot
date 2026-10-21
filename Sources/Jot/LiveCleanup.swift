@@ -70,6 +70,7 @@ final class LiveCleanup {
             else {
                 cleanupBypassedCount += 1; cleanupCompletedCount += 1
                 cleanupOutcomeCounts[CleanupResult.Outcome.busy.rawValue, default: 0] += 1
+                library.countUsage([.liveCleanup(applied: false)])
             }
         }
         guard cleanupTasks.isEmpty, !cleanupQueue.isEmpty else { return }
@@ -87,7 +88,8 @@ final class LiveCleanup {
             while !Task.isCancelled, !cleanupQueue.isEmpty {
                 let phrase = cleanupQueue.removeFirst()
                 runningSession = phrase.sources.first?.sessionID
-                defer { runningSession = nil }
+                var phraseApplied = false
+                defer { runningSession = nil; library.countUsage([.liveCleanup(applied: phraseApplied)]) }
                 guard cleanupWanted, let session = phrase.sources.first?.sessionID,
                       !library.sessionIsDeleted(session) else {
                     cleanupBypassedCount += 1; cleanupCompletedCount += 1; continue
@@ -115,7 +117,7 @@ final class LiveCleanup {
                     let applied = try await library.storeExecutor.submit { try store?.setReadablePhrase(readable, for: phrase.sources) == true }.value
                     guard !(await library.waitForDeletion(session)) else { cleanupBypassedCount += 1; continue }
                     if applied {
-                        cleanupAppliedCount += 1
+                        cleanupAppliedCount += 1; phraseApplied = true
                         let texts = Dictionary(uniqueKeysWithValues: zip(phrase.sources.map(\.id), readable))
                         library.replaceLive(texts: texts)
                         library.didClean(phrase.sources, texts: texts)
@@ -126,12 +128,13 @@ final class LiveCleanup {
         activityChanged()
     }
 
-    /// One dictation row through cleanup, counted with the live phrases in the recovery diagnostics.
+    /// One dictation row through cleanup, counted with the live phrases in the recovery diagnostics and in the usage counters.
     func cleanDictation(_ text: String) async -> (text: String, outcome: CleanupResult.Outcome) {
         cleanupRequestedCount += 1
         let cleanup = await clean(transcriptCleanup, [text], Self.dictationCleanupTimeout)
         cleanupCompletedCount += 1
         cleanupOutcomeCounts[cleanup.outcome.rawValue, default: 0] += 1
+        library.countUsage([.dictationCleanup(cleanup.outcome)])
         if let first = cleanup.texts.first, first != text { cleanupAppliedCount += 1; return (first, cleanup.outcome) }
         cleanupBypassedCount += 1
         return (text, cleanup.outcome)

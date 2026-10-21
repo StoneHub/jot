@@ -101,6 +101,7 @@ targets:
       - Sources/Jot/ResourceSampler.swift
       - Sources/Jot/SessionAudioFile.swift
       - Sources/Jot/SessionLibrary.swift
+      - Sources/Jot/SessionLibrary+Usage.swift
       - Sources/Jot/ShortcutSettings.swift
       - Sources/Jot/SuggestionCard.swift
       - Sources/Jot/JotTheme.swift
@@ -157,6 +158,7 @@ targets:
       - Sources/Jot/ResourceSampler.swift
       - Sources/Jot/SessionAudioFile.swift
       - Sources/Jot/SessionLibrary.swift
+      - Sources/Jot/SessionLibrary+Usage.swift
       - Sources/Jot/ShortcutSettings.swift
       - Sources/Jot/SuggestionCard.swift
       - Sources/Jot/JotTheme.swift

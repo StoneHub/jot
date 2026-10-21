@@ -9,6 +9,7 @@ final class SuggestionCoordinator {
     private let input: DictationInput
     private let store: () -> TranscriptStore?
     private let history: () -> SuggestionHistory?
+    private let countUsage: ([UsageCounter]) -> Void
     private let agentContext: AgentContext
     private let allowed: () -> Bool
     private let readsScreen: () -> Bool
@@ -61,13 +62,14 @@ final class SuggestionCoordinator {
     static let needsNotes = SuggestionPresentation.needsNotes
 
     init(input: DictationInput, store: @escaping () -> TranscriptStore?,
-         history: @escaping () -> SuggestionHistory? = { nil }, agentContext: AgentContext = AgentContext(),
+         history: @escaping () -> SuggestionHistory? = { nil }, countUsage: @escaping ([UsageCounter]) -> Void = { _ in },
+         agentContext: AgentContext = AgentContext(),
          allowed: @escaping () -> Bool, readsScreen: @escaping () -> Bool = { true },
          includesWindowImage: @escaping () -> Bool = { false },
          window: @escaping () -> TimeInterval = { 600 }, matchesHeardSpeech: @escaping () -> Bool = { true },
          userVoice: @escaping () -> UserVoice? = { nil }, model: ChosenModel = ChosenModel(.suggestions),
          notice: @escaping (String) -> Void) {
-        self.input = input; self.store = store; self.history = history; self.agentContext = agentContext; self.allowed = allowed
+        self.input = input; self.store = store; self.history = history; self.countUsage = countUsage; self.agentContext = agentContext; self.allowed = allowed
         self.readsScreen = readsScreen; self.includesWindowImage = includesWindowImage
         self.window = window; self.matchesHeardSpeech = matchesHeardSpeech; self.notice = notice
         self.userVoice = userVoice; self.model = model
@@ -97,12 +99,20 @@ final class SuggestionCoordinator {
 
     private func beginReceipt() {
         receipt = Receipt()
+        countUsage([.suggestionRequested])
         persistReceipt()
     }
 
     private func updateReceipt(_ update: (inout Receipt) -> Void) {
         guard var current = receipt else { return }
         update(&current)
+        // The usage counters take one outcome per request, when its receipt first completes.
+        if current.complete, !current.counted {
+            current.counted = true
+            var counters: [UsageCounter] = [.suggestionOutcome(current.outcome)]
+            if let action = current.action { counters.append(.suggestionAction(action)) }
+            countUsage(counters)
+        }
         current.revision += 1
         receipt = current
         persistReceipt()
