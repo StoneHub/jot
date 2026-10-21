@@ -111,7 +111,12 @@ final class ShortcutEventTap: @unchecked Sendable {
             onDecision = nil
             return runLoop
         }
-        if let loop { CFRunLoopStop(loop); CFRunLoopWakeUp(loop) }
+        if let loop {
+            // A stop or wake-up that lands before the tap thread enters its run loop is dropped, but a queued block
+            // waits for the next run, so the thread always sees this one.
+            CFRunLoopPerformBlock(loop, CFRunLoopMode.defaultMode.rawValue) { CFRunLoopStop(CFRunLoopGetCurrent()) }
+            CFRunLoopStop(loop); CFRunLoopWakeUp(loop)
+        }
         // The callback context holds an unretained reference, so wait for the thread
         // to remove its source before its owner can release this object.
         while lock.withLock({ thread?.isExecuting ?? false }) {
@@ -147,9 +152,10 @@ final class ShortcutEventTap: @unchecked Sendable {
             ready?.signal()
             ready = nil
         }
-        if newTap != nil {
+        if newTap != nil, newSource != nil {
+            // Sleeps until a key event or stop(); the timeout is only a backstop, not a poll.
             while lock.withLock({ running }) {
-                CFRunLoopRunInMode(.defaultMode, 0.25, false)
+                CFRunLoopRunInMode(.defaultMode, 1, false)
             }
         }
         lock.withLock {
