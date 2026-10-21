@@ -59,6 +59,8 @@ final class AppUpdater: ObservableObject {
         Task {
             let staging = FileManager.default.temporaryDirectory.appending(path: "jot-update-\(UUID().uuidString)")
             do {
+                // Before the download, so an account that can't replace the app isn't told so only after the whole zip.
+                try Self.checkReplaceable()
                 try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
                 log("update \(JotVersion.current) -> \(release.version); staging \(staging.path)")
                 let zip = try await download(release, to: staging)
@@ -68,7 +70,6 @@ final class AppUpdater: ObservableObject {
                 let bundle = staging.appending(path: "Jot.app")
                 try verify(bundle, expecting: release.version)
                 log("verified \(bundle.path)")
-                try Self.checkReplaceable()
                 state = .finishing
                 try await service.prepareForUpdate()
                 state = .installing
