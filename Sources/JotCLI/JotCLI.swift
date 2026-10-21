@@ -85,7 +85,9 @@ struct JotCLI {
             }
             return (.activityReport, ["days": days])
         case "status", "controls", "start", "pause", "resume", "diagnostics":
-            guard args.count == 1, let method = LocalMethod(rawValue: "speech." + first) else { throw CLIError.usage("Unexpected arguments for \(first)") }
+            let methods: [String: LocalMethod] = ["status": .speechStatus, "controls": .speechControls, "start": .speechStart,
+                                                  "pause": .speechPause, "resume": .speechResume, "diagnostics": .speechDiagnostics]
+            guard args.count == 1, let method = methods[first] else { throw CLIError.usage("Unexpected arguments for \(first)") }
             return (method, [:])
         case "clear-history":
             guard args.count == 1 else { throw CLIError.usage("Use: jot clear-history") }
@@ -102,7 +104,7 @@ struct JotCLI {
             return (.sessionsTitle, ["sessionID": args[1], "title": args.dropFirst(2).joined(separator: " ")])
         case "models":
             guard args.count == 2, ["prepare", "check", "unload"].contains(args[1]) else { throw CLIError.usage("Use: jot models prepare|check|unload") }
-            return ("models." + args[1], [:])
+            return (args[1] == "prepare" ? LocalMethod.modelsPrepare : args[1] == "check" ? .modelsCheck : .modelsUnload, [:])
         case "transcribe-file":
             guard args.count == 2 else { throw CLIError.usage("Use: jot transcribe-file <path>") }
             let path = URL(fileURLWithPath: (args[1] as NSString).expandingTildeInPath).standardizedFileURL.path
@@ -111,7 +113,7 @@ struct JotCLI {
             let parsed = try pagination(Array(args.dropFirst()))
             guard parsed.words.isEmpty else { throw CLIError.usage("Unexpected argument: \(parsed.words.joined(separator: " "))") }
             guard first != "sessions" || parsed.params["offset"] == nil else { throw CLIError.usage("Sessions supports --limit only") }
-            return (first == "sessions" ? .transcriptsSessions : .transcriptsRecent, parsed.params)
+            return (first == "sessions" ? LocalMethod.transcriptsSessions : .transcriptsRecent, parsed.params)
         case "search":
             let parsed = try pagination(Array(args.dropFirst()))
             guard !parsed.words.isEmpty else { throw CLIError.usage("Use: jot search <query> [--limit N] [--offset N]") }

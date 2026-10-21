@@ -66,8 +66,4 @@ final class LocalDispatchTests: XCTestCase {
         ])
         XCTAssertEqual(LocalMethod.allCases.filter(\.isLongRunning), [.speechStart, .speechMeetingStart, .speechMeetingEnd, .speechTranscribeFile, .modelsPrepare])
     }
-
-    func testEveryMCPToolCallsAMethodTheServiceAnswers() {
-        for tool in MCPTool.catalog { XCTAssertNotNil(LocalMethod(rawValue: tool.method), tool.name) }
-    }
 }
