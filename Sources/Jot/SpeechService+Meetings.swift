@@ -8,7 +8,7 @@ extension SpeechService {
     /// A meeting is ambient capture with a name, and an export when it ends.
     func startMeeting(_ title: String) async {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { notice = "Give the meeting a name first."; return }
+        guard !trimmed.isEmpty else { post(.meetingStartFailed, "Give the meeting a name first."); return }
         do {
             try await startAmbient()
             guard ambientEnabled else { throw JotError.message("Ambient capture did not start.") }
@@ -17,7 +17,7 @@ extension SpeechService {
             meetingParts = [id]
             try await storeExecutor.submit { try store?.setTitle(sessionID: id, title: trimmed) }.value
             library.refreshSessions()
-        } catch { meetingTitle = nil; notice = error.localizedDescription }
+        } catch { meetingTitle = nil; post(.meetingStartFailed, error.localizedDescription) }
     }
 
     /// Renames the running meeting: the name goes on its session now and on any continuation after an automatic pause.
@@ -56,7 +56,7 @@ extension SpeechService {
     @discardableResult
     func endMeeting() async throws -> [URL] {
         func failure(_ message: String) -> JotError {
-            notice = message
+            post(.meetingEndFailed, message)
             return JotError.message(message)
         }
         guard !pauseRequested else {
@@ -91,7 +91,7 @@ extension SpeechService {
         let cleaning = { parts.contains { liveCleanup.isCleaning(session: $0) } }
         if lifecycle.acceptsWork(generation), cleaning() {
             let waiting = "Cleaning up the meeting's last words before export…"
-            notice = waiting
+            post(.meetingExporting, waiting)
             let deadline = ContinuousClock.now + Self.meetingCleanupWait
             do {
                 try await MeetingExportWait.wait(isValid: { lifecycle.acceptsWork(generation) },
@@ -120,7 +120,7 @@ extension SpeechService {
         var notes: [String] = []
         if files.count > 1 { notes.append("The meeting was paused along the way, so it was saved as \(files.count) files.") }
         if cleanupUnfinished { notes.append("Exported before cleanup finished: the last lines are as recognized. Export it again from Sessions once cleanup is done.") }
-        if !notes.isEmpty { notice = notes.joined(separator: " ") }
+        if !notes.isEmpty { post(cleanupUnfinished ? .meetingExportedUncleaned : .meetingSavedInParts, notes.joined(separator: " ")) }
         return files
     }
 

@@ -157,7 +157,15 @@ final class SpeechService: ObservableObject {
     }
     var mode: String { listeningState.mode }
     var modelState: ListeningState.Models { listeningState.models }
-    @Published var notice = ""
+    /// What Jot tells the person. Assigning it directly reads as `ControlNotice.other`; `post(_:_:)` names the code.
+    @Published var notice = "" {
+        didSet { noticeCode = notice.isEmpty ? nil : (stagedNoticeCode ?? ControlNotice.other); stagedNoticeCode = nil }
+    }
+    /// The notice's code for `speech.controls` version 2. The text never leaves Jot over the control surface.
+    private(set) var noticeCode: ControlNotice? { didSet { if noticeCode != oldValue { ControlEvents.signal() } } }
+    private var stagedNoticeCode: ControlNotice?
+    /// Shows `text` as the notice and `code` as what it is about.
+    func post(_ code: ControlNotice, _ text: String) { stagedNoticeCode = code; notice = text }
     @Published var modelUpdates = ModelUpdate.defaults
     @Published var checkingModels = false
     @Published var micPermission = AVCaptureDevice.authorizationStatus(for: .audio)
@@ -171,7 +179,16 @@ final class SpeechService: ObservableObject {
     @Published var downloadPrompt: Int64?
     /// Title of the meeting being recorded; nil when ambient is off or was started without a name.
     /// Set by the meeting calls in SpeechService+Meetings.swift, by Pause and by the update restore.
-    @Published var meetingTitle: String? { didSet { if meetingTitle == nil { meetingParts = [] }; ControlEvents.signal() } }
+    @Published var meetingTitle: String? {
+        didSet {
+            if meetingTitle == nil { meetingParts = []; meetingStartedAt = nil }
+            else if oldValue == nil { meetingStartedAt = dependencies.now() }
+            ControlEvents.signal()
+        }
+    }
+    /// When the running meeting began. Renames and the automatic pauses that keep a meeting keep its start; after an
+    /// update relaunch it restarts from the restore, since the handoff carries only the title.
+    private(set) var meetingStartedAt: Date?
     /// Sessions the running meeting recorded into, oldest first: an automatic pause continues it in a new session.
     /// End meeting exports each of them. Memory only; after an update relaunch only the parts from then on are known.
     var meetingParts: [String] = []
@@ -350,7 +367,7 @@ final class SpeechService: ObservableObject {
                 let interrupted = self.ambientEnabled || self.preparing || self.capture.running
                 if interrupted { self.recordEvent(.sleep, "Capture paused because the Mac is sleeping.") }
                 self.pause(automatic: true)
-                if interrupted { self.notice = "Paused for sleep." }
+                if interrupted { self.post(.pausedForSleep, "Paused for sleep.") }
             }
         })
         observers.append(center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
@@ -364,7 +381,7 @@ final class SpeechService: ObservableObject {
             Task { @MainActor in
                 guard let self, self.ambientEnabled || self.dictation.isActive else { return }
                 if self.switchingInput || self.preparingUpdate || self.capture.shouldIgnoreConfigurationChange() { return }
-                self.recordEvent(.deviceChange, "Audio input configuration changed."); self.pause(automatic: true); self.notice = "Audio input changed. Resume when ready."
+                self.recordEvent(.deviceChange, "Audio input configuration changed."); self.pause(automatic: true); self.post(.microphoneChanged, "Audio input changed. Resume when ready.")
             }
         })
     }
@@ -438,7 +455,7 @@ final class SpeechService: ObservableObject {
             return
         }
         markPerformance(.modelLoadStarted)
-        notice = "Loading models…"
+        post(.modelsLoading, "Loading models…")
         preparation = Task {
             do {
                 try await dependencies.prepareModels(pipeline)
@@ -671,7 +688,7 @@ final class SpeechService: ObservableObject {
             await dictation.waitForRecovery()
             // Optional text-only cleanup may finish after capture stops. Original recognition is already durable; no microphone is retained.
             ambientEnabled = false; transcriber.queuedSeconds = 0
-            notice = outcome.endedMeeting ? "Meeting stopped. Its transcript is in Sessions." : ""
+            if outcome.endedMeeting { post(.meetingStopped, "Meeting stopped. Its transcript is in Sessions.") } else { notice = "" }
             pauseRequested = false; pausing = nil
             scheduleTimer()
             resumeAfterSleepIfReady()
@@ -782,7 +799,7 @@ final class SpeechService: ObservableObject {
             let queued = transcriber.queuedAudioSeconds
             if transcriber.queuedSeconds != queued { transcriber.queuedSeconds = queued }
             if !pauseRequested, ambientEnabled || dictation.isActive, let lastAudioAt, now.timeIntervalSince(lastAudioAt) > 4 {
-                recordEvent(.inputStalled, "No microphone samples for more than four seconds."); pause(automatic: true); notice = "Microphone stopped delivering audio. Resume to reconnect; a capture gap occurred."
+                recordEvent(.inputStalled, "No microphone samples for more than four seconds."); pause(automatic: true); post(.microphoneStopped, "Microphone stopped delivering audio. Resume to reconnect; a capture gap occurred.")
             }
             if !pauseRequested, ambientEnabled, !dictation.isActive, !dictation.isPending,
                SessionSplit.shouldStart(silenceMinutes: newSessionAfterSilence,
