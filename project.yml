@@ -103,6 +103,8 @@ targets:
       - Sources/Jot/SessionLibrary.swift
       - Sources/Jot/ShortcutSettings.swift
       - Sources/Jot/SuggestionCard.swift
+      - Sources/Jot/JotTheme.swift
+      - Sources/Jot/JotAppearance.swift
       - Sources/Jot/SuggestionCoordinator.swift
       - Sources/Jot/SuggestionCoordinator+Receipt.swift
       - Sources/Jot/ScreenContextReader.swift
@@ -157,6 +159,8 @@ targets:
       - Sources/Jot/SessionLibrary.swift
       - Sources/Jot/ShortcutSettings.swift
       - Sources/Jot/SuggestionCard.swift
+      - Sources/Jot/JotTheme.swift
+      - Sources/Jot/JotAppearance.swift
       - Sources/Jot/SuggestionCoordinator.swift
       - Sources/Jot/SuggestionCoordinator+Receipt.swift
       - Sources/Jot/ScreenContextReader.swift

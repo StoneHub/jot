@@ -227,7 +227,7 @@ struct SessionsView: View {
                                 .font(.caption.weight(.medium)).foregroundStyle(.secondary)
                             Text(hit.text).lineLimit(3).multilineTextAlignment(.leading).foregroundStyle(.primary)
                         }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                    }.buttonStyle(.plain).padding(12).background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 12))
+                    }.buttonStyle(.plain).padding(12).modifier(WellSurface(radius: JotTheme.Radius.group))
                         .help("Open this session")
                 }
             }.frame(maxWidth: 820, alignment: .leading)
