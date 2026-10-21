@@ -1,8 +1,10 @@
 # Jot (next release)
 
-Jot can now appear in Vorssaint's Dynamic Island. Jot.app includes a small helper, jot-vorssaint, that a Vorssaint build with native app features can turn on: a Listening switch, Start and End Meeting, Open Jot and Quit Jot, plus capture and processing feedback while you dictate. The helper sees only Jot's listening state, microphone level and dictation progress; no transcript, meeting title, target app or audio leaves Jot. Turning the feature on never starts the microphone. Switching Listening off in the island pauses right away and also ends any meeting in progress. Stock Vorssaint does not include native app features yet, and Jot works the same without it.
+Jot can now appear in Vorssaint's Dynamic Island. Jot.app includes a small helper, jot-vorssaint, that a Vorssaint build with native app features can turn on: a Listening switch, Start and End Meeting, Open Jot and Quit Jot, plus capture and processing feedback while you dictate. The helper sees only Jot's listening state, microphone level, dictation progress and how long a meeting has run; no meeting title, target app or audio leaves Jot, and transcript text only as the preview below. Turning the feature on never starts the microphone. Switching Listening off in the island pauses right away and also ends any meeting in progress. Stock Vorssaint does not include native app features yet, and Jot works the same without it.
 
 A new General → App setting, "Always show menu bar icon", is on by default. Turn it off and Jot hides its own icon only while Vorssaint's Jot feature is running. The icon comes back when the feature is turned off or Vorssaint quits.
+
+A second App setting, "Share transcript preview", is on by default: while Jot listens, the Island can show the last line Jot heard, up to 180 characters with the speaker's name. Dictation is never shown, only Jot's own Vorssaint helper can read the line, and Vorssaint does not save it. Turn it off to keep all transcript text inside Jot.
 
 Fixes:
 - End Meeting now exports after the last phrase is cleaned up. It waits about 15 seconds at most, then saves the rest as recognized.

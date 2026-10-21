@@ -4,6 +4,8 @@ import Foundation
 /// the jot-vorssaint helper send. The app switches over this enum, so a method added here must be handled there.
 public enum LocalMethod: String, CaseIterable, Sendable {
     case speechControls = "speech.controls"
+    /// The Island's transcript preview. Only the bundled Vorssaint helper may call it.
+    case speechPreview = "speech.preview"
     case speechStatus = "speech.status"
     case speechDiagnostics = "speech.diagnostics"
     case speechStart = "speech.start"

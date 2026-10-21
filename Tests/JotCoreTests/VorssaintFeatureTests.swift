@@ -79,4 +79,16 @@ final class VorssaintFeatureTests: XCTestCase {
         let quiet = presentation.reply(controls(mode: "ambient"), process: 1, version: 2)
         XCTAssertEqual(Set(quiet.keys), ["version", "instance", "status", "phase", "level", "toggleValues", "enabledActions"])
     }
+
+    func testOnlyVersionTwoRepliesCarryThePreviewAndNeverMoreThanItsLimit() {
+        var presentation = VorssaintPresentation()
+        let line = "Monroe: ship it on Friday"
+        XCTAssertNil(presentation.reply(controls(mode: "ambient"), process: 1, preview: line)["preview"],
+                     "A version 1 host never gets text")
+        XCTAssertEqual(presentation.reply(controls(mode: "ambient"), process: 1, version: 2, preview: line)["preview"] as? String, line)
+        XCTAssertNil(presentation.reply(controls(mode: "ambient"), process: 1, version: 2, preview: "")["preview"])
+        let long = presentation.reply(controls(mode: "ambient"), process: 1, version: 2,
+                                      preview: String(repeating: "x", count: 500))["preview"] as? String
+        XCTAssertEqual(long?.count, TranscriptPreview.maximumLength)
+    }
 }

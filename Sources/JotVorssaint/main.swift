@@ -25,6 +25,12 @@ func call(_ method: LocalMethod, _ params: [String: Any] = [:], timeout: Int? = 
     return object["result"] ?? [:]
 }
 
+/// Asked only for a version 2 host. Jot answers it only for this helper and only while its setting is on; the text
+/// goes straight into the reply and is never kept or logged here.
+func preview() -> String? {
+    (try? call(.speechPreview, timeout: 2) as? [String: Any])?["preview"] as? String
+}
+
 /// Always the latest snapshot; `VorssaintPresentation` leaves out what the host's version does not know.
 func controls() throws -> ControlSnapshot {
     try ControlSnapshot.decode(JSONSerialization.data(withJSONObject:
@@ -65,7 +71,8 @@ while let line = readLine() {
                 Thread.sleep(forTimeInterval: 0.1)
                 state = try controls()
             }
-            reply.merge(presentation.reply(state, process: jot.processIdentifier, version: version)) { $1 }
+            reply.merge(presentation.reply(state, process: jot.processIdentifier, version: version,
+                                           preview: version >= 2 ? preview() : nil)) { $1 }
         } else if action != "observe" && action != "open" {
             throw HelperError("Open Jot to connect.")
         }

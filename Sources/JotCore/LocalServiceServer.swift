@@ -4,13 +4,16 @@ import os
 
 /// Bounded local IPC: eight clients, 1 MiB requests, 4 MiB responses, ten-second input deadline.
 /// Any same-user process may connect. The bundled `jot-vorssaint` helper is
-/// held to the control methods it needs, so it can never read history.
+/// held to the control methods it needs, so it can never read history, and
+/// it alone may read the transcript preview.
 public final class LocalServiceServer: @unchecked Sendable {
     public typealias Handler = @Sendable (Data) async -> Data
     public typealias PeerPredicate = @Sendable (String) -> Bool
-    /// What the Vorssaint helper may call: text-free controls and the switch's actions.
-    public static let helperMethods = Set([LocalMethod.speechControls, .speechPause, .speechResume,
+    /// What the Vorssaint helper may call: text-free controls, the switch's actions and the transcript preview.
+    public static let helperMethods = Set([LocalMethod.speechControls, .speechPreview, .speechPause, .speechResume,
                                            .speechMeetingStart, .speechMeetingEnd].map(\.rawValue))
+    /// What only the Vorssaint helper may call, so the preview goes to no other peer.
+    public static let helperOnlyMethods = Set([LocalMethod.speechPreview.rawValue])
     private static let log = Logger(subsystem: "space.jot.app", category: "local-service")
     private let socketURL: URL
     private let handler: Handler
@@ -131,6 +134,7 @@ public final class LocalServiceServer: @unchecked Sendable {
             let request = try LocalSocket.receiveLine(fd, limit: LocalSocket.maxRequestBytes)
             guard let object = try JSONSerialization.jsonObject(with: request) as? [String: Any], let method = object["method"] as? String, object["params"] == nil || object["params"] is [String: Any] else { throw LocalServiceError.invalid("Expected JSON object with method and params") }
             guard !restricted || Self.helperMethods.contains(method) else { throw LocalServiceError.invalid("The Vorssaint helper cannot call \(method)") }
+            guard restricted || !Self.helperOnlyMethods.contains(method) else { throw LocalServiceError.invalid("Only Jot's Vorssaint helper can call \(method)") }
             let box = ResponseBox()
             let task = Task { [handler] in box.set(await handler(request)) }
             guard box.ready.wait(timeout: .now() + 600) == .success else { task.cancel(); throw LocalServiceError.unavailable("Service operation timed out") }

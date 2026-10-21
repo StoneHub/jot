@@ -79,6 +79,17 @@ extension SpeechService {
         return (cursor, generation, sessionID)
     }
 
+    /// `speech.preview`, which the socket answers only for the Vorssaint helper: the newest row of the session Jot is
+    /// listening into, while Share transcript preview is on. A hold-only microphone while paused shares nothing.
+    private func transcriptPreview() -> [String: Any] {
+        let enabled = settings.bool(JotDefaultsKey.shareTranscriptPreview)
+        guard enabled, ambientEnabled, !holdOnlyCapture, let row = lastAmbientRow, row.sessionID == timeline.sessionID,
+              let text = TranscriptPreview.text(row.text,
+                  speaker: library.live.sessionID == row.sessionID ? library.live.label(for: row.speakerID) : nil)
+        else { return ["enabled": enabled] }
+        return ["enabled": true, "preview": text]
+    }
+
     func handle(_ data: Data) async -> Data {
         await LocalDispatch.handle(data) { try await respond(to: $0) }
     }
@@ -93,6 +104,7 @@ extension SpeechService {
                 lastAttempt: dictation.currentAttempt?.state, dictationSequence: controlSequence,
                 suggestion: suggestions.diagnostics, inputLevel: ControlSnapshot.inputLevel(meter: capture.inputLevel),
                 meetingStartedAt: meetingStartedAt, notice: noticeCode))
+        case .speechPreview: result = transcriptPreview()
         case .speechStatus: result = try await status()
         case .activityReport:
             let days = try ActivityRequest.days(arguments: params)

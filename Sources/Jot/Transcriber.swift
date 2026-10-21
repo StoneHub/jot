@@ -40,7 +40,7 @@ final class Transcriber {
     private let setNotice: (String) -> Void
     private let recordPerformance: (PerformanceJob) -> Void
     private let recognitionEnded: () -> Void
-    private let recordedRows: (AudioJob) -> Void
+    private let recordedRows: (AudioJob, [Transcript]) -> Void
     private let recognitionCompleted: (AudioJob) -> Void
     private let recognitionFailed: (AudioJob) -> Void
 
@@ -49,7 +49,7 @@ final class Transcriber {
          now: @escaping @MainActor () -> Date, lifecycle: @escaping () -> ServiceLifecycle,
          recordFailure: @escaping (String, String) -> Void, setNotice: @escaping (String) -> Void,
          recordPerformance: @escaping (PerformanceJob) -> Void, recognitionEnded: @escaping () -> Void,
-         recordedRows: @escaping (AudioJob) -> Void,
+         recordedRows: @escaping (AudioJob, [Transcript]) -> Void,
          recognitionCompleted: @escaping (AudioJob) -> Void,
          recognitionFailed: @escaping (AudioJob) -> Void) {
         self.owner = owner
@@ -143,7 +143,7 @@ final class Transcriber {
                         if let failure = result.failure { throw JotError.message(failure) }
                         if !sources.isEmpty {
                             lastTranscriptAt = now()
-                            recordedRows(job)
+                            recordedRows(job, result.rows)
                         }
                     }
                 }

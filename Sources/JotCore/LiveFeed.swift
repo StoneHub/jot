@@ -91,6 +91,9 @@ public struct LiveFeed: Sendable {
         revision += 1
     }
 
+    /// The name shown for a speaker of the session on screen; nil when it has none.
+    public func label(for speakerID: String?) -> String? { speakerID.flatMap { labels[$0] } }
+
     private func labeled(_ row: Transcript) -> Transcript {
         var named = row
         named.speakerLabel = row.speakerID.flatMap { labels[$0] }
