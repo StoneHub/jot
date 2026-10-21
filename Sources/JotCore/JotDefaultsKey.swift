@@ -5,6 +5,9 @@ public enum JotDefaultsKey {
     public static let appearance = "appearance"
     public static let accentColor = "accentColor"
     public static let cleanUpDictation = "cleanUpDictation"
+    public static let shareUsage = "shareUsage"
+    /// The newest local day (`yyyy-MM-dd`) whose usage counts were sent, or skipped while sharing was off.
+    public static let usageReportedThrough = "usageReportedThrough"
     public static let cleanUpTranscriptions = "cleanUpTranscriptions"
     /// Historical storage key: keep its value so custom-shortcut preferences survive.
     public static let dictationRequested = "fnRequested"

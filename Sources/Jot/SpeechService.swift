@@ -26,6 +26,8 @@ final class SpeechService: ObservableObject {
         stateWillChange: { [unowned self] in objectWillChange.send() }, stateChanged: { [unowned self] in refreshShortcutEligibility() })
     /// What agents told Jot lately, for suggestions. In memory only; see AgentContext.
     let agentContext = AgentContext()
+    /// Anonymous daily usage counts for Jot's analytics, while Share usage counts is on. See docs/ANALYTICS.md.
+    lazy var usageReporter = UsageReporter(library: library, settings: settings)
     lazy var suggestions: SuggestionCoordinator = SuggestionCoordinator(input: input, store: { [weak self] in self?.library.store },
         history: { [weak self] in self?.suggestionHistory },
         countUsage: { [weak self] in self?.library.countUsage($0) },
@@ -321,6 +323,7 @@ final class SpeechService: ObservableObject {
             library.store = opened
             // Diagnostics are best effort; a telemetry schema failure must not stop capture or history access.
             suggestionHistory = try? await storeExecutor.perform { try SuggestionHistory(sharing: opened) }
+            usageReporter.start()
             // Converts interrupted holds with the vocabulary loaded above.
             try await dictation.finalizeInterruptedAttempts()
             speakers.speakerStore = try await storeExecutor.perform { try SpeakerPassStore(sharing: opened) }
@@ -861,7 +864,7 @@ final class SpeechService: ObservableObject {
     }
 
     func shutdown() {
-        cleanup.shutdown()
+        cleanup.shutdown(); usageReporter.stop()
         if ambientEnabled { recordEvent(.stopped, "Application quit; capture ended.") }
         inputChange?.cancel(); updateHandoff.cancelRecovery()
         modelCheck?.cancel(); preparation?.cancel(); transcriber.cancel(); diagnostic?.cancel(); pausing?.cancel(); unloading?.cancel(); pausedHold.cancelStart()
