@@ -23,6 +23,10 @@ Once a local day has finished, Jot sends that day's [usage counters](ACTIVITY.md
 
 Transcript text, audio, cleaned text, suggestions, field contents, app names or bundle IDs, window titles, speaker names, file paths, your name, your Mac's name or serial, an install ID, or anything typed. The service does not store IP addresses and keeps no row per request, so reports cannot be linked to each other or to a Mac.
 
-## Status
+## When and how
 
-The receiving Worker is built; the Jot side that sends is not yet in the app. When it ships it is on by default, says so in Setup, and has a switch in Settings to turn it off. Turning it off stops sending; the counters stay on the Mac for Activity.
+`UsageReporter` checks a minute after launch and then every six hours. It sends finished local days not yet sent, at most the newest seven and none older than about a month, and skips days with no counts. Each day is sent once. The request is a plain HTTPS POST from an ephemeral session, with no cookies or cache.
+
+Sharing is on by default. Setup says so, and **Settings → Privacy → Share anonymous usage counts** turns it off (`jot settings set shareUsage false` does the same). Days that finish while it is off are never sent, even after it is turned back on. The first run after installing only marks yesterday as done, so a new install's first report is the next day's. Turning sharing off leaves the counters on the Mac for Activity.
+
+Nothing is sent until `UsageReport.endpoint` (`Sources/JotCore/UsageReport.swift`) names the deployed Worker.

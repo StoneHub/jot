@@ -451,6 +451,9 @@ struct SetupView: View {
                 if service.modelsLoaded { PauseResumeButton(service: service) }
             }
             SetupRow(state: .optional, title: "Apple Intelligence", detail: intelligenceSummary) { review(.intelligence) }
+            Text("Jot sends anonymous daily usage counts, such as how many dictations finished, to help improve it. Never transcripts, audio or app names. Turn this off in Settings → Privacy.")
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("setup-usage-sharing")
             Text("Closing this window keeps Jot running in the menu bar, and listening if it is on. Use the waveform icon there to pause, open this window or quit. Transcripts stay in ~/Library/Application Support/Jot. To come back here, choose Setup in the sidebar or Jot → Set Up Jot….")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }

@@ -103,6 +103,17 @@ private struct AppearanceSettings: View {
     private func save(_ key: String, _ value: String) { try? JotSettings.standard.set(key, value) }
 }
 
+/// The switch for anonymous usage counts. It saves through JotSettings, so on (the default) leaves no key.
+private struct UsageSharingSettings: View {
+    @AppStorage(JotDefaultsKey.shareUsage) private var share = true
+    var body: some View {
+        SettingsGroup(title: "Privacy", symbol: "hand.raised") {
+            SettingToggle(title: "Share anonymous usage counts", info: "Once a day, Jot sends counts like how many dictations finished and how text was inserted, with the Jot and macOS versions. Never transcripts, audio, app names or anything that identifies you or this Mac. Off keeps the counts on this Mac only; Activity still shows them.",
+                          isOn: Binding(get: { share }, set: { JotSettings.standard.set(JotDefaultsKey.shareUsage, $0) }))
+        }
+    }
+}
+
 /// One accent choice. The Mac's own accent shows as a color wheel, as System Settings draws its multicolor choice.
 private struct AccentSwatch: View {
     let option: JotAccent
@@ -145,6 +156,7 @@ extension TranscriptView {
                 listeningSettings
                 speakerSettings
                 AppearanceSettings()
+                UsageSharingSettings()
                 // These choices only matter next to Vorssaint; once one is off, they stay visible so it can be turned back on.
                 if !showMenuBarIcon || !shareTranscriptPreview || Self.vorssaintRunning {
                     SettingsGroup(title: "App", symbol: "menubar.rectangle") {

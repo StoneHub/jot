@@ -411,6 +411,11 @@ public final class TranscriptStore: @unchecked Sendable {
         try UsageCounterRows.reset(db)
     }
 
+    /// Usage counts by local day key and name for days from `first` through `last`, both `yyyy-MM-dd`.
+    public func usageCounts(from first: String, through last: String) throws -> [String: [String: Int]] {
+        try db.locked { try UsageCounterRows.counts(db, days: [first, last]) }
+    }
+
     public func metrics() throws -> StoreMetrics {
         try db.locked {
             let stmt = try db.prepare("SELECT COUNT(*),COUNT(DISTINCT session_id) FROM transcripts")
