@@ -28,7 +28,7 @@ With General → App → "Share transcript preview" on (`shareTranscriptPreview`
 
 Jot works independently of any external controller. Its General → App setting, “Always show menu bar icon”, defaults on. When off, Jot hides its icon only while Vorssaint runs Jot's bundled `jot-vorssaint` helper, which it does only while its Jot feature is on. Jot checks at launch, observes macOS application launch/termination notifications, and, while the setting is off, reconciles every three seconds to recover missed events and notice Vorssaint switching its Jot feature on. Its icon returns if the controller quits or crashes and hides again when the controller relaunches. This runtime fallback does not change the saved preference or start/stop capture. Vorssaint with the Jot feature off and unrelated apps do not suppress Jot's icon.
 
-Focused native regression: `swiftc -swift-version 6 -parse-as-library Sources/Jot/JotControllerPresence.swift Tests/JotMenuBarChecks/ControllerPresenceChecks.swift -o build/controller-presence-checks && build/controller-presence-checks`.
+Focused native regression: build the `JotWindowChecks` scheme (`xcodegen generate && xcodebuild -project Jot.xcodeproj -scheme JotWindowChecks -configuration Debug -derivedDataPath build/DerivedData.noindex build`), then run `JOT_CONTROLLER_PRESENCE_CHECKS=1 CFFIXED_USER_HOME="$(mktemp -d)" build/DerivedData.noindex/Build/Products/Debug/JotWindowChecks`. Add `--live` to watch a real controller quit and relaunch.
 
 ## Try when at the Mac
 

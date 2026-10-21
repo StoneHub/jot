@@ -10,9 +10,6 @@ final class DictationHighlight {
     private var finishing: Task<Void, Never>?
     /// Two seconds of 0.2 s ticks, well past the shortcut's own field lookup.
     static let waitTicks = 10
-    /// Counts finish sweeps so the AppKit check can see one without watching pixels.
-    private(set) var sweepCount = 0
-    var isShown: Bool { panel?.isVisible == true }
 
     /// The shortcut finds its field off the main thread, so the frame is often nil at the press. The outline appears once it is known,
     /// and stops looking after `waitTicks` so a target app that never answers does not keep stalling the main thread.
@@ -60,7 +57,6 @@ final class DictationHighlight {
         guard let panel, panel.isVisible, !reduceMotion, let outline = panel.contentView as? OutlineView else {
             hide(); return
         }
-        sweepCount += 1
         outline.sweep()
         finishing = Task { [weak self] in
             try? await Task.sleep(for: .seconds(OutlineView.sweepSeconds))
