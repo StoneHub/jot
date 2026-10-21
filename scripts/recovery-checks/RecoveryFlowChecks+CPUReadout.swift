@@ -37,12 +37,14 @@ extension RecoveryFlowChecks {
         }, deliver: { _, text in try probe.deliver(text) }, now: { probe.now }))
         service.keepAudioForSpeakerPass = false
         service.cleanUpTranscriptions = false
+        // Digital silence waits for the hard limit, so the shortest one keeps recognition coming.
+        service.settings.set(JotSettings.chunkMaximumSeconds, 1.0)
         service.beginRecoveryVerification(store: store, startedAt: probe.now)
-        defer { service.shutdown() }
+        defer { service.shutdown(); try? service.settings.reset(JotSettings.chunkMaximumSeconds) }
         var readouts: [(snapshot: ResourceSnapshot, kernelSeconds: Double)] = []
         let watcher = service.resourceReadout.$snapshot.dropFirst().sink { readouts.append(($0, kernelCPUSeconds())) }
         defer { watcher.cancel() }
-        // Digital silence in real time: every 0.8 seconds the silence closes a chunk, and its recognition keeps a core busy for 0.2 seconds. The tick publishes the readout once a second.
+        // Digital silence in real time: every second the limit closes a chunk, and its recognition keeps a core busy for 0.2 seconds. The tick publishes the readout once a second.
         for _ in 1...16 {
             probe.now += 0.2
             service.ingestRecoveryVerification(samples: Array(repeating: 0, count: 3_200), rms: 0, at: probe.now)

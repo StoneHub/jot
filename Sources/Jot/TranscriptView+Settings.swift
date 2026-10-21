@@ -218,7 +218,7 @@ extension TranscriptView {
                 }.labelsHidden().pickerStyle(.menu).fixedSize()
             }
             RowDivider()
-            SettingToggle(title: cleanupTitle, info: cleanupInfo("Makes live speech and meetings more readable."),
+            SettingToggle(title: cleanupTitle, info: cleanupInfo("Makes live speech and meetings more readable. Paused while the Mac is in Low Power Mode."),
                           isOn: $service.cleanUpTranscriptions, unavailable: service.cleanupAvailability != .available)
             RowDivider()
             SettingToggle(title: "Keep audio for speaker pass", info: "Keeps session audio until the speaker pass finishes, then deletes it. When off, audio never touches disk and no speaker pass runs.",
