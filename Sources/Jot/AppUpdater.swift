@@ -2,7 +2,8 @@ import AppKit
 import Foundation
 import JotCore
 
-/// Checks GitHub Releases on demand and swaps /Applications/Jot.app for a verified download signed by the same team.
+/// Checks GitHub Releases on demand or once a day, and swaps /Applications/Jot.app for a verified download signed by the same team.
+/// A check only reads the release list; downloading waits for Update Jot.
 @MainActor
 final class AppUpdater: ObservableObject {
     enum State: Equatable {
@@ -20,37 +21,68 @@ final class AppUpdater: ObservableObject {
         default: return false
         }
     }
+    /// Set by the menu bar's update line; the window answers by showing Models & updates.
+    @Published var revealRequested = false
     private var progressObservation: NSKeyValueObservation?
+    private let settings: JotSettings
+    private var dailyChecks: Task<Void, Never>?
+    /// No cookies, cache or credentials: a check sends GitHub nothing about this Mac beyond the request itself.
+    private let session = URLSession(configuration: .ephemeral)
+
+    init(settings: JotSettings = .standard) {
+        self.settings = settings
+    }
 
     func check() {
         guard !isBusy else { return }
         state = .checking
         Task {
-            do {
-                var request = URLRequest(url: Self.latestURL)
-                request.timeoutInterval = 15
-                request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-                let (data, response) = try await URLSession.shared.data(for: request)
-                guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
-                // GitHub answers 404 while the repository has no release at all.
-                if http.statusCode == 404 { state = .upToDate(JotVersion.current); return }
-                guard http.statusCode == 200 else { throw UpdateError("GitHub answered \(http.statusCode).") }
-                let release = try ReleaseInfo.newest(from: data) { "Jot-\($0).zip" }
-                guard let installed = SemanticVersion.parse(JotVersion.current) else { throw UpdateError("Installed version \(JotVersion.current) is not a version.") }
-                if release.version > installed {
-                    let running = Bundle.main.bundleURL
-                    let runningTeam = try await Task.detached { try Self.teamIdentifier(of: running) }.value
-                    guard runningTeam == Self.officialTeamIdentifier else {
-                        throw UpdateError("This source-built copy is signed by team \(runningTeam). Install an official Jot download once to use automatic updates.")
-                    }
-                    state = .available(release)
-                } else {
-                    state = .upToDate(JotVersion.current)
-                }
-            } catch {
-                state = .failed(error.localizedDescription)
+            do { state = try await latestState() } catch { state = .failed(error.localizedDescription) }
+        }
+    }
+
+    /// Five minutes after launch, then every six hours, check if the switch is on and a day has passed since the last
+    /// answer. The hour of tolerance lets macOS fold the wake into other work.
+    func startDailyChecks() {
+        dailyChecks?.cancel()
+        dailyChecks = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(5 * 60)) } catch { return }
+            while !Task.isCancelled {
+                await self?.checkIfDue()
+                do { try await Task.sleep(for: .seconds(6 * 60 * 60), tolerance: .seconds(60 * 60)) } catch { return }
             }
         }
+    }
+
+    /// The daily check stays quiet: being offline, a source-built copy or a GitHub error leaves the card as it was,
+    /// and a check or update the person started meanwhile keeps its own state.
+    private func checkIfDue() async {
+        guard settings.bool(JotDefaultsKey.checkForUpdates), !isBusy,
+              UpdateCheckSchedule.isDue(lastCheck: UpdateCheckSchedule.lastCheck(in: settings.defaults), now: Date()) else { return }
+        guard let latest = try? await latestState(), !isBusy else { return }
+        state = latest
+    }
+
+    private func latestState() async throws -> State {
+        var request = URLRequest(url: Self.latestURL)
+        request.timeoutInterval = 15
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        // Any answer counts toward the once-a-day limit, so an error GitHub keeps giving is not asked again every six hours.
+        UpdateCheckSchedule.recordCheck(in: settings.defaults, at: Date())
+        // GitHub answers 404 while the repository has no release at all.
+        if http.statusCode == 404 { return .upToDate(JotVersion.current) }
+        guard http.statusCode == 200 else { throw UpdateError("GitHub answered \(http.statusCode).") }
+        let release = try ReleaseInfo.newest(from: data) { "Jot-\($0).zip" }
+        guard let installed = SemanticVersion.parse(JotVersion.current) else { throw UpdateError("Installed version \(JotVersion.current) is not a version.") }
+        guard release.version > installed else { return .upToDate(JotVersion.current) }
+        let running = Bundle.main.bundleURL
+        let runningTeam = try await Task.detached { try Self.teamIdentifier(of: running) }.value
+        guard runningTeam == Self.officialTeamIdentifier else {
+            throw UpdateError("This source-built copy is signed by team \(runningTeam). Install an official Jot download once to use automatic updates.")
+        }
+        return .available(release)
     }
 
     /// Download and verify while listening continues; only then finish captured work before replacing the app.

@@ -143,6 +143,7 @@ final class JotDelegate: NSObject, NSApplicationDelegate {
         // Setup decides before the service opens the store, whose file marks an existing install. While setup is open, it asks for each permission itself.
         setup.launch(readiness: service.setupReadiness)
         Task { await service.launch(askPermissions: !setup.progress.offeredAtLaunch) }
+        updater.startDailyChecks()
     }
     /// The Set Up Jot command: setup where it left off, in the main window.
     func openSetup() {
@@ -158,6 +159,11 @@ final class JotDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { _ = NSApp.setActivationPolicy(.accessory) }
         }
         NSApp.setActivationPolicy(.regular)
+    }
+    /// The menu bar's update line: the main window, on Models & updates.
+    func showUpdates() {
+        updater.revealRequested = true
+        showWindow()
     }
     func showWindow() {
         NSApp.setActivationPolicy(.regular)

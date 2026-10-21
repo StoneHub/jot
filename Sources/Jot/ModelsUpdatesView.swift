@@ -12,6 +12,36 @@ private struct AppUpdateRow: View {
     }
 }
 
+/// A dot on Models & updates while a newer release waits. Its own view, so download progress redraws only the dot.
+struct AppUpdateDot: View {
+    @Environment(\.jotAccent) private var accent
+    @ObservedObject var updater: AppUpdater
+    let size: CGFloat
+    var body: some View {
+        if case .available = updater.state {
+            Circle().fill(accent).frame(width: size, height: size).accessibilityLabel("Update available")
+        }
+    }
+}
+
+/// The menu bar line a newer release leaves. It opens Models & updates rather than updating from the menu, so the
+/// release notes and the Update Jot button are seen first.
+struct AppUpdateMenuLine: View {
+    @Environment(\.jotAccent) private var accent
+    @ObservedObject var updater: AppUpdater
+    let open: () -> Void
+    var body: some View {
+        if case .available(let release) = updater.state {
+            Button(action: open) {
+                Label("Jot \(release.version.description) is available", systemImage: "arrow.down.circle")
+                    .font(.callout).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain).foregroundStyle(accent)
+            .help("Opens Models & updates, where Update Jot installs it.")
+        }
+    }
+}
+
 struct AppUpdateCard: View {
     let state: AppUpdater.State
     let isBusy: Bool
@@ -88,7 +118,8 @@ struct AppUpdateCard: View {
     }
 }
 
-/// App releases and published model revisions are independent checks, initiated only by a button.
+/// App releases and published model revisions are independent checks. Model revisions are checked only by a button;
+/// app releases also once a day while General → Privacy → Check for updates daily is on.
 struct ModelsUpdatesView: View {
     @ObservedObject var service: SpeechService
     @ObservedObject var updater: AppUpdater
