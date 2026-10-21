@@ -12,7 +12,7 @@ Jot for Mac (this repository) and Jot for Android ([StoneHub/jot-android](https:
 
 ## Personal vocabulary file (`jot.vocabulary`, version 1)
 
-Status: Mac writes and reads it (`jot vocabulary export` and `jot vocabulary import`, `VocabularyFile` in JotCore). Android does not have personal vocabulary yet; when it does, it reads and writes this file. Sample: [`docs/contract/vocabulary-v1.json`](contract/vocabulary-v1.json), which `VocabularyFileTests` reads, and an Android test should read too.
+Status: Mac writes and reads it (`jot vocabulary export` and `jot vocabulary import`, `VocabularyFile` in JotCore). Android imports it (Import vocabulary in the lab's Files from Jot for Mac section, `contract/VocabularyFile.kt`) and keeps its own list in the same format, with the same entry and matching rules. It does not apply the list yet, because it does not insert text yet. Sample: [`docs/contract/vocabulary-v1.json`](contract/vocabulary-v1.json), which `VocabularyFileTests` reads; Android's tests read a copy.
 
 ```json
 {
@@ -64,7 +64,7 @@ To replace a list rather than merge into it, remove the entries first, then impo
 
 ## Session file (`jot.session`, version 1)
 
-Status: the Mac writes it (`jot export <session-id> --file`, MCP `transcripts_export` with `format: "session"`, `SessionFile` in JotCore). Nothing reads it yet. Android writes it when it gains sessions; a Mac import is not built. Sample: [`docs/contract/session-v1.json`](contract/session-v1.json), which `SessionFileTests` reads.
+Status: the Mac writes it (`jot export <session-id> --file`, MCP `transcripts_export` with `format: "session"`, `SessionFile` in JotCore). Android opens it read-only (Open session in the lab's Files from Jot for Mac section, `contract/SessionFile.kt`) and shows its rows. Android does not write session files yet, and a Mac import is not built. Sample: [`docs/contract/session-v1.json`](contract/session-v1.json), which `SessionFileTests` reads; Android's tests read a copy.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -102,7 +102,7 @@ Speakers without a name are Jot's automatic groupings. Timestamps are offsets fr
 
 Both apps use a small on-device model to remove filler and fix punctuation, and both keep the original text when the result looks unsafe. The checks below decide "unsafe". They are a conservative fallback that rejects known dangerous edits, not a proof that the meaning is unchanged.
 
-Status: the Mac's `CleanupValidation` implements them, and `CleanupContractTests` runs the shared corpus [`docs/contract/cleanup-checks-v1.json`](contract/cleanup-checks-v1.json) against it. Android's `CleanupChecks` predates this and differs (table below). It should adopt these rules and run the same corpus in a JVM unit test, which needs no phone.
+Status: the Mac's `CleanupValidation` implements them, and `CleanupContractTests` runs the shared corpus [`docs/contract/cleanup-checks-v1.json`](contract/cleanup-checks-v1.json) against it. Android's `CleanupChecks` implements them too, and its `CleanupContractTest` runs a byte-identical copy of the corpus in a JVM unit test (jot-android `app/src/test/resources/contract/`). When the corpus changes here, copy it there in the same round.
 
 A candidate is accepted only when all of these hold:
 
@@ -116,15 +116,13 @@ A candidate is accepted only when all of these hold:
 
 The corpus file is `{"format": "jot.cleanup-checks", "version": 1, "cases": [{"name", "source", "candidate", "accept"}]}`. Every case is synthetic. An app passes when its check returns `accept` for every case. Add a case for each bug either app's checks let through.
 
-Where the apps differ today:
+Where the apps still differ:
 
 | | Mac (`JotSettings.defaultCleanupInstructions`, `CleanupValidation`) | Android (`CleanupNpu.kt`, `CleanupChecks`) |
 | --- | --- | --- |
 | Input | Batches of transcript entries, returned as `texts` | One dictation up to 1,200 characters |
-| Long output | Rejected over max(120, 2 × input) UTF-8 bytes | Warns over max(80, 2 × input) characters |
-| Numbers | Rule 3: digit pieces and number words | The sequence of digit runs |
-| Negations and hedges | Rule 3: the full list, in order | The count of ten negations |
-| Control text | Not checked | Rejects `<think>` and `<|` |
+| Control text | Not checked | Also rejects output containing `<think>` or `<|` |
+| Personal vocabulary | Applied to inserted dictation | Imported and kept, not applied (Android does not insert text yet) |
 
 Android's control text check is a good addition. Adding it to the shared rules takes version 2 of the corpus, because a Mac that ignored it would accept cases Android rejects. The prompts differ too, because their inputs differ, and they are not part of the contract. Their outputs are what the checks guard.
 
