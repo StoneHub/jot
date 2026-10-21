@@ -62,7 +62,26 @@ Import adds entries; it never changes or removes one. An entry whose matching ph
 
 To replace a list rather than merge into it, remove the entries first, then import.
 
-## Session export (Mac only today, not yet versioned)
+## Session file (`jot.session`, version 1)
+
+Status: the Mac writes it (`jot export <session-id> --file`, MCP `transcripts_export` with `format: "session"`, `SessionFile` in JotCore). Nothing reads it yet. Android writes it when it gains sessions; a Mac import is not built. Sample: [`docs/contract/session-v1.json`](contract/session-v1.json), which `SessionFileTests` reads.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `format` | string, required | Always `jot.session`. |
+| `version` | integer, required | `1`. |
+| `title` | string, optional | The session's name; absent for an untitled session. |
+| `startedAt` | string, required | When the session began, ISO 8601 UTC in whole seconds. Row times count from it. |
+| `rows` | array, required | Spoken rows in the order they were spoken. |
+| `rows[].start`, `rows[].end` | number, required | Seconds from `startedAt`, to the millisecond. `end` is never before `start`. |
+| `rows[].text` | string, required | What was said, after cleanup. Never empty. |
+| `rows[].mode` | string, required | `ambient` for listening or `dictation` for a held dictation. A reader must accept other values. |
+| `rows[].speaker` | string, optional | The session's own speaker grouping, such as `speaker-1`, or `overlap` when voices overlapped. It means nothing outside the session. Absent when no speaker was found. |
+| `rows[].speakerName` | string, optional | The name a person gave that speaker. |
+
+Rows are what the Mac stores, with rows that cleanup emptied left out, and an unattributed row that finishes a speaker's sentence given that speaker. They are not merged into paragraphs; a reader merges them its own way. There are no session or row ids. A dictation row is placed at the time it was spoken.
+
+### Markdown export
 
 The Mac writes a finished meeting to `~/Documents/Jot Sessions` as Markdown (`TranscriptExport.markdown`). This layout is what people and other tools already read, so it changes only on purpose:
 
@@ -77,7 +96,7 @@ Speakers without a name are Jot's automatic groupings. Timestamps are offsets fr
 
 `<Speaker>` is the person's label, else `Speaker N`, `Overlap` or `Unattributed`. Paragraphs join the same speaker's rows across short pauses.
 
-`jot export <session-id> --json` (and MCP `transcripts_export` with `format: "json"`) answers with the session's rows, under `result`, as a JSON array of `{id, sessionID, startedAt (ISO 8601), startSeconds, endSeconds, text, mode ("ambient" or "dictation"), speakerID?, speakerLabel?}`, with continuations folded but paragraphs not merged. This is the socket's answer, not a file format: before Android reads or writes sessions, wrap it in a `{"format": "jot.session", "version": 1, ...}` file and specify it here.
+`jot export <session-id> --json` (MCP `format: "json"`) stays as it was: the socket's own rows with their ids, for agents on this Mac. It is not a file format; share the session file instead.
 
 ## Cleanup checks (`jot.cleanup-checks`, version 1)
 

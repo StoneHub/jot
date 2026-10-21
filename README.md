@@ -154,7 +154,7 @@ jot since --cursor 7 --generation <generation> # Pass back both values from the 
 jot meeting start Webex review   # Ambient capture with a name
 jot meeting end                  # Saves Markdown to ~/Documents/Jot Sessions
 jot sessions
-jot export <session-id>          # Whole session as Markdown; add --json for rows
+jot export <session-id>          # Whole session as Markdown; add --json for rows, or --file for the versioned session file
 jot title <session-id> <title>
 jot notes <session-id>           # Summary, decisions and action items, written on request and not saved
 jot people                       # Voices Jot remembers

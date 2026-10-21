@@ -213,7 +213,9 @@ extension SpeechService {
         case .transcriptsExport:
             guard let id = params["sessionID"] as? String else { throw JotError.message("sessionID is required") }
             let (session, rows) = try await library.exportable(id)
-            if params["format"] as? String == "json" { result = try object(TranscriptGrouping.foldContinuations(rows)) }
+            let format = params["format"] as? String
+            if format == "json" { result = try object(TranscriptGrouping.foldContinuations(rows)) }
+            else if format == "session" { result = try JSONSerialization.jsonObject(with: SessionFile.encode(SessionFile.contents(session: session, rows: rows))) }
             else { result = ["sessionID": id, "text": TranscriptExport.markdown(session: session, rows: rows, tuning: tuning)] }
         case .speechTranscribeFile:
             guard !preparingUpdate, !switchingInput, lifecycle.phase == .paused, !capture.running, transcriber.isIdle, !diagnosticActive else { throw JotError.message("Pause Jot before diagnostic file transcription.") }

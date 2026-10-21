@@ -18,6 +18,11 @@ struct JotCLI {
             let object = try JSONSerialization.jsonObject(with: data)
             if method == .transcriptsExport, params["format"] == nil, let response = object as? [String: Any],
                let text = (response["result"] as? [String: Any])?["text"] as? String { print(text); return }
+            if method == .transcriptsExport, params["format"] as? String == "session", let response = object as? [String: Any],
+               let file = response["result"] as? [String: Any] {
+                let pretty = try JSONSerialization.data(withJSONObject: file, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+                print(String(decoding: pretty, as: UTF8.self)); return
+            }
             if method == .sessionsNotes, let response = object as? [String: Any],
                let notes = (response["result"] as? [String: Any])?["notes"] as? String { print(notes); return }
             let pretty = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
@@ -53,6 +58,8 @@ struct JotCLI {
     jot delete-session <session-id>     Delete one saved session
     jot read <transcript-id>
     jot export <session-id> [--json]    Whole session as Markdown, or folded rows as JSON
+    jot export <session-id> --file > <file.json>
+                                       Versioned session file for Jot for Android and other tools
     jot label <session-id> <speaker-id> <name>
     jot context add --role user|assistant --source <app> [--conversation ID] <text | ->
                                        Hold one agent message; - reads stdin. Selection requires a visible matching conversation
@@ -174,9 +181,9 @@ struct JotCLI {
             guard args.count == 2 else { throw CLIError.usage("Use: jot read <transcript-id>") }
             return (.transcriptsRead, ["id": args[1]])
         case "export":
-            guard args.count == 2 || (args.count == 3 && args[2] == "--json") else { throw CLIError.usage("Use: jot export <session-id> [--json]") }
+            guard args.count == 2 || (args.count == 3 && ["--json", "--file"].contains(args[2])) else { throw CLIError.usage("Use: jot export <session-id> [--json | --file]") }
             var params: [String: Any] = ["sessionID": args[1]]
-            if args.count == 3 { params["format"] = "json" }
+            if args.count == 3 { params["format"] = args[2] == "--json" ? "json" : "session" }
             return (.transcriptsExport, params)
         case "settings":
             if args.count == 1 { return (.settingsGet, [:]) }

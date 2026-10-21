@@ -1,0 +1,29 @@
+{
+  "format" : "jot.session",
+  "rows" : [
+    {
+      "end" : 2.4,
+      "mode" : "ambient",
+      "speaker" : "speaker-1",
+      "speakerName" : "Ana",
+      "start" : 0.9,
+      "text" : "Let's start with the launch date."
+    },
+    {
+      "end" : 6.4,
+      "mode" : "ambient",
+      "speaker" : "speaker-2",
+      "start" : 5.4,
+      "text" : "Sounds good."
+    },
+    {
+      "end" : 11.6,
+      "mode" : "dictation",
+      "start" : 10.4,
+      "text" : "Send the notes to the team."
+    }
+  ],
+  "startedAt" : "2027-01-15T08:00:00Z",
+  "title" : "Design review",
+  "version" : 1
+}
