@@ -34,9 +34,11 @@ final class DictationHighlight {
                 guard let self, let panel = self.panel else { return }
                 guard let current = frame() else {
                     misses += 1
-                    if panel.isVisible || misses >= Self.waitTicks { self.hide() }
+                    // A busy app can miss one 5 ms read; two in a row while shown mean the field is gone.
+                    if (panel.isVisible && misses >= 2) || misses >= Self.waitTicks { self.hide() }
                     return
                 }
+                misses = 0
                 if !panel.isVisible {
                     self.place(panel, around: current)
                     panel.orderFrontRegardless()

@@ -503,7 +503,9 @@ final class SuggestionCoordinator {
                 return (try? store?.suggestionRowsUnchanged(expectedRows)) == true
             }.value
             guard await self.isCurrent(token, field: field), current else {
-                if token == self.generation { self.dismiss(action: current ? .focusChanged : .sourcesChanged) }
+                // Dismissed meanwhile (Fn, Escape, typing): that action's notice stands.
+                guard token == self.generation else { return }
+                self.dismiss(action: current ? .focusChanged : .sourcesChanged)
                 self.notice("Nothing inserted: the field or its sources changed."); return
             }
             do {
@@ -523,11 +525,13 @@ final class SuggestionCoordinator {
             } catch DictationInput.InputError.selectionUnavailable {
                 self.outcome = "selection-unavailable"
                 self.updateReceipt { $0.outcome = .insertionCancelled; $0.reason = .selectionUnavailable }
+                guard token == self.generation else { return }
                 self.dismiss(action: .focusChanged)
                 self.notice(DictationInput.InputError.selectionUnavailable.localizedDescription)
             } catch {
                 self.outcome = "insertion-cancelled"
                 self.updateReceipt { $0.outcome = .insertionCancelled; $0.reason = .insertionCancelled }
+                guard token == self.generation else { return }
                 self.dismiss(action: .focusChanged)
                 self.notice("Nothing inserted: the target changed.")
             }
