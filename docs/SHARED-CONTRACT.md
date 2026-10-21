@@ -102,7 +102,7 @@ Speakers without a name are Jot's automatic groupings. Timestamps are offsets fr
 
 Both apps use a small on-device model to remove filler and fix punctuation, and both keep the original text when the result looks unsafe. The checks below decide "unsafe". They are a conservative fallback that rejects known dangerous edits, not a proof that the meaning is unchanged.
 
-Status: the Mac's `CleanupValidation` implements them, and `CleanupContractTests` runs the shared corpus [`docs/contract/cleanup-checks-v1.json`](contract/cleanup-checks-v1.json) against it. Android's `CleanupChecks` predates this and differs (table below). It should adopt these rules and run the same corpus in a JVM unit test, which needs no phone.
+Status: the Mac's `CleanupValidation` implements them, and `CleanupContractTests` runs the shared corpus [`docs/contract/cleanup-checks-v1.json`](contract/cleanup-checks-v1.json) against it. Android's `CleanupChecks` implements them too, and its `CleanupContractTest` runs a byte-identical copy of the corpus in a JVM unit test (jot-android `app/src/test/resources/contract/`). When the corpus changes here, copy it there in the same round.
 
 A candidate is accepted only when all of these hold:
 
@@ -116,15 +116,12 @@ A candidate is accepted only when all of these hold:
 
 The corpus file is `{"format": "jot.cleanup-checks", "version": 1, "cases": [{"name", "source", "candidate", "accept"}]}`. Every case is synthetic. An app passes when its check returns `accept` for every case. Add a case for each bug either app's checks let through.
 
-Where the apps differ today:
+Where the apps still differ:
 
 | | Mac (`JotSettings.defaultCleanupInstructions`, `CleanupValidation`) | Android (`CleanupNpu.kt`, `CleanupChecks`) |
 | --- | --- | --- |
 | Input | Batches of transcript entries, returned as `texts` | One dictation up to 1,200 characters |
-| Long output | Rejected over max(120, 2 × input) UTF-8 bytes | Warns over max(80, 2 × input) characters |
-| Numbers | Rule 3: digit pieces and number words | The sequence of digit runs |
-| Negations and hedges | Rule 3: the full list, in order | The count of ten negations |
-| Control text | Not checked | Rejects `<think>` and `<|` |
+| Control text | Not checked | Also rejects output containing `<think>` or `<|` |
 
 Android's control text check is a good addition. Adding it to the shared rules takes version 2 of the corpus, because a Mac that ignored it would accept cases Android rejects. The prompts differ too, because their inputs differ, and they are not part of the contract. Their outputs are what the checks guard.
 
