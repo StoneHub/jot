@@ -319,7 +319,7 @@ final class SpeechService: ObservableObject {
             // Whether or not keepTuningAudio is on now: turning it off deletes nothing, so kept files age out here.
             await speakers.pruneTuningAudio()
             if let data = UserDefaults.standard.data(forKey: JotDefaultsKey.modelUpdateChecks),
-               let saved = try? JSONDecoder().decode([ModelUpdate].self, from: data) { modelUpdates = saved }
+               let saved = try? JSONDecoder().decode([ModelUpdate].self, from: data) { modelUpdates = ModelUpdate.restoring(saved) }
             meetingTitle = updateHandoff.takeMeetingTitle()
             if UserDefaults.standard.bool(forKey: JotDefaultsKey.modelsPrepared) {
                 // The models load at launch either way, so Resume is immediate; a launch left paused only leaves the microphone off.
