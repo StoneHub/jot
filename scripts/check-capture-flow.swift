@@ -188,8 +188,9 @@ enum CaptureFlowChecks {
         await service.waitForPreparation()
         precondition(service.ambientEnabled && service.meetingTitle == "Weekly sync", "The meeting continued as \(service.meetingTitle ?? "nil") after an automatic pause")
 
-        // speech.meeting_end answers a refusal with an error and keeps the meeting; once it can end, the result names the
-        // last file and lists every part's file (none here when nothing was transcribed).
+        // speech.meeting_end answers a refusal with an error and keeps the meeting. Once it can end, the meeting ends; with
+        // text the result names the last file and lists every part's file, and with nothing transcribed (as here, only the
+        // hold) export reports "Nothing was transcribed…" as the error.
         service.holdBegan()
         let holdDeadline = Date().addingTimeInterval(2)
         while !service.dictation.isActive && Date() < holdDeadline { try await Task.sleep(for: .milliseconds(5)) }
@@ -204,9 +205,14 @@ enum CaptureFlowChecks {
         while service.dictation.isPending { try await Task.sleep(for: .milliseconds(10)) }
         let endedResponse = try JSONSerialization.jsonObject(with: await service.handle(endRequest)) as? [String: Any]
         let ended = endedResponse?["result"] as? [String: Any]
-        precondition(endedResponse?["ok"] as? Bool == true && ended?["file"] is String && ended?["files"] is [String] && service.meetingTitle == nil,
-                     "End meeting over the socket did not answer with file and files: \(endedResponse ?? [:])")
-        print("PASS: speech.meeting_end reports a refusal as an error and answers with file and files once the meeting ends.")
+        precondition(service.meetingTitle == nil, "End meeting over the socket did not end the meeting: \(endedResponse ?? [:])")
+        if endedResponse?["ok"] as? Bool == true {
+            precondition(ended?["file"] is String && ended?["files"] is [String], "End meeting over the socket did not answer with file and files: \(endedResponse ?? [:])")
+        } else {
+            precondition((endedResponse?["error"] as? String)?.hasPrefix("Nothing was transcribed") == true,
+                         "End meeting with nothing transcribed failed with an unexpected error: \(endedResponse ?? [:])")
+        }
+        print("PASS: speech.meeting_end reports a refusal as an error and keeps the meeting, then ends it and reports the export.")
         service.pause()
         while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
         print("PASS: a failed microphone start retries, reports after the last try, explains a blocked shortcut press, and Resume restarts capture.")
