@@ -1,4 +1,8 @@
-# Local control surfaces
+# Local control surfaces and Vorssaint
+
+Jot stays a standalone app. A host such as Vorssaint's Dynamic Island can show and change Jot's listening state through the local control API below, while Jot keeps capture, history and insertion. A host is always optional.
+
+## Control API
 
 `jot controls` / `speech.controls` returns a small presentation snapshot without reading history. It contains `version` (currently 1), `mode`, `meetingActive`, optional `dictation`, `dictationSequence`, `suggestion`, `suggestionSequence`, and `inputLevel` (finite 0–1). Dictation states use `DictationAttempt.State`; suggestions use the existing outcome codes. Sequences are process-local counters, not session or transcript identifiers. Treat a reconnection as a fresh baseline; never replay an old completion animation.
 
@@ -6,9 +10,11 @@ Jot posts `space.jot.app.controlsChanged` through DistributedNotificationCenter 
 
 Controllers use the existing `speech.pause`, `speech.resume`, `speech.meeting_start` and `speech.meeting_end` methods. Starting capture remains an explicit user action. Opening `/Applications/Jot.app` raises the app through its existing reopen handler. An Island can mirror Fn activity, but must keep Jot's field-anchored suggestion preview and explicit Tab insertion. A delivery-unverified state must never be presented as confirmed insertion. No controller should subscribe to transcripts merely to animate a microphone.
 
-## Integration principles
+## Vorssaint feature shipped in Jot.app
 
-Jot stays useful as a standalone app. Integrations should fit the host app's existing feature discovery, settings and lifecycle, use this reusable local control API, and keep capture, history and insertion owned by Jot. A host remains optional. The Vorssaint contribution is an opt-in built-in feature, rather than a plugin loader or separately branded Jot utility app.
+Integrations fit the host's existing feature discovery, settings and lifecycle rather than a plugin loader or a separately branded Jot utility. Jot.app carries its own Vorssaint feature: `Contents/Resources/VorssaintIntegration.json` declares the Jot row, the Listening switch and its actions, and `Contents/Helpers/jot-vorssaint` answers the host one JSON line per request. A Vorssaint build with native app features finds it in /Applications after checking Jot's signature, and consent is bound to that signature and declaration, so turn the feature on again after either changes. Stock Vorssaint does not have the native app-feature catalog yet.
+
+The helper reads only `speech.controls` and calls the controller methods above, so no transcript, title or audio reaches the host. After Listen, Don't listen and the meeting actions it reads again, for up to three seconds, until Jot shows the requested state, so the switch does not flip back. The Listening switch requests pause immediately without a confirmation dialog; pause also ends an active meeting. The mapping lives in `VorssaintPresentation` with its tests.
 
 ## Standalone menu bar fallback
 
@@ -19,7 +25,6 @@ Focused native regression: `swiftc -swift-version 6 -parse-as-library Sources/Jo
 ## Try when at the Mac
 
 - With “Always show menu bar icon” off, turn Vorssaint's Jot feature off and on: Jot's icon should return and then hide. Launch Jot with no controller running: its icon should appear. With the setting on, the icon should stay visible throughout.
-
-- Hold Fn: the external controller should show capture, then processing on release, then the actual insertion result. Check a failed or unverified insertion shows review rather than success.
+- Hold Fn: the Island should show capture, then processing on release, then the actual insertion result. Check a failed or unverified insertion shows review rather than success.
 - Double-Fn: the preview stays beside the field; Tab accepts and Escape dismisses. Opening or observing a controller must not start capture.
-- Pause/Resume and Start/End Meeting through the controller; confirm the microphone and meeting state in Jot agree. Confirm connection loss removes stale controls.
+- Pause/Resume and Start/End Meeting through the Island; confirm the microphone and meeting state in Jot agree. Confirm connection loss removes stale controls.
