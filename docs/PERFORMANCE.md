@@ -22,6 +22,10 @@ Compare the same build configuration, model/capture state, and UI state. Footpri
 
 The next optimization candidate remains measurement-led: skipping unchanged history-document formatting. The offline speaker pass models (pyannote and WeSpeaker) are downloaded when Jot prepares its models but loaded only while a pass runs, and released after it.
 
+## Low Power Mode
+
+While macOS Low Power Mode is on, listening drains the microphone twice a second instead of five times and cuts recognition chunks at 6 seconds or the chunk setting, whichever is longer (`LowPowerListening`). Live cleanup is skipped, whichever model it uses, so live rows stay as recognized. Live text arrives up to a few seconds later; held dictation is closed at release and cleaned up as usual. Turn Low Power Mode off before running the measurements and recovery checks below, which assume the normal cadence.
+
 ## Quiet listening CPU
 
 `JotRecoveryChecks --quiet-cpu <speech files…>` runs the real models through the listening path the microphone uses (0.2-second drains, the capture RMS gate, bounded chunks, recognition, speaker attribution, a temporary store, cleanup off). It prints process CPU seconds per audio minute for a quiet room below the capture gate, fan noise above it, and a conversation built from the given files with faint speech and long pauses, followed by the conversation's saved rows and word speaker probabilities. Build the tool in Release with the same Xcode project (with `ENABLE_HARDENED_RUNTIME=NO`, so the ad hoc signed JotCore framework loads), run the baseline and the change on the same Mac, and diff the rows. `JOT_QUIET_CPU_REALTIME=1` paces audio on the wall clock; `JOT_QUIET_CPU_SECONDS`, `JOT_QUIET_CPU_GAP` and `JOT_QUIET_CPU_REPEATS` size the workloads. Use synthetic fixtures such as `say -o a.aiff "…"`, never private recordings.
