@@ -20,6 +20,10 @@ public enum UsageCounter: Sendable, Hashable, CaseIterable {
     case suggestionOutcome(SuggestionHistoryEntry.Outcome)
     /// What ended a shown suggestion, counted once when its receipt completes.
     case suggestionAction(SuggestionHistoryEntry.Action)
+    /// The Fix typos shortcut was pressed.
+    case typoFixRequested
+    /// How that press ended.
+    case typoFix(TypoFixOutcome)
 
     public enum Insertion: String, Sendable, CaseIterable {
         case accessibility, unicode, clipboard, unverified, failed
@@ -27,11 +31,13 @@ public enum UsageCounter: Sendable, Hashable, CaseIterable {
 
     /// Every counter, in a fixed order. The analytics Worker allowlists exactly these names (services/analytics/src/counters.js).
     public static var allCases: [UsageCounter] {
-        PerformanceJob.Outcome.allCases.map(UsageCounter.dictation) + Insertion.allCases.map(UsageCounter.insertion)
+        let typoFixCounters: [UsageCounter] = [.typoFixRequested] + TypoFixOutcome.allCases.map(UsageCounter.typoFix)
+        return PerformanceJob.Outcome.allCases.map(UsageCounter.dictation) + Insertion.allCases.map(UsageCounter.insertion)
             + CleanupResult.Outcome.allCases.map(UsageCounter.dictationCleanup)
             + [.liveCleanup(applied: true), .liveCleanup(applied: false), .savedDictationReviewed, .savedDictationCopied, .suggestionRequested]
             + SuggestionHistoryEntry.Outcome.allCases.map(UsageCounter.suggestionOutcome)
             + SuggestionHistoryEntry.Action.allCases.map(UsageCounter.suggestionAction)
+            + typoFixCounters
     }
 
     /// A delivery result's path and verification as a counter. A verified path this build does not name counts as
@@ -56,6 +62,8 @@ public enum UsageCounter: Sendable, Hashable, CaseIterable {
         case .suggestionRequested: return "suggestion.requested"
         case .suggestionOutcome(let outcome): return "suggestion.outcome.\(outcome.rawValue)"
         case .suggestionAction(let action): return "suggestion.action.\(action.rawValue)"
+        case .typoFixRequested: return "typoFix.requested"
+        case .typoFix(let outcome): return "typoFix.outcome.\(outcome.rawValue)"
         }
     }
 }

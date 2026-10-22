@@ -77,6 +77,7 @@ public final class JotSettings: @unchecked Sendable {
         .init(key: JotDefaultsKey.suggestionHeardMatches, kind: .bool(true), summary: "Drafts use matching speech Jot heard"),
         .init(key: JotDefaultsKey.suggestionWindowImage, kind: .bool(false), summary: "Suggestions include one image of the window around the field"),
         .init(key: JotDefaultsKey.suggestionWindowMinutes, kind: .int(10, range: 1...60, choices: nil), summary: "Minutes of speech and agent messages a suggestion may use"),
+        .init(key: JotDefaultsKey.typoFixEnabled, kind: .bool(true), summary: "Press the Fix typos shortcut (Control-Option-Space unless changed) to fix typos in the focused field or selection"),
         .init(key: JotDefaultsKey.newSessionAfterSilence, kind: .int(SessionSplit.defaultMinutes, range: 0...60, choices: SessionSplit.choices), summary: "Minutes of quiet that start a new session; 0 never splits"),
         .init(key: JotDefaultsKey.cleanUpTranscriptions, kind: .bool(true), summary: "Clean up live speech and meetings with Apple Intelligence"),
         .init(key: JotDefaultsKey.keepAudioForSpeakerPass, kind: .bool(true), summary: "Keep session audio until the speaker pass finishes"),

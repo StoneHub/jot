@@ -47,6 +47,8 @@ Names come only from fixed codes in `UsageCounter` (`Sources/JotCore/UsageCounte
 | `savedDictation.reviewed`, `savedDictation.copied` | Review saved dictation showed a saved hold; its text was copied. |
 | `suggestion.requested` | A suggestion request began. |
 | `suggestion.outcome.<outcome>`, `suggestion.action.<action>` | A suggestion request finished, once each, by its final `SuggestionHistoryEntry` outcome and, when one ended it, its action. |
+| `typoFix.requested` | The Fix typos shortcut was pressed. |
+| `typoFix.outcome.<outcome>` | That press ended, by `TypoFixOutcome`: `fixed`, `undone`, `unchanged`, `rejected`, `fieldChanged`, `cancelled` and so on. |
 
 To start the counters over, use **Reset counters** on the Activity screen's "How dictation went" card, or:
 

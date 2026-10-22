@@ -34,7 +34,7 @@ extension SpeechService {
                                                          keepTuningCopy: settings.bool(JotSettings.keepTuningAudio))
         var result: [String: Any] = ["mode": mode, "models": modelState.rawValue, "microphoneRunning": capture.running,
             "microphonePermission": AVCaptureDevice.authorizationStatus(for: .audio).rawValue,
-            "suggestions": suggestions.diagnostics,
+            "suggestions": suggestions.diagnostics, "typoFix": typoFixStatus,
             "accessibilityGranted": DictationInput.accessibilityGranted, "dictationEnabled": dictationEnabled, "fnEnabled": dictationEnabled,
             "dictationShortcut": shortcut.displayName, "dictationRequested": dictationRequested, "fnRequested": dictationRequested, "ambientRequested": ambientRequested, "ambientEnabled": ambientEnabled, "keepMacAwakeWhileListening": keepMacAwakeWhileListening, "keepAwakeActive": keepAwakeActive, "servicePhase": lifecycle.phase.rawValue,
             "notice": notice, "sessionID": timeline.sessionID, "inferenceRunning": transcriber.processing != nil || diagnosticActive, "speakerPassRunning": speakers.passRunning, "resources": try object(resources),

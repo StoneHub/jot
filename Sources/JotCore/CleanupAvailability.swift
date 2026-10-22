@@ -26,6 +26,17 @@ public enum CleanupAvailability: String, Sendable, CaseIterable {
         }
     }
 
+    public var typoFixBlocker: String? {
+        switch self {
+        case .available: return nil
+        case .olderSystem: return "Fix typos requires macOS 26 or later, or a custom model for cleanup."
+        case .deviceNotEligible: return "Apple Intelligence is unavailable on this Mac. Switch cleanup to a custom model in Settings to fix typos."
+        case .notEnabled: return "Apple Intelligence is off in macOS. Turn it on, or switch cleanup to a custom model in Settings."
+        case .modelNotReady: return "Apple Intelligence is not ready. Try again later."
+        case .notConfigured: return "The custom model needs an endpoint and a model name before it can fix typos."
+        }
+    }
+
     public var suggestionBlocker: String? {
         switch self {
         case .available: return nil

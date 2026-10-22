@@ -34,6 +34,8 @@ public enum JotDefaultsKey {
     public static let suggestionHeardMatches = "suggestionHeardMatches"
     public static let suggestionWindowImage = "suggestionWindowImage"
     public static let suggestionWindowMinutes = "suggestionWindowMinutes"
+    public static let typoFixEnabled = "typoFixEnabled"
+    public static let typoFixShortcut = "typoFixShortcut"
     public static let dictationShortcut = "dictationShortcut"
     public static let personalVocabulary = "personalVocabulary"
     public static let setupStatus = "setupStatus"

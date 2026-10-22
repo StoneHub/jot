@@ -8,6 +8,8 @@ final class ShortcutEventTap: @unchecked Sendable {
     struct Configuration {
         var shortcut: DictationShortcut = .fn
         var suggestionShortcut: DictationShortcut?
+        /// Nil while Fix typos is off or its shortcut would take another shortcut's key.
+        var typoFixShortcut: DictationShortcut?
         var dictationEnabled = true
         var fnSuggestionsEnabled = false
         var suggestionAllowed = false
@@ -18,6 +20,7 @@ final class ShortcutEventTap: @unchecked Sendable {
         case start, stop(TimeInterval), discardTap, doubleTap, cancel
         case suggestionRequest, suggestionAccept, suggestionDismiss(SuggestionHistoryEntry.Action)
         case suggestionRefused, typed
+        case typoFixRequest
         case tapDisabled
     }
 
@@ -31,6 +34,7 @@ final class ShortcutEventTap: @unchecked Sendable {
     private var tracker = ShortcutTracker()
     private var suggestionFn = SuggestionFnGesture()
     private var suggestionKeys = SuggestionKeyTracker()
+    private var typoFixKey = TypoFixKeyTracker()
     private var recording = false
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
@@ -126,6 +130,7 @@ final class ShortcutEventTap: @unchecked Sendable {
             tracker.reset()
             suggestionFn.reset()
             suggestionKeys.reset()
+            typoFixKey.reset()
             recording = false
         }
     }
@@ -171,7 +176,7 @@ final class ShortcutEventTap: @unchecked Sendable {
     private func handle(_ type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             let callback = lock.withLock { () -> ((Decision) -> Void)? in
-                tracker.reset(); suggestionFn.reset(); suggestionKeys.reset(); recording = false
+                tracker.reset(); suggestionFn.reset(); suggestionKeys.reset(); typoFixKey.reset(); recording = false
                 if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
                 return onDecision
             }
@@ -208,6 +213,11 @@ final class ShortcutEventTap: @unchecked Sendable {
         guard !config.recordingShortcut else { return Decision(consume: false, actions: []) }
         if ShortcutTracker.isFnCompanionEvent(kind, keyCode: keyCode) { return Decision(consume: false, actions: []) }
         let unmodifiedFn = modifiers.subtracting(.fn)
+        // Fix typos goes first so its key never reaches the field or ends a suggestion card as typing. A dictation hold
+        // keeps every key, so a press mid-hold cancels the hold as any other key does.
+        let typoFix = typoFixKey.handle(kind, keyCode: keyCode, modifiers: unmodifiedFn, repeating: repeating,
+                                        shortcut: recording ? nil : config.typoFixShortcut)
+        if typoFix.consume { return Decision(consume: true, actions: typoFix.request ? [.typoFixRequest] : []) }
         let allowed = !recording && config.suggestionAllowed
         let suggestion = suggestionKeys.handle(kind, keyCode: keyCode, modifiers: unmodifiedFn,
             repeating: repeating, shortcut: config.suggestionShortcut, allowed: allowed, at: timestamp)

@@ -4,7 +4,7 @@ import XCTest
 final class StatusReportTests: XCTestCase {
     /// The v1 key set clients read. Changing it is a contract change: update the CLI help, MCP descriptions and this list together.
     func testVersionOneKeysAreStable() {
-        XCTAssertEqual(StatusReport.keys.count, 38)
+        XCTAssertEqual(StatusReport.keys.count, 39)
         for key in ["mode", "models", "microphoneRunning", "ambientEnabled", "dictationEnabled", "fnEnabled", "fnRequested", "notice", "version"] {
             XCTAssertTrue(StatusReport.keys.contains(key), key)
         }

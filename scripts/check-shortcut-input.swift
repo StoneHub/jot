@@ -26,6 +26,17 @@ enum ShortcutInputChecks {
         precondition(chord.decideForTesting(.keyUp, keyCode: 49, modifiers: shortcut.modifiers, at: 1.5) ==
             .init(consume: true, actions: [.stop(1.5)]))
 
+        let typoFix = ShortcutEventTap()
+        typoFix.configure { $0.typoFixShortcut = TypoFixShortcutPreferences.standard }
+        precondition(typoFix.decideForTesting(.keyDown, keyCode: 49, modifiers: [.control, .option], at: 2) ==
+            .init(consume: true, actions: [.typoFixRequest]), "Fix typos takes its key without counting it as typing")
+        precondition(typoFix.decideForTesting(.keyDown, keyCode: 49, modifiers: [.control, .option], repeating: true, at: 2.1) ==
+            .init(consume: true, actions: []), "Holding the Fix typos key does not repeat the request")
+        precondition(typoFix.decideForTesting(.keyUp, keyCode: 49, modifiers: [.control, .option], at: 2.2) ==
+            .init(consume: true, actions: []))
+        precondition(typoFix.decideForTesting(.keyDown, keyCode: 49, modifiers: [], at: 2.3) ==
+            .init(consume: false, actions: [.typed]), "A plain Space is typing")
+
         let disabled = ShortcutEventTap()
         disabled.configure { $0.dictationEnabled = false }
         precondition(disabled.decideForTesting(.flagsChanged, keyCode: 63, modifiers: [.fn], at: 1) ==
@@ -37,6 +48,6 @@ enum ShortcutInputChecks {
         precondition(ticket.accepts(generation: 7, frontmostPID: 123))
         precondition(!ticket.accepts(generation: 8, frontmostPID: 123), "Cancelled press must reject its late AX result")
         precondition(!ticket.accepts(generation: 7, frontmostPID: 456), "Focus moved to another app")
-        print("PASS: shortcut tap ordering, Fn pass-through, chord consumption and repeat, disabled state and stale target gates.")
+        print("PASS: shortcut tap ordering, Fn pass-through, chord consumption and repeat, Fix typos key, disabled state and stale target gates.")
     }
 }
