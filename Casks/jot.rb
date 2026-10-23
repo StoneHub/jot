@@ -16,19 +16,25 @@ cask "jot" do
 
   app "Jot.app"
 
-  # Releases are not notarized yet, so Gatekeeper would block the first launch. Like Jot's updater, clear the quarantine
-  # flag only after the signature verifies and names Jot's team; anything else keeps Gatekeeper's check.
-  postflight do
-    app = "#{appdir}/Jot.app"
-    verified = system_command("/usr/bin/codesign", args: ["--verify", "--deep", "--strict", app]).success?
-    details = system_command("/usr/bin/codesign", args: ["-dv", app], print_stderr: false)
-    team = details.stderr[/^TeamIdentifier=(\S+)$/, 1]
-    if verified && team == "N6GPP46885"
-      system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", app]
-    else
-      opoo "Jot's signature did not verify for team N6GPP46885 (found #{team.inspect}); " \
-           "macOS will ask before the first launch."
-    end
+  # Releases are not notarized yet, so Gatekeeper would block the first launch. Like Jot's updater, clear the
+  # quarantine flag only after the signature meets Jot's code requirement (an Apple-issued certificate for team
+  # N6GPP46885, the same as AppUpdater.officialRequirement); otherwise warn and keep Gatekeeper's check.
+  # Install steps take literal arguments only, so the verify-then-clear branch runs in sh: $1 is the
+  # requirement and $2 the installed app.
+  postflight_steps do
+    run "/bin/sh",
+        args:           [
+          "-c",
+          'if /usr/bin/codesign --verify --deep --strict -R="$1" "$2"; then ' \
+          '/usr/bin/xattr -dr com.apple.quarantine "$2"; ' \
+          'else echo "Jot does not meet the code requirement for team N6GPP46885; ' \
+          'macOS will ask before the first launch." >&2; fi',
+          "jot-cask",
+          'anchor apple generic and certificate leaf[subject.OU] = "N6GPP46885"',
+          "{{appdir}}/Jot.app",
+        ],
+        writable_paths: ["Jot.app"],
+        writable_base:  :appdir
   end
 
   caveats <<~EOS

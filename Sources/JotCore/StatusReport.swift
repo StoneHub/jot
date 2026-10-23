@@ -9,7 +9,7 @@ public enum StatusReport {
         "microphoneRunning", "microphonePermission", "microphone", "accessibilityGranted",
         "dictationEnabled", "dictationShortcut", "dictationRequested", "dictationInput", "dictationRecovery",
         "ambientRequested", "ambientEnabled", "keepMacAwakeWhileListening", "keepAwakeActive",
-        "inferenceRunning", "speakerPassRunning", "speakerPassPending", "speakerSlots", "suggestions", "transcriptionCleanup",
+        "inferenceRunning", "speakerPassRunning", "speakerPassPending", "speakerSlots", "suggestions", "typoFix", "transcriptionCleanup",
         "droppedAudioSeconds", "queuedAudioSeconds", "processingLagSeconds", "lastInferenceSeconds", "processedAudioSeconds",
         "audioRetention", "transcriptPolicy", "resources", "tuning", "tuningAudio", "storageWorkPending",
     ]).union(aliases.keys)

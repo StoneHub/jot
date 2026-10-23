@@ -2,7 +2,7 @@ import SwiftUI
 import JotCore
 
 /// The usage counters for the selected period: how holds ended, how text reached the field, and how often saved
-/// dictation and suggestions were used. Counts are kept as events happen, so deleting history leaves them.
+/// dictation, suggestions and Fix typos were used. Counts are kept as events happen, so deleting history leaves them.
 struct ActivityCounters: View {
     let counters: [String: Int]
     let reset: @MainActor () async -> Void
@@ -38,6 +38,8 @@ struct ActivityCounters: View {
                     ActivityStat(title: "Cleaned up", value: cleaned > 0 ? "\(count(.dictationCleanup(.changed))) of \(cleaned)" : "—", symbol: "wand.and.stars")
                     ActivityStat(title: "Saved reviews", value: count(.savedDictationReviewed).formatted(), symbol: "tray.full")
                     ActivityStat(title: "Suggestions taken", value: "\(accepted) of \(count(.suggestionRequested))", symbol: "text.badge.plus")
+                    ActivityStat(title: "Typo fixes", value: "\(count(.typoFix(.fixed))) of \(count(.typoFixRequested))", symbol: "character.cursor.ibeam",
+                                 detail: "Presses of the Fix typos shortcut that changed the field. \(count(.typoFix(.undone))) undone.")
                 }
                 Text("Counted on this Mac as you use Jot, with no text. Deleting history leaves these counts.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

@@ -64,6 +64,13 @@ final class DictationInput {
     var isRecordingShortcut = false { didSet { eventTap.resetGesture(); dismissSuggestionKeys(); refreshShortcutState() } }
     var dictationEnabled = true { didSet { refreshShortcutState() } }
     var suggestionShortcut: DictationShortcut? { didSet { refreshShortcutState() } }
+    /// Nil while Fix typos is off or its shortcut would take another shortcut's key.
+    var typoFixShortcut: DictationShortcut? { didSet { refreshShortcutState() } }
+    var onTypoFixRequest: (() -> Void)?
+    /// Ends a Fix typos request in flight: the user typed, focus left its field, or a dictation hold began.
+    var onTypoFixInterrupted: (() -> Void)?
+    /// Fix typos holds the captured field while it runs: focus leaving it ends the fix rather than reporting a dictation error.
+    var typoFixOwnsTarget = false
     var fnSuggestionsEnabled = false { didSet { eventTap.resetFnSuggestion(); refreshShortcutState() } }
     var suggestionAllowed: () -> Bool = { false }
     var onSuggestionRequest: (() -> Void)?
@@ -275,6 +282,7 @@ final class DictationInput {
         eventTap.configure { config in
             config.shortcut = shortcut
             config.suggestionShortcut = suggestionShortcut
+            config.typoFixShortcut = typoFixShortcut
             config.dictationEnabled = dictationEnabled
             config.fnSuggestionsEnabled = fnSuggestionsEnabled
             config.suggestionAllowed = allowed
@@ -289,6 +297,9 @@ final class DictationInput {
             case .typed:
                 suggestionKeyRevision += 1
                 invalidatePendingTarget()
+                onTypoFixInterrupted?()
+            case .typoFixRequest:
+                onTypoFixRequest?()
             case .suggestionRequest:
                 if suggestionAllowed() { scheduleSuggestionRequest() } else { onSuggestionRefused?() }
             case .suggestionAccept:
@@ -300,6 +311,8 @@ final class DictationInput {
                 onSuggestionRefused?()
             case .start:
                 onSuggestionDismiss?(.typedOver)
+                // Before the hold captures its own field, which a running fix would otherwise let go of.
+                onTypoFixInterrupted?()
                 shortcutPresses += 1
                 if shortcut.keyCode == nil { fnPresses += 1 }
                 if let reason = startBlocker() {
@@ -420,7 +433,8 @@ final class DictationInput {
         guard let target else { return }
         do { try validateCurrent(target) }
         catch {
-            if eventTap.suggestionState != .idle { onSuggestionDismiss?(.focusChanged) }
+            if typoFixOwnsTarget { onTypoFixInterrupted?() }
+            else if eventTap.suggestionState != .idle { onSuggestionDismiss?(.focusChanged) }
             else { cancel(error) }
         }
     }

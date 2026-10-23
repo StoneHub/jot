@@ -14,6 +14,9 @@ final class AppUpdater: ObservableObject {
     static let latestURL = URL(string: "https://api.github.com/repos/StoneHub/jot/releases?per_page=20")!
     static let installPath = "/Applications/Jot.app"
     static let officialTeamIdentifier = "N6GPP46885"
+    /// A downloaded app must satisfy this: a certificate chain to Apple whose leaf names Jot's team. codesign checks it
+    /// against the signature itself rather than the TeamIdentifier text it prints. Casks/jot.rb uses the same requirement.
+    static let officialRequirement = "anchor apple generic and certificate leaf[subject.OU] = \"\(officialTeamIdentifier)\""
     static let logURL = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Application Support/Jot/update.log")
     var isBusy: Bool {
         switch state {
@@ -144,11 +147,11 @@ final class AppUpdater: ObservableObject {
 
     private func verify(_ bundle: URL, expecting version: SemanticVersion) async throws {
         guard FileManager.default.fileExists(atPath: bundle.path) else { throw UpdateError("The download did not contain Jot.app.") }
-        try await run("/usr/bin/codesign", "--verify", "--deep", "--strict", bundle.path)
-        let installed = Bundle.main.bundleURL
-        let running = try await Task.detached { try Self.teamIdentifier(of: installed) }.value
-        let downloaded = try await Task.detached { try Self.teamIdentifier(of: bundle) }.value
-        guard running == downloaded else { throw UpdateError("Signing team \(downloaded) does not match the installed app (\(running)).") }
+        do {
+            try await run("/usr/bin/codesign", "--verify", "--deep", "--strict", "-R=\(Self.officialRequirement)", bundle.path)
+        } catch {
+            throw UpdateError("The download is not signed by Jot's team (\(Self.officialTeamIdentifier)). \(error.localizedDescription)")
+        }
         // Unnotarized Apple Development signatures fail Gatekeeper while the quarantine flag is set; xattr exits nonzero when there is none.
         try await run("/usr/bin/xattr", "-dr", "com.apple.quarantine", bundle.path, allowFailure: true)
         let info = bundle.appending(path: "Contents/Info.plist")

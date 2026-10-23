@@ -63,7 +63,7 @@ Text insertion tries the field's Accessibility API, then direct Unicode keyboard
 
 When an ambient session or meeting ends, a speaker pass reads the whole session and relabels its rows by who spoke when, keeping their cleaned text; the notice in the window says how many speakers it found. **Activity** shows resource use and capture events. **General → Speakers & paragraphs** adjusts speaker grouping and paragraph breaks for new audio; **Regroup** in Sessions relabels a saved session from its speaker pass, or from the current settings when it has none. See the [tuning guide](docs/TUNING.md).
 
-**Updating Jot:** once a day Jot asks GitHub for its list of releases, and when one is newer it puts a dot on **Models & updates** and a line in the menu bar. The request carries no ID or cookies and downloads nothing. Turn it off in **General → Privacy → Check for updates daily** (`jot settings set checkForUpdates false`); **Check for updates** in **Models & updates** still works. Jot reads the latest GitHub release; if it is newer, **Update Jot** downloads it, checks the size, signature, and signing team against the running app, removes the quarantine flag, then quits and replaces `/Applications/Jot.app` before relaunching. Update is disabled while capture, dictation, inference, or model setup is running, and while the speaker pass or Regroup is relabeling a session. Each step is appended to `~/Library/Application Support/Jot/update.log`.
+**Updating Jot:** once a day Jot asks GitHub for its list of releases, and when one is newer it puts a dot on **Models & updates** and a line in the menu bar. The request carries no ID or cookies and downloads nothing. Turn it off in **General → Privacy → Check for updates daily** (`jot settings set checkForUpdates false`); **Check for updates** in **Models & updates** still works. Jot reads the latest GitHub release; if it is newer, **Update Jot** downloads it, checks the size and that the signature chains to an Apple certificate issued to Jot's team, removes the quarantine flag, then quits and replaces `/Applications/Jot.app` before relaunching. Update is disabled while capture, dictation, inference, or model setup is running, and while the speaker pass or Regroup is relabeling a session. Each step is appended to `~/Library/Application Support/Jot/update.log`.
 
 **Models & updates → Check model updates** checks published model revisions. It does not download updates or verify that your cached weights match the latest release.
 
@@ -99,6 +99,12 @@ Run `jot suggestions [--limit N]` to inspect recent request receipts. Each recei
 <img src="docs/images/jot-general-settings.png" width="800" alt="Jot General settings in dark appearance, with listening paused and dictation and suggestion controls visible">
 
 *General settings for dictation and suggestions, shown in the installed app on October 2, 2026. The toggles show the options selected for that session.*
+
+## Fix typos
+
+Type fast, then press **⌃⌥Space** in any text field. Jot fixes misspellings, swapped or missing letters, words run together and missing apostrophes in your selection, or in the whole field when nothing is selected, and keeps your wording, tone and line breaks. It replaces only the stretch from the first fix to the last, through the same checked insertion path as dictation. Press the shortcut again while Jot works to cancel, or within 30 seconds of a fix to put your original text back. Typing, clicking elsewhere or starting a dictation also cancels, and nothing is replaced once the field has changed.
+
+A result that changes more than typos is discarded: a rewritten or added word, a changed number, a negation that appears or disappears, or a joined line. Password fields are never read. Jot reads the field only when you press the shortcut, sends only that text to the cleanup model (Apple Intelligence on this Mac, or your [custom model](#custom-model-optional) when **Use for cleanup** is on), and keeps nothing afterward; usage counters record only how each press ended. One press fixes up to about 3,000 characters. Turn it off or choose another shortcut in **General → Fix typos**.
 
 ## Personal vocabulary
 

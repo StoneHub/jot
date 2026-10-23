@@ -39,10 +39,6 @@ public final class TranscriptCleanup {
     /// Apple Intelligence's availability, the default provider's.
     public static var availability: CleanupAvailability { AppleIntelligenceProvider().availability }
 
-    public func clean(_ texts: [String], timeout: Duration = .seconds(2), generator: Generator? = nil) async -> [String] {
-        await cleanWithOutcome(texts, timeout: timeout, generator: generator).texts
-    }
-
     /// Metadata explains a fallback without exposing the input or model error text.
     public func cleanWithOutcome(_ texts: [String], timeout: Duration = .seconds(2), generator: Generator? = nil) async -> CleanupResult {
         if Task.isCancelled { return .init(texts: texts, outcome: .cancelled) }

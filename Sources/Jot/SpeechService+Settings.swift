@@ -14,6 +14,10 @@ extension SpeechService {
         case JotDefaultsKey.suggestionsEnabled:
             if suggestionsEnabled && !DictationInput.accessibilityGranted { input.requestAccessibility() }
             updateSuggestionMonitoring()
+        case JotDefaultsKey.typoFixEnabled:
+            // On by default without asking: Accessibility is asked for only when someone turns it on.
+            if typoFixEnabled && !DictationInput.accessibilityGranted { input.requestAccessibility() }
+            updateSuggestionMonitoring()
         case JotDefaultsKey.suggestionScreenContext, JotDefaultsKey.suggestionHeardMatches, JotDefaultsKey.suggestionWindowMinutes:
             suggestions.dismiss(action: .settingsChanged)
         case JotDefaultsKey.suggestionWindowImage:
@@ -33,6 +37,7 @@ extension SpeechService {
         case let changed where JotSettings.customModelKeys.contains(changed):
             refreshCapabilities()
             suggestions.dismiss(action: .settingsChanged)
+            typoFix.stop()
         case JotSettings.paragraphPause:
             // Live groups by the paragraph pause alone, so a change to any other tuning value leaves it as it is.
             library.refreshHistory(); library.reloadLive()
@@ -53,6 +58,11 @@ extension SpeechService {
         set { save(JotDefaultsKey.suggestionsEnabled, newValue) }
     }
     /// Read the text shown above the field, such as a chat, for a request. Local and never stored.
+    var typoFixEnabled: Bool {
+        get { settings.bool(JotDefaultsKey.typoFixEnabled) }
+        set { save(JotDefaultsKey.typoFixEnabled, newValue) }
+    }
+
     var suggestionScreenContext: Bool {
         get { settings.bool(JotDefaultsKey.suggestionScreenContext) }
         set { save(JotDefaultsKey.suggestionScreenContext, newValue) }

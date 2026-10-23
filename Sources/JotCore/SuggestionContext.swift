@@ -58,12 +58,6 @@ public struct SuggestionContext: Sendable {
     /// The rows behind these sources: what must be unchanged when the suggestion is accepted.
     public func rows(for sources: [SuggestionSource]) -> [Transcript] { sources.flatMap { members[$0.id] ?? [] } }
 
-    public func input(target: SuggestionTarget, association: ContextAssociation = .explicitRecentRequest) -> SuggestionRequest {
-        var input = SuggestionRequest(target: target, sources: sources)
-        input.association = association
-        return input
-    }
-
     /// Ambient rows mostly inside a dictation hold repeat the dictation, so they are set aside; per session, the seconds
     /// each voice spent inside holds is what they contribute.
     static func splitHolds(_ rows: [Transcript]) -> (heard: [Transcript], heldSeconds: [String: [String: Double]]) {

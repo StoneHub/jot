@@ -14,31 +14,60 @@ extension ShortcutModifiers {
     }
 }
 
+/// Which of Jot's shortcuts a button changes.
+enum ShortcutPurpose {
+    case dictation, suggestion, typoFix
+
+    var title: String {
+        switch self {
+        case .dictation: return "Dictation shortcut"
+        case .suggestion: return "Suggestion shortcut"
+        case .typoFix: return "Fix typos shortcut"
+        }
+    }
+
+    var explanation: String {
+        switch self {
+        case .dictation: return "Press a key with Control, Option, or Command. Hold to dictate; release to insert. Saved dictation is available from Review saved dictation."
+        case .suggestion: return "Press a key with Control, Option, or Command. Request a draft using recent Jot context; Tab inserts without sending."
+        case .typoFix: return "Press a key with Control, Option, or Command. Fixes typos in the selection, or the whole field when nothing is selected."
+        }
+    }
+}
+
 /// The shortcut button alone; the row that labels it lives with the other controls so it lines up with them.
 struct ShortcutSettings: View {
     @ObservedObject var service: SpeechService
-    var forSuggestions = false
+    var purpose = ShortcutPurpose.dictation
     @State private var showing = false
     var body: some View {
-        Button(forSuggestions ? (service.suggestionShortcut?.displayName ?? "Choose shortcut…") : service.shortcut.displayName) { showing = true }
-            .font(.callout.monospaced()).accessibilityLabel(forSuggestions ? "Change suggestion shortcut" : "Change dictation shortcut")
+        Button(label) { showing = true }
+            .font(.callout.monospaced()).accessibilityLabel("Change " + purpose.title.lowercased())
             .disabled(!service.canChangeShortcut)
             .popover(isPresented: $showing) {
-                ShortcutEditor(service: service, forSuggestions: forSuggestions, dismiss: { showing = false })
+                ShortcutEditor(service: service, purpose: purpose, dismiss: { showing = false })
             }
+    }
+
+    private var label: String {
+        switch purpose {
+        case .dictation: return service.shortcut.displayName
+        case .suggestion: return service.suggestionShortcut?.displayName ?? "Choose shortcut…"
+        case .typoFix: return service.typoFixShortcut.displayName
+        }
     }
 }
 
 private struct ShortcutEditor: View {
     @ObservedObject var service: SpeechService
-    let forSuggestions: Bool
+    let purpose: ShortcutPurpose
     let dismiss: () -> Void
     @State private var monitor: Any?
     @State private var error: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(forSuggestions ? "Suggestion shortcut" : "Dictation shortcut").font(.headline)
-            Text(forSuggestions ? "Press a key with Control, Option, or Command. Request a draft using recent Jot context; Tab inserts without sending." : "Press a key with Control, Option, or Command. Hold to dictate; release to insert. Saved dictation is available from Review saved dictation.")
+            Text(purpose.title).font(.headline)
+            Text(purpose.explanation)
                 .font(.callout).fixedSize(horizontal: false, vertical: true)
             Text("Press shortcut…").font(.title3.monospaced())
                 .frame(maxWidth: .infinity).padding(12)
@@ -47,7 +76,11 @@ private struct ShortcutEditor: View {
             Text("Choose a shortcut you don’t use in other apps.")
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
-                if !forSuggestions { Button("Use Fn / Globe") { save(.fn) } }
+                switch purpose {
+                case .dictation: Button("Use Fn / Globe") { save(.fn) }
+                case .typoFix: Button("Use ⌃⌥Space") { save(TypoFixShortcutPreferences.standard) }
+                case .suggestion: EmptyView()
+                }
                 Spacer()
                 Button("Cancel", action: dismiss)
             }
@@ -84,8 +117,11 @@ private struct ShortcutEditor: View {
     }
     private func save(_ shortcut: DictationShortcut) {
         do {
-            if forSuggestions { try service.setSuggestionShortcut(shortcut) }
-            else { try service.setShortcut(shortcut) }
+            switch purpose {
+            case .dictation: try service.setShortcut(shortcut)
+            case .suggestion: try service.setSuggestionShortcut(shortcut)
+            case .typoFix: try service.setTypoFixShortcut(shortcut)
+            }
             end(); dismiss()
         }
         catch { self.error = error.localizedDescription }

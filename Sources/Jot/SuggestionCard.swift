@@ -9,9 +9,9 @@ final class SuggestionCard {
     var isVisible: Bool { panel?.isVisible == true }
 
     func show(text: String, title: String = "Jot suggestion", sources: String = "", action: String = "Tab to insert",
-              loading: Bool = false, ready: Bool = false, at field: CGRect) {
+              loading: Bool = false, ready: Bool = false, footer: String? = nil, at field: CGRect) {
         model.text = text; model.title = title; model.sources = sources; model.action = action
-        model.loading = loading; model.ready = ready
+        model.loading = loading; model.ready = ready; model.footer = footer
         let panel = self.panel ?? makePanel()
         self.panel = panel
         // Clicks pass through to the app underneath; the card is keys only.
@@ -61,6 +61,8 @@ private final class CardModel: ObservableObject {
     @Published var action = "Tab to insert"
     @Published var loading = false
     @Published var ready = false
+    /// Replaces the key hint under the text, for a card whose keys are not Tab and Escape; empty shows none.
+    @Published var footer: String?
 }
 
 private struct SuggestionCardView: View {
@@ -78,8 +80,8 @@ private struct SuggestionCardView: View {
             if !model.sources.isEmpty {
                 Text(model.sources).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }
-            Text(model.ready ? "\(model.action) · Esc to dismiss" : "Esc to dismiss")
-                .font(.caption2).foregroundStyle(.secondary)
+            let footer = model.footer ?? (model.ready ? "\(model.action) · Esc to dismiss" : "Esc to dismiss")
+            if !footer.isEmpty { Text(footer).font(.caption2).foregroundStyle(.secondary) }
         }
         .frame(width: 388, alignment: .leading).padding(16)
         .modifier(CardMaterial())
