@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jot: local dictation for your Mac</title>
+  <meta name="description" content="Hold Fn, speak, and Jot types into any app. Speech recognition runs on your Mac. Free and open source.">
+  <meta name="color-scheme" content="light dark">
+  <meta property="og:title" content="Jot: local dictation for your Mac">
+  <meta property="og:description" content="Hold Fn, speak, and Jot types into any app. Speech recognition runs on your Mac. Free and open source.">
+  <meta property="og:image" content="https://stonehub.github.io/jot/site/icon.png">
+  <link rel="icon" type="image/png" href="site/favicon.png">
+  <link rel="stylesheet" href="site/style.css">
+</head>
+<body>
+  <!-- One static page served by GitHub Pages from main /docs. No scripts, trackers, cookies or third-party requests. -->
+  <header class="top">
+    <a class="brand" href="./"><img src="site/icon.png" alt="" width="28" height="28">Jot</a>
+    <nav>
+      <a href="#privacy">Privacy</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/StoneHub/jot">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <img class="hero-icon" src="site/icon.png" alt="Jot app icon" width="112" height="112">
+      <h1>Hold Fn. Speak. Done.</h1>
+      <p class="lead">Jot is dictation and transcription for your Mac that never sends your voice anywhere. Hold Fn in any app, talk, let go, and your words are in the field.</p>
+      <div class="actions">
+        <a class="button primary" href="https://github.com/StoneHub/jot/releases">Download for Mac</a>
+        <a class="button" href="#install">Other ways to install</a>
+      </div>
+      <p class="fine">Free and open source · Apple silicon · macOS 14 or later · Prerelease</p>
+      <figure class="shot">
+        <img src="images/jot-history.jpg" alt="Jot's Dictations window with one saved test dictation" width="760" height="760">
+      </figure>
+    </section>
+
+    <section class="points" aria-label="Highlights">
+      <div>
+        <h2>On your Mac</h2>
+        <p>Speech recognition runs locally with open models through FluidAudio. No account, no cloud transcription.</p>
+      </div>
+      <div>
+        <h2>Into any app</h2>
+        <p>Release Fn and Jot inserts the text where your cursor is. It never presses Return, and it skips password fields.</p>
+      </div>
+      <div>
+        <h2>Nothing lost</h2>
+        <p>If the field moved or the insert can't be confirmed, the dictation is saved for you to review and copy.</p>
+      </div>
+    </section>
+
+    <section class="features">
+      <h2 class="section-title">More than a dictation key</h2>
+      <div class="grid">
+        <article>
+          <h3>Listens when you want</h3>
+          <p>Resume, and Jot keeps a searchable transcript of what it hears. Pause stops the microphone. Start a meeting to name it; end it to save Markdown to your Documents folder.</p>
+        </article>
+        <article>
+          <h3>Knows who spoke</h3>
+          <p>After a session, a speaker pass groups rows by voice. Name a speaker once and Jot recognizes that voice next time. It keeps a small voice signature, never the audio.</p>
+        </article>
+        <article>
+          <h3>Suggestions on double-tap</h3>
+          <p>Double-tap Fn to continue your text, rewrite a selection, or draft a reply in an empty chat box. It uses Apple's on-device model on macOS 26, or a model you choose.</p>
+        </article>
+        <article>
+          <h3>Your words, spelled right</h3>
+          <p>Add names and terms to your personal vocabulary and Jot uses your spelling every time you dictate. Original transcripts stay unchanged.</p>
+        </article>
+        <article>
+          <h3>Built for coding agents</h3>
+          <p>A bundled CLI and MCP server let Claude Code and other agents search what you said, follow a meeting live, or write session notes on request.</p>
+        </article>
+        <article>
+          <h3>Feels like the Mac</h3>
+          <p>A menu bar app with your system accent color, light and dark appearance, and Liquid Glass on macOS 26.</p>
+        </article>
+      </div>
+      <pre class="terminal" aria-label="Example jot commands"><code><span class="prompt">$</span> jot search 'blue notebook'
+<span class="prompt">$</span> jot meeting start Design review
+<span class="prompt">$</span> jot notes &lt;session-id&gt;</code></pre>
+    </section>
+
+    <section id="privacy" class="privacy">
+      <div class="privacy-text">
+        <h2 class="section-title">Private by default</h2>
+        <ul>
+          <li><strong>Your voice stays here.</strong> Audio is recognized on this Mac. Session audio kept for the speaker pass is deleted when it finishes, and you can turn that off.</li>
+          <li><strong>Your transcripts stay here.</strong> They live in a local database in your Library folder. Nothing syncs.</li>
+          <li><strong>Two small requests, both switchable.</strong> Once a day Jot asks GitHub whether a new release exists, and sends anonymous usage counts with no text, audio or ID. Both live under General → Privacy. <a href="https://github.com/StoneHub/jot/blob/main/docs/ANALYTICS.md">See exactly what is sent.</a></li>
+          <li><strong>Remote models only if you ask.</strong> Bring an Ollama, LM Studio or API-key model for cleanup or suggestions; each use stays off until you switch it on.</li>
+        </ul>
+        <p class="fine">This page has no analytics, cookies or third-party scripts either.</p>
+      </div>
+      <figure class="shot side">
+        <img src="site/settings.webp" alt="Jot's General settings in dark appearance" width="1100" height="1003" loading="lazy">
+      </figure>
+    </section>
+
+    <section id="install" class="install">
+      <h2 class="section-title">Install</h2>
+      <div class="grid three">
+        <article>
+          <h3>Download</h3>
+          <p>Get <code>Jot-&lt;version&gt;.zip</code> from the newest release, unzip it, and move Jot to Applications.</p>
+          <a class="button primary small" href="https://github.com/StoneHub/jot/releases">Releases</a>
+        </article>
+        <article>
+          <h3>Homebrew</h3>
+          <pre><code>brew tap stonehub/jot https://github.com/StoneHub/jot
+brew install --cask stonehub/jot/jot</code></pre>
+          <p class="fine"><a href="https://github.com/StoneHub/jot/blob/main/docs/HOMEBREW.md">How the cask works</a></p>
+        </article>
+        <article>
+          <h3>From source</h3>
+          <p>Clone the repository and follow Build and install in the README. Needs Xcode, your own signing identity and an Apple silicon Mac.</p>
+          <a class="button small" href="https://github.com/StoneHub/jot#build-and-install">Build steps</a>
+        </article>
+      </div>
+      <div class="note">
+        <p><strong>Jot is in prerelease.</strong> Builds aren't notarized by Apple yet, so the first time you open the ZIP download, allow it once under System Settings → Privacy &amp; Security → Open Anyway. The Homebrew cask checks Jot's signature and skips that step. Until notarized releases ship, a build may not open on every Mac.</p>
+        <p>Jot updates itself: once a day it looks for a new release and shows a dot on Models &amp; updates. Suggestions and cleanup with Apple Intelligence need macOS 26; everything else works on macOS 14 and 15.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p><a href="https://github.com/StoneHub/jot">Source on GitHub</a> · <a href="https://github.com/StoneHub/jot/releases">Release notes</a> · <a href="https://github.com/StoneHub/jot/issues">Report a problem</a> · <a href="https://github.com/StoneHub/jot-android">Jot for Android (in development)</a></p>
+    <p class="fine">MIT License · © 2026 Monroe Stone</p>
+  </footer>
+</body>
+</html>
