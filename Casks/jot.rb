@@ -1,8 +1,8 @@
 # Jot's Homebrew cask. It lives in the app's repository, so this repository is also the tap; see docs/HOMEBREW.md.
 # scripts/release.py rewrites version and sha256 in each release commit, so the cask always names the newest ZIP.
 cask "jot" do
-  version "0.3.4"
-  sha256 "2d783b8f2b5679f654031e665b9ca888b965fc54ff00f44f9b6a03e3bc5d61bd"
+  version "0.3.5"
+  sha256 "ff3c17c50922ff3e8e001b5db357341f2beb8f68e4733341812dd6f4170098da"
 
   url "https://github.com/StoneHub/jot/releases/download/v#{version}/Jot-#{version}.zip"
   name "Jot"
