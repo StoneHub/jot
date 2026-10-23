@@ -40,6 +40,11 @@ final class SpeechService: ObservableObject {
         userVoice: { [weak self] in self?.speakers.userVoice },
         model: ChosenModel(.suggestions, settings: settings),
         notice: { [weak self] in self?.notice = $0 })
+    /// Fix typos uses the cleanup model and its custom-model switch: both only tidy the user's own text.
+    lazy var typoFix = TypoFixCoordinator(input: input, model: ChosenModel(.cleanup, settings: settings),
+        countUsage: { [weak self] in self?.library.countUsage($0) },
+        shortcutName: { [weak self] in self?.typoFixShortcut.displayName ?? "the shortcut" },
+        notice: { [weak self] in self?.notice = $0 })
     lazy var timeline: ListeningTimeline = ListeningTimeline(settings: settings, library: library, speakers: speakers,
         transcriber: transcriber, now: dependencies.now,
         isListening: { [unowned self] in ambientEnabled }, isDictating: { [unowned self] in dictation.isActive },
@@ -95,6 +100,7 @@ final class SpeechService: ObservableObject {
     @Published var dictationRequested = UserDefaults.standard.bool(forKey: JotDefaultsKey.dictationRequested)
     @Published private(set) var shortcut = ShortcutPreferences().load()
     @Published private(set) var suggestionShortcut = SuggestionShortcutPreferences().load()
+    @Published private(set) var typoFixShortcut = TypoFixShortcutPreferences().load()
     var canRequestSuggestion: Bool { suggestionBlocker == nil }
     /// Why a suggestion cannot be requested right now, in the words the card shows.
     var suggestionBlocker: String? {
@@ -110,15 +116,26 @@ final class SpeechService: ObservableObject {
     }
     func setSuggestionShortcut(_ value: DictationShortcut) throws {
         guard canChangeShortcut else { throw JotError.message("Finish dictation before changing a shortcut.") }
+        if typoFixEnabled, TypoFixShortcutPreferences.effective(typoFixShortcut, others: [value]) == nil {
+            throw JotError.message("Choose a key different from the Fix typos shortcut.")
+        }
         try SuggestionShortcutPreferences().save(value, dictation: shortcut)
         suggestionShortcut = value; input.suggestionShortcut = value
         if suggestionsEnabled && !DictationInput.accessibilityGranted { input.requestAccessibility() }
         updateSuggestionMonitoring()
     }
+    func setTypoFixShortcut(_ value: DictationShortcut) throws {
+        guard canChangeShortcut else { throw JotError.message("Finish dictation before changing a shortcut.") }
+        try TypoFixShortcutPreferences().save(value, others: [shortcut, suggestionShortcut])
+        typoFixShortcut = value
+        updateSuggestionMonitoring()
+    }
     func updateSuggestionMonitoring() {
         suggestions.dismiss(action: .settingsChanged)
+        typoFix.stop()
         input.dictationEnabled = dictationEnabled
-        if dictationEnabled || (suggestionsEnabled && DictationInput.accessibilityGranted) {
+        input.typoFixShortcut = effectiveTypoFixShortcut
+        if dictationEnabled || ((suggestionsEnabled || typoFixEnabled) && DictationInput.accessibilityGranted) {
             _ = input.enable()
         } else { input.disable() }
         input.fnSuggestionsEnabled = suggestionsEnabled
@@ -140,16 +157,22 @@ final class SpeechService: ObservableObject {
         if shortcutStateReady { input.refreshShortcutState(); ControlEvents.signal() }
     }
 
-    func setShortcutRecording(_ active: Bool) { suggestions.dismiss(action: .settingsChanged); input.isRecordingShortcut = active }
+    func setShortcutRecording(_ active: Bool) {
+        suggestions.dismiss(action: .settingsChanged); typoFix.stop(); input.isRecordingShortcut = active
+    }
 
     func setShortcut(_ value: DictationShortcut) throws {
         guard canChangeShortcut else { throw JotError.message("Finish dictation before changing its shortcut.") }
         if let suggestionShortcut, value.keyCode == suggestionShortcut.keyCode && value.modifiers == suggestionShortcut.modifiers {
             throw JotError.message("Choose a key different from the suggestion shortcut.")
         }
+        if typoFixEnabled, TypoFixShortcutPreferences.effective(typoFixShortcut, others: [value]) == nil {
+            throw JotError.message("Choose a key different from the Fix typos shortcut.")
+        }
         try ShortcutPreferences().save(value)
         shortcut = value
         input.shortcut = value
+        input.typoFixShortcut = effectiveTypoFixShortcut
     }
 
     @Published var ambientRequested = false
@@ -276,11 +299,14 @@ final class SpeechService: ObservableObject {
         result.shortcut = shortcut
         result.dictationEnabled = false
         result.suggestionShortcut = suggestionShortcut
+        result.typoFixShortcut = effectiveTypoFixShortcut
+        result.onTypoFixRequest = { [weak self] in self?.typoFixPressed() }
+        result.onTypoFixInterrupted = { [weak self] in self?.typoFix.interrupted() }
         result.suggestionAllowed = { [weak self] in
             guard let self else { return false }
             return self.canRequestSuggestion && self.suggestions.keyboardAllowsSuggestions
         }
-        result.onSuggestionRequest = { [weak self] in self?.suggestions.request() }
+        result.onSuggestionRequest = { [weak self] in self?.typoFix.stop(); self?.suggestions.request() }
         result.onSuggestionRefused = { [weak self] in
             guard let self else { return }
             self.suggestions.refuse(self.suggestionBlocker ?? "Suggestions are not available on this keyboard layout.",
@@ -869,6 +895,7 @@ final class SpeechService: ObservableObject {
         inputChange?.cancel(); updateHandoff.cancelRecovery()
         modelCheck?.cancel(); preparation?.cancel(); transcriber.cancel(); diagnostic?.cancel(); pausing?.cancel(); unloading?.cancel(); pausedHold.cancelStart()
         suggestions.dismiss(action: .serviceStopped)
+        typoFix.stop()
         timer?.invalidate(); dictation.releaseFieldEffects(); input.disable(); capture.stop(); updateKeepAwakeAssertion(); server?.stop()
         capture.stopWatching()
         for observer in observers { NSWorkspace.shared.notificationCenter.removeObserver(observer); NotificationCenter.default.removeObserver(observer) }

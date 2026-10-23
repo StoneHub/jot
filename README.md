@@ -100,6 +100,12 @@ Run `jot suggestions [--limit N]` to inspect recent request receipts. Each recei
 
 *General settings for dictation and suggestions, shown in the installed app on October 2, 2026. The toggles show the options selected for that session.*
 
+## Fix typos
+
+Type fast, then press **⌃⌥Space** in any text field. Jot fixes misspellings, swapped or missing letters, words run together and missing apostrophes in your selection, or in the whole field when nothing is selected, and keeps your wording, tone and line breaks. It replaces only the stretch from the first fix to the last, through the same checked insertion path as dictation. Press the shortcut again while Jot works to cancel, or within 30 seconds of a fix to put your original text back. Typing, clicking elsewhere or starting a dictation also cancels, and nothing is replaced once the field has changed.
+
+A result that changes more than typos is discarded: a rewritten or added word, a changed number, a negation that appears or disappears, or a joined line. Password fields are never read. Jot reads the field only when you press the shortcut, sends only that text to the cleanup model (Apple Intelligence on this Mac, or your [custom model](#custom-model-optional) when **Use for cleanup** is on), and keeps nothing afterward; usage counters record only how each press ended. One press fixes up to about 3,000 characters. Turn it off or choose another shortcut in **General → Fix typos**.
+
 ## Personal vocabulary
 
 Open **Vocabulary** to add a preferred spelling such as `SwiftUI`. If Jot mishears it, enter the phrase under **Heard as**, for example `swift you eye`. Leave that field empty to normalize capitalization only.

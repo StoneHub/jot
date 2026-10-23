@@ -156,6 +156,7 @@ extension TranscriptView {
             VStack(alignment: .leading, spacing: 22) {
                 dictationSettings
                 suggestionSettings
+                TypoFixSettings(service: service)
                 CustomModelSettings(service: service)
                 recoverySettings
                 listeningSettings
@@ -197,7 +198,7 @@ extension TranscriptView {
                           isOn: $service.suggestionsEnabled, unavailable: service.suggestionAvailability != .available)
             RowDivider()
             SettingRow(title: "Extra shortcut", info: "Optional. Requests a suggestion, like double-tapping Fn.", indented: true, enabled: service.suggestionsEnabled && service.suggestionAvailability == .available) {
-                ShortcutSettings(service: service, forSuggestions: true)
+                ShortcutSettings(service: service, purpose: .suggestion)
             }
             RowDivider()
             SettingToggle(title: "Read visible conversation", info: "When you ask for a suggestion, reads the text shown above the field in the same window. It is never saved, and stays on this Mac unless suggestions use a custom model off this Mac.",
