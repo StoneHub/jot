@@ -24,9 +24,54 @@ public enum UsageCounter: Sendable, Hashable, CaseIterable {
     case typoFixRequested
     /// How that press ended.
     case typoFix(TypoFixOutcome)
+    /// For a completed hold, how long from releasing the key until its text was in the field.
+    case dictationLatency(Latency)
+    /// Start meeting and End meeting: how each went.
+    case meeting(Meeting)
+    /// How long a meeting ran, counted when End meeting closes it.
+    case meetingLength(MeetingLength)
 
     public enum Insertion: String, Sendable, CaseIterable {
         case accessibility, unicode, clipboard, unverified, failed
+    }
+
+    /// Release-to-inserted time in buckets, so the counters show how often dictation feels slow without storing timings.
+    public enum Latency: String, Sendable, CaseIterable {
+        case underOneSecond, underTwoSeconds, underFourSeconds, underEightSeconds, overEightSeconds
+
+        public init(seconds: Double) {
+            switch seconds {
+            case ..<1: self = .underOneSecond
+            case ..<2: self = .underTwoSeconds
+            case ..<4: self = .underFourSeconds
+            case ..<8: self = .underEightSeconds
+            default: self = .overEightSeconds
+            }
+        }
+    }
+
+    public enum Meeting: String, Sendable, CaseIterable {
+        case started, startFailed
+        /// End meeting saved at least one file.
+        case exported
+        /// End meeting closed a meeting with nothing transcribed, so there was no file.
+        case empty
+        /// End meeting was refused or its export failed.
+        case endFailed
+    }
+
+    public enum MeetingLength: String, Sendable, CaseIterable {
+        case underFifteenMinutes, underHalfHour, underHour, underTwoHours, overTwoHours
+
+        public init(seconds: Double) {
+            switch seconds / 60 {
+            case ..<15: self = .underFifteenMinutes
+            case ..<30: self = .underHalfHour
+            case ..<60: self = .underHour
+            case ..<120: self = .underTwoHours
+            default: self = .overTwoHours
+            }
+        }
     }
 
     /// Every counter, in a fixed order. The analytics Worker allowlists exactly these names (services/analytics/src/counters.js).
@@ -37,7 +82,8 @@ public enum UsageCounter: Sendable, Hashable, CaseIterable {
             + [.liveCleanup(applied: true), .liveCleanup(applied: false), .savedDictationReviewed, .savedDictationCopied, .suggestionRequested]
             + SuggestionHistoryEntry.Outcome.allCases.map(UsageCounter.suggestionOutcome)
             + SuggestionHistoryEntry.Action.allCases.map(UsageCounter.suggestionAction)
-            + typoFixCounters
+            + typoFixCounters + Latency.allCases.map(UsageCounter.dictationLatency)
+            + Meeting.allCases.map(UsageCounter.meeting) + MeetingLength.allCases.map(UsageCounter.meetingLength)
     }
 
     /// A delivery result's path and verification as a counter. A verified path this build does not name counts as
@@ -64,6 +110,10 @@ public enum UsageCounter: Sendable, Hashable, CaseIterable {
         case .suggestionAction(let action): return "suggestion.action.\(action.rawValue)"
         case .typoFixRequested: return "typoFix.requested"
         case .typoFix(let outcome): return "typoFix.outcome.\(outcome.rawValue)"
+        // Not under "dictation.": every "dictation." name is one hold, and Activity and the readout sum them as holds.
+        case .dictationLatency(let latency): return "dictationLatency.\(latency.rawValue)"
+        case .meeting(let meeting): return "meeting.\(meeting.rawValue)"
+        case .meetingLength(let length): return "meetingLength.\(length.rawValue)"
         }
     }
 }

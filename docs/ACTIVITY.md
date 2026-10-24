@@ -49,6 +49,10 @@ Names come only from fixed codes in `UsageCounter` (`Sources/JotCore/UsageCounte
 | `suggestion.outcome.<outcome>`, `suggestion.action.<action>` | A suggestion request finished, once each, by its final `SuggestionHistoryEntry` outcome and, when one ended it, its action. |
 | `typoFix.requested` | The Fix typos shortcut was pressed. |
 | `typoFix.outcome.<outcome>` | That press ended, by `TypoFixOutcome`: `fixed`, `undone`, `unchanged`, `rejected`, `fieldChanged`, `cancelled` and so on. |
+| `dictationLatency.<bucket>` | A hold completed, by the time from release until its text was in the field: `underOneSecond`, `underTwoSeconds`, `underFourSeconds`, `underEightSeconds` or `overEightSeconds`. |
+| `meeting.started`, `meeting.startFailed` | Start meeting began a meeting, or could not (no name, or listening did not start). |
+| `meeting.exported`, `meeting.empty`, `meeting.endFailed` | End meeting saved files, closed a meeting with nothing transcribed, or was refused or failed to export. |
+| `meetingLength.<bucket>` | End meeting closed a meeting that ran `underFifteenMinutes`, `underHalfHour`, `underHour`, `underTwoHours` or `overTwoHours`. |
 
 To start the counters over, use **Reset counters** on the Activity screen's "How dictation went" card, or:
 

@@ -63,12 +63,14 @@ export function readout(reports, usage, days) {
         `  ${m.holds} holds, ${percent(m.completed, m.holds)} completed. ${breakdown("dictation.")}`,
         `  ${m.deliveries} deliveries, ${percent(m.verified, m.deliveries)} verified. ${breakdown("insertion.")}`,
         `  Cleanup: ${breakdown("cleanup.dictation.")}. Live phrases: ${breakdown("cleanup.live.")}`,
+        `  Release to inserted text: ${breakdown("dictationLatency.")}`,
         "", "Fix typos",
         `  ${m.typoPresses} presses: ${m.fixes} fixed, ${m.undone} undone (${percent(m.undone, m.fixes)} of fixes), ${m.rejected} rejected, ${m.unchanged} nothing to fix, ${m.notRun} could not run.`,
         `  ${breakdown("typoFix.outcome.")}`,
         "", "Suggestions",
         `  ${m.suggestions} requested, ${m.shown} shown, ${m.accepted} accepted (${percent(m.accepted, m.shown)} of shown).`,
         `  Ended by: ${breakdown("suggestion.action.")}`,
+        "", "Meetings", `  ${breakdown("meeting.")}. Length: ${breakdown("meetingLength.")}`,
         "", "Saved dictation", `  ${breakdown("savedDictation.")}`);
     return lines;
 }

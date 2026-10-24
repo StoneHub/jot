@@ -4,7 +4,8 @@
 
 import { COUNTERS } from "./counters.js";
 
-export const MAX_BODY_BYTES = 16 * 1024;
+/// Room for a week of every counter (about 20 KB) with headroom for counters added later.
+export const MAX_BODY_BYTES = 32 * 1024;
 export const MAX_DAYS = 7;
 export const MAX_COUNT = 100_000;
 /// How far back a finished day may be, so a Mac that slept for a week still reports it.
