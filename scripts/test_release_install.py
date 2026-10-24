@@ -165,13 +165,14 @@ class ReleaseInstallTests(unittest.TestCase):
             self.install()
         self.assertEqual(installer_calls, [])
 
-    def test_fixture_release_builds_once_and_installs_from_the_final_zip(self):
+    def fixture_release(self, *flags):
+        """Run release.main on a synthetic tree with every native, git and GitHub command mocked."""
         for directory in ('scripts', 'docs', 'Sources/JotCore', 'Resources', 'build/product/Jot.app/Contents/MacOS'):
             (self.root / directory).mkdir(parents=True, exist_ok=True)
         (self.root / 'Sources/JotCore/JotVersion.swift').write_text('let current = "0.2.13"\n')
         (self.root / 'project.yml').write_text("CFBundleShortVersionString: '0.2.13'\nCFBundleVersion: '20'\n")
         (self.root / 'Resources/Info.plist').write_bytes(plistlib.dumps(dict(CFBundleShortVersionString='0.2.13', CFBundleVersion='20')))
-        (self.root / 'Casks').mkdir()
+        (self.root / 'Casks').mkdir(exist_ok=True)
         (self.root / 'Casks/jot.rb').write_text(f'cask "jot" do\n  version "0.2.13"\n  sha256 "{"0" * 64}"\nend\n')
         product = self.root / 'build/product/Jot.app'
         (product / 'Contents/MacOS/Jot').write_bytes(b'synthetic release executable')
@@ -204,15 +205,26 @@ class ReleaseInstallTests(unittest.TestCase):
             if command[:3] == ['ditto', '-x', '-k']:
                 shutil.copytree(product, Path(command[4]) / 'Jot.app')
             elif command[:3] == ['ditto', '-c', '-k']:
-                Path(command[-1]).write_bytes(b'synthetic release zip')
+                # A stapled app zips to different bytes than the unstapled candidate.
+                stapled = any(c[:3] == ['xcrun', 'stapler', 'staple'] for c in self.commands)
+                Path(command[-1]).write_bytes(b'synthetic stapled zip' if stapled else b'synthetic release zip')
+            elif command[:3] == ['xcrun', 'notarytool', 'submit']:
+                return subprocess.CompletedProcess(command, 0, json.dumps(dict(id='fixture-submission', status='Accepted')), '')
+            elif command[:1] == ['spctl']:
+                return subprocess.CompletedProcess(command, 0, '', f'{command[-1]}: accepted\nsource=Notarized Developer ID\n')
             return subprocess.CompletedProcess(command, 0, '', '')
 
+        signing = 'local_signing_configuration' if '--local' in flags else 'official_signing_configuration'
         with patch.object(self.release, '__file__', str(self.root / 'scripts/release.py')), \
-                patch.object(sys, 'argv', ['release.py', 'patch', '--notes', 'Synthetic fixture', '--local', '--install']), \
-                patch.object(self.release, 'local_signing_configuration', return_value=('Fixture Identity', 'FIXTURETEAM')), \
+                patch.object(sys, 'argv', ['release.py', 'patch', '--notes', 'Synthetic fixture', *flags]), \
+                patch.object(self.release, signing, return_value=('Fixture Identity', 'FIXTURETEAM')), \
+                patch.dict(os.environ, {'JOT_NOTARY_PROFILE': ''}), \
                 patch('subprocess.run', side_effect=run), patch('subprocess.check_output', side_effect=output), \
                 contextlib.redirect_stdout(io.StringIO()):
             self.release.main()
+
+    def test_fixture_release_builds_once_and_installs_from_the_final_zip(self):
+        self.fixture_release('--local', '--install')
         installer_calls = [command for command in self.commands if len(command) > 1 and str(command[1]).endswith('build-install.py')]
         self.assertEqual(len(installer_calls), 2)
         self.assertEqual(sum('--build-only' in command for command in installer_calls), 1)
@@ -225,6 +237,49 @@ class ReleaseInstallTests(unittest.TestCase):
         self.assertEqual((self.root / 'Casks/jot.rb').read_text(), f'cask "jot" do\n  version "0.2.14"\n  sha256 "{zip_digest}"\nend\n')
         self.assertIn(['git', 'add', '--', 'Sources/JotCore/JotVersion.swift', 'project.yml', 'Resources/Info.plist',
                        'docs/release-notes/0.2.14.md', 'Casks/jot.rb', 'Jot.xcodeproj/project.pbxproj'], self.commands)
+        self.assertFalse(any(command[:1] == ['xcrun'] for command in self.commands))
+        self.assertIn('--prerelease', next(command for command in self.commands if command[:3] == ['gh', 'release', 'create']))
+
+    def test_official_release_checks_credentials_first_then_notarizes_staples_and_publishes_the_stapled_zip(self):
+        self.fixture_release()
+        profile_check = ['xcrun', 'notarytool', 'history', '--keychain-profile', 'jot-notary', '--output-format', 'json']
+        index = {name: next(i for i, command in enumerate(self.commands) if matches(command))
+                 for name, matches in (('profile', lambda c: c == profile_check),
+                                       ('tests', lambda c: c == ['swift', 'test']),
+                                       ('submit', lambda c: c[:3] == ['xcrun', 'notarytool', 'submit']),
+                                       ('staple', lambda c: c[:3] == ['xcrun', 'stapler', 'staple']),
+                                       ('gatekeeper', lambda c: c[:1] == ['spctl']),
+                                       ('commit', lambda c: c[:2] == ['git', 'commit']),
+                                       ('publish', lambda c: c[:3] == ['gh', 'release', 'create']))}
+        self.assertEqual(sorted(index, key=index.get), ['profile', 'tests', 'submit', 'staple', 'gatekeeper', 'commit', 'publish'])
+        self.assertIn('jot-notary', self.commands[index['submit']])
+        self.assertNotIn('--prerelease', self.commands[index['publish']])
+        # The release, its checksum and the cask all name the ZIP made after stapling.
+        stapled = hashlib.sha256(b'synthetic stapled zip').hexdigest()
+        self.assertEqual((self.root / 'build/Jot-0.2.14.zip.sha256').read_text(), f'{stapled}  Jot-0.2.14.zip\n')
+        self.assertIn(f'sha256 "{stapled}"', (self.root / 'Casks/jot.rb').read_text())
+        self.assertNotIn('Open Anyway', (self.root / 'build/Jot-0.2.14-release.md').read_text())
+
+    def test_official_dry_run_checks_credentials_and_notarizes_only_when_asked(self):
+        for flags, notarizes in ((('--dry-run',), False), (('--dry-run', '--with-notarization'), True)):
+            with self.subTest(flags=flags):
+                self.commands.clear()
+                with self.assertRaises(SystemExit) as finished:
+                    self.fixture_release(*flags)
+                self.assertEqual(finished.exception.code, 0)
+                self.assertIn(['xcrun', 'notarytool', 'history', '--keychain-profile', 'jot-notary', '--output-format', 'json'],
+                              self.commands)
+                self.assertEqual(any(c[:3] == ['xcrun', 'notarytool', 'submit'] for c in self.commands), notarizes)
+                self.assertEqual(any(c[:3] == ['xcrun', 'stapler', 'staple'] for c in self.commands), notarizes)
+                self.assertFalse(any(c[:2] in (['git', 'commit'], ['git', 'push']) or c[:2] == ['gh', 'release'] for c in self.commands))
+                self.assertEqual((self.root / 'Sources/JotCore/JotVersion.swift').read_text(), 'let current = "0.2.13"\n')
+
+    def test_with_notarization_needs_an_official_dry_run(self):
+        for flags in (('--with-notarization',), ('--dry-run', '--with-notarization', '--local')):
+            with self.subTest(flags=flags), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as stopped:
+                self.fixture_release(*flags)
+            self.assertEqual(stopped.exception.code, 2)
+            self.assertEqual(self.commands, [])
 
 
 if __name__ == '__main__':
