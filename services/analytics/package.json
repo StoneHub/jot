@@ -2,5 +2,5 @@
   "name": "jot-analytics",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node --test test/worker.test.mjs" }
+  "scripts": { "test": "node --test test/worker.test.mjs test/readout.test.mjs" }
 }
