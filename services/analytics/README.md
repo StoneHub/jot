@@ -39,9 +39,15 @@ Free-plan limits (100,000 Worker requests and 100,000 D1 row writes a day at the
 ## Look at the numbers
 
 ```sh
-cd ~/Developer/jot/services/analytics
-npx wrangler d1 execute jot-analytics --remote --command "SELECT day, SUM(macs) AS macs FROM reports GROUP BY day ORDER BY day DESC LIMIT 14"
-npx wrangler d1 execute jot-analytics --remote --command "SELECT name, SUM(count) AS total FROM usage WHERE day >= date('now','-7 days') GROUP BY name ORDER BY total DESC"
+cd ~/Developer/jot/services/analytics && node readout.mjs
+```
+
+`readout.mjs` reads the last 14 days (pass a number for another window) and prints Macs per day, versions, and what the counters say about dictation, insertion, cleanup, Fix typos and suggestions. It only reads, through `wrangler d1 execute --remote`, so it needs the account login. A Mac reports a day once that day has finished locally, so today never shows.
+
+For a question the readout does not answer, query D1 directly:
+
+```sh
+cd ~/Developer/jot/services/analytics && npx wrangler d1 execute jot-analytics --remote --command "SELECT name, SUM(count) AS total FROM usage WHERE day >= date('now','-7 days') GROUP BY name ORDER BY total DESC"
 ```
 
 ## Test
