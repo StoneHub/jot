@@ -7,7 +7,7 @@ import JotCore
 struct JotApp: App {
     @NSApplicationDelegateAdaptor(JotDelegate.self) var delegate
     @AppStorage(JotDefaultsKey.showMenuBarIcon) private var showMenuBarIcon = true
-    @StateObject private var controller = JotControllerPresence(alwaysShowKey: JotDefaultsKey.showMenuBarIcon)
+    @StateObject private var controller = JotControllerPresence()
     @AppStorage(JotDefaultsKey.accentColor) private var accent = JotAccent.system.rawValue
     var body: some Scene {
         Window("Jot", id: "main") {
@@ -174,7 +174,7 @@ final class JotDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showWindow(); return true
     }
-    func applicationWillTerminate(_ notification: Notification) { service.shutdown() }
+    func applicationWillTerminate(_ notification: Notification) { updater.stopDailyChecks(); service.shutdown() }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 }
 

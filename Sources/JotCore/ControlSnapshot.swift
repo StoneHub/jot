@@ -88,6 +88,11 @@ public enum ControlEvents {
     /// An invalidation hint only. Receivers must read the same-user socket;
     /// distributed notifications are never trusted as state or commands.
     public static let changed = Notification.Name("space.jot.app.controlsChanged")
+    public static let controllerChanged = Notification.Name("space.jot.app.controllerChanged")
+    public static func signalControllerChanged() {
+        DistributedNotificationCenter.default().postNotificationName(controllerChanged, object: nil,
+            userInfo: nil, deliverImmediately: true)
+    }
     public static func signal() {
         DistributedNotificationCenter.default().postNotificationName(changed, object: nil,
             userInfo: nil, deliverImmediately: true)

@@ -282,64 +282,12 @@ private struct PermissionBanner: View {
 /// Observe resource samples only inside the meters, without rebuilding their parent.
 struct ResourceReadoutView<Content: View>: View {
     @ObservedObject var readout: ResourceReadout
+    @State private var reader = UUID()
     @ViewBuilder var content: (ResourceSnapshot) -> Content
 
     var body: some View {
         content(readout.snapshot)
-            .background(ResourceMeterVisibility(readout: readout))
-    }
-}
-
-/// Menu panels can remain mounted while closed, so SwiftUI appearance alone is
-/// insufficient. Observe the actual window's visibility, including minimization.
-private struct ResourceMeterVisibility: NSViewRepresentable {
-    let readout: ResourceReadout
-    func makeNSView(context: Context) -> ResourceMeterVisibilityView { ResourceMeterVisibilityView(readout: readout) }
-    func updateNSView(_ view: ResourceMeterVisibilityView, context: Context) { view.updateVisibility() }
-    static func dismantleNSView(_ view: ResourceMeterVisibilityView, coordinator: ()) { view.detach() }
-}
-
-final class ResourceMeterVisibilityView: NSView {
-    private let readout: ResourceReadout
-    private let reader = UUID()
-    private var observers: [NSObjectProtocol] = []
-
-    init(readout: ResourceReadout) {
-        self.readout = readout
-        super.init(frame: .zero)
-    }
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        detach()
-        if let window {
-            for name in [NSWindow.didChangeOcclusionStateNotification, NSWindow.didMiniaturizeNotification,
-                         NSWindow.didDeminiaturizeNotification] {
-                observers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
-                    Task { @MainActor in self?.updateVisibility() }
-                })
-            }
-            observers.append(NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.detach() }
-            })
-        }
-        // AppKit may attach content before ordering its window onscreen.
-        Task { @MainActor [weak self] in self?.updateVisibility() }
-    }
-
-    override func viewDidHide() { super.viewDidHide(); updateVisibility() }
-    override func viewDidUnhide() { super.viewDidUnhide(); updateVisibility() }
-
-    func updateVisibility() {
-        let visible = window.map { $0.isVisible && !$0.isMiniaturized && $0.occlusionState.contains(.visible) } ?? false
-        readout.setVisible(visible && !isHiddenOrHasHiddenAncestor, reader: reader)
-    }
-
-    func detach() {
-        for observer in observers { NotificationCenter.default.removeObserver(observer) }
-        observers.removeAll()
-        readout.setVisible(false, reader: reader)
+            .background(WindowVisibility { readout.setVisible($0, reader: reader) })
     }
 }
 

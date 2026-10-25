@@ -36,6 +36,11 @@ final class AppUpdater: ObservableObject {
         self.settings = settings
     }
 
+    deinit {
+        dailyChecks?.cancel()
+        session.invalidateAndCancel()
+    }
+
     func check() {
         guard !isBusy else { return }
         state = .checking
@@ -51,11 +56,13 @@ final class AppUpdater: ObservableObject {
         dailyChecks = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(5 * 60)) } catch { return }
             while !Task.isCancelled {
-                await self?.checkIfDue()
+                if let self { await self.checkIfDue() } else { return }
                 do { try await Task.sleep(for: .seconds(6 * 60 * 60), tolerance: .seconds(60 * 60)) } catch { return }
             }
         }
     }
+
+    func stopDailyChecks() { dailyChecks?.cancel(); dailyChecks = nil }
 
     /// The daily check stays quiet: being offline, a source-built copy or a GitHub error leaves the card as it was,
     /// and a check or update the person started meanwhile keeps its own state.

@@ -89,6 +89,7 @@ private struct ActivityResourceTrends: View {
     let wide: Bool
     @Environment(\.scenePhase) private var scenePhase
     @State private var snapshot: ActivityTrendSnapshot?
+    @State private var isVisible = false
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .top), count: wide ? 2 : 1), spacing: 16) {
@@ -98,8 +99,9 @@ private struct ActivityResourceTrends: View {
             Text("Recent minute-spaced measurements from this launch, up to 15 minutes before the latest reading. Gaps stay open. Battery use is not measured.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
-        .task(id: scenePhase) {
-            guard scenePhase == .active else { return }
+        .background(WindowVisibility { isVisible = $0 })
+        .task(id: scenePhase == .active && isVisible) {
+            guard scenePhase == .active && isVisible else { return }
             while !Task.isCancelled {
                 snapshot = ActivityTrendSnapshot(report: service.diagnostics.report)
                 do { try await Task.sleep(for: .seconds(60)) } catch { return }

@@ -68,6 +68,7 @@ struct ActivityView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var days = 7
     @State private var selectedDate: Date?
+    @State private var isVisible = false
 
     /// Fixtures let the owned window checks render this screen without opening private history.
     init(service: SpeechService, library: SessionLibrary, fixture: ActivityReport? = nil, fixtureError: String? = nil) {
@@ -111,8 +112,9 @@ struct ActivityView: View {
                 .padding(.bottom, 8)
             }
         }
-        .task(id: RefreshIdentity(days: days, active: scenePhase == .active)) {
-            guard scenePhase == .active else { return }
+        .background(WindowVisibility { isVisible = $0 })
+        .task(id: RefreshIdentity(days: days, active: scenePhase == .active && isVisible)) {
+            guard scenePhase == .active && isVisible else { return }
             while !Task.isCancelled {
                 await insights.refresh(library: library, days: days)
                 do { try await Task.sleep(for: .seconds(300)) } catch { return }

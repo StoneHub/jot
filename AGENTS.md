@@ -23,6 +23,8 @@ These gates do not relax:
 
 ## Design
 
+Prefer lifecycle events, observers and hooks over recurring state polling. Every repeating task, timer, observer and resource lease needs an owner, active-state gating and teardown; retain clock-based sampling or bounded operation waits only for a concrete requirement. Verify hidden/paused behavior and cancellation when changing resource ownership.
+
 Use the Mac's accent color and native Liquid Glass where available. Keep a material fallback for macOS 14–25.
 
 Take radii, accent tints, card padding and display type from `JotTheme` (`Sources/Jot/JotTheme.swift`), read the accent from `\.jotAccent`, and reuse the shared surfaces in `GlassStyles.swift` (`JotCard`, `GroupSurface`, `WellSurface`, `AccentFill`) instead of adding literals or private card types.

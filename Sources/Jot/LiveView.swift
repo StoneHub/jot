@@ -15,6 +15,7 @@ struct LiveView: View {
     @State private var renaming = false
     @State private var titleDraft = ""
     @State private var working = false
+    @State private var isVisible = false
     @State private var selectedRows = Set<String>()
     @State private var displayedCleanupRevision = 0
     /// The feed revision on screen; it changes whenever the feed's text does.
@@ -60,6 +61,7 @@ struct LiveView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(WindowVisibility { isVisible = $0 })
         .onAppear(perform: showFeed)
         .onChange(of: shownID) { _, _ in showFeed() }
         .onChange(of: timeline.activeSessionID) { _, _ in clearedThrough = nil }
@@ -97,8 +99,12 @@ struct LiveView: View {
             if let title = service.meetingTitle, !running {
                 chip("\(title) · Paused")
             } else if running {
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    chip("\(service.meetingTitle ?? "Listening") · \(Self.elapsed(since: timeline.sessionStarted, at: context.date))", color: .red, dot: true)
+                if isVisible {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        chip("\(service.meetingTitle ?? "Listening") · \(Self.elapsed(since: timeline.sessionStarted, at: context.date))", color: .red, dot: true)
+                    }
+                } else {
+                    chip(service.meetingTitle ?? "Listening", color: .red, dot: true)
                 }
                 if speakerCount > 0 { chip("\(speakerCount) speaker\(speakerCount == 1 ? "" : "s")") }
                 if !recognized.isEmpty { chip("recognized \(recognized.joined(separator: ", "))", color: .green, dot: true) }

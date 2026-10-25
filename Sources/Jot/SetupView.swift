@@ -87,6 +87,7 @@ struct SetupView: View {
     /// Leaves setup for Live, after Done or Finish later.
     let close: () -> Void
     @State private var downloadedBytes: Int64 = 0
+    @State private var isDownloadProgressVisible = false
     /// Dictations saved before the trial page opened, so a new one shows the trial worked.
     @State private var trialBaseline: Int?
 
@@ -213,7 +214,11 @@ struct SetupView: View {
             Text("Listening and dictation need the models. To download later, skip this step; Resume asks before it downloads.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
-        .task(id: service.modelState == .preparing) { await followDownload() }
+        .background(WindowVisibility { isDownloadProgressVisible = $0 })
+        .task(id: service.modelState == .preparing && isDownloadProgressVisible) {
+            guard isDownloadProgressVisible else { return }
+            await followDownload()
+        }
     }
 
     private var downloadProgress: String {
@@ -265,8 +270,10 @@ struct SetupView: View {
 
     /// FluidAudio reports no progress of its own, so this reads the model cache's size once a second, off the main thread, while models load.
     @MainActor private func followDownload() async {
-        while service.modelState == .preparing, !Task.isCancelled {
-            downloadedBytes = await Task.detached(priority: .utility) { ModelCache.bytesOnDisk() }.value
+        while isDownloadProgressVisible, service.modelState == .preparing, !Task.isCancelled {
+            let bytes = await Task.detached(priority: .utility) { ModelCache.bytesOnDisk() }.value
+            guard !Task.isCancelled, isDownloadProgressVisible else { return }
+            downloadedBytes = bytes
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
     }
