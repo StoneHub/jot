@@ -48,7 +48,8 @@ def official_signing_configuration():
     identity = requested or (candidates[0] if candidates else None)
     if not identity or identity not in candidates:
         raise SystemExit(
-            f'Official Jot releases require a Developer ID Application certificate for owner team {OWNER_TEAM}.')
+            f'Official Jot releases require a Developer ID Application certificate for owner team {OWNER_TEAM}. '
+            'See "Notarization setup" in docs/RELEASING.md, or pass --local for a development-signed pre-release.')
     team = os.environ.get('JOT_SIGN_TEAM', OWNER_TEAM)
     if team != OWNER_TEAM:
         raise SystemExit(f'Official Jot releases must use owner team {OWNER_TEAM}, not {team}.')

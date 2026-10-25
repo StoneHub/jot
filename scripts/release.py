@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 from signing import local_signing_configuration, official_signing_configuration
+import notarization
 from packaged_product import validate_product_paths
 
 INSTALL_SECTION = """## Install
@@ -55,7 +56,11 @@ def main():
     parser.add_argument('--install', action='store_true', help='Install the released product into /Applications afterwards')
     parser.add_argument('--local', action='store_true', help='Publish a pre-release signed with the local development identity, without notarization')
     parser.add_argument('--dry-run', action='store_true', help='Bump, test, build, and zip, then restore the tree without committing, tagging, or publishing')
+    parser.add_argument('--with-notarization', action='store_true',
+                        help='With --dry-run: also submit the candidate to Apple, staple it and check Gatekeeper, still without publishing')
     options = parser.parse_args()
+    if options.with_notarization and (options.local or not options.dry_run):
+        parser.error('--with-notarization only applies to a --dry-run of an official (not --local) release')
 
     def run(args, quiet=False, env=None):
         # Quiet commands show their output only when they fail.
@@ -85,13 +90,15 @@ def main():
         raise SystemExit('gh is not logged in; run gh auth login.')
     # A local release is signed with the development identity and skips notarization; it installs only on Macs that trust that certificate.
     identity, team = local_signing_configuration() if options.local else official_signing_configuration()
-    notary_profile = os.environ.get('JOT_NOTARY_PROFILE')
-    if not options.local and not notary_profile:
-        raise SystemExit('Set JOT_NOTARY_PROFILE to credentials saved with xcrun notarytool store-credentials, or pass --local.')
+    notary_profile = None
+    if not options.local:
+        notary_profile = notarization.notary_profile(os.environ)
+        notarization.check_profile(notary_profile)
     release_environment = os.environ.copy()
     release_environment['JOT_SIGN_IDENTITY'] = identity
     release_environment['JOT_SIGN_TEAM'] = team
-    step(f'Preconditions passed on main at {out(["git", "rev-parse", "--short", "HEAD"])}; signing as {identity}')
+    step(f'Preconditions passed on main at {out(["git", "rev-parse", "--short", "HEAD"])}; signing as {identity}'
+         + (f'; notarizing with keychain profile {notary_profile}' if notary_profile else ''))
 
     # b. Version bump. CFBundleVersion is the release count: existing v* tags + 1, so it always increases.
     version_file = root / 'Sources/JotCore/JotVersion.swift'
@@ -178,18 +185,12 @@ def main():
         zip_path = work / f'Jot-{version}.zip'
         zip_path.unlink(missing_ok=True)
         run(['ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', str(app), str(zip_path)])
-        if not options.dry_run and not options.local:
-            submission = run(['xcrun', 'notarytool', 'submit', str(zip_path), '--keychain-profile', notary_profile,
-                              '--wait', '--output-format', 'json'], quiet=True)
-            notarization = json.loads(submission.stdout)
-            if notarization.get('status') != 'Accepted':
-                raise SystemExit(f'Apple notarization ended with {notarization.get("status", "unknown status")} '
-                                 f'(submission {notarization.get("id", "unknown")}).')
-            step(f'Apple notarization accepted submission {notarization.get("id")}')
-            run(['xcrun', 'stapler', 'staple', str(app)], quiet=True)
-            run(['xcrun', 'stapler', 'validate', str(app)], quiet=True)
-            run(['codesign', '--verify', '--deep', '--strict', str(app)], quiet=True)
-            run(['spctl', '--assess', '--type', 'execute', '--verbose=4', str(app)], quiet=True)
+        if not options.local and (not options.dry_run or options.with_notarization):
+            step('Submitting to Apple notarization and waiting (usually a few minutes)')
+            submission = notarization.submit(zip_path, notary_profile)
+            step(f'Apple notarization accepted submission {submission}')
+            notarization.staple_and_verify(app)
+            step('Stapled; Gatekeeper accepts the app as notarized')
             zip_path.unlink()
             run(['ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', str(app), str(zip_path)])
         digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
@@ -207,7 +208,8 @@ def main():
             step(f'Dry run: release page text is in {body_path.relative_to(root)}; the updater will show: '
                  f'{next((line for line in body_path.read_text().splitlines() if line.strip()), "(nothing)")}')
             step('Dry run: would commit ' + ', '.join(changed))
-            step(f'Dry run: would {"tag" if options.local else "notarize, staple, tag"} {tag} and push main --follow-tags')
+            step(f'Dry run: would {"tag" if options.local or options.with_notarization else "notarize, staple, tag"} {tag} '
+                 'and push main --follow-tags')
             step(f'Dry run: would run gh release create {tag} {zip_path.name} {checksum_path.name} --title "Jot {version}" --notes-file {body_path.relative_to(root)}')
             restore()
             step('Dry run: tree restored')
