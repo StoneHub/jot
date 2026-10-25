@@ -4,6 +4,74 @@ import JotCore
 import JotEngine
 
 extension RecoveryFlowChecks {
+    @MainActor static func checkResourceReadoutTransitions(directory: URL) async throws {
+        let service = SpeechService(dependencies: .init(
+            infer: { _, _, _ in SpeechOutput(transcripts: [], text: "", processingSeconds: 0) },
+            deliver: { _, _ in fatalError("Resource checks must not deliver text") },
+            now: Date.init,
+            unloadModels: { _ in }))
+        service.keepAudioForSpeakerPass = false
+        service.cleanUpTranscriptions = false
+        defer { service.shutdown() }
+        func check(_ condition: Bool, _ message: String) throws {
+            guard condition else { throw NSError(domain: "ResourceReadoutChecks", code: 1,
+                                                 userInfo: [NSLocalizedDescriptionKey: message]) }
+        }
+        let store = try TranscriptStore(directory: directory.appendingPathComponent("resource-transitions"))
+        service.beginRecoveryVerification(store: store, startedAt: Date())
+        func seedOldReading() {
+            service.resourceReadout.snapshot = ResourceSnapshot(valid: true, processCPUPercent: 13.8,
+                cpuValid: true, residentMiB: 626, sampleTimestamp: .distantPast)
+        }
+        seedOldReading()
+        service.pause()
+        while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
+        try check(service.resources.valid && !service.resources.cpuValid && service.resources.cpuText == "—",
+                     "Pause retained the previous CPU reading or invented a measured zero")
+        try check(service.resources.sampleTimestamp > Date().addingTimeInterval(-2), "Pause retained old memory")
+        try await Task.sleep(for: .milliseconds(1200))
+        try check(service.resources.cpuValid, "Pause did not finish a fresh CPU interval promptly")
+        seedOldReading()
+        service.unloadModels()
+        let unloadDeadline = ContinuousClock.now + .seconds(3)
+        while (service.modelsLoaded || service.isTransitioning) && ContinuousClock.now < unloadDeadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        try check(!service.modelsLoaded && !service.resources.cpuValid && service.resources.cpuText == "—",
+                     "Unload retained the previous CPU reading")
+        try check(service.resources.sampleTimestamp > Date().addingTimeInterval(-2), "Unload retained old memory")
+        try await Task.sleep(for: .milliseconds(1200))
+        try check(service.resources.cpuValid && !service.capture.running && service.transcriber.isIdle,
+                     "Fresh paused readings were missing or started capture/inference")
+        let idleTimestamp = service.resources.sampleTimestamp
+        try await Task.sleep(for: .milliseconds(1200))
+        try check(service.resources.sampleTimestamp == idleTimestamp, "Hidden paused meters kept a fast timer")
+        print("PASS: pause and unload replace stale memory immediately, measure a fresh CPU interval, and stop their settling timer without capture.")
+
+        let first = UUID(), second = UUID()
+        var publications = 0, wholeServiceChanges = 0
+        let meter = service.resourceReadout.$snapshot.dropFirst().sink { _ in publications += 1 }
+        let wholeService = service.objectWillChange.sink { wholeServiceChanges += 1 }
+        defer { meter.cancel(); wholeService.cancel() }
+        service.resourceReadout.setVisible(true, reader: first)
+        let initial = service.resources.sampleTimestamp
+        service.resourceReadout.setVisible(true, reader: second)
+        service.resourceReadout.setVisible(true, reader: first)
+        try check(service.resources.sampleTimestamp == initial, "A second meter restarted shared measurement")
+        try await Task.sleep(for: .milliseconds(1200))
+        try check(service.resources.cpuValid && publications == 2, "Visible meters did not share one sampler/timer")
+        service.resourceReadout.setVisible(false, reader: first)
+        try check(service.resourceReadout.isRefreshingVisibleMeters, "Closing one meter stopped another")
+        try await Task.sleep(for: .milliseconds(1100))
+        try check(publications == 3 && wholeServiceChanges == 0, "Visible sampling duplicated timers or redrew the service")
+        service.resourceReadout.setVisible(false, reader: second)
+        let stopped = service.resources.sampleTimestamp
+        try await Task.sleep(for: .milliseconds(1100))
+        try check(service.resources.sampleTimestamp == stopped && !service.resourceReadout.isRefreshingVisibleMeters,
+                     "Closing every meter left fast sampling running")
+        print("PASS: two visible readers share one timer; removing the last reader stops it; meter updates never publish whole-service changes.")
+    }
+
     /// The process's CPU time from getrusage, which ps agrees with.
     static func kernelCPUSeconds() -> Double {
         var usage = rusage()

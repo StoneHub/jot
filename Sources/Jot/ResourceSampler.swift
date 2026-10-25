@@ -7,7 +7,7 @@ final class ResourceSampler {
     private var previousCPU: UInt64 = 0
     private var previousTime = ProcessInfo.processInfo.systemUptime
     private let began = ProcessInfo.processInfo.systemUptime
-    func sample() -> ResourceSnapshot {
+    func sample(resetCPU: Bool = false) -> ResourceSnapshot {
         var info = rusage_info_v4()
         let code = withUnsafeMutablePointer(to: &info) { pointer in
             pointer.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(getpid(), RUSAGE_INFO_V4, $0) }
@@ -17,9 +17,10 @@ final class ResourceSampler {
         if code == 0 {
             value.valid = true
             let cpu = info.ri_user_time + info.ri_system_time
-            if previousCPU > 0, now > previousTime {
+            if !resetCPU, previousCPU > 0, now > previousTime {
                 let cpuSeconds = MachTimebase.current.seconds(ticks: cpu - previousCPU)
                 value.processCPUPercent = cpuSeconds / (now - previousTime) * 100
+                value.cpuValid = true
             }
             value.residentMiB = Double(info.ri_resident_size) / 1048576
             value.physicalFootprintMiB = Double(info.ri_phys_footprint) / 1048576

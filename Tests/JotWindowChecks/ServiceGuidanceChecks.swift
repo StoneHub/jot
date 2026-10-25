@@ -54,6 +54,10 @@ struct ServiceGuidanceChecks {
     enum Failure: Error { case missing(String), outsideWindow(String), action(String), image }
 
     @MainActor static func run() async throws {
+        if ProcessInfo.processInfo.environment["JOT_RESOURCE_WINDOW_CHECKS"] == "1" {
+            try await checkResourceVisibility()
+            return
+        }
         let service = SpeechService(dependencies: .init(
             infer: { _, _, _ in fatalError("No inference in window checks") },
             deliver: { _, _ in fatalError("No dictation delivery in window checks") },
@@ -162,6 +166,60 @@ struct ServiceGuidanceChecks {
         try await checkActivity(service)
     }
 
+    @MainActor static func checkResourceVisibility() async throws {
+        func require(_ condition: Bool, _ message: String) throws {
+            guard condition else { throw Failure.action(message) }
+        }
+        func waitUntil(_ condition: () -> Bool) async {
+            let deadline = ContinuousClock.now + .seconds(3)
+            while !condition() && ContinuousClock.now < deadline {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }
+        let readout = ResourceReadout()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 360, height: 120),
+                              styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
+        window.title = "Jot resource checks"
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 350, height: 90),
+                            styleMask: [.nonactivatingPanel], backing: .buffered, defer: false)
+        panel.isFloatingPanel = true
+        let root = ResourceReadoutView(readout: readout) { value in
+            Text("CPU \(value.cpuText) · \(value.memoryText)").padding(18)
+        }.frame(width: 350, height: 90)
+        let host = NSHostingView(rootView: root)
+        window.contentView = host
+        panel.contentView = NSHostingView(rootView: root)
+        defer { window.orderOut(nil); panel.orderOut(nil); readout.shutdown() }
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        await settle(window)
+        try require(readout.isRefreshingVisibleMeters, "A visible window did not start resource sampling")
+        try await Task.sleep(for: .milliseconds(1200))
+        try require(readout.snapshot.cpuValid, "Visible window did not measure CPU")
+        try snapshot(host, name: "resource-visible")
+        window.miniaturize(nil)
+        await waitUntil { window.isMiniaturized && !readout.isRefreshingVisibleMeters }
+        try require(window.isMiniaturized, "Window did not finish minimizing")
+        try require(!readout.isRefreshingVisibleMeters, "Minimizing left the window's fast resource timer running")
+        panel.center()
+        panel.orderFrontRegardless()
+        await settle(panel)
+        try require(readout.isRefreshingVisibleMeters && !readout.snapshot.cpuValid, "Opening a panel retained stale CPU")
+        try await Task.sleep(for: .milliseconds(1200))
+        try require(readout.snapshot.cpuValid, "Panel did not refresh its CPU reading")
+        panel.orderOut(nil)
+        await settle(panel)
+        try require(!readout.isRefreshingVisibleMeters, "A closed but mounted panel kept sampling")
+        window.deminiaturize(nil)
+        await waitUntil { !window.isMiniaturized && readout.isRefreshingVisibleMeters }
+        try require(readout.isRefreshingVisibleMeters, "Restoring the window did not resume sampling")
+        host.removeFromSuperview()
+        await settle(window)
+        try require(!readout.isRefreshingVisibleMeters, "Detached meter retained its reader")
+        print("PASS: real window minimize/restore, panel open/close, and meter teardown control resource sampling.")
+    }
+
     /// Model metadata and update states are invented; no release checks or downloads run.
     @MainActor static func checkModels(_ service: SpeechService) async throws {
         let baseline = ProcessInfo.processInfo.environment["JOT_MODELS_BASELINE"] == "1"
@@ -251,7 +309,7 @@ struct ServiceGuidanceChecks {
 
     /// Render only invented aggregates. No store is opened and no transcript text is needed.
     @MainActor static func checkActivity(_ service: SpeechService) async throws {
-        service.resourceReadout.snapshot = ResourceSnapshot(valid: true, processCPUPercent: 7.5,
+        service.resourceReadout.snapshot = ResourceSnapshot(valid: true, processCPUPercent: 7.5, cpuValid: true,
             residentMiB: 624, physicalFootprintMiB: 590, thermalState: "nominal")
         service.diagnostics = PerformanceDiagnostics(build: .debug)
         precondition(ActivityTrendSnapshot(report: service.diagnostics.report).points.isEmpty,

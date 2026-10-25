@@ -5,7 +5,7 @@ import JotEngine
 /// What `jot diagnostics`, the recovery harness and Models read: performance samples, capture events and model update checks.
 /// Counts, timings and state only; transcript and field contents never enter them.
 extension SpeechService {
-    /// Records CPU and memory for `jot diagnostics`. The window's readout comes from the tick, with a sampler of its own.
+    /// Diagnostics own their sampler so visible-meter refreshes never consume a job's CPU interval.
     func samplePerformance() {
         let sample = sampler.sample()
         guard sample.valid else { return }

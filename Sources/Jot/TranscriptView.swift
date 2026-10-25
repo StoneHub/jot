@@ -161,11 +161,11 @@ struct TranscriptView: View {
                 HStack(spacing: 14) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("CPU").font(.caption).foregroundStyle(.secondary)
-                        Text(String(format: "%.1f%%", resources.processCPUPercent)).monospacedDigit()
+                        Text(resources.cpuText).monospacedDigit()
                     }
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Memory").font(.caption).foregroundStyle(.secondary)
-                        Text(String(format: "%.0f MB", resources.residentMiB)).monospacedDigit()
+                        Text(resources.memoryText).monospacedDigit()
                     }
                 }
             }.padding(.horizontal, 8)

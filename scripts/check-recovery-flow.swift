@@ -69,7 +69,15 @@ struct RecoveryFlowChecks {
         }
     }
 
-    @MainActor static func main() async throws {
+    @MainActor static func main() async {
+        do { try await run() }
+        catch {
+            FileHandle.standardError.write(Data("FAIL: \(error)\n".utf8))
+            exit(1)
+        }
+    }
+
+    @MainActor static func run() async throws {
         ShortcutInputChecks.run()
         if let flag = CommandLine.arguments.firstIndex(of: "--quiet-cpu") {
             try await profileQuietListening(CommandLine.arguments.dropFirst(flag + 1).map { URL(fileURLWithPath: $0) })
@@ -90,6 +98,13 @@ struct RecoveryFlowChecks {
         checkCPUReadout()
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("jot-recovery-checks-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }
+        if CommandLine.arguments.contains("--resource-readout") {
+            try await checkResourceReadoutTransitions(directory: directory)
+            try await checkCPUReadoutWhileListening(directory: directory)
+            try await checkIdleRedraws(directory: directory)
+            try await checkHousekeepingCadence(directory: directory)
+            return
+        }
         let store = try TranscriptStore(directory: directory)
         let probe = Probe()
         let service = SpeechService(dependencies: .init(
@@ -183,6 +198,7 @@ struct RecoveryFlowChecks {
 
         try await checkQuietAndStall(directory: directory)
         try await checkCPUReadoutWhileListening(directory: directory)
+        try await checkResourceReadoutTransitions(directory: directory)
         try await checkIdleRedraws(directory: directory)
         try await checkHousekeepingCadence(directory: directory)
         try await checkSpeakerPassKeepsCleanup(directory: directory)

@@ -263,8 +263,6 @@ final class SpeechService: ObservableObject {
     var preparing: Bool { preparation != nil }
     lazy var pipeline = SpeechPipeline(settings: settings)
     let sampler = ResourceSampler()
-    /// A sampler measures CPU since its previous sample, and `sampler` also samples when a recognition finishes. Sharing it would leave each recognition's CPU out of the next readout, so the readout has its own, sampled only at launch and by the tick.
-    private let readoutSampler = ResourceSampler()
     private let keepAwake = KeepAwakeAssertion()
     private var server: LocalServiceServer?
     /// Held from before the store opens until quit. See DirectoryLock.
@@ -338,7 +336,7 @@ final class SpeechService: ObservableObject {
     /// `askPermissions: false` while first-run setup is open: setup asks for each permission on the page that explains it.
     func launch(askPermissions: Bool = true) async {
         markPerformance(.launch)
-        resourceReadout.snapshot = readoutSampler.sample()
+        resourceReadout.refresh()
         capture.watchDevices()
         do { vocabulary = try vocabularyPreferences.load() }
         catch { vocabularyLoadError = "Could not load vocabulary. Saved entries were preserved. " + error.localizedDescription }
@@ -725,6 +723,7 @@ final class SpeechService: ObservableObject {
             ambientEnabled = false; transcriber.queuedSeconds = 0
             if outcome.endedMeeting { post(.meetingStopped, "Meeting stopped. Its transcript is in Sessions.") } else { notice = "" }
             pauseRequested = false; pausing = nil
+            resourceReadout.stateChanged()
             scheduleTimer()
             resumeAfterSleepIfReady()
         }
@@ -756,7 +755,7 @@ final class SpeechService: ObservableObject {
                 preparation = nil; notice = ""
                 // No models, no dictation: the tap stays on only for suggestions.
                 dictationEnabled = false; updateSuggestionMonitoring()
-                markPerformance(.modelsUnloaded); scheduleTimer()
+                markPerformance(.modelsUnloaded); resourceReadout.stateChanged(); scheduleTimer()
             }
             unloading = nil
         }
@@ -818,6 +817,7 @@ final class SpeechService: ObservableObject {
         timeline.flushAmbient(final: true)
         timeline.endSessionAudio(runPass: false)
         ambientEnabled = false; updateKeepAwakeAssertion(); scheduleTimer()
+        resourceReadout.stateChanged()
         recordEvent(.paused, "Microphone stopped after the held dictation.")
         transcriber.kick()
     }
@@ -830,7 +830,7 @@ final class SpeechService: ObservableObject {
         if now.timeIntervalSince(lastCapabilityCheckTime) >= 60 { refreshCapabilities() }
         if now.timeIntervalSince(lastStatsTime) >= 1 {
             samplePerformance(); lastStatsTime = now
-            resourceReadout.snapshot = readoutSampler.sample()
+            resourceReadout.refresh()
             let queued = transcriber.queuedAudioSeconds
             if transcriber.queuedSeconds != queued { transcriber.queuedSeconds = queued }
             if !pauseRequested, ambientEnabled || dictation.isActive, let lastAudioAt, now.timeIntervalSince(lastAudioAt) > 4 {
@@ -890,6 +890,7 @@ final class SpeechService: ObservableObject {
     }
 
     func shutdown() {
+        resourceReadout.shutdown()
         cleanup.shutdown(); usageReporter.stop()
         if ambientEnabled { recordEvent(.stopped, "Application quit; capture ended.") }
         inputChange?.cancel(); updateHandoff.cancelRecovery()

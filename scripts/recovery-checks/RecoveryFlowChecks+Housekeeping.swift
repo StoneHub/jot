@@ -91,6 +91,8 @@ extension RecoveryFlowChecks {
 
         service.pause()
         while service.pauseRequested { try await Task.sleep(for: .milliseconds(10)) }
+        // The transition takes one fresh CPU interval before returning to minute ticks.
+        try await Task.sleep(for: .milliseconds(1200))
         changes = 0
         var readouts = 0
         let meters = service.resourceReadout.$snapshot.dropFirst().sink { _ in readouts += 1 }

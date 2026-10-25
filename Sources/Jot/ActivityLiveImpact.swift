@@ -29,8 +29,7 @@ struct ActivityLiveImpact: View {
                             .accessibilityIdentifier("activity-live-stats")
                         Divider()
                         LazyVGrid(columns: ActivityStatColumns.make(width: width - 36, minimum: 145, itemCount: 3), alignment: .leading, spacing: 12) {
-                            ActivityStat(title: "Jot CPU", value: resources.valid ? String(format: "%.1f%%", resources.processCPUPercent) : "—", symbol: "cpu",
-                                         detail: "100% represents one CPU core. Jot can use more than 100% across several cores. This is the latest interval reading, refreshed about once a minute while paused, not an average for the selected history period.")
+                            ActivityStat(title: "Jot CPU", value: resources.cpuText, symbol: "cpu")
                             ActivityStat(title: "Resident memory", value: resources.valid ? String(format: "%.0f MiB", resources.residentMiB) : "—", symbol: "square.stack.3d.up")
                             ActivityStat(title: "Mac thermal state", value: resources.valid ? resources.thermalState.capitalized : "—", symbol: "thermometer.medium")
                         }
