@@ -8,7 +8,11 @@ extension SpeechService {
     /// A meeting is ambient capture with a name, and an export when it ends.
     func startMeeting(_ title: String) async {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { post(.meetingStartFailed, "Give the meeting a name first."); return }
+        guard !trimmed.isEmpty else {
+            library.countUsage([.meeting(.startFailed)])
+            post(.meetingStartFailed, "Give the meeting a name first.")
+            return
+        }
         do {
             try await startAmbient()
             guard ambientEnabled else { throw JotError.message("Ambient capture did not start.") }
@@ -17,7 +21,12 @@ extension SpeechService {
             meetingParts = [id]
             try await storeExecutor.submit { try store?.setTitle(sessionID: id, title: trimmed) }.value
             library.refreshSessions()
-        } catch { meetingTitle = nil; post(.meetingStartFailed, error.localizedDescription) }
+            library.countUsage([.meeting(.started)])
+        } catch {
+            meetingTitle = nil
+            library.countUsage([.meeting(.startFailed)])
+            post(.meetingStartFailed, error.localizedDescription)
+        }
     }
 
     /// Renames the running meeting: the name goes on its session now and on any continuation after an automatic pause.
@@ -56,6 +65,7 @@ extension SpeechService {
     @discardableResult
     func endMeeting() async throws -> [URL] {
         func failure(_ message: String) -> JotError {
+            library.countUsage([.meeting(.endFailed)])
             post(.meetingEndFailed, message)
             return JotError.message(message)
         }
@@ -71,6 +81,7 @@ extension SpeechService {
         if ambientEnabled { drainAudio(); timeline.flushAmbient(final: true) }
         let throughOffset = timeline.ambientOffset
         timeline.endSessionAudio(runPass: true)
+        if let meetingStartedAt { library.countUsage([.meetingLength(.init(seconds: dependencies.now().timeIntervalSince(meetingStartedAt)))]) }
         meetingTitle = nil
         if ambientEnabled {
             timeline.beginSession(at: dependencies.now())
@@ -115,7 +126,8 @@ extension SpeechService {
             NSWorkspace.shared.activateFileViewerSelecting(files)
             throw failure("Saved \(files.count) of the meeting's parts, then: \(error.localizedDescription)")
         }
-        guard !files.isEmpty else { return [] }
+        guard !files.isEmpty else { library.countUsage([.meeting(.empty)]); return [] }
+        library.countUsage([.meeting(.exported)])
         NSWorkspace.shared.activateFileViewerSelecting(files)
         var notes: [String] = []
         if files.count > 1 { notes.append("The meeting was paused along the way, so it was saved as \(files.count) files.") }

@@ -65,7 +65,7 @@ final class UsageCounterTests: XCTestCase {
 
     func testNamesComeOnlyFromFixedCodes() {
         let names = UsageCounter.allCases.map(\.name)
-        XCTAssertEqual(names.count, 65)
+        XCTAssertEqual(names.count, 80)
         XCTAssertEqual(Set(names).count, names.count, "Every counter has its own name")
         for name in names {
             XCTAssertNotNil(name.range(of: "^[a-z][A-Za-z]*(\\.[A-Za-z]+)+$", options: .regularExpression), name)
@@ -82,6 +82,19 @@ final class UsageCounterTests: XCTestCase {
             Range($0.range(at: 1), in: source).map { String(source[$0]) }
         }
         XCTAssertEqual(listed, UsageCounter.allCases.map(\.name))
+    }
+
+    func testLatencyAndMeetingLengthBuckets() {
+        XCTAssertEqual(UsageCounter.Latency(seconds: 0.4), .underOneSecond)
+        XCTAssertEqual(UsageCounter.Latency(seconds: 1), .underTwoSeconds)
+        XCTAssertEqual(UsageCounter.Latency(seconds: 3.9), .underFourSeconds)
+        XCTAssertEqual(UsageCounter.Latency(seconds: 8), .overEightSeconds)
+        XCTAssertEqual(UsageCounter.MeetingLength(seconds: 14 * 60), .underFifteenMinutes)
+        XCTAssertEqual(UsageCounter.MeetingLength(seconds: 45 * 60), .underHour)
+        XCTAssertEqual(UsageCounter.MeetingLength(seconds: 3 * 3600), .overTwoHours)
+        XCTAssertEqual(UsageCounter.dictationLatency(.underOneSecond).name, "dictationLatency.underOneSecond")
+        // Activity and the readout count every "dictation." name as one hold.
+        XCTAssertEqual(UsageCounter.allCases.filter { $0.name.hasPrefix("dictation.") }.count, PerformanceJob.Outcome.allCases.count)
     }
 
     func testInsertionPathsMapToCounters() {
