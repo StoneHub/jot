@@ -29,13 +29,21 @@ final class UsageReporter {
         loop = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(60)) } catch { return }
             while !Task.isCancelled {
-                if let self { await self.report() } else { return }
+                if let self { self.countFeatures(); await self.report() } else { return }
                 do { try await Task.sleep(for: .seconds(6 * 60 * 60), tolerance: .seconds(60 * 60)) } catch { return }
             }
         }
     }
 
     func stop() { loop?.cancel(); loop = nil }
+
+    /// Counts the features that are on, once a local day, so each day Jot ran says which features this Mac kept on.
+    private func countFeatures() {
+        let today = TranscriptStore.usageDay(Date(), calendar: .current)
+        guard settings.defaults.string(forKey: JotDefaultsKey.featuresCountedDay) != today else { return }
+        settings.defaults.set(today, forKey: JotDefaultsKey.featuresCountedDay)
+        library.countUsage(UsageCounter.features(in: settings))
+    }
 
     private func report() async {
         guard !running, let store = library.store else { return }

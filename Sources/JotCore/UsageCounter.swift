@@ -30,6 +30,8 @@ public enum UsageCounter: Sendable, Hashable, CaseIterable {
     case meeting(Meeting)
     /// How long a meeting ran, counted when End meeting closes it.
     case meetingLength(MeetingLength)
+    /// A feature that was on, counted once a local day while Jot runs, so a day's report says which features the Mac kept on.
+    case feature(Feature)
 
     public enum Insertion: String, Sendable, CaseIterable {
         case accessibility, unicode, clipboard, unverified, failed
@@ -60,6 +62,34 @@ public enum UsageCounter: Sendable, Hashable, CaseIterable {
         case endFailed
     }
 
+    /// Switches whose on/off state is worth learning. Each name is the feature, never the setting's value.
+    public enum Feature: String, Sendable, CaseIterable {
+        case cleanUpDictation, cleanUpTranscriptions, suggestions, suggestionScreenContext, suggestionWindowImage, typoFix,
+             transcriptPreview, updateCheck, keepMacAwake, customModelForCleanup, customModelForSuggestions, customModelForNotes
+
+        public var settingKey: String {
+            switch self {
+            case .cleanUpDictation: return JotDefaultsKey.cleanUpDictation
+            case .cleanUpTranscriptions: return JotDefaultsKey.cleanUpTranscriptions
+            case .suggestions: return JotDefaultsKey.suggestionsEnabled
+            case .suggestionScreenContext: return JotDefaultsKey.suggestionScreenContext
+            case .suggestionWindowImage: return JotDefaultsKey.suggestionWindowImage
+            case .typoFix: return JotDefaultsKey.typoFixEnabled
+            case .transcriptPreview: return JotDefaultsKey.shareTranscriptPreview
+            case .updateCheck: return JotDefaultsKey.checkForUpdates
+            case .keepMacAwake: return JotDefaultsKey.keepMacAwakeWhileListening
+            case .customModelForCleanup: return JotSettings.customModelForCleanup
+            case .customModelForSuggestions: return JotSettings.customModelForSuggestions
+            case .customModelForNotes: return JotSettings.customModelForNotes
+            }
+        }
+    }
+
+    /// The features on in `settings`, one counter each.
+    public static func features(in settings: JotSettings) -> [UsageCounter] {
+        Feature.allCases.filter { settings.bool($0.settingKey) }.map(UsageCounter.feature)
+    }
+
     public enum MeetingLength: String, Sendable, CaseIterable {
         case underFifteenMinutes, underHalfHour, underHour, underTwoHours, overTwoHours
 
@@ -84,6 +114,7 @@ public enum UsageCounter: Sendable, Hashable, CaseIterable {
             + SuggestionHistoryEntry.Action.allCases.map(UsageCounter.suggestionAction)
             + typoFixCounters + Latency.allCases.map(UsageCounter.dictationLatency)
             + Meeting.allCases.map(UsageCounter.meeting) + MeetingLength.allCases.map(UsageCounter.meetingLength)
+            + Feature.allCases.map(UsageCounter.feature)
     }
 
     /// A delivery result's path and verification as a counter. A verified path this build does not name counts as
@@ -114,6 +145,7 @@ public enum UsageCounter: Sendable, Hashable, CaseIterable {
         case .dictationLatency(let latency): return "dictationLatency.\(latency.rawValue)"
         case .meeting(let meeting): return "meeting.\(meeting.rawValue)"
         case .meetingLength(let length): return "meetingLength.\(length.rawValue)"
+        case .feature(let feature): return "feature.\(feature.rawValue)"
         }
     }
 }

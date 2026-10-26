@@ -53,6 +53,7 @@ Names come only from fixed codes in `UsageCounter` (`Sources/JotCore/UsageCounte
 | `meeting.started`, `meeting.startFailed` | Start meeting began a meeting, or could not (no name, or listening did not start). |
 | `meeting.exported`, `meeting.empty`, `meeting.endFailed` | End meeting saved files, closed a meeting with nothing transcribed, or was refused or failed to export. |
 | `meetingLength.<bucket>` | End meeting closed a meeting that ran `underFifteenMinutes`, `underHalfHour`, `underHour`, `underTwoHours` or `overTwoHours`. |
+| `feature.<name>` | Once a local day while Jot runs, for each of these switches that is on: `cleanUpDictation`, `cleanUpTranscriptions`, `suggestions`, `suggestionScreenContext`, `suggestionWindowImage`, `typoFix`, `transcriptPreview`, `updateCheck`, `keepMacAwake`, `customModelForCleanup`, `customModelForSuggestions`, `customModelForNotes`. Only that the switch is on; never the custom model's endpoint or name. |
 
 To start the counters over, use **Reset counters** on the Activity screen's "How dictation went" card, or:
 
