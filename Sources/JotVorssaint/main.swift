@@ -5,6 +5,9 @@ import JotCore
 // sends one JSON request per line on stdin. Connecting never opens Jot or
 // starts capture; only Open, Listen and Start Meeting do, at the person's click.
 
+ControlEvents.signalControllerChanged()
+defer { ControlEvents.signalControllerChanged() }
+
 let client = LocalServiceClient()
 let helpers = Bundle.main.bundleURL
 let app = helpers.deletingLastPathComponent().deletingLastPathComponent()

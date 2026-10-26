@@ -18,13 +18,18 @@ final class UsageReporter {
         self.settings = settings
     }
 
+    deinit {
+        loop?.cancel()
+        session.invalidateAndCancel()
+    }
+
     /// A minute after launch, then every six hours. The hour of tolerance lets macOS fold the wake into other work.
     func start() {
         loop?.cancel()
         loop = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(60)) } catch { return }
             while !Task.isCancelled {
-                await self?.report()
+                if let self { await self.report() } else { return }
                 do { try await Task.sleep(for: .seconds(6 * 60 * 60), tolerance: .seconds(60 * 60)) } catch { return }
             }
         }
