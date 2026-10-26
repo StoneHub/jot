@@ -71,7 +71,8 @@ export function readout(reports, usage, days) {
         `  ${m.suggestions} requested, ${m.shown} shown, ${m.accepted} accepted (${percent(m.accepted, m.shown)} of shown).`,
         `  Ended by: ${breakdown("suggestion.action.")}`,
         "", "Meetings", `  ${breakdown("meeting.")}. Length: ${breakdown("meetingLength.")}`,
-        "", "Saved dictation", `  ${breakdown("savedDictation.")}`);
+        "", "Saved dictation", `  ${breakdown("savedDictation.")}`,
+        "", "Features on (Mac-days; each Mac counts its switches once a day)", `  ${breakdown("feature.")}`);
     return lines;
 }
 

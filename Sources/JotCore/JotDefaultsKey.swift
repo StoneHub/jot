@@ -8,6 +8,8 @@ public enum JotDefaultsKey {
     public static let shareUsage = "shareUsage"
     /// The newest local day (`yyyy-MM-dd`) whose usage counts were sent, or skipped while sharing was off.
     public static let usageReportedThrough = "usageReportedThrough"
+    /// The local day (`yyyy-MM-dd`) whose `feature.*` usage counters were last counted.
+    public static let featuresCountedDay = "featuresCountedDay"
     public static let checkForUpdates = "checkForUpdates"
     /// When Jot last got an answer from GitHub about its newest release, from the daily check or Check for updates.
     public static let lastUpdateCheck = "lastUpdateCheck"

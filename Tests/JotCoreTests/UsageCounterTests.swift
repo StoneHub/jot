@@ -65,7 +65,7 @@ final class UsageCounterTests: XCTestCase {
 
     func testNamesComeOnlyFromFixedCodes() {
         let names = UsageCounter.allCases.map(\.name)
-        XCTAssertEqual(names.count, 80)
+        XCTAssertEqual(names.count, 92)
         XCTAssertEqual(Set(names).count, names.count, "Every counter has its own name")
         for name in names {
             XCTAssertNotNil(name.range(of: "^[a-z][A-Za-z]*(\\.[A-Za-z]+)+$", options: .regularExpression), name)
@@ -95,6 +95,14 @@ final class UsageCounterTests: XCTestCase {
         XCTAssertEqual(UsageCounter.dictationLatency(.underOneSecond).name, "dictationLatency.underOneSecond")
         // Activity and the readout count every "dictation." name as one hold.
         XCTAssertEqual(UsageCounter.allCases.filter { $0.name.hasPrefix("dictation.") }.count, PerformanceJob.Outcome.allCases.count)
+    }
+
+    func testFeaturesCountOnlySwitchesThatAreOn() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "jot-usage-features-" + UUID().uuidString))
+        for feature in UsageCounter.Feature.allCases { defaults.set(false, forKey: feature.settingKey) }
+        defaults.set(true, forKey: JotDefaultsKey.typoFixEnabled)
+        defaults.set(true, forKey: JotSettings.customModelForNotes)
+        XCTAssertEqual(UsageCounter.features(in: JotSettings(defaults: defaults)).map(\.name), ["feature.typoFix", "feature.customModelForNotes"])
     }
 
     func testInsertionPathsMapToCounters() {

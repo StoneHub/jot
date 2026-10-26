@@ -17,7 +17,7 @@ Once a local day has finished, Jot sends that day's [usage counters](ACTIVITY.md
 ```
 
 - `app` and `os` are the Jot and macOS version numbers; `arch` is `arm64` or `x86_64`.
-- Counter names come only from fixed codes in Jot's source. They describe what happened (a hold finished, text was inserted by Accessibility, a suggestion was taken), never what was said.
+- Counter names come only from fixed codes in Jot's source. They describe what happened (a hold finished, text was inserted by Accessibility, a suggestion was taken), never what was said. Once a day Jot also counts which feature switches are on (`feature.typoFix` and so on), never a setting's text such as a custom model's address.
 
 ## What is never sent
 

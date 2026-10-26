@@ -14,13 +14,15 @@ test("a readout sums Macs and counters per day and over the window", () => {
         { day: "2026-10-23", app: "0.3.4", os: "26.1", arch: "arm64", macs: 1 }];
     const usage = [{ day: "2026-10-23", name: "dictation.completed", count: 3 }, { day: "2026-10-23", name: "dictation.failed", count: 1 },
         { day: "2026-10-23", name: "typoFix.requested", count: 2 }, { day: "2026-10-23", name: "typoFix.outcome.fixed", count: 2 },
-        { day: "2026-10-23", name: "dictationLatency.underOneSecond", count: 3 }, { day: "2026-10-23", name: "meeting.started", count: 1 }];
+        { day: "2026-10-23", name: "dictationLatency.underOneSecond", count: 3 }, { day: "2026-10-23", name: "meeting.started", count: 1 },
+        { day: "2026-10-23", name: "feature.typoFix", count: 2 }];
     const text = readout(reports, usage, 14).join("\n");
     assert.match(text, /2026-10-23 +2 +4 +75%/);
     assert.match(text, /4 holds, 75% completed\. completed 3, failed 1/);
     assert.match(text, /2 presses: 2 fixed, 0 undone \(0% of fixes\)/);
     assert.match(text, /0\.3\.5 on macOS 26\.1 arm64: 1/);
     assert.match(text, /Release to inserted text: underOneSecond 3/);
+    assert.match(text, /Features on .*\n  typoFix 2/);
     assert.match(text, /Meetings\n  started 1\. Length: none/);
 });
 
