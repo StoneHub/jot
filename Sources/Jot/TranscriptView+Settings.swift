@@ -243,7 +243,7 @@ extension TranscriptView {
             if service.modelsLoaded, let loaded = service.loadedSpeechRecognitionEngine,
                loaded != service.speechRecognitionEngine {
                 HStack(spacing: 10) {
-                    Text("Currently using \\(loaded.title). Unload the models, then Resume to apply your selection.")
+                    Text("Currently using \(loaded.title). Unload the models, then Resume to apply your selection.")
                         .font(.caption).foregroundStyle(.secondary)
                     Spacer(minLength: 8)
                     Button("Unload Models") { service.unloadModels() }
