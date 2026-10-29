@@ -67,6 +67,12 @@ When an ambient session or meeting ends, a speaker pass reads the whole session 
 
 **Models & updates → Check model updates** checks published model revisions. It does not download updates or verify that your cached weights match the latest release.
 
+## Choose the recognition model
+
+Under **General → Listening → Speech recognition**, choose the local speech-to-text engine. The first selectable engines are **Parakeet v3** (the unchanged default) and **Parakeet v2**; Nemotron Lite and additional providers are being evaluated separately. Both continuous listening and Hold-Fn dictation currently share this choice. Speaker identification and the post-session speaker pass are separate models and are not changed by this selector.
+
+A choice is saved immediately, but **the model already loaded in memory keeps running**. To apply a different choice, select **Unload Models** in Jot, then **Resume**. Jot may need to download additional model weights for the new engine. The Settings panel identifies the active engine while a different choice is pending. The same value is available through `jot settings set speechRecognitionEngine 0` (Parakeet v3) or `1` (Parakeet v2).
+
 ## Without Apple Intelligence
 
 Dictation, local transcripts, search, exports, speaker processing, vocabulary and saved-dictation review use Jot's speech pipeline and do not require Apple's Foundation Models. The app targets Apple silicon Macs on macOS 14 or later, including macOS 15. Jot does not enable Apple Intelligence or agree to Apple terms on your behalf.
