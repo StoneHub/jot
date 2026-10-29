@@ -233,6 +233,24 @@ extension TranscriptView {
 
     private var listeningSettings: some View {
         SettingsGroup(title: "Listening", symbol: "waveform") {
+            SettingRow(title: "Speech recognition", info: "Choose the speech-to-text engine for continuous listening and Hold-Fn dictation. The loaded engine stays in use until Unload Models and Resume. A different engine may need an additional model download.", enabled: !service.preparing && !service.preparingUpdate) {
+                Picker("Speech recognition", selection: $service.speechRecognitionEngine) {
+                    ForEach(SpeechRecognitionEngine.allCases) { engine in
+                        Text(engine.title).tag(engine)
+                    }
+                }.labelsHidden().pickerStyle(.menu).fixedSize()
+            }
+            if service.modelsLoaded, let loaded = service.loadedSpeechRecognitionEngine,
+               loaded != service.speechRecognitionEngine {
+                HStack(spacing: 10) {
+                    Text("Currently using \(loaded.title). Unload the models, then Resume to apply your selection.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    Button("Unload Models") { service.unloadModels() }
+                        .buttonStyle(.bordered)
+                }.padding(.horizontal, 14).padding(.bottom, 8)
+            }
+            RowDivider()
             SettingRow(title: "New session after quiet", info: "Listening starts a new session when nothing is said for this long. A named meeting runs until you end it.") {
                 Picker("New session after quiet", selection: $service.newSessionAfterSilence) {
                     ForEach(SessionSplit.choices, id: \.self) { Text(SessionSplit.label($0)).tag($0) }
