@@ -7,6 +7,8 @@ import JotCore
 /// One inference worker. The controller never submits overlapping jobs.
 public actor SpeechPipeline {
     private var asr: AsrManager?
+    /// Actual engine resident in memory, which may differ from the preference until the user unloads models.
+    public private(set) var loadedRecognitionEngine: SpeechRecognitionEngine?
     private var vad: VadManager?
     private var diarizer: SortformerDiarizer?
     private var sessionID = ""
@@ -28,12 +30,19 @@ public actor SpeechPipeline {
 
     public func prepare() async throws {
         if asr == nil {
+            let selected = SpeechRecognitionEngine(rawValue: settings.int(JotSettings.speechRecognitionEngine)) ?? .parakeetV3
+            let version: AsrModelVersion
+            switch selected {
+            case .parakeetV3: version = .v3
+            case .parakeetV2: version = .v2
+            }
             let config = MLModelConfiguration()
             config.computeUnits = .cpuAndNeuralEngine
-            let models = try await AsrModels.downloadAndLoad(configuration: config, version: .v3)
+            let models = try await AsrModels.downloadAndLoad(configuration: config, version: version)
             let manager = AsrManager()
             try await manager.loadModels(models)
             asr = manager
+            loadedRecognitionEngine = selected
         }
         try Task.checkCancellation()
         if vad == nil { vad = try await VadManager() }
@@ -54,7 +63,7 @@ public actor SpeechPipeline {
 
     public func unload() async {
         await speakerPass.unload()
-        asr = nil; vad = nil; diarizer = nil; lastSpeaker = nil; speakerFeed.reset()
+        asr = nil; loadedRecognitionEngine = nil; vad = nil; diarizer = nil; lastSpeaker = nil; speakerFeed.reset()
         probabilities.removeAll(keepingCapacity: false)
         recognitionWindow.reset()
         sessionID = ""; expectedOffset = 0; baseOffset = 0
