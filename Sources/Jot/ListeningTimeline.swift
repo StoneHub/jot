@@ -20,6 +20,8 @@ final class ListeningTimeline: ObservableObject {
     private var heardSinceFlush = false
     /// Shorter audio is dropped: recognition on it is noise.
     private static let minimumJobSamples = AudioClock.samples(seconds: 0.2)
+    /// Bounds the audio queued for recognition, final chunks included. The recovery harness lowers the budget to reach it.
+    var backlog = RecognitionBacklog()
     /// Rebuilt from settings and Low Power Mode at each use, so a changed chunk length applies at the next drain.
     private var chunkScheduler: CaptureChunkScheduler {
         CaptureChunkScheduler(sampleRate: AudioClock.sampleRate,
@@ -108,6 +110,8 @@ final class ListeningTimeline: ObservableObject {
     }
 
     func endSessionAudio(runPass: Bool) {
+        // The session's gap closes with it, so its event carries the length and the session it belongs to.
+        if let withheld = backlog.close() { recordBacklogGapEnd(withheld) }
         guard let file = sessionAudio else { return }
         sessionAudio = nil
         guard runPass else { file.discard(); return }
@@ -125,14 +129,29 @@ final class ListeningTimeline: ObservableObject {
         if ambient.isEmpty { consecutiveSilentSamples = 0; heardSinceFlush = false }
         let start = ambientOffset; ambientOffset += AudioClock.seconds(samples: samples.count)
         guard final || samples.count >= Self.minimumJobSamples else { return }
-        if transcriber.jobs.count >= 40 && !final {
-            droppedAudio(AudioClock.seconds(samples: samples.count))
-            recordEvent(.audioGap, "Inference queue full; segment discarded.", AudioClock.seconds(samples: samples.count))
-            setNotice("Inference fell behind; bounded audio queue dropped a segment.")
-            markDictationGap("Dictation is partially saved, but an inference backlog caused an audio gap. Retry only after reviewing it.")
+        // An empty final block only closes a recognition window; while the queue is full, its tail is closed already.
+        if samples.isEmpty, backlog.isFull { return }
+        let seconds = AudioClock.seconds(samples: samples.count)
+        switch backlog.offer(seconds: seconds, queuedSeconds: transcriber.queuedAudioSeconds) {
+        case .queue(let endedGapSeconds):
+            if let endedGapSeconds { recordBacklogGapEnd(endedGapSeconds) }
+        case .withhold(let began):
+            // The chunk is not kept: a stalled recognizer must not retain audio without bound. The clock above already
+            // moved past it, so the gap stays visible in the session's timing, and the dropped figure and events account for it.
+            droppedAudio(seconds)
+            if began {
+                transcriber.closeQueuedTail()
+                recordEvent(.audioGap, "Recognition fell behind; audio from here is not queued until it catches up.", nil)
+                setNotice("Recognition has fallen behind, and new audio is not being recognized. If it does not catch up, choose Unload Models, then Resume.")
+            }
+            markDictationGap("Dictation is partially saved, but recognition fell behind and some audio was not queued. Retry only after reviewing it.")
             return
         }
         transcriber.enqueue(AudioJob(sessionID: sessionID, startedAt: sessionStarted, offset: start, samples: samples, ticket: UUID(), isFinal: final,
             keepsFillers: isDictating()))
+    }
+
+    private func recordBacklogGapEnd(_ seconds: Double) {
+        recordEvent(.audioGap, "Recognition caught up; the audio withheld meanwhile was not recognized.", seconds)
     }
 }

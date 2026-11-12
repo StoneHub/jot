@@ -73,7 +73,7 @@ public enum ControlNotice: String, CaseIterable, Sendable {
     case meetingEndFailed = "meeting.end-failed"
     /// The meeting exported as several files because it was paused along the way.
     case meetingSavedInParts = "meeting.saved-in-parts"
-    /// The meeting exported before cleanup finished, so its last lines are as recognized.
+    /// The meeting exported before cleanup, or a stalled recognition, finished, so its last lines are as recognized or missing.
     case meetingExportedUncleaned = "meeting.exported-uncleaned"
     /// Pause ended the meeting; its transcript is in Sessions.
     case meetingStopped = "meeting.stopped"
