@@ -183,6 +183,10 @@ final class Transcriber {
                 outcome = error is CancellationError ? .cancelled : .failed
                 recognitionFailures += 1
                 recognitionFailed(job)
+                // A final block that fails still ends its session's phrase. Left buffered, the session's rows would be cleaned
+                // only when a later session's first row arrived, after a relabel may have split them, and that late cleanup
+                // is refused; a boundary now cleans them while the session is still unsettled for relabels.
+                if job.isFinal, !library.sessionIsDeleted(job.sessionID) { cleanup.endPhrase(session: job.sessionID) }
                 if !(error is CancellationError) { recordFailure(error.localizedDescription, job.sessionID) }
                 if lifecycle().acceptsWork(generation) {
                     setNotice("Ambient: \(error.localizedDescription). Transcript insertion was not completed.")

@@ -203,6 +203,7 @@ struct RecoveryFlowChecks {
         try await checkIdleRedraws(directory: directory)
         try await checkHousekeepingCadence(directory: directory)
         try await checkSpeakerPassKeepsCleanup(directory: directory)
+        try await checkFailedFinalKeepsCleanup(directory: directory)
         try await checkRelabelsTakeTurns(directory: directory)
         try await checkControlsRedrawWhenWorkEnds(directory: directory)
         try await checkSpeakerPassKeepsMainFree(directory: directory)
