@@ -1,5 +1,6 @@
 // Every counter name Jot's UsageCounter can produce. UsageCounterTests pins this list to the Swift enum, so a
-// counter added in Jot fails its tests until it is added here too. Names not listed are refused.
+// counter added in Jot fails its tests until it is added here too. A name not listed is dropped from the report and
+// never stored, so a Jot release that runs ahead of a Worker redeploy still gets its other counters counted.
 export const COUNTERS = new Set([
     "dictation.completed",
     "dictation.noSpeech",

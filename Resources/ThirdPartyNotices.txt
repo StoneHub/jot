@@ -4,6 +4,51 @@ FluidAudio revision: 5c19d5e12320e22bbfb7a1877b089d2665a69add
 Source: https://github.com/FluidInference/FluidAudio
 
 
+Models
+============================================================
+Jot does not ship model files. When Jot prepares its models it downloads
+FluidAudio's Core ML conversions from Hugging Face. The Apple Intelligence
+features use Apple's on-device Foundation Models framework, which is part of
+macOS and is not downloaded by Jot. Each model
+stays under its authors' terms; Jot does not relicense any of them. The
+licenses below are the ones its authors state on the pages named.
+
+Parakeet TDT 0.6b v3 (speech to text)
+- Authors: NVIDIA
+- License: Creative Commons Attribution 4.0 (CC BY 4.0)
+- Source: https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3
+- Downloaded as: https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml
+
+Streaming Sortformer, 4 speakers (speaker turns while listening)
+- Authors: NVIDIA
+- License: Creative Commons Attribution 4.0 (CC BY 4.0)
+- Source: https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2
+- Downloaded as: https://huggingface.co/FluidInference/diar-streaming-sortformer-coreml
+
+Silero VAD (speech detection)
+- Authors: Silero Team
+- License: MIT
+- Source: https://github.com/snakers4/silero-vad
+- Downloaded as: https://huggingface.co/FluidInference/silero-vad-coreml
+
+pyannote segmentation 3.0 (speaker turns after a session ends)
+- Authors: pyannote (Hervé Bredin and contributors)
+- License: MIT
+- Source: https://huggingface.co/pyannote/segmentation-3.0
+- Downloaded as: https://huggingface.co/FluidInference/speaker-diarization-coreml
+
+WeSpeaker ResNet34-LM speaker embedding (telling voices apart)
+- Authors: WeSpeaker (Hongji Wang and contributors); packaged by pyannote
+- License: Creative Commons Attribution 4.0 (CC BY 4.0) for the VoxCeleb
+  weights; the WeSpeaker code is Apache License 2.0
+- Source: https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM
+  and https://github.com/wenet-e2e/wespeaker
+- Downloaded as: https://huggingface.co/FluidInference/speaker-diarization-coreml
+
+CC BY 4.0 full text: https://creativecommons.org/licenses/by/4.0/legalcode
+MIT full text: https://opensource.org/license/mit
+
+
 LICENSE
 ============================================================
                                  Apache License
