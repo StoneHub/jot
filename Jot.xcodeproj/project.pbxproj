@@ -25,6 +25,7 @@
 		0648B6F2DC5F03CE16E5C2ED /* VocabularyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D61874EB855429080562675D /* VocabularyView.swift */; };
 		0716C14AD00BDA6BD9FB35AB /* SpeechServiceIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42A30D435B413C60B77D5B35 /* SpeechServiceIPC.swift */; };
 		073C3B00CD7B25F432C53D42 /* VorssaintIntegration.json in Resources */ = {isa = PBXBuildFile; fileRef = 949C420BFD4722407BB5C6E7 /* VorssaintIntegration.json */; };
+		07A4BEDB05C4191A80FBAADC /* RecoveryFlowChecks+StalledRecognition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74AC8B7A0B468CE52286E924 /* RecoveryFlowChecks+StalledRecognition.swift */; };
 		07E51DE7D7A118B36812A9B4 /* SpeechService+Permissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191DA6F475ADD3A5E643FF55 /* SpeechService+Permissions.swift */; };
 		0868BB86D9F3565B5F99AA26 /* AudioJob.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E76DBC2C08598EF5281221A /* AudioJob.swift */; };
 		0947EDE8057197DA17216580 /* PerformanceJob.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF9D887E417A6D0BE9F8A8C4 /* PerformanceJob.swift */; };
@@ -240,6 +241,7 @@
 		75EAC4C8400A6FE52CB9350D /* ExclusionReason.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB3AB1D693CA7BEC64B47137 /* ExclusionReason.swift */; };
 		76BAEBA5FA6DE4D2C280A463 /* MicrophoneCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF1B77AE53082548A951DF56 /* MicrophoneCapture.swift */; };
 		76F97CF4DF9E0347AD45D880 /* LiveTranscriptText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64DFC6286492A052B21DE7FA /* LiveTranscriptText.swift */; };
+		76FD1D42774A2F5AE4E30470 /* RecognitionBacklog.swift in Sources */ = {isa = PBXBuildFile; fileRef = C038E5BBB71D87348909E549 /* RecognitionBacklog.swift */; };
 		777BD6A1B65A09A73EF8B249 /* JotTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DDF643FB6E5B3B5F22FF081 /* JotTheme.swift */; };
 		7797A97D81A5C42317AF4C55 /* ShortcutTargetAcquisition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05E5774F2EA53B72E09C9D2A /* ShortcutTargetAcquisition.swift */; };
 		77DB423FC2F35F1F75BF60FC /* SessionAudioWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63B325648B69E21750EBF215 /* SessionAudioWriter.swift */; };
@@ -344,6 +346,7 @@
 		AD8A49DDB889908524D84865 /* CleanupValidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D040C78617B0A5778C7B180 /* CleanupValidation.swift */; };
 		ADBAF5FCAC85EDB42A458054 /* StatusReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 573BAC151BA5522222F486F8 /* StatusReport.swift */; };
 		AE5F58B04CE443D34C9291BA /* SessionSplit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C33A3E252A64EE9389B3646 /* SessionSplit.swift */; };
+		AF2DACDEF942DCD0F02D0AEE /* RecoveryFlowChecks+FailedFinalCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3EE7157DEF9DA3B444D95B4 /* RecoveryFlowChecks+FailedFinalCleanup.swift */; };
 		B00D60F967218526A5DF77DC /* SuggestionFieldReadback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73D98812F8A03430DA0CB687 /* SuggestionFieldReadback.swift */; };
 		B0457D100CA7501261B716FA /* UsageReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 394133F7A5B07C2E47785DB5 /* UsageReport.swift */; };
 		B0678DBA10A8E8FF0DC580C5 /* AudioInputDeviceWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31F7EE07CA30F7AAD14BDAB9 /* AudioInputDeviceWatcher.swift */; };
@@ -781,6 +784,7 @@
 		72E2BC26344C47160EBD5F01 /* check-shortcut-input.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "check-shortcut-input.swift"; sourceTree = "<group>"; };
 		73D98812F8A03430DA0CB687 /* SuggestionFieldReadback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionFieldReadback.swift; sourceTree = "<group>"; };
 		7415694705568E2457081A4F /* DictationShortcut.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationShortcut.swift; sourceTree = "<group>"; };
+		74AC8B7A0B468CE52286E924 /* RecoveryFlowChecks+StalledRecognition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RecoveryFlowChecks+StalledRecognition.swift"; sourceTree = "<group>"; };
 		74B0E19208138655D60FAF39 /* SuggestionAttribution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionAttribution.swift; sourceTree = "<group>"; };
 		74B630DD768233386E24B60B /* SessionAudioFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionAudioFile.swift; sourceTree = "<group>"; };
 		7615A6848BB2408F860BC26A /* RecoveryFlowChecks+SpeakerPassMainActor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RecoveryFlowChecks+SpeakerPassMainActor.swift"; sourceTree = "<group>"; };
@@ -893,6 +897,7 @@
 		BF87B00DE1285AD7064C811F /* StoreMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreMetrics.swift; sourceTree = "<group>"; };
 		BFE66EA8622172FB454486AC /* LabVariantResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabVariantResult.swift; sourceTree = "<group>"; };
 		C0186C7A018B87FF6DF644E2 /* CLIError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIError.swift; sourceTree = "<group>"; };
+		C038E5BBB71D87348909E549 /* RecognitionBacklog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionBacklog.swift; sourceTree = "<group>"; };
 		C1C5114298E41FD0B34E6B8C /* MicrophoneSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneSelection.swift; sourceTree = "<group>"; };
 		C2439957F0C87FF270AABB8F /* DictationRecoveryRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationRecoveryRows.swift; sourceTree = "<group>"; };
 		C2D7BFB98668DA15D68394E3 /* NoiseFillers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoiseFillers.swift; sourceTree = "<group>"; };
@@ -936,6 +941,7 @@
 		E13BBC9596F7C0E9A271B512 /* RecoveryFlowChecks+Library.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RecoveryFlowChecks+Library.swift"; sourceTree = "<group>"; };
 		E140FD55F4DBB4651999774E /* PerformanceEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceEvent.swift; sourceTree = "<group>"; };
 		E38A1F664C7A1C05170E0BC0 /* SuggestionOutput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionOutput.swift; sourceTree = "<group>"; };
+		E3EE7157DEF9DA3B444D95B4 /* RecoveryFlowChecks+FailedFinalCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RecoveryFlowChecks+FailedFinalCleanup.swift"; sourceTree = "<group>"; };
 		E3F7D01BDF81227F2D55740F /* JotEngine.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = JotEngine.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		E5161AC2BF6256AC57286B16 /* LatencySummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatencySummary.swift; sourceTree = "<group>"; };
 		E697DFB44B2520898FCBF193 /* RecoveryFlowChecks+SpeakerPassCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RecoveryFlowChecks+SpeakerPassCleanup.swift"; sourceTree = "<group>"; };
@@ -1048,6 +1054,7 @@
 				39AE798A8E38BCC719710D8D /* RecoveryFlowChecks+ControlsRedraw.swift */,
 				BA59C334CE5EAA5B8EBDDF66 /* RecoveryFlowChecks+CPUReadout.swift */,
 				6E30553504254627698F9241 /* RecoveryFlowChecks+Dictation.swift */,
+				E3EE7157DEF9DA3B444D95B4 /* RecoveryFlowChecks+FailedFinalCleanup.swift */,
 				70F0AB0F8B42B72DB6BAD8A0 /* RecoveryFlowChecks+FailureAndCleanup.swift */,
 				54DCDE75A0283480287F3ABE /* RecoveryFlowChecks+Housekeeping.swift */,
 				A5C8530DB87D2249FDBEE83C /* RecoveryFlowChecks+InsertionMatrix.swift */,
@@ -1059,6 +1066,7 @@
 				BEF7B31349AB0F25D8C224D8 /* RecoveryFlowChecks+Relabels.swift */,
 				E697DFB44B2520898FCBF193 /* RecoveryFlowChecks+SpeakerPassCleanup.swift */,
 				7615A6848BB2408F860BC26A /* RecoveryFlowChecks+SpeakerPassMainActor.swift */,
+				74AC8B7A0B468CE52286E924 /* RecoveryFlowChecks+StalledRecognition.swift */,
 				E837FB97275E61C15B432094 /* RecoveryFlowChecks+TuningAudio.swift */,
 			);
 			name = "recovery-checks";
@@ -1310,6 +1318,7 @@
 				82F2EA91CC53C86941193E3C /* PhraseCleanup.swift */,
 				4422DB4116BDAC296134D678 /* ProcessedOutput.swift */,
 				274468C9F4FACD96DDB48BAC /* ReadableTextRows.swift */,
+				C038E5BBB71D87348909E549 /* RecognitionBacklog.swift */,
 				651850351DF0D76098A021B7 /* ReleaseInfo.swift */,
 				4D56946CB0146563FFC2BF8D /* RemoteModelConfiguration.swift */,
 				7F861E92E50659B8096CFA79 /* RemoteModelProvider.swift */,
@@ -1962,6 +1971,7 @@
 				6C90A1DD9BB31EBC7165639F /* PhraseCleanup.swift in Sources */,
 				8191FF32D7BE5AFA9CB8F2F2 /* ProcessedOutput.swift in Sources */,
 				F3248BE04925933DDD7EC89C /* ReadableTextRows.swift in Sources */,
+				76FD1D42774A2F5AE4E30470 /* RecognitionBacklog.swift in Sources */,
 				BAB3AC30EDE7DC1B06ABB0FB /* ReleaseInfo.swift in Sources */,
 				B3312A4C692EA52FC061271F /* RemoteModelConfiguration.swift in Sources */,
 				DFE2D6540197727B24ADCF20 /* RemoteModelProvider.swift in Sources */,
@@ -2171,6 +2181,7 @@
 				68B95AD672492587FDC9743F /* RecoveryFlowChecks+CPUReadout.swift in Sources */,
 				5ADA3E35210AEE7D5C455283 /* RecoveryFlowChecks+ControlsRedraw.swift in Sources */,
 				54B70D71B37DAC4A0996FEEA /* RecoveryFlowChecks+Dictation.swift in Sources */,
+				AF2DACDEF942DCD0F02D0AEE /* RecoveryFlowChecks+FailedFinalCleanup.swift in Sources */,
 				FE9F5EDB81D0373A91704F8A /* RecoveryFlowChecks+FailureAndCleanup.swift in Sources */,
 				9DCB267564C571FBAB6FDE62 /* RecoveryFlowChecks+Housekeeping.swift in Sources */,
 				3932835BAC14C779AF387B18 /* RecoveryFlowChecks+InsertionMatrix.swift in Sources */,
@@ -2182,6 +2193,7 @@
 				59BAF528C836348746A3BCF7 /* RecoveryFlowChecks+Relabels.swift in Sources */,
 				1679486D509BA368B5ACC2A2 /* RecoveryFlowChecks+SpeakerPassCleanup.swift in Sources */,
 				A1FF0099397B2DA2739C8673 /* RecoveryFlowChecks+SpeakerPassMainActor.swift in Sources */,
+				07A4BEDB05C4191A80FBAADC /* RecoveryFlowChecks+StalledRecognition.swift in Sources */,
 				80B8AD54B1D1D340E612375B /* RecoveryFlowChecks+TuningAudio.swift in Sources */,
 				426A1F4CE87D2CE6B756B721 /* ResourceSampler.swift in Sources */,
 				0F018AA5309D683527C78FCC /* ResourceSnapshot.swift in Sources */,
