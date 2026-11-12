@@ -714,14 +714,19 @@ final class SpeechService: ObservableObject {
             await holdingTask?.value
             await loadingTask?.value
             _ = try? await fileTask?.value
-            while !transcriber.isIdle {
+            // A stalled recognizer does not hold Pause: its blocks stay queued for a restart, and the notice says so.
+            while !transcriber.isIdle, !transcriber.isStalled {
                 transcriber.kick()
                 try? await Task.sleep(for: .milliseconds(20))
             }
             await dictation.waitForRecovery()
             // Optional text-only cleanup may finish after capture stops. Original recognition is already durable; no microphone is retained.
-            ambientEnabled = false; transcriber.queuedSeconds = 0
-            if outcome.endedMeeting { post(.meetingStopped, "Meeting stopped. Its transcript is in Sessions.") } else { notice = "" }
+            let stalled = !transcriber.isIdle
+            ambientEnabled = false; transcriber.queuedSeconds = transcriber.queuedAudioSeconds
+            if stalled {
+                let waiting = Int((transcriber.queuedSeconds + transcriber.inFlightAudioSeconds).rounded())
+                post(.other, "Paused, but recognition stalled with \(waiting) seconds of speech still waiting. Choose Unload Models, then Resume, to recognize it.")
+            } else if outcome.endedMeeting { post(.meetingStopped, "Meeting stopped. Its transcript is in Sessions.") } else { notice = "" }
             pauseRequested = false; pausing = nil
             resourceReadout.stateChanged()
             scheduleTimer()
@@ -742,7 +747,7 @@ final class SpeechService: ObservableObject {
             // Capped, so a transcriber that never settles cannot hold Unload (and new holds) forever; past the cap the
             // models are released anyway, as before this wait existed.
             let settleDeadline = ContinuousClock.now + .seconds(10)
-            while !transcriber.isIdle && lifecycle.phase == .ready && ContinuousClock.now < settleDeadline {
+            while !transcriber.isIdle && !transcriber.isStalled && lifecycle.phase == .ready && ContinuousClock.now < settleDeadline {
                 transcriber.kick()
                 try? await Task.sleep(for: .milliseconds(20))
             }

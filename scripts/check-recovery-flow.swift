@@ -197,6 +197,7 @@ struct RecoveryFlowChecks {
         print("PASS: Pause during model preparation or failed preparation does not enqueue unprocessable final audio.")
 
         try await checkQuietAndStall(directory: directory)
+        try await checkStalledRecognition(directory: directory)
         try await checkCPUReadoutWhileListening(directory: directory)
         try await checkResourceReadoutTransitions(directory: directory)
         try await checkIdleRedraws(directory: directory)
