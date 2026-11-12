@@ -46,13 +46,14 @@ final class SpeechService: ObservableObject {
         shortcutName: { [weak self] in self?.typoFixShortcut.displayName ?? "the shortcut" },
         notice: { [weak self] in self?.notice = $0 })
     lazy var timeline: ListeningTimeline = ListeningTimeline(settings: settings, library: library, speakers: speakers,
-        transcriber: transcriber, now: dependencies.now,
+        transcriber: transcriber, now: dependencies.now, lowPowerMode: { [unowned self] in lowPowerMode() },
         isListening: { [unowned self] in ambientEnabled }, isDictating: { [unowned self] in dictation.isActive },
         receivedAudio: { [unowned self] in lastAudioAt = $0 }, droppedAudio: { [unowned self] in droppedSeconds += $0 },
         recordEvent: { [unowned self] in recordEvent($0, $1, duration: $2, session: nil) },
         setNotice: { [unowned self] in notice = $0 }, markDictationGap: { [weak self] in self?.dictation.markGap($0) })
     lazy var cleanup: LiveCleanup = LiveCleanup(owner: self, library: library, settings: settings,
         clean: dependencies.cleanup, availability: { [unowned self] in modelAvailability(.cleanup) },
+        lowPowerMode: { [unowned self] in lowPowerMode() },
         activityChanged: { [unowned self] in refreshShortcutEligibility() },
         workerFinished: { [unowned self] in if canInstallUpdate { objectWillChange.send() } })
     lazy var transcriber: Transcriber = Transcriber(owner: self, library: library, cleanup: cleanup, pipeline: pipeline, settings: settings,
@@ -440,7 +441,10 @@ final class SpeechService: ObservableObject {
 
     /// Starting capture replaces the quiet timer immediately; Fn never waits for
     /// paused housekeeping to start its microphone or finish saved speech.
-    var tickInterval: TimeInterval { LowPowerListening.tickInterval(ambientEnabled ? 0.2 : 60) }
+    var tickInterval: TimeInterval { LowPowerListening.tickInterval(ambientEnabled ? 0.2 : 60, lowPower: lowPowerMode()) }
+    /// Whether macOS Low Power Mode eases listening off: the drain cadence, the chunk length and live cleanup read it. The
+    /// recovery harness pins it off, so its checks do not depend on the Mac's battery setting.
+    var lowPowerMode: () -> Bool = { LowPowerListening.isOn }
 
     /// Audio drains five times a second while listening. Paused housekeeping runs
     /// once a minute, while inference and recovery finish through their callbacks.
@@ -714,14 +718,19 @@ final class SpeechService: ObservableObject {
             await holdingTask?.value
             await loadingTask?.value
             _ = try? await fileTask?.value
-            while !transcriber.isIdle {
+            // A stalled recognizer does not hold Pause: its blocks stay queued for a restart, and the notice says so.
+            while !transcriber.isIdle, !transcriber.isStalled {
                 transcriber.kick()
                 try? await Task.sleep(for: .milliseconds(20))
             }
             await dictation.waitForRecovery()
             // Optional text-only cleanup may finish after capture stops. Original recognition is already durable; no microphone is retained.
-            ambientEnabled = false; transcriber.queuedSeconds = 0
-            if outcome.endedMeeting { post(.meetingStopped, "Meeting stopped. Its transcript is in Sessions.") } else { notice = "" }
+            let stalled = !transcriber.isIdle
+            ambientEnabled = false; transcriber.queuedSeconds = transcriber.queuedAudioSeconds
+            if stalled {
+                let waiting = Int((transcriber.queuedSeconds + transcriber.inFlightAudioSeconds).rounded())
+                post(.other, "Paused, but recognition stalled with \(waiting) seconds of speech still waiting. Choose Unload Models, then Resume, to recognize it.")
+            } else if outcome.endedMeeting { post(.meetingStopped, "Meeting stopped. Its transcript is in Sessions.") } else { notice = "" }
             pauseRequested = false; pausing = nil
             resourceReadout.stateChanged()
             scheduleTimer()
@@ -742,7 +751,7 @@ final class SpeechService: ObservableObject {
             // Capped, so a transcriber that never settles cannot hold Unload (and new holds) forever; past the cap the
             // models are released anyway, as before this wait existed.
             let settleDeadline = ContinuousClock.now + .seconds(10)
-            while !transcriber.isIdle && lifecycle.phase == .ready && ContinuousClock.now < settleDeadline {
+            while !transcriber.isIdle && !transcriber.isStalled && lifecycle.phase == .ready && ContinuousClock.now < settleDeadline {
                 transcriber.kick()
                 try? await Task.sleep(for: .milliseconds(20))
             }
@@ -861,6 +870,7 @@ final class SpeechService: ObservableObject {
     }
 
     func beginRecoveryVerification(store: TranscriptStore, startedAt: Date = Date()) {
+        lowPowerMode = { false }
         if let token = lifecycle.beginStart() { _ = lifecycle.finishStart(token, succeeded: true) }
         library.store = store
         ambientRequested = true; ambientEnabled = true

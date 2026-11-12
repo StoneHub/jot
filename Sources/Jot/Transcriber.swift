@@ -12,8 +12,19 @@ private struct TranscriberSavedBlock: Sendable {
 final class Transcriber {
     /// Cut chunks waiting for recognition, oldest first. The listening timeline hands them to `enqueue`.
     private(set) var jobs: [AudioJob] = []
+    /// Samples in `jobs`, kept alongside so the listening timeline can read the queue's length on every chunk it cuts.
+    private var queuedSampleCount = 0
     private(set) var processing: Task<Void, Never>?
     private var processingJob: AudioJob?
+    /// When the block being recognized was handed to the pipeline, on the system uptime clock, and under which lifecycle generation.
+    private var processingBegan: Double?
+    private var processingGeneration: UInt64?
+    /// Counts the blocks taken, so a block abandoned and taken again is told apart from its first run when that run ends.
+    private var run = 0
+    /// A block in recognition this long with no answer counts as stalled: the waits on it give up and say so, instead of
+    /// holding Pause or a released dictation forever. A block is at most a few seconds of audio, which even a loaded Mac
+    /// answers well inside this. The recovery harness lowers it.
+    var stallSeconds = 30.0
     /// Audio in the block being recognized, for the diagnostics' buffered figure.
     private(set) var inFlightAudioSeconds = 0.0
     private(set) var recognitionFailures = 0
@@ -67,7 +78,13 @@ final class Transcriber {
     var isIdle: Bool { processing == nil && jobs.isEmpty }
 
     /// Seconds of audio waiting in the queue, not counting the block being recognized.
-    var queuedAudioSeconds: Double { jobs.reduce(0) { $0 + AudioClock.seconds(samples: $1.samples.count) } }
+    var queuedAudioSeconds: Double { AudioClock.seconds(samples: queuedSampleCount) }
+
+    /// The block being recognized has gone `stallSeconds` without an answer.
+    var isStalled: Bool {
+        guard let processingBegan else { return false }
+        return ProcessInfo.processInfo.systemUptime - processingBegan > stallSeconds
+    }
 
     /// No block of this session is queued or being recognized.
     func isDone(session id: String) -> Bool { jobs.allSatisfy { $0.sessionID != id } && processing == nil }
@@ -75,17 +92,28 @@ final class Transcriber {
     func cancel() { processing?.cancel() }
 
     /// Queues a cut chunk. `kick` starts it when models are ready and nothing else is being recognized.
-    func enqueue(_ job: AudioJob) { jobs.append(job) }
+    func enqueue(_ job: AudioJob) { jobs.append(job); queuedSampleCount += job.samples.count }
+
+    /// Closes the recognition window of the last queued block, when the timeline withholds the audio that would have continued it:
+    /// a final block commits its whole tail instead of holding the last two seconds for a successor that never comes.
+    func closeQueuedTail() {
+        guard let last = jobs.indices.last, !jobs[last].isFinal else { return }
+        jobs[last].isFinal = true
+    }
 
     /// Starts recognizing the oldest queued block when models are ready and nothing else is being recognized. Each block starts the next when it finishes.
     func kick() {
+        releaseAbandonedRecognition()
         guard lifecycle().phase == .ready, processing == nil, !jobs.isEmpty else { return }
         let job = jobs.removeFirst()
+        queuedSampleCount -= job.samples.count
         let wholeUtterance = job.isFinal && lastJobWasFinal
         lastJobWasFinal = job.isFinal
         processingJob = job
         let generation = lifecycle().generation
         let began = ProcessInfo.processInfo.systemUptime
+        processingBegan = began; processingGeneration = generation
+        run += 1; let thisRun = run
         let waitSeconds = max(0, began - job.submittedUptime)
         inFlightAudioSeconds = AudioClock.seconds(samples: job.samples.count)
         let owner = owner
@@ -155,6 +183,10 @@ final class Transcriber {
                 outcome = error is CancellationError ? .cancelled : .failed
                 recognitionFailures += 1
                 recognitionFailed(job)
+                // A final block that fails still ends its session's phrase. Left buffered, the session's rows would be cleaned
+                // only when a later session's first row arrived, after a relabel may have split them, and that late cleanup
+                // is refused; a boundary now cleans them while the session is still unsettled for relabels.
+                if job.isFinal, !library.sessionIsDeleted(job.sessionID) { cleanup.endPhrase(session: job.sessionID) }
                 if !(error is CancellationError) { recordFailure(error.localizedDescription, job.sessionID) }
                 if lifecycle().acceptsWork(generation) {
                     setNotice("Ambient: \(error.localizedDescription). Transcript insertion was not completed.")
@@ -166,9 +198,8 @@ final class Transcriber {
                 audioSeconds: AudioClock.seconds(samples: job.samples.count), queueWaitSeconds: waitSeconds,
                 inferenceSeconds: inferenceSeconds, completionSeconds: max(0, ProcessInfo.processInfo.systemUptime - job.submittedUptime),
                 cleanupSeconds: nil, deliverySeconds: nil, speechProbability: speechProbability))
-            inFlightAudioSeconds = 0
-            processingJob = nil
-            processing = nil
+            // A run abandoned when the models were unloaded has already left these; the queue moved on without it.
+            if run == thisRun { clearProcessing() }
             // Only an idle app needs a redraw when recognition releases Install Update.
             // The recovery harness feeds ambient audio without starting a microphone, so
             // canInstallUpdate alone is true there even while listening is active.
@@ -177,8 +208,27 @@ final class Transcriber {
         }
     }
 
-    /// Returns once every block of the session up to `offset` that was queued or being recognized when called has been recognized.
-    func waitUntilProcessed(sessionID: String, through offset: Double) async {
+    private func clearProcessing() {
+        inFlightAudioSeconds = 0
+        processingJob = nil; processingBegan = nil; processingGeneration = nil
+        processing = nil
+    }
+
+    /// A block taken before the models were unloaded belongs to a finished generation: its answer, if one ever comes, is
+    /// discarded by the generation check, so once the models are loaded again the queue must not wait for it. The block
+    /// goes back to the front of the queue, so the restarted recognizer takes it first and its audio is not lost.
+    private func releaseAbandonedRecognition() {
+        guard let generation = processingGeneration, let job = processingJob,
+              lifecycle().phase == .ready, !lifecycle().acceptsWork(generation) else { return }
+        processing?.cancel()
+        clearProcessing()
+        jobs.insert(job, at: 0); queuedSampleCount += job.samples.count
+    }
+
+    /// Returns once every block of the session up to `offset` that was queued or being recognized when called has been
+    /// recognized. Returns false instead when recognition stalls on a block (see `stallSeconds`): the blocks stay queued for
+    /// a restarted recognizer, and the caller goes on with what was recognized, saying so.
+    func waitUntilProcessed(sessionID: String, through offset: Double) async -> Bool {
         let barrierTickets = Set(jobs.filter { $0.sessionID == sessionID && $0.offset <= offset }.map(\.ticket)
             + (processingJob.map { $0.sessionID == sessionID ? [$0.ticket] : [] } ?? []))
         while !Task.isCancelled,
@@ -187,7 +237,9 @@ final class Transcriber {
             kick()
             // A sub-minimum tail has no inference job. Everything schedulable is done.
             if processing == nil && jobs.allSatisfy({ $0.sessionID != sessionID }) { break }
+            if isStalled { return false }
             try? await Task.sleep(for: .milliseconds(20))
         }
+        return true
     }
 }
