@@ -25,7 +25,7 @@ final class ListeningTimeline: ObservableObject {
     /// Rebuilt from settings and Low Power Mode at each use, so a changed chunk length applies at the next drain.
     private var chunkScheduler: CaptureChunkScheduler {
         CaptureChunkScheduler(sampleRate: AudioClock.sampleRate,
-            maximumSeconds: LowPowerListening.chunkMaximumSeconds(settings.double(JotSettings.chunkMaximumSeconds)),
+            maximumSeconds: LowPowerListening.chunkMaximumSeconds(settings.double(JotSettings.chunkMaximumSeconds), lowPower: lowPowerMode()),
             minimumSeconds: CaptureChunkScheduler.defaultMinimumSeconds, silenceSeconds: settings.double(JotSettings.chunkSilenceSeconds))
     }
     private let settings: JotSettings
@@ -33,6 +33,7 @@ final class ListeningTimeline: ObservableObject {
     private let speakers: SpeakerRecognizer
     private let transcriber: Transcriber
     private let now: @MainActor () -> Date
+    private let lowPowerMode: () -> Bool
     private let isListening: () -> Bool
     private let isDictating: () -> Bool
     private let receivedAudio: (Date) -> Void
@@ -42,7 +43,8 @@ final class ListeningTimeline: ObservableObject {
     private let markDictationGap: (String) -> Void
 
     init(settings: JotSettings, library: SessionLibrary, speakers: SpeakerRecognizer, transcriber: Transcriber,
-         now: @escaping @MainActor () -> Date, isListening: @escaping () -> Bool, isDictating: @escaping () -> Bool,
+         now: @escaping @MainActor () -> Date, lowPowerMode: @escaping () -> Bool,
+         isListening: @escaping () -> Bool, isDictating: @escaping () -> Bool,
          receivedAudio: @escaping (Date) -> Void, droppedAudio: @escaping (Double) -> Void,
          recordEvent: @escaping (CaptureEventKind, String, Double?) -> Void, setNotice: @escaping (String) -> Void,
          markDictationGap: @escaping (String) -> Void) {
@@ -50,7 +52,7 @@ final class ListeningTimeline: ObservableObject {
         self.library = library
         self.speakers = speakers
         self.transcriber = transcriber
-        self.now = now; self.isListening = isListening; self.isDictating = isDictating
+        self.now = now; self.lowPowerMode = lowPowerMode; self.isListening = isListening; self.isDictating = isDictating
         self.receivedAudio = receivedAudio; self.droppedAudio = droppedAudio
         self.recordEvent = recordEvent; self.setNotice = setNotice
         self.markDictationGap = markDictationGap
