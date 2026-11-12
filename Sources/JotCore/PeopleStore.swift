@@ -1,5 +1,5 @@
 import Foundation
-import SQLite3
+import SQLCipher
 
 /// Voices the user asked Jot to remember, kept in the transcripts database on a connection of its own. Deleting a person forgets the voice; session labels already written stay.
 public final class PeopleStore: @unchecked Sendable {
@@ -7,7 +7,7 @@ public final class PeopleStore: @unchecked Sendable {
 
     /// Opens after `store`, which created the table.
     public init(sharing store: TranscriptStore) throws {
-        db = try SQLiteConnection(url: store.databaseURL)
+        db = try SQLiteConnection(url: store.databaseURL, key: store.key)
     }
 
     public func list() throws -> [Person] {

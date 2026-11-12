@@ -1,5 +1,5 @@
 import Foundation
-import SQLite3
+import SQLCipher
 
 /// Cleaned text kept beside each transcript row. `TranscriptStore` calls these with its connection; a relabel split reuses `insert` inside its own transaction.
 enum ReadableTextRows {

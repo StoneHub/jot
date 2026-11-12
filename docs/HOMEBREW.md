@@ -11,7 +11,7 @@ brew install --cask stonehub/jot/jot
 
 Tapping clones this repository. The explicit URL is required because the repository is not named `homebrew-jot`. If your Homebrew asks you to trust the tap before a cask runs its install step, run `brew trust stonehub/jot`. That step is the `postflight_steps` block below: one `sh` command that runs only `codesign` and `xattr`.
 
-Jot updates itself (**Models & updates**, plus the daily check in **General → Privacy**). The cask says `auto_updates true`, so `brew upgrade` leaves Jot alone and Homebrew's recorded version can lag behind the app. `brew uninstall --cask jot` removes `/Applications/Jot.app` only. The cask has no `zap` stanza, so transcripts, voices and settings stay in `~/Library/Application Support/Jot` and Jot's preferences.
+Jot updates itself (**Models & updates**, plus the daily check in **General → Privacy**). The cask says `auto_updates true`, so `brew upgrade` leaves Jot alone and Homebrew's recorded version can lag behind the app. `brew uninstall --cask jot` removes `/Applications/Jot.app` only. The cask has no `zap` stanza, so transcripts, voices and settings stay in `~/Library/Application Support/Jot` and Jot's preferences, and the history key stays in the login keychain (item "Jot history key").
 
 Requirements match the ZIP: Apple silicon and macOS 14 or later.
 

@@ -6,14 +6,16 @@ let package = Package(name: "JotCore", platforms: [.macOS(.v14)], products: [
     .executable(name: "jot-suggestion-eval", targets: ["JotSuggestionEvaluation"])
 ], dependencies: [
     .package(url: "https://github.com/StoneHub/apple-fm-swift.git", revision: "5b937241b0236f892af28588e75a78dd557acf21"),
-    .package(url: "https://github.com/FluidInference/FluidAudio.git", revision: "5c19d5e12320e22bbfb7a1877b089d2665a69add")
+    .package(url: "https://github.com/FluidInference/FluidAudio.git", revision: "5c19d5e12320e22bbfb7a1877b089d2665a69add"),
+    // SQLCipher built from source: the transcript database is encrypted page by page. The product replaces the system SQLite, so no target links libsqlite3.
+    .package(url: "https://github.com/skiptools/swift-sqlcipher.git", revision: "cf5c89ad63146db3a4258a1e26da4d2b3fa4a087")
 ], targets: [
-    .target(name: "JotCore", dependencies: [.product(name: "AppleFM", package: "apple-fm-swift")],
-            linkerSettings: [.linkedLibrary("sqlite3")]),
+    .target(name: "JotCore", dependencies: [.product(name: "AppleFM", package: "apple-fm-swift"),
+                                            .product(name: "SQLCipher", package: "swift-sqlcipher")]),
     .target(name: "JotEngine", dependencies: ["JotCore", .product(name: "FluidAudio", package: "FluidAudio")]),
     .executableTarget(name: "JotCLI", dependencies: ["JotCore"]),
     .executableTarget(name: "JotSuggestionEvaluation", dependencies: ["JotCore"]),
-    .testTarget(name: "JotCoreTests", dependencies: ["JotCore"]),
+    .testTarget(name: "JotCoreTests", dependencies: ["JotCore", .product(name: "SQLCipher", package: "swift-sqlcipher")]),
     .testTarget(name: "JotEngineTests", dependencies: ["JotEngine", .product(name: "FluidAudio", package: "FluidAudio")]),
     .testTarget(name: "JotCLITests", dependencies: ["JotCLI"]),
     .testTarget(name: "JotSuggestionEvaluationTests", dependencies: ["JotSuggestionEvaluation"])

@@ -105,7 +105,7 @@ struct RecoveryFlowChecks {
             try await checkHousekeepingCadence(directory: directory)
             return
         }
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         let probe = Probe()
         let service = SpeechService(dependencies: .init(
             infer: { _, job, _ in probe.infer(job) },
@@ -140,7 +140,7 @@ struct RecoveryFlowChecks {
         precondition(retained?.text == expected, "A 75-second hold lost recognized words")
         precondition(retained?.hasGap == false, "Audio lost after the release marked the finished hold partial")
         precondition(probe.attempts == 1 && probe.delivered.isEmpty, "Failed delivery was retried automatically")
-        let reopened = try TranscriptStore(directory: directory)
+        let reopened = try TranscriptStore(directory: directory, key: .scratch)
         let reopenedAttempt = try reopened.latestRecoverableDictationAttempt()
         precondition(reopenedAttempt?.text == expected, "Saved dictation did not survive reopening storage")
         print("PASS: 75-second hold persisted all 25 chunks before release; failed delivery retained across store reopen.")

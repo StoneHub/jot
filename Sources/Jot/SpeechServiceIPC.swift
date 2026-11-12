@@ -291,6 +291,13 @@ extension SpeechService {
             let id = try VocabularyRequest.id(params, in: vocabulary)
             try removeVocabularyEntry(id)
             result = ["removed": id.uuidString]
+        case .clientsList:
+            let days = params["days"] as? Int ?? 7
+            guard params["days"] == nil || (1...ClientCallSummary.retainedDays).contains(days) else { throw JotError.message("days must be between 1 and \(ClientCallSummary.retainedDays)") }
+            guard let store = library.store else { throw JotError.message("Saved history is unavailable") }
+            let now = Date(), calendar = Calendar.current
+            let clients = try await readOffMain { try store.clientCalls(days: days, now: now, calendar: calendar) }
+            result = ["days": days, "clients": clients]
         case .speakersLabel:
             guard let session = params["sessionID"] as? String, let speaker = params["speakerID"] as? String, let name = params["name"] as? String else { throw JotError.message("sessionID, speakerID and name are required") }
             // The name is saved before the voice is remembered, so Live shows it even when remembering the voice fails.

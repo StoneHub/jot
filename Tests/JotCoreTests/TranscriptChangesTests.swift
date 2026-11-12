@@ -1,5 +1,5 @@
 import XCTest
-import SQLite3
+import SQLCipher
 @testable import JotCore
 
 /// `transcripts.since`: a follower polling the change feed sees every row once, and a cleanup or relabel as the same row id again.
@@ -44,7 +44,7 @@ final class TranscriptChangesTests: XCTestCase {
     }
 
     func testPollingDeliversEveryRowOnceAcrossCleanupRewritesAndSessionRotation() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         let follower = Follower(store)
         XCTAssertEqual(try follower.poll(), 0, "An empty store has nothing to deliver")
         XCTAssertEqual(follower.cursor, 0)
@@ -98,7 +98,7 @@ final class TranscriptChangesTests: XCTestCase {
     }
 
     func testSpeakerRelabelIsAnUpdateAndAnUnchangedSpeakerIsNotRedelivered() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         let a1 = row("a1", session: "A", seconds: 0)
         try store.append(a1)
         try store.appendWords([StoredWord(transcriptID: "a1", position: 0, word: "raw", startSeconds: 0, endSeconds: 0.4, probabilities: []),
@@ -118,7 +118,7 @@ final class TranscriptChangesTests: XCTestCase {
     }
 
     func testCursorAheadOfTheStoreRestartsFromTheBeginning() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(row("a1", session: "A", seconds: 0))
         let page = try store.changes(since: 500)
         XCTAssertTrue(page.reset)
@@ -129,7 +129,7 @@ final class TranscriptChangesTests: XCTestCase {
     }
 
     func testDeletedRowsLeaveLiveRowsAndNumbersAreNeverReused() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(row("a1", session: "A", seconds: 0))
         try store.append(row("b1", session: "B", seconds: 10))
         try store.deleteSession(id: "A")
@@ -144,7 +144,7 @@ final class TranscriptChangesTests: XCTestCase {
     func testRowsSavedBeforeTheFeedJoinItInSpokenOrderOnce() throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         var db: OpaquePointer?
-        XCTAssertEqual(sqlite3_open(directory.appendingPathComponent("transcripts.sqlite3").path, &db), SQLITE_OK)
+        XCTAssertEqual(sqlite3_open_scratch(directory.appendingPathComponent("transcripts.sqlite3").path, &db), SQLITE_OK)
         XCTAssertEqual(sqlite3_exec(db, """
             CREATE TABLE transcripts (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, started_at REAL NOT NULL, start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, text TEXT NOT NULL, speaker_id TEXT, mode TEXT NOT NULL CHECK(mode IN ('ambient','dictation')));
             CREATE TABLE transcript_readable (transcript_id TEXT PRIMARY KEY REFERENCES transcripts(id) ON DELETE CASCADE, text TEXT NOT NULL);
@@ -155,14 +155,14 @@ final class TranscriptChangesTests: XCTestCase {
             """, nil, nil, nil), SQLITE_OK)
         sqlite3_close(db)
         do {
-            let store = try TranscriptStore(directory: directory)
+            let store = try TranscriptStore(directory: directory, key: .scratch)
             let page = try store.changes(since: 0)
             XCTAssertEqual(page.rows.map(\.transcript.id), ["earlier", "later"])
             XCTAssertEqual(page.rows.map(\.transcript.text), ["First.", "second"])
             XCTAssertEqual(page.cursor, 2)
         }
         XCTAssertEqual(try count("PRAGMA user_version"), 8)
-        let reopened = try TranscriptStore(directory: directory)
+        let reopened = try TranscriptStore(directory: directory, key: .scratch)
         XCTAssertEqual(try reopened.changes(since: 0).rows.map(\.sequence), [1, 2], "Reopening does not enqueue rows again")
     }
 
@@ -187,7 +187,7 @@ final class TranscriptChangesTests: XCTestCase {
     }
 
     func testDeleteSessionReportsAnIDOnlyTombstoneAfterTheFollowersCursor() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(row("a1", session: "A", seconds: 0, text: "private synthetic text"))
         let cursor = try store.changes(since: 0).cursor
         try store.deleteSession(id: "A")
@@ -202,7 +202,7 @@ final class TranscriptChangesTests: XCTestCase {
     }
 
     func testSpeakerNamingRenamingAndRemovingNamesRedeliversOnlyAffectedRows() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(row("a1", session: "A", seconds: 0))
         try store.append(row("a2", session: "A", seconds: 1, speaker: "speaker-2"))
         try store.append(row("b1", session: "B", seconds: 0))
@@ -225,7 +225,7 @@ final class TranscriptChangesTests: XCTestCase {
     }
 
     func testSplitRemovesTheParentFromAPagedFollowersCopy() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(row("parent", session: "A", seconds: 0, text: "one two"))
         try store.appendWords([
             StoredWord(transcriptID: "parent", position: 0, word: "one", startSeconds: 0, endSeconds: 0.4, probabilities: []),
@@ -249,7 +249,7 @@ final class TranscriptChangesTests: XCTestCase {
     }
 
     func testOmittingTheCursorSubscribesAtHeadWhileExplicitZeroReplaysHistory() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         for index in 0..<6 { try store.append(row("a\(index)", session: "A", seconds: Double(index))) }
         let subscribed = try store.changes(limit: 1)
         XCTAssertTrue(subscribed.rows.isEmpty)
@@ -259,19 +259,19 @@ final class TranscriptChangesTests: XCTestCase {
     }
 
     func testGenerationPersistsAcrossReopenAndChangesWithARecreatedStore() throws {
-        let first = try TranscriptStore(directory: directory)
+        let first = try TranscriptStore(directory: directory, key: .scratch)
         let generation = try XCTUnwrap(try object(first.changes(since: 0))["generation"] as? String)
-        let reopened = try TranscriptStore(directory: directory)
+        let reopened = try TranscriptStore(directory: directory, key: .scratch)
         XCTAssertEqual(try object(reopened.changes(since: 0))["generation"] as? String, generation)
-        let other = try TranscriptStore(directory: directory.appendingPathComponent("new-store"))
+        let other = try TranscriptStore(directory: directory.appendingPathComponent("new-store"), key: .scratch)
         XCTAssertNotEqual(try object(other.changes(since: 0))["generation"] as? String, generation)
     }
 
     func testGenerationResetsEvenWhenTheNewHeadHasPassedTheOldCursor() throws {
-        let old = try TranscriptStore(directory: directory)
+        let old = try TranscriptStore(directory: directory, key: .scratch)
         try old.append(row("old", session: "A", seconds: 0))
         let previous = try old.changes(since: 0)
-        let replacement = try TranscriptStore(directory: directory.appendingPathComponent("replacement"))
+        let replacement = try TranscriptStore(directory: directory.appendingPathComponent("replacement"), key: .scratch)
         for index in 0..<3 { try replacement.append(row("new\(index)", session: "A", seconds: Double(index))) }
         let reset = try replacement.changes(since: previous.cursor, generation: previous.generation, limit: 1)
         XCTAssertTrue(reset.reset)
@@ -283,7 +283,7 @@ final class TranscriptChangesTests: XCTestCase {
         XCTAssertFalse(try replacement.changes(since: previous.cursor).reset, "Legacy numeric-only polling keeps its behavior")
         XCTAssertThrowsError(try replacement.changes(since: 0, generation: ""))
 
-        let empty = try TranscriptStore(directory: directory.appendingPathComponent("empty"))
+        let empty = try TranscriptStore(directory: directory.appendingPathComponent("empty"), key: .scratch)
         let emptyReset = try empty.changes(since: 0, generation: previous.generation)
         XCTAssertTrue(emptyReset.reset)
         XCTAssertEqual(emptyReset.cursor, 0)
@@ -291,7 +291,7 @@ final class TranscriptChangesTests: XCTestCase {
     }
 
     func testClearAndIndividualDeletionSharePaginationWithLiveRowsAndSurviveReopen() throws {
-        var store = try TranscriptStore(directory: directory)
+        var store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(row("ambient", session: "A", seconds: 0))
         var dictation = row("dictation", session: "D", seconds: 0)
         dictation.mode = "dictation"
@@ -301,7 +301,7 @@ final class TranscriptChangesTests: XCTestCase {
         try store.append(row("later", session: "B", seconds: 0))
         try store.deleteTranscripts(ids: ["ambient", "ambient", "missing"])
         let generation = store.generation
-        store = try TranscriptStore(directory: directory)
+        store = try TranscriptStore(directory: directory, key: .scratch)
         XCTAssertEqual(store.generation, generation)
         var deleted: [String] = []
         var live: [String] = []
@@ -325,7 +325,7 @@ final class TranscriptChangesTests: XCTestCase {
     }
 
     func testReinsertingAnIDCoalescesItsTombstoneIntoTheLatestLiveChange() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         let original = row("a1", session: "A", seconds: 0)
         try store.append(original)
         let cursor = try store.changes(since: 0).cursor
@@ -349,7 +349,7 @@ final class TranscriptChangesTests: XCTestCase {
     }
 
     func testCrossSessionReinsertionRetainsTheOldSessionsDeletion() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(row("same-id", session: "A", seconds: 0))
         let cursor = try store.changes(since: 0, sessionID: "A").cursor
         try store.deleteTranscripts(ids: ["same-id"])
@@ -365,7 +365,7 @@ final class TranscriptChangesTests: XCTestCase {
     }
 
     func testRepeatedCrossSessionReuseConvergesWithMixedPagesAndNoDuplicateIDs() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         var cursors: [String: Int64] = [:]
         var copies: [String: [String: String]] = [:]
         func poll() throws {
@@ -422,7 +422,7 @@ final class TranscriptChangesTests: XCTestCase {
     private func count(_ sql: String) throws -> Int {
         var db: OpaquePointer?; var stmt: OpaquePointer?
         defer { sqlite3_finalize(stmt); sqlite3_close(db) }
-        guard sqlite3_open(directory.appendingPathComponent("transcripts.sqlite3").path, &db) == SQLITE_OK,
+        guard sqlite3_open_scratch(directory.appendingPathComponent("transcripts.sqlite3").path, &db) == SQLITE_OK,
               sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, sqlite3_step(stmt) == SQLITE_ROW else { throw StoreError.database("query failed") }
         return Int(sqlite3_column_int64(stmt, 0))
     }

@@ -6,7 +6,7 @@ extension RecoveryFlowChecks {
     /// A speaker pass and a Regroup over a long session run while listening continues. The longest main-actor gap stays within 50 ms of the same run's gap with no relabel, and a microphone that holds one second never overflows into an audio gap.
     @MainActor static func checkSpeakerPassKeepsMainFree(directory: URL) async throws {
         let folder = directory.appendingPathComponent("long-session")
-        let store = try TranscriptStore(directory: folder)
+        let store = try TranscriptStore(directory: folder, key: .scratch)
         // The real queue holds eight seconds; one second here makes a stall of a second or more lose audio.
         let microphone = ClockedMicrophone(holdingSeconds: 1)
         var dependencies = SpeechServiceDependencies(

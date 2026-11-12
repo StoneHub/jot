@@ -49,6 +49,7 @@ struct JotCLI {
     jot sessions [--limit N]
     jot events [--session ID] [--limit N] [--offset N]
     jot suggestions [--limit N]         Local text-free suggestion request history
+    jot clients [--days N]              Which programs called Jot, by method, over the last N days (1-90; 7)
     jot since [--cursor N] [--generation ID] [--session ID] [--limit N]
                                        Subscribe now; --cursor 0 replays history. Pass back cursor and generation
     jot listen [--mode fast|command|context|all] [--wake phrase[,alias]]
@@ -221,6 +222,12 @@ struct JotCLI {
         case "people":
             guard args.count == 1 else { throw CLIError.usage("Use: jot people") }
             return (.peopleList, [:])
+        case "clients":
+            if args.count == 1 { return (.clientsList, [:]) }
+            guard args.count == 3, args[1] == "--days", let days = Int(args[2]), (1...90).contains(days) else {
+                throw CLIError.usage("Use: jot clients [--days N] with N from 1 to 90")
+            }
+            return (.clientsList, ["days": days])
         case "forget":
             guard args.count == 2 else { throw CLIError.usage("Use: jot forget <person-id>") }
             return (.peopleForget, ["id": args[1]])

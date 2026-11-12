@@ -1,5 +1,5 @@
 import Foundation
-import SQLite3
+import SQLCipher
 
 /// What the offline speaker pass found in one session: who spoke when, and one voice embedding per speaker.
 public struct SpeakerPassResult: Sendable {
