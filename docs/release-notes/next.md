@@ -11,3 +11,5 @@ When recognition stalls, listening no longer keeps every chunk of audio waiting 
 A session whose last chunk failed in recognition still gets its last phrase cleaned up, so Regroup and the speaker pass wait for that cleanup instead of writing over it, and the next session's first phrase is cleaned on its own.
 
 The third-party notices in the app bundle now list each speech model Jot downloads, with its authors and license.
+
+`jot lab --set <folder>` scores every recording of a set in one run and writes `set-scores.json` with numbers only, so a change can be compared against the previous version on the same audio; `scripts/make-lab-set.py` makes a synthetic set with the Mac's own voices.

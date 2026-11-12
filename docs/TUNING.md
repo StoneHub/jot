@@ -57,6 +57,28 @@ A row with no cleaned text was left alone by cleanup. That covers cleanup off or
 
 Apply the variant you choose with `jot settings import variants.json "steadier speakers"`. It sets each of that variant's settings on the running app, as `jot settings set` would.
 
+## Score a fixed set
+
+`jot lab --set` runs every recording of a set and writes the scores side by side, so a recognition, speaker or cleanup change can be compared against `main` on the same audio. A set is a folder with `set.json` beside the audio and captions:
+
+```json
+{"name": "synthetic", "items": [
+  {"name": "script-clean", "audio": "script-clean.wav", "captions": "script.vtt"},
+  {"name": "conversation", "audio": "conversation.wav", "captions": "conversation.vtt"}
+]}
+```
+
+The folder stays outside any git checkout: real recordings are private, and even the synthetic set is regenerated rather than committed. `scripts/make-lab-set.py <folder>` makes the synthetic set with macOS `say` (nothing plays aloud): the #215 script in four conditions (clean, −21 dB, with reverb, and in a room with a hum and pink noise) and a seeded four-voice conversation with WebVTT voice tags, ten minutes by default (`--minutes 30` for the #218 length). The same seed on the same Mac gives the same files. Add your own kept sessions ([below](#keep-session-audio-for-tuning)) with hand-made captions as further items.
+
+```
+python3 scripts/make-lab-set.py ~/Documents/jot-lab/sets/synthetic
+jot lab --set ~/Documents/jot-lab/sets/synthetic --out ~/Documents/jot-lab/runs/synthetic-1
+```
+
+Each item gets its own folder under the output with the usual `variants.json` and `report.html`, which hold the transcripts and stay private. `set-scores.json` and `set-report.md` hold numbers only: word error rate raw and cleaned with substitutions, deletions and insertions, speaker words right live and after the pass, rows and paragraphs, and CPU seconds per minute of audio for the recognition run and the speaker pass together (Neural Engine time is not counted). Those two files can go into a PR. `--variants` scores more than the current settings.
+
+`scripts/compare-lab-scores.py baseline/set-scores.json candidate/set-scores.json` prints the two side by side and exits 1 when the candidate's word error rate rose by more than 1 point, speaker words right fell by more than 2 points, or CPU per audio minute rose by more than 30% (`--max-wer-rise`, `--max-speaker-drop`, `--max-cpu-rise`). `scripts/lab-accuracy-check.py --set <folder> --baseline-ref origin/main` does the whole comparison: it builds `jot-lab` at the baseline commit in `work/lab-baseline` once per commit and set (scores cached in `work/lab-baselines/`), builds and scores this checkout, and writes `work/lab-accuracy/<head>/accuracy-report.md`. `local-pr-check` runs it as the `accuracy` gate for diffs that touch recognition, speakers, cleanup or the lab when `JOT_LAB_SET` or `--lab-set` names a set; without a set the gate is unavailable and the verdict stays incomplete, because a build and tests passing said nothing when #215 dropped words. Both sides read the app's current settings as the lab always does, so run them on one Mac.
+
 ## Keep session audio for tuning
 
 Jot deletes a session's audio once the speaker pass has read it. To keep real sessions for `jot lab`, run `jot settings set keepTuningAudio true`. Each session whose audio reaches the speaker pass then leaves a 16 kHz mono 16-bit WAV, about 115 MB an hour, at `~/Library/Application Support/Jot/tuning-audio/<session-id>.wav`, which `jot lab` opens directly. A session ended with the Pause button, or recorded with **Keep audio for speaker pass** off, keeps nothing. At launch and whenever a new file is added, kept files more than 30 days old are deleted, and then the oldest go while the rest total more than 10 GB, about 87 hours of audio. Deleting a session deletes its kept file too. `jot settings reset keepTuningAudio` stops keeping new files and deletes nothing, so the kept ones age out. `jot status` reports the count, total bytes, oldest date and both limits under `tuningAudio`. This is private audio of everything Jot heard, kept only on this Mac and never uploaded. It is off by default, and an update never turns it on.

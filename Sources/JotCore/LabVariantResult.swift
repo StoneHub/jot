@@ -8,9 +8,24 @@ public struct LabVariantResult: Codable, Sendable, Equatable {
         public var recognitionSeconds: Double
         /// The offline speaker pass over the same audio; shared too.
         public var speakerPassSeconds: Double
+        /// Process CPU time (user and system) the recognition run took; shared by its variants. Neural Engine time is not CPU.
+        public var cpuSeconds: Double
+        /// The same for the speaker pass.
+        public var speakerPassCPUSeconds: Double
 
-        public init(audioSeconds: Double, recognitionSeconds: Double, speakerPassSeconds: Double) {
+        public init(audioSeconds: Double, recognitionSeconds: Double, speakerPassSeconds: Double, cpuSeconds: Double = 0, speakerPassCPUSeconds: Double = 0) {
             self.audioSeconds = audioSeconds; self.recognitionSeconds = recognitionSeconds; self.speakerPassSeconds = speakerPassSeconds
+            self.cpuSeconds = cpuSeconds; self.speakerPassCPUSeconds = speakerPassCPUSeconds
+        }
+
+        /// Older `variants.json` files have no CPU figures.
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            audioSeconds = try container.decode(Double.self, forKey: .audioSeconds)
+            recognitionSeconds = try container.decode(Double.self, forKey: .recognitionSeconds)
+            speakerPassSeconds = try container.decode(Double.self, forKey: .speakerPassSeconds)
+            cpuSeconds = try container.decodeIfPresent(Double.self, forKey: .cpuSeconds) ?? 0
+            speakerPassCPUSeconds = try container.decodeIfPresent(Double.self, forKey: .speakerPassCPUSeconds) ?? 0
         }
     }
 

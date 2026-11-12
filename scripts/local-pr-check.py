@@ -31,6 +31,14 @@ RECOVERY_TRIGGERS = ('Sources/JotCore/', 'Sources/JotEngine/', 'scripts/check-re
                      'scripts/recovery-checks/', 'scripts/check-capture-flow.swift',
                      'scripts/check-store-responsiveness.swift', 'scripts/check-shortcut-input.swift', 'project.yml',
                      'Package.swift', 'Package.resolved')
+# Recognition, speakers and cleanup: a change here needs the lab accuracy comparison against the base (#222).
+ACCURACY_TRIGGERS = ('Sources/JotEngine/', 'Sources/JotLab/', 'Sources/Jot/Transcriber.swift', 'Sources/Jot/LiveCleanup.swift',
+                     'Sources/Jot/SpeakerRecognizer.swift', 'Sources/JotCore/PhraseCleanup.swift', 'Sources/JotCore/TranscriptGrouping.swift',
+                     'Sources/JotCore/TranscriptionTuning.swift', 'Sources/JotCore/TuningPreset.swift', 'Sources/JotCore/SpeakerPassRelabel.swift',
+                     'Sources/JotCore/SpeakerAssignment.swift', 'Sources/JotCore/SpeakerModelFeed.swift', 'Sources/JotCore/CaptureChunkScheduler.swift',
+                     'Sources/JotCore/NoiseFillers.swift', 'Sources/JotCore/WordErrorRate.swift', 'Sources/JotCore/LabScore.swift',
+                     'Sources/JotCore/LabSpeakerScore.swift', 'Sources/JotCore/LabRows.swift', 'Sources/JotCore/LabCaptions.swift',
+                     'Sources/JotCore/LabSet.swift', 'Package.resolved')
 # These presentation files do not own capture, persistence or delivery. New/unknown app files stay conservative.
 PRESENTATION_FILES = {f'Sources/Jot/{name}.swift' for name in (
     'ActivityLiveImpact', 'ActivityView', 'GlassStyles', 'InfoButton', 'JotTheme', 'LiveTranscriptText', 'LiveView', 'ModelsUpdatesView',
@@ -47,6 +55,9 @@ TOOL_TESTS = {
     'scripts/check-suggestion-fixtures.py': ('test_suggestion_fixtures.py',),
     'scripts/check-suggestion-results.py': ('test_suggestion_results.py',),
     'scripts/compare-quiet-cpu.py': ('test_compare_quiet_cpu.py',),
+    'scripts/compare-lab-scores.py': ('test_compare_lab_scores.py', 'test_lab_accuracy_check.py'),
+    'scripts/lab-accuracy-check.py': ('test_lab_accuracy_check.py',),
+    'scripts/make-lab-set.py': ('test_make_lab_set.py',),
     'Sources/JotLab/main.swift': ('test_lab_output_paths.py', 'test_lab_signal_cleanup.py'),
     'Sources/JotCore/LabError.swift': ('test_lab_output_paths.py',),
     'docs/evaluation/contextual-suggestions/scenarios.json': ('test_suggestion_fixtures.py', 'test_suggestion_results.py'),
@@ -58,6 +69,8 @@ NOT_COVERED = ('interactive UI, Accessibility and physical Fn behavior',
                'the real-app insertion matrix (scripts/insertion_matrix.py, run before a release)',
                'manual checks the PR description lists')
 GATES = ('portable', 'swift-test', 'app-build', 'recovery-checks')
+# Added when the diff touches recognition and a lab set is named; `--all` adds it only when a set is named.
+ACCURACY_GATE = 'accuracy'
 EXIT_CODES = {'PASS': 0, 'FAIL': 1, 'INCOMPLETE': 3}
 SHA = re.compile(r'^[0-9a-f]{40}$')
 
@@ -93,7 +106,7 @@ def needs_recovery(files):
         path.startswith('Sources/Jot/') and path not in PRESENTATION_FILES for path in files)
 
 
-def plan(files, head_files, merge_base, head, filters=(), everything=False, skip=()):
+def plan(files, head_files, merge_base, head, filters=(), everything=False, skip=(), lab_set=None):
     """Choose the gates this diff needs. `head_files` lists the checked-out tree, to find optional checks."""
     python = sys.executable or 'python3'
     portable = [['git', 'diff', '--check', merge_base, head]]
@@ -131,7 +144,16 @@ def plan(files, head_files, merge_base, head, filters=(), everything=False, skip
         gates.append(Gate('recovery-checks', 'JotRecoveryChecks (fresh CFFIXED_USER_HOME)', steps,
                           needs=('xcodebuild',),
                           reason='requested' if everything else 'service, store or recovery-check sources changed'))
+    if touches(files, ACCURACY_TRIGGERS) or (everything and lab_set):
+        gate = Gate(ACCURACY_GATE, 'Lab accuracy against the base (jot lab --set)',
+                    [[python, 'scripts/lab-accuracy-check.py', '--set', str(lab_set), '--baseline-ref', merge_base]],
+                    needs=('xcodebuild',), reason='requested' if everything else 'recognition, speaker or cleanup sources changed')
+        if not lab_set:
+            gate.status, gate.note = 'unavailable', 'no lab set named: set JOT_LAB_SET or pass --lab-set (scripts/make-lab-set.py makes one)'
+        gates.append(gate)
     for gate in gates:
+        if gate.status != 'planned':
+            continue
         if gate.name in skip:
             gate.status, gate.note = 'skipped', 'skipped by --skip'
         elif gate.needs and platform.system() != 'Darwin':
@@ -374,7 +396,7 @@ def native_verdict(gates, context, attestation):
     if result == 'FAIL':
         return result
     if (platform.system() != 'Darwin' or context.get('baseContained') is not True
-            or [gate.name for gate in gates] != list(GATES)
+            or [gate.name for gate in gates if gate.name in GATES] != list(GATES)
             or any(g.status != 'passed' for g in gates)
             or not read_attestation(attestation, context, manual_checks(context['files']))):
         return 'INCOMPLETE'
@@ -440,7 +462,9 @@ def main(argv=None):
     parser.add_argument('--filter', action='append', default=[], metavar='TEST',
                         help='run only `swift test --filter TEST`; repeatable; --all selects the full suite instead')
     parser.add_argument('--all', action='store_true', help='run every gate whatever the diff touches')
-    parser.add_argument('--skip', action='append', default=[], choices=GATES, help='skip a gate (verdict INCOMPLETE)')
+    parser.add_argument('--skip', action='append', default=[], choices=GATES + (ACCURACY_GATE,), help='skip a gate (verdict INCOMPLETE)')
+    parser.add_argument('--lab-set', default=os.environ.get('JOT_LAB_SET'),
+                        help='lab set folder for the accuracy gate (default $JOT_LAB_SET; see docs/TUNING.md)')
     parser.add_argument('--dry-run', action='store_true', help='print the plan without running it')
     parser.add_argument('--post', action='store_true', help='post the report as a PR comment and its verdict as the jot/local-pr-check status with gh')
     parser.add_argument('--publish-status', action='store_true',
@@ -498,7 +522,7 @@ def main(argv=None):
     head_files = set(git('ls-tree', '-r', '--name-only', head, cwd=root).splitlines())
     if args.current:
         head_files |= set(git('ls-files', '--others', '--exclude-standard', cwd=tree).splitlines())
-    gates = plan(files, head_files, merge_base, head, args.filter, args.all or args.publish_status, set(args.skip))
+    gates = plan(files, head_files, merge_base, head, args.filter, args.all or args.publish_status, set(args.skip), args.lab_set or None)
     context = {'pr': args.pr, 'head': head, 'branch': branch, 'base': base, 'mergeBase': merge_base,
                'baseHead': base_head, 'baseContained': contains_base(root, base_head, head),
                'url': (info or {}).get('url'), 'files': files, 'machine': machine()}
