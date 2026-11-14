@@ -50,7 +50,7 @@ final class PhraseCleanupTests: XCTestCase {
     func testPhraseStorageIsAtomicAndDoesNotResurrectDeletedRows() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         let rows = [row("uh", 0), row("we need boxes", 1)]
         for source in rows { try store.append(source) }
         XCTAssertTrue(try store.setReadablePhrase(["", "We need boxes."], for: rows))

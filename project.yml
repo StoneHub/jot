@@ -10,6 +10,9 @@ packages:
   FluidAudio:
     url: https://github.com/FluidInference/FluidAudio.git
     revision: 5c19d5e12320e22bbfb7a1877b089d2665a69add
+  SQLCipher:
+    url: https://github.com/skiptools/swift-sqlcipher.git
+    revision: cf5c89ad63146db3a4258a1e26da4d2b3fa4a087
 settings:
   base:
     SWIFT_VERSION: '6.0'
@@ -35,7 +38,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: space.jot.core
     dependencies:
       - package: AppleFM
-      - sdk: libsqlite3.tbd
+      - package: SQLCipher
   JotEngine:
     type: framework
     platform: macOS

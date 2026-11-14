@@ -9,7 +9,7 @@ extension RecoveryFlowChecks {
     @MainActor static func checkFailedFinalKeepsCleanup(directory: URL) async throws {
         enum SyntheticFailure: Error { case recognition }
         let probe = Probe()
-        let store = try TranscriptStore(directory: directory.appendingPathComponent("failed-final"))
+        let store = try TranscriptStore(directory: directory.appendingPathComponent("failed-final"), key: .scratch)
         let blocks: [[(word: String, start: Double, end: Double)]] = [
             [("so", 0, 0.4), ("we", 0.5, 0.9), ("should", 1.0, 1.4), ("ship", 2.0, 2.4), ("it", 2.5, 2.9)],
             [("on", 0.1, 0.4), ("friday", 0.5, 1.0), ("then", 1.1, 1.4), ("ok", 1.6, 2.0)]]

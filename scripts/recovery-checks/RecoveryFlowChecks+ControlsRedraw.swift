@@ -28,7 +28,7 @@ extension RecoveryFlowChecks {
         let probe = Probe()
         probe.deliveryFails = false
         let cleanupGate = CleanupGate(), deliveryGate = CleanupGate()
-        let store = try TranscriptStore(directory: directory.appendingPathComponent("controls"))
+        let store = try TranscriptStore(directory: directory.appendingPathComponent("controls"), key: .scratch)
         let service = SpeechService(dependencies: .init(
             infer: { _, job, _ in probe.infer(job) },
             deliver: { _, text in

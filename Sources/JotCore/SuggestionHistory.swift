@@ -1,5 +1,5 @@
 import Foundation
-import SQLite3
+import SQLCipher
 
 /// Owns one small table in the existing transcript database. Actor isolation keeps writes off the UI actor.
 public actor SuggestionHistory {
@@ -9,7 +9,7 @@ public actor SuggestionHistory {
     private let db: SQLiteConnection
 
     public init(sharing store: TranscriptStore) throws {
-        db = try SQLiteConnection(url: store.databaseURL)
+        db = try SQLiteConnection(url: store.databaseURL, key: store.key)
         try db.locked {
             try db.execute("""
                 CREATE TABLE IF NOT EXISTS suggestion_interactions (

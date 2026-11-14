@@ -13,7 +13,7 @@ extension RecoveryFlowChecks {
         let gate = StallGate()
         let probe = Probe()
         probe.deliveryFails = false
-        let store = try TranscriptStore(directory: directory.appendingPathComponent("stalled"))
+        let store = try TranscriptStore(directory: directory.appendingPathComponent("stalled"), key: .scratch)
         let service = SpeechService(dependencies: .init(
             infer: { _, job, _ in
                 while gate.held { try await Task.sleep(for: .milliseconds(5)) }

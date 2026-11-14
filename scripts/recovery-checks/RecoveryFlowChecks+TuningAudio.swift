@@ -18,7 +18,7 @@ extension RecoveryFlowChecks {
     @MainActor static func checkTuningAudio(directory: URL) async throws {
         let folder = directory.appendingPathComponent("tuning-audio-check")
         let audio = folder.appendingPathComponent("audio"), kept = folder.appendingPathComponent("tuning-audio")
-        let store = try TranscriptStore(directory: folder)
+        let store = try TranscriptStore(directory: folder, key: .scratch)
         let service = SpeechService(dependencies: .init(
             infer: { _, _, _ in SpeechOutput(transcripts: [], text: "", processingSeconds: 0) },
             deliver: { _, _ in throw DictationInput.InputError.targetChanged },

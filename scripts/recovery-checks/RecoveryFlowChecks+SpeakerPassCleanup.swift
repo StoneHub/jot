@@ -22,7 +22,7 @@ extension RecoveryFlowChecks {
     /// A finished session keeps its cleaned text through the speaker pass and takes the pass's speakers; Regroup from the stored pass then changes nothing. Regroup pressed while a session's last phrase is still being cleaned keeps the cleaned text too. Regroup pressed before the pass has stored its segments ends with the pass's speakers and names, even when Regroup writes after the pass.
     @MainActor static func checkSpeakerPassKeepsCleanup(directory: URL) async throws {
         let folder = directory.appendingPathComponent("speaker-pass")
-        let store = try TranscriptStore(directory: folder)
+        let store = try TranscriptStore(directory: folder, key: .scratch)
         let probe = Probe()
         let gate = CleanupGate()
         // One row per three-second block, with word times relative to the block as the recognizer reports them.

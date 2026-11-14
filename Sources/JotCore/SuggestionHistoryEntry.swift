@@ -1,5 +1,5 @@
 import Foundation
-import SQLite3
+import SQLCipher
 
 /// One request's operational facts. There is deliberately no field, source, prompt or output text here.
 public struct SuggestionHistoryEntry: Codable, Sendable, Equatable {

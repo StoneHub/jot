@@ -60,7 +60,7 @@ final class StoreExecutorTests: XCTestCase {
     func testReadSeesWriteWhoseCallerWasCancelled() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         let executor = StoreExecutor(label: "Jot.test.store.order")
         let started = expectation(description: "write submitted")
         let release = DispatchSemaphore(value: 0)
