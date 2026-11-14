@@ -344,7 +344,9 @@ final class SpeechService: ObservableObject {
         do {
             // The lock comes before the store: only one Jot may open writable history and own capture.
             directoryLock = try DirectoryLock(directory: JotPaths.directory)
-            let opened = try await storeExecutor.perform { try TranscriptStore() }
+            // The key comes from the login keychain; an encrypted history without one stops here with its own notice.
+            let key = try StoreKeyStore.keyForOpening(directory: JotPaths.directory)
+            let opened = try await storeExecutor.perform { try TranscriptStore(directory: JotPaths.directory, key: key) }
             library.store = opened
             // Diagnostics are best effort; a telemetry schema failure must not stop capture or history access.
             suggestionHistory = try? await storeExecutor.perform { try SuggestionHistory(sharing: opened) }
@@ -355,7 +357,9 @@ final class SpeechService: ObservableObject {
             speakers.peopleStore = try await storeExecutor.perform { try PeopleStore(sharing: opened) }; speakers.refreshPeople()
             // The user's voice is kept independently from transcript schema changes.
             speakers.userVoiceStore = UserVoiceStore(directory: JotPaths.directory); speakers.loadUserVoice()
-            let service = LocalServiceServer { [weak self] data in
+            let service = LocalServiceServer(observer: { [weak self] call in
+                Task { @MainActor in self?.library.recordClientCall(call) }
+            }) { [weak self] data in
                 guard let self else { return Data("{\"ok\":false,\"error\":\"Service unavailable\"}".utf8) }
                 return await self.handle(data)
             }

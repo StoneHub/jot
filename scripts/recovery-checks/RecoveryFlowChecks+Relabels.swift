@@ -14,7 +14,7 @@ extension RecoveryFlowChecks {
     /// Relabels of one session take turns and hold off Install Update. A Regroup whose session is deleted while it waits returns quietly, a pass whose session is deleted while it waits leaves nothing behind, a pass whose relabel fails partway and a Regroup both reload Live, Regroup of a session without words says so, the name sheet offers a pass voice only once the pass has relabeled the rows, and names typed before the pass follow their voices and are remembered.
     @MainActor static func checkRelabelsTakeTurns(directory: URL) async throws {
         let folder = directory.appendingPathComponent("relabel-turns")
-        let store = try TranscriptStore(directory: folder)
+        let store = try TranscriptStore(directory: folder, key: .scratch)
         let service = SpeechService(dependencies: .init(
             infer: { _, _, _ in SpeechOutput(transcripts: [], text: "", processingSeconds: 0) },
             deliver: { _, _ in throw DictationInput.InputError.targetChanged },

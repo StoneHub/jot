@@ -1,5 +1,5 @@
 import XCTest
-import SQLite3
+import SQLCipher
 @testable import JotCore
 
 /// Recent rows and Sessions fold in each recognition block's saved rows instead of reading the store again. Every fold must leave what a full read would return.
@@ -30,7 +30,7 @@ final class LibraryRowsTests: XCTestCase {
     }
 
     func testDelayedCommittedBlockUsesCurrentTextAndCountsEachIDOnce() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         let saved = [row("first", session: "session", at: 1), row("deleted", session: "session", at: 3)]
         for item in saved { try store.append(item) }
         var rows = LibraryRows()
@@ -47,7 +47,7 @@ final class LibraryRowsTests: XCTestCase {
     }
 
     func testFoldedBlocksMatchAFullReadThroughCleanupAndEdits() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         for index in 0..<30 { try store.append(row("old-\(index)", session: "old-\(index % 3)", at: Double(index))) }
         try store.label(sessionID: "live", speakerID: "S2", name: "Ada")
         var rows = LibraryRows()
@@ -101,7 +101,7 @@ final class LibraryRowsTests: XCTestCase {
     }
 
     func testAFullSessionListTakesANewSessionAndOneBeyondIt() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         for index in 0..<(LibraryRows.sessionLimit + 5) {
             try store.append(row("r\(index)", session: String(format: "s%03d", index), at: Double(index) * 10))
         }
@@ -119,7 +119,7 @@ final class LibraryRowsTests: XCTestCase {
     }
 
     func testAFailedFoldReadsInFullOnTheNextBlock() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         var rows = LibraryRows()
         try block([row("a", session: "live", at: 1)], into: &rows, store)
         try assertMatchesFullRead(rows, store, "a fold before any read")
@@ -131,7 +131,7 @@ final class LibraryRowsTests: XCTestCase {
     }
 
     func testDictationRowsFoldIntoTheDictationsPage() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         for index in 0..<60 {
             try store.append(row("d\(index)", session: "dictation-\(index)", at: Double(index) * 3, mode: "dictation"))
             try store.append(row("a\(index)", session: "live", at: Double(index) * 3 + 1))
@@ -154,7 +154,7 @@ final class LibraryRowsTests: XCTestCase {
         var medians: [Int: Double] = [:]
         for size in [7_000, 14_000] {
             let folder = directory.appendingPathComponent("\(size)")
-            let store = try TranscriptStore(directory: folder)
+            let store = try TranscriptStore(directory: folder, key: .scratch)
             seed(size, into: folder)
             try store.label(sessionID: "live", speakerID: "S1", name: "Ada")
             var rows = LibraryRows()
@@ -189,7 +189,7 @@ final class LibraryRowsTests: XCTestCase {
     /// Writes `count` rows straight into the store's file in one transaction: ambient rows across 150 sessions with a dictation every tenth row.
     private func seed(_ count: Int, into folder: URL) {
         var db: OpaquePointer?
-        XCTAssertEqual(sqlite3_open(folder.appendingPathComponent("transcripts.sqlite3").path, &db), SQLITE_OK)
+        XCTAssertEqual(sqlite3_open_scratch(folder.appendingPathComponent("transcripts.sqlite3").path, &db), SQLITE_OK)
         defer { sqlite3_close(db) }
         XCTAssertEqual(sqlite3_exec(db, "BEGIN", nil, nil, nil), SQLITE_OK)
         var stmt: OpaquePointer?
@@ -216,7 +216,7 @@ final class LibraryRowsTests: XCTestCase {
     /// Renames a table over a second connection, so the store's next query of it fails, or works again.
     private func rename(_ name: String, to newName: String) {
         var db: OpaquePointer?
-        XCTAssertEqual(sqlite3_open(directory.appendingPathComponent("transcripts.sqlite3").path, &db), SQLITE_OK)
+        XCTAssertEqual(sqlite3_open_scratch(directory.appendingPathComponent("transcripts.sqlite3").path, &db), SQLITE_OK)
         defer { sqlite3_close(db) }
         sqlite3_busy_timeout(db, 5_000)
         XCTAssertEqual(sqlite3_exec(db, "ALTER TABLE \(name) RENAME TO \(newName)", nil, nil, nil), SQLITE_OK)

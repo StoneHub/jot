@@ -1,18 +1,36 @@
 import Foundation
-import SQLite3
+import SQLCipher
 
 /// All database access is serialized by the connection's lock. No raw audio is stored.
+/// The file is encrypted with SQLCipher under `key`; a plaintext file from an earlier build is encrypted in place, once, before it is read.
 public final class TranscriptStore: @unchecked Sendable {
-    /// The format this build reads and writes, kept in the file's `PRAGMA user_version`.
-    static let format: Int64 = 8
+    /// The format this build reads and writes, kept in the file's `PRAGMA user_version`: format 8's schema in an encrypted file.
+    static let format: Int64 = 9
+    /// The plaintext formats earlier builds wrote, which the one-time encryption accepts.
+    static let plaintextFormats: Set<Int64> = [7, 8]
     private let db: SQLiteConnection
     let databaseURL: URL
+    let key: StoreKey
     public let generation: String
 
-    public init(directory: URL = JotPaths.directory) throws {
+    static func unsupported(_ version: Int64) -> StoreError {
+        .invalid("Saved history is in unsupported format \(version). This version of Jot reads formats 7 through \(Self.format). Your history has been preserved; open it with a compatible version of Jot.")
+    }
+
+    /// True when `directory` holds a database this build cannot read without its key: not a plaintext file of an earlier build and not empty.
+    public static func hasEncryptedDatabase(in directory: URL) throws -> Bool {
+        let url = directory.appendingPathComponent("transcripts.sqlite3")
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path), ((attributes[.size] as? NSNumber)?.int64Value ?? 0) > 0 else { return false }
+        return try !StoreEncryption.isPlaintext(url)
+    }
+
+    /// `key` unlocks the file; the app passes the keychain's (`StoreKeyStore`), disposable stores pass `.scratch`.
+    public init(directory: URL, key: StoreKey) throws {
         try preparePrivateDirectory(directory)
         databaseURL = directory.appendingPathComponent("transcripts.sqlite3")
-        if FileManager.default.fileExists(atPath: databaseURL.path) {
+        self.key = key
+        let exists = FileManager.default.fileExists(atPath: databaseURL.path)
+        if exists {
             let attributes = try FileManager.default.attributesOfItem(atPath: databaseURL.path)
             guard attributes[.type] as? FileAttributeType == .typeRegular,
                   (attributes[.ownerAccountID] as? NSNumber)?.uint32Value == getuid() else {
@@ -22,17 +40,17 @@ public final class TranscriptStore: @unchecked Sendable {
         // Inspect an existing file before chmod, WAL setup, schema writes, or a checkpoint.
         // SQLite's read-only connection includes committed WAL frames; reading just the
         // main file's header could mistake an older header for the current format.
+        // A plaintext file is encrypted first, in place, keeping its format for the steps below.
         let version: Int64
-        if FileManager.default.fileExists(atPath: databaseURL.path) {
-            let inspection = try SQLiteConnection(url: databaseURL, readOnly: true)
+        if exists {
+            if try StoreEncryption.isPlaintext(databaseURL) { try StoreEncryption.encrypt(databaseURL, key: key) }
+            let inspection = try SQLiteConnection(url: databaseURL, key: key, readOnly: true)
             defer { inspection.close() }
-            version = try inspection.integer("PRAGMA user_version")
+            version = try Self.unlocked { try inspection.integer("PRAGMA user_version") }
             let empty = try inspection.integer("SELECT COUNT(*) FROM sqlite_master") == 0
-            guard empty || version == Self.format || version == 7 else {
-                throw StoreError.invalid("Saved history is in unsupported format \(version). This version of Jot reads formats 7 and \(Self.format). Your history has been preserved; open it with a compatible version of Jot.")
-            }
+            guard empty || version == Self.format || Self.plaintextFormats.contains(version) else { throw Self.unsupported(version) }
         } else { version = 0 }
-        let connection = try SQLiteConnection(url: databaseURL)
+        let connection = try SQLiteConnection(url: databaseURL, key: key)
         db = connection
         try db.execute("PRAGMA foreign_keys=ON")
         // Schema, migration and format commit together. Run one by one, a crash after the tables but before the format left a version-0 file that every later launch refused.
@@ -51,6 +69,13 @@ public final class TranscriptStore: @unchecked Sendable {
         self.generation = generation
     }
 
+    /// The first read of an encrypted file says "file is not a database" when the key is wrong; the person needs to hear about the key, not SQLite.
+    private static func unlocked<T>(_ read: () throws -> T) throws -> T {
+        do { return try read() } catch StoreError.database(let message) where message.localizedCaseInsensitiveContains("not a database") {
+            throw StoreError.invalid("Saved history could not be unlocked with the history key in this Mac's keychain. If the history was copied from another Mac, enter that Mac's history key in Settings → Privacy, then reopen Jot. Your history has been preserved.")
+        }
+    }
+
     /// The files whose sizes contribute to local storage diagnostics.
     static func files(of databaseURL: URL) -> [String] {
         [databaseURL.path + "-wal", databaseURL.path + "-shm", databaseURL.path]
@@ -58,7 +83,7 @@ public final class TranscriptStore: @unchecked Sendable {
 
     /// Every table and index. Opening an existing database changes nothing, since each statement is IF NOT EXISTS; a table added here (such as usage_counters) needs no format change, because older builds of the same format ignore it. SpeakerPassStore and PeopleStore use their tables over connections of their own.
     /// A session speaker's embedding is 256 Float32 little-endian, the size WeSpeaker produces, and its duration is that speaker's total speech in the session. A person's embedding is the same kind of vector at unit length, and sample_count is how many were averaged into it.
-    private static let schema = """
+    static let schema = """
         CREATE TABLE IF NOT EXISTS transcripts (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, started_at REAL NOT NULL, start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, text TEXT NOT NULL, speaker_id TEXT, mode TEXT NOT NULL CHECK(mode IN ('ambient','dictation')));
         CREATE INDEX IF NOT EXISTS transcript_absolute_time ON transcripts((started_at + start_seconds) DESC, id DESC);
         CREATE INDEX IF NOT EXISTS transcript_session_time ON transcripts(session_id, (started_at + start_seconds), id);
@@ -76,7 +101,7 @@ public final class TranscriptStore: @unchecked Sendable {
         CREATE INDEX IF NOT EXISTS dictation_attempt_state_time ON dictation_attempts(state, updated_at DESC);
         CREATE TABLE IF NOT EXISTS people (id TEXT PRIMARY KEY, name TEXT NOT NULL, embedding BLOB NOT NULL, sample_count INTEGER NOT NULL CHECK(sample_count >= 1), created_at REAL NOT NULL, updated_at REAL NOT NULL);
         CREATE TABLE IF NOT EXISTS usage_counters (day TEXT NOT NULL CHECK(length(day) = 10), name TEXT NOT NULL CHECK(length(name) <= 64), count INTEGER NOT NULL CHECK(count >= 0), PRIMARY KEY(day, name));
-        """
+        """ + ClientCallRows.schema
 
     /// Omit the cursor to subscribe at the current head; explicit 0 replays retained history. Pass the returned generation alongside the numeric cursor to detect a rebuilt database even after its new head passes the old cursor. Legacy numeric cursors retain their behavior. Rows and tombstones share the page limit and sequence order; a session filter still advances over unrelated changes.
     public func changes(since cursor: Int64? = nil, generation expectedGeneration: String? = nil, sessionID: String? = nil, limit: Int = 50) throws -> TranscriptChanges {
@@ -409,6 +434,16 @@ public final class TranscriptStore: @unchecked Sendable {
     /// Starts the usage counters over. Saved history is unchanged.
     public func resetUsage() throws {
         try UsageCounterRows.reset(db)
+    }
+
+    /// Counts one socket call for the local day of `date`. Deleting history leaves the counts; rows older than 90 days go.
+    public func recordClientCall(_ call: ClientCall, at date: Date = Date(), calendar: Calendar = .current) throws {
+        try ClientCallRows.record(db, call, at: date, calendar: calendar)
+    }
+
+    /// Which programs called which methods over the last `days` local days (1 to 90), most calls first.
+    public func clientCalls(days: Int = 7, now: Date = Date(), calendar: Calendar = .current) throws -> [ClientCallSummary] {
+        try ClientCallRows.summary(db, days: days, now: now, calendar: calendar)
     }
 
     /// Usage counts by local day key and name for days from `first` through `last`, both `yyyy-MM-dd`.

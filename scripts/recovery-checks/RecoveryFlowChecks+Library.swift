@@ -1,7 +1,6 @@
 import Foundation
 import JotCore
 import JotEngine
-import SQLite3
 
 extension RecoveryFlowChecks {
     /// Live reads its session once and then only adds rows and cleaned text, so every other edit must make it read the session again: a speaker name from the sheet or the socket, a new paragraph pause, and a delete.
@@ -9,7 +8,7 @@ extension RecoveryFlowChecks {
         let probe = Probe()
         probe.deliveryFails = false
         let folder = directory.appendingPathComponent("live-edits")
-        let store = try TranscriptStore(directory: folder)
+        let store = try TranscriptStore(directory: folder, key: .scratch)
         // Rows 1 and 2 are one speaker's, rows 3 to 5 another's. Each row ends two seconds before the next starts, so the paragraph pause decides whether a speaker's rows join.
         // Block 4 also hands back a row the store refuses, after its first row is saved.
         let service = SpeechService(dependencies: .init(
@@ -135,11 +134,7 @@ extension RecoveryFlowChecks {
 
     /// Renames a table of a store's database over a second connection, so the store's next query of it fails, or works again.
     static func renameTable(_ name: String, to newName: String, in folder: URL) {
-        var db: OpaquePointer?
-        let path = folder.appendingPathComponent("transcripts.sqlite3").path
-        precondition(sqlite3_open(path, &db) == SQLITE_OK, "Could not open the store's database")
-        defer { sqlite3_close(db) }
-        sqlite3_busy_timeout(db, 5_000)
-        precondition(sqlite3_exec(db, "ALTER TABLE \(name) RENAME TO \(newName)", nil, nil, nil) == SQLITE_OK, "Could not rename \(name)")
+        do { try StoreCheckAccess.execute("ALTER TABLE \(name) RENAME TO \(newName)", in: folder, key: .scratch) }
+        catch { preconditionFailure("Could not rename \(name): \(error)") }
     }
 }

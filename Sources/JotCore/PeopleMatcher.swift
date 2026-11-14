@@ -1,5 +1,5 @@
 import Foundation
-import SQLite3
+import SQLCipher
 
 /// Finds the remembered voice nearest to a session speaker's embedding. Pure.
 public enum PeopleMatcher {
