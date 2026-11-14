@@ -36,7 +36,7 @@ extension RecoveryFlowChecks {
     @MainActor static func listen(_ service: SpeechService, tally: JobTally, to samples: [Float]) async throws -> ListeningRun {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("jot-quiet-cpu-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         tally.jobs = 0; tally.noSpeech = 0; tally.speechSeconds = []
         service.beginRecoveryVerification(store: store, startedAt: Date(timeIntervalSince1970: 1_800_000_000))
         let session = service.timeline.activeSessionID!
