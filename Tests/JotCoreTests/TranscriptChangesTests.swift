@@ -161,7 +161,7 @@ final class TranscriptChangesTests: XCTestCase {
             XCTAssertEqual(page.rows.map(\.transcript.text), ["First.", "second"])
             XCTAssertEqual(page.cursor, 2)
         }
-        XCTAssertEqual(try count("PRAGMA user_version"), 8)
+        XCTAssertEqual(try count("PRAGMA user_version"), Int(TranscriptStore.format))
         let reopened = try TranscriptStore(directory: directory, key: .scratch)
         XCTAssertEqual(try reopened.changes(since: 0).rows.map(\.sequence), [1, 2], "Reopening does not enqueue rows again")
     }

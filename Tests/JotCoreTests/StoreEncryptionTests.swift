@@ -62,7 +62,9 @@ final class StoreEncryptionTests: XCTestCase {
         XCTAssertEqual(try PeopleStore(sharing: store).list().map(\.name), ["Ada"])
         XCTAssertEqual(try store.usageCounts(from: "2026-01-01", through: "2026-01-01"), ["2026-01-01": ["dictation.finished": 4]])
         let feed = try store.changes(since: 0)
-        XCTAssertEqual(feed.rows.map(\.transcript.id), ["a1", "a2"])
+        // Labelling speaker-1 re-enqueued a1 after a2, so the feed shows a2 first; the migration keeps that order.
+        XCTAssertEqual(feed.rows.map(\.transcript.id), ["a2", "a1"])
+        XCTAssertEqual(feed.rows.map(\.sequence), [2, 5])
         XCTAssertEqual(feed.deleted.map(\.id), ["gone"], "Tombstones survive")
         // The AUTOINCREMENT counter came along, so a cursor an agent held before the launch still points past every old sequence.
         try store.append(transcript("a3", "third words"))
@@ -94,7 +96,7 @@ final class StoreEncryptionTests: XCTestCase {
         XCTAssertThrowsError(try StoreKey(hex: key.hex.replacingOccurrences(of: "a", with: "g")))
         XCTAssertThrowsError(try StoreKey(bytes: Data(count: 31)))
         XCTAssertNotEqual(StoreKey.random(), StoreKey.random())
-        XCTAssertFalse(key.keyStatement.contains(" "), "A pragma value is one token")
+        XCTAssertFalse(key.rawLiteral.contains(" "), "A pragma value is one token")
         XCTAssertEqual(key.keyStatement, "PRAGMA key = \"x'\(key.rawHex)'\"")
     }
 
