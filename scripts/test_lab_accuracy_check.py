@@ -44,6 +44,7 @@ class GateTests(unittest.TestCase):
         (self.set / 'set.json').write_text(json.dumps(dict(name='synthetic', items=[dict(name='clean', audio='a.wav', captions='a.vtt')])))
         self.baseline_deletions = 5
         self.candidate_deletions = 5
+        self.baseline_scores_sets = True
         self.builds = []
         self.runs = []
 
@@ -63,6 +64,11 @@ class GateTests(unittest.TestCase):
             return ''
         if command[:2] == ['git', 'checkout']:
             return ''
+        if command[:3] == ['git', 'cat-file', '-e']:
+            self.assertEqual(command[3], f'{BASE}:{gate.SET_SUPPORT}')
+            if self.baseline_scores_sets:
+                return ''
+            raise subprocess.CalledProcessError(1, command)
         raise AssertionError(command)
 
     def fake_run(self, command, **kwargs):
@@ -119,6 +125,17 @@ class GateTests(unittest.TestCase):
         code, _ = self.run_gate('--candidate-binary', str(self.root / 'prebuilt/jot-lab'))
         self.assertEqual(code, 0)
         self.assertEqual(self.builds, [self.root / 'work/lab-baseline'])
+
+    def test_a_baseline_from_before_sets_scores_the_head_alone_and_exits_3(self):
+        self.baseline_scores_sets = False
+        code, output = self.run_gate()
+        self.assertEqual(code, 3)
+        self.assertEqual(self.builds, [self.root], 'no baseline worktree is built')
+        self.assertEqual(len(self.runs), 1)
+        self.assertEqual(list((self.root / 'work/lab-baselines').glob('*.json')), [], 'nothing is cached as a baseline')
+        self.assertIn('## Lab accuracy: NO BASELINE', output)
+        self.assertIn('8.0% (new)', output)
+        self.assertTrue((self.root / 'work/lab-accuracy' / HEAD[:7] / 'candidate-scores.json').is_file())
 
     def test_needs_a_set_and_a_mac(self):
         with patch('platform.system', return_value='Linux'), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):

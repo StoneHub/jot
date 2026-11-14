@@ -359,6 +359,8 @@ class WorktreeTests(unittest.TestCase):
         try:
             os.chdir(self.clone)
             with ExitStack() as stack:
+                stack.enter_context(patch.dict(os.environ))
+                os.environ.pop('JOT_LAB_SET', None)      # the machine's lab set must not change what a simulated run plans
                 stack.enter_context(patch.object(check, 'gh_pr', return_value=info))
                 stack.enter_context(patch.object(check, 'machine', return_value='Simulated test environment'))
                 stack.enter_context(patch.object(check.platform, 'system', return_value=system))
@@ -443,6 +445,18 @@ class WorktreeTests(unittest.TestCase):
             check.run_gate(gate, self.clone, logs, expected_head=head)
         self.assertEqual((self.clone / 'README.md').read_text(), 'changed\n')
         self.assertNotIn('$ git restore .', (logs / 'portable.log').read_text())
+
+    def test_run_gate_marks_the_accuracy_gate_unavailable_when_there_is_no_baseline_yet(self):
+        logs = self.clone / 'work/step-logs'
+        logs.mkdir(parents=True)
+        no_baseline = [sys.executable, '-c', 'raise SystemExit(3)']
+        gate = check.Gate(check.ACCURACY_GATE, 'Lab accuracy', [no_baseline])
+        check.run_gate(gate, self.clone, logs)
+        self.assertEqual(gate.status, 'unavailable')
+        self.assertIn('no baseline yet', gate.note)
+        other = check.Gate('portable', 'Portable', [no_baseline])
+        check.run_gate(other, self.clone, logs)
+        self.assertEqual(other.status, 'failed', 'only the accuracy gate has a no-baseline exit code')
 
     def test_simulated_head_base_and_worktree_races_never_publish_success(self):
         self.open_pull_request(25, 'base\nchange\n')

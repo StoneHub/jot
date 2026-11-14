@@ -4,6 +4,8 @@
     python3 scripts/lab-accuracy-check.py --set ~/Documents/jot-lab/sets/synthetic --baseline-ref origin/main
 
 The baseline's scores are cached per commit and set in `work/lab-baselines/`, so a baseline is built and run once.
+A baseline from before `jot lab --set` existed cannot score a set: the head is then scored on its own, the report says
+NO BASELINE and the exit code is 3, which `local-pr-check` shows as the gate being unavailable rather than failed.
 Lab output folders go to the temporary directory (the lab refuses to write inside a git checkout) and only
 `set-scores.json`, numbers, is kept. `local-pr-check` runs this for recognition, speaker and cleanup changes when
 `JOT_LAB_SET` or `--lab-set` names a set.
@@ -22,6 +24,8 @@ import tempfile
 
 HERE = Path(__file__).resolve().parent
 DERIVED = 'build/DerivedData.noindex'
+SET_SUPPORT = 'Sources/JotCore/LabSet.swift'       # present in every commit whose jot-lab accepts --set
+NO_BASELINE = 3
 
 
 def load_compare():
@@ -39,6 +43,15 @@ def main_root(cwd):
     """The main checkout, also from inside one of its worktrees, so baselines and caches are shared."""
     common = Path(git('rev-parse', '--path-format=absolute', '--git-common-dir', cwd=cwd))
     return common.parent if common.name == '.git' else Path(git('rev-parse', '--show-toplevel', cwd=cwd))
+
+
+def can_score_sets(sha, cwd):
+    """Whether `jot-lab` at `sha` accepts `--set`; before that the baseline cannot be scored."""
+    try:
+        git('cat-file', '-e', f'{sha}:{SET_SUPPORT}', cwd=cwd)
+    except subprocess.CalledProcessError:
+        return False
+    return True
 
 
 def set_fingerprint(folder):
@@ -136,20 +149,30 @@ def main(argv=None):
     out = args.out or root / 'work' / 'lab-accuracy' / head[:7]
     out.mkdir(parents=True, exist_ok=True)
     variants = args.variants.resolve() if args.variants else None
-    before = baseline_scores(root, baseline, set_folder, fingerprint, variants, args.refresh_baseline)
+    comparable = can_score_sets(baseline, tree)
+    if comparable:
+        before = baseline_scores(root, baseline, set_folder, fingerprint, variants, args.refresh_baseline)
+    else:
+        print(f'Baseline {baseline[:7]} predates `jot lab --set`; scoring this checkout on its own, nothing to compare.', flush=True)
     binary = args.candidate_binary or build_lab(tree, out / 'build.log')
     print(f'Candidate {head[:7]}: scoring the set…', flush=True)
     after = run_set(binary, set_folder, variants)
     (out / 'candidate-scores.json').write_text(json.dumps(after, indent=2, sort_keys=True) + '\n')
     tolerances = dict(wer_rise=args.max_wer_rise, speaker_drop=args.max_speaker_drop, cpu_rise=args.max_cpu_rise)
-    text, failures = compare.report(before, after, tolerances)
-    verdict = 'FAIL' if failures else 'PASS'
+    if comparable:
+        text, failures = compare.report(before, after, tolerances)
+        verdict, code = ('FAIL', 1) if failures else ('PASS', 0)
+    else:
+        rows, _ = compare.compare(dict(after, items=[]), after)
+        text = (f'Baseline `{baseline[:7]}` predates `jot lab --set`, so nothing was compared; '
+                f'the figures below are this checkout alone.\n\n' + compare.table(rows))
+        failures, verdict, code = [], 'NO BASELINE', NO_BASELINE
     report = (f'## Lab accuracy: {verdict}\n\nSet `{set_folder.name}` ({fingerprint}); baseline `{baseline[:7]}` → candidate `{head[:7]}`; '
               f'tolerances: WER +{tolerances["wer_rise"]:.1f} points, speakers −{tolerances["speaker_drop"]:.1f} points, CPU +{tolerances["cpu_rise"]:.0f}%.\n\n'
               + text + '\n')
     (out / 'accuracy-report.md').write_text(report)
     print(report)
-    return 1 if failures else 0
+    return code
 
 
 if __name__ == '__main__':

@@ -71,6 +71,7 @@ NOT_COVERED = ('interactive UI, Accessibility and physical Fn behavior',
 GATES = ('portable', 'swift-test', 'app-build', 'recovery-checks')
 # Added when the diff touches recognition and a lab set is named; `--all` adds it only when a set is named.
 ACCURACY_GATE = 'accuracy'
+NO_BASELINE = 3     # lab-accuracy-check's exit code when the base commit cannot score a set
 EXIT_CODES = {'PASS': 0, 'FAIL': 1, 'INCOMPLETE': 3}
 SHA = re.compile(r'^[0-9a-f]{40}$')
 
@@ -191,6 +192,9 @@ def run_gate(gate, tree, logs, expected_head=None):
             log.flush()
             if expected_head:
                 verify_tree(tree, expected_head)
+            if code == NO_BASELINE and gate.name == ACCURACY_GATE:
+                gate.status, gate.note = 'unavailable', 'no baseline yet: the base commit predates `jot lab --set`, so this head was scored on its own'
+                break
             if code != 0:
                 gate.status, gate.note = 'failed', f'`{" ".join(step[:4])}` exited {code}'
                 break
