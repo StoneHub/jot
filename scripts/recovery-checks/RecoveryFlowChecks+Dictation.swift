@@ -5,7 +5,7 @@ import JotEngine
 extension RecoveryFlowChecks {
     /// A one-word hold bypasses prose generation even when cleanup is enabled. Recognition stays saved as heard.
     @MainActor static func checkSingleWordDictation(directory: URL) async throws {
-        let store = try TranscriptStore(directory: directory.appendingPathComponent("single-word"))
+        let store = try TranscriptStore(directory: directory.appendingPathComponent("single-word"), key: .scratch)
         let probe = Probe()
         probe.deliveryFails = false
         let service = SpeechService(dependencies: .init(
@@ -39,7 +39,7 @@ extension RecoveryFlowChecks {
     @MainActor static func checkFillerOnlyBlocksAreNotSaved(directory: URL) async throws {
         let probe = Probe()
         probe.deliveryFails = false
-        let store = try TranscriptStore(directory: directory.appendingPathComponent("filler-only"))
+        let store = try TranscriptStore(directory: directory.appendingPathComponent("filler-only"), key: .scratch)
         let service = SpeechService(dependencies: .init(
             infer: { _, job, _ in
                 // 7 is a chair scrape, 8 a clearly spoken "Mm-hmm", 9 a cold microphone's first moments heard as "Yeah".
@@ -113,7 +113,7 @@ extension RecoveryFlowChecks {
         let probe = Probe()
         probe.deliveryFails = false
         let cleanupDelay = 0.3, deliveryDelay = 0.05
-        let store = try TranscriptStore(directory: directory.appendingPathComponent("dictation-timings"))
+        let store = try TranscriptStore(directory: directory.appendingPathComponent("dictation-timings"), key: .scratch)
         let service = SpeechService(dependencies: .init(
             infer: { _, job, _ in probe.infer(job) },
             deliver: { _, text in
@@ -197,7 +197,7 @@ extension RecoveryFlowChecks {
             return SpeechOutput(transcripts: [row], text: text, processingSeconds: 0)
         }, deliver: { _, text in try probe.deliver(text) }, now: { probe.now })
         let storeDirectory = directory.appendingPathComponent("interrupted")
-        let store = try TranscriptStore(directory: storeDirectory)
+        let store = try TranscriptStore(directory: storeDirectory, key: .scratch)
         let first = SpeechService(dependencies: dependencies)
         first.highlightTargetField = false
         first.muteSpeakersDuringDictation = false
@@ -225,7 +225,7 @@ extension RecoveryFlowChecks {
         precondition(saved?.text == "open parenthesis dott close parenthesis", "A recognized block converted the held text before the hold ended")
         first.shutdown()
 
-        let reopened = try TranscriptStore(directory: storeDirectory)
+        let reopened = try TranscriptStore(directory: storeDirectory, key: .scratch)
         let second = SpeechService(dependencies: dependencies)
         second.highlightTargetField = false
         second.muteSpeakersDuringDictation = false

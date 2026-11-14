@@ -1,5 +1,5 @@
 import Foundation
-import SQLite3
+import SQLCipher
 
 /// The transcript change feed: its tables and triggers, and the paged read behind `TranscriptStore.changes`.
 /// The store passes its connection after checking the arguments and clamping the limit.

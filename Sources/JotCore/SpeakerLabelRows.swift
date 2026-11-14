@@ -1,5 +1,5 @@
 import Foundation
-import SQLite3
+import SQLCipher
 
 /// Per-session speaker names and the speaker each row was given.
 /// `TranscriptStore` calls these with its connection; each takes the lock itself.

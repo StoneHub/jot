@@ -18,7 +18,7 @@ final class UsageCounterTests: XCTestCase {
     }
 
     func testCountsLandOnTheirLocalDayAndSumOverTheWindow() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.countUsage([.dictation(.completed), .insertion(.accessibility)], at: date(8, hour: 23), calendar: calendar)
         try store.countUsage([.dictation(.completed), .dictation(.completed)], at: date(9, hour: 0), calendar: calendar)
         try store.countUsage([.dictation(.failed)], at: date(1), calendar: calendar)
@@ -30,7 +30,7 @@ final class UsageCounterTests: XCTestCase {
     }
 
     func testDeletingHistoryLeavesCounters() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         let row = Transcript(id: "d1", sessionID: "s1", startedAt: try date(9, hour: 9), startSeconds: 0, endSeconds: 2, text: "hello there", mode: "dictation")
         try store.append(row)
         try store.countUsage([.dictation(.completed)], at: date(9, hour: 9), calendar: calendar)
@@ -43,7 +43,7 @@ final class UsageCounterTests: XCTestCase {
     }
 
     func testResetClearsCountersAndKeepsHistory() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(Transcript(id: "d1", sessionID: "s1", startedAt: try date(9, hour: 9), startSeconds: 0, endSeconds: 2, text: "hello there", mode: "dictation"))
         try store.countUsage([.dictation(.completed)], at: date(9, hour: 9), calendar: calendar)
         try store.resetUsage()
@@ -53,11 +53,11 @@ final class UsageCounterTests: XCTestCase {
     }
 
     func testOldDaysArePrunedOnWrite() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.countUsage([.suggestionRequested], at: date(1, month: 1), calendar: calendar)
         let later = try XCTUnwrap(calendar.date(byAdding: .day, value: UsageCounterRows.retainedDays + 1, to: date(1, month: 1)))
         try store.countUsage([.suggestionRequested], at: later, calendar: calendar)
-        let counts = try SQLiteConnection(url: directory.appendingPathComponent("transcripts.sqlite3"))
+        let counts = try SQLiteConnection(url: directory.appendingPathComponent("transcripts.sqlite3"), key: .scratch)
         defer { counts.close() }
         XCTAssertEqual(try counts.integer("SELECT COUNT(*) FROM usage_counters"), 1)
         XCTAssertEqual(try counts.integer("SELECT SUM(count) FROM usage_counters"), 1)
@@ -114,7 +114,7 @@ final class UsageCounterTests: XCTestCase {
     }
 
     func testReportJSONCarriesCountersAndRoundTrips() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.countUsage([.savedDictationReviewed], at: date(9), calendar: calendar)
         let report = try store.activity(now: date(9), calendar: calendar)
         let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601

@@ -1,5 +1,5 @@
 import Foundation
-import SQLite3
+import SQLCipher
 
 /// The Activity page's read: word counts, speech time, sessions, verified deliveries and usage counters per day, for 7 or 30 days.
 /// `TranscriptStore.activity` calls it with the store's connection; it reads and changes nothing else.

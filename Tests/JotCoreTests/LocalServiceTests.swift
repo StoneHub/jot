@@ -86,6 +86,22 @@ final class LocalServiceTests: XCTestCase {
         XCTAssertTrue((preview?["error"] as? String)?.contains("helper") == true)
     }
 
+    func testObserverSeesEachCallersProcessPathAndMethod() throws {
+        let socketURL = directory.appendingPathComponent("service.sock")
+        let seen = OSAllocatedUnfairLock(initialState: [ClientCall]())
+        let server = LocalServiceServer(socketURL: socketURL, isHelper: { _ in false }, observer: { call in seen.withLock { $0.append(call) } }) { _ in Data(#"{"ok":true,"result":{}}"#.utf8) }
+        try server.start(); defer { server.stop() }
+        let client = LocalServiceClient(socketURL: socketURL)
+        _ = try client.request(method: "speech.status")
+        _ = try client.request(method: "transcripts.recent", params: ["limit": 5])
+        _ = try client.request(method: "speech.preview") // Refused for this peer, still seen.
+        let calls = seen.withLock { $0 }
+        XCTAssertEqual(calls.map(\.method), ["speech.status", "transcripts.recent", "speech.preview"])
+        XCTAssertEqual(Set(calls.map(\.pid)), [getpid()], "The caller is this test process")
+        XCTAssertEqual(Set(calls.compactMap(\.executablePath)).count, 1)
+        XCTAssertTrue(calls.allSatisfy { FileManager.default.isExecutableFile(atPath: $0.executablePath ?? "") })
+    }
+
     func testBundledHelperMatchesOnlyThatAppsHelper() {
         let match = LocalServiceServer.bundledHelper(in: URL(fileURLWithPath: "/Applications/Jot.app"))
         XCTAssertTrue(match("/Applications/Jot.app/Contents/Helpers/jot-vorssaint"))

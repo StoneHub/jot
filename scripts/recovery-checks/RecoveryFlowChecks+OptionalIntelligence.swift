@@ -7,7 +7,7 @@ extension RecoveryFlowChecks {
         for availability in CleanupAvailability.allCases {
             let probe = Probe()
             probe.deliveryFails = false
-            let store = try TranscriptStore(directory: directory.appendingPathComponent("optional-\(availability.rawValue)"))
+            let store = try TranscriptStore(directory: directory.appendingPathComponent("optional-\(availability.rawValue)"), key: .scratch)
             let service = SpeechService(dependencies: .init(
                 infer: { _, job, _ in probe.infer(job) },
                 deliver: { _, text in try probe.deliver(text) }, now: { probe.now },
