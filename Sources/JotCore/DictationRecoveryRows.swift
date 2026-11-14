@@ -1,5 +1,5 @@
 import Foundation
-import SQLite3
+import SQLCipher
 
 /// Dictation attempts saved for force-quit recovery, and the recognized speech recovery offers in their place.
 /// `TranscriptStore` calls these with its connection; no raw audio is read or written.

@@ -46,6 +46,8 @@ public enum LocalMethod: String, CaseIterable, Sendable {
     case vocabularyList = "vocabulary.list"
     case vocabularySave = "vocabulary.save"
     case vocabularyRemove = "vocabulary.remove"
+    /// Which programs called the socket, by method and day. Paths and counts only.
+    case clientsList = "clients.list"
 
     /// Methods that can wait on a model download or load, a file's recognition, a meeting's last speech, new transcript changes or session notes, so clients allow them longer.
     public var isLongRunning: Bool { [.modelsPrepare, .speechTranscribeFile, .speechStart, .speechMeetingStart, .speechMeetingEnd, .transcriptsWait, .sessionsNotes].contains(self) }

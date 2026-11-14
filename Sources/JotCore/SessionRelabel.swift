@@ -1,5 +1,5 @@
 import Foundation
-import SQLite3
+import SQLCipher
 
 /// Writes a relabel plan for one finished session: kept rows take their new speaker, split rows are replaced by one row per speaker.
 /// `TranscriptStore.relabelSession` calls `run` with its connection, without holding the lock; each batch takes it.

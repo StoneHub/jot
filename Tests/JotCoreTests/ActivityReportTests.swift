@@ -27,7 +27,7 @@ final class ActivityReportTests: XCTestCase {
     }
 
     func testEmptyZeroFilledLocalDaysSurviveDSTAndJSONHasExplicitNullRate() throws {
-        let store = try TranscriptStore(directory: directory), now = try date(9, hour: 12)
+        let store = try TranscriptStore(directory: directory, key: .scratch), now = try date(9, hour: 12)
         let report = try store.activity(now: now, calendar: calendar)
         XCTAssertEqual(report.windowStart, try date(3))
         XCTAssertEqual(report.windowEnd, now)
@@ -47,7 +47,7 @@ final class ActivityReportTests: XCTestCase {
     }
 
     func testCleanedWordsModeSeparationDistinctSessionsAndZeroDurationRate() throws {
-        let store = try TranscriptStore(directory: directory), now = try date(9, hour: 12)
+        let store = try TranscriptStore(directory: directory, key: .scratch), now = try date(9, hour: 12)
         let first = try append(store, "first", at: date(8, hour: 9), text: "raw text was longer here")
         XCTAssertTrue(try store.setReadablePhrase(["Cleaned words."], for: [first]))
         try append(store, "second", at: date(9, hour: 9), text: "don't re-enter 42 … 😀", session: "same-session")
@@ -75,7 +75,7 @@ final class ActivityReportTests: XCTestCase {
     }
 
     func testAbsoluteStartBoundsMidnightAttributionAndFutureDurationSuppressesRate() throws {
-        let store = try TranscriptStore(directory: directory), now = try date(9, hour: 12), start = try date(3)
+        let store = try TranscriptStore(directory: directory, key: .scratch), now = try date(9, hour: 12), start = try date(3)
         try append(store, "too-old", at: start.addingTimeInterval(-1), seconds: 120)
         try append(store, "first-in-window", at: start)
         try append(store, "cross-midnight", at: date(8, hour: 23, minute: 59), seconds: 120)
@@ -97,7 +97,7 @@ final class ActivityReportTests: XCTestCase {
     }
 
     func testVerifiedInsertionsCountLatestRetainedDeliveryStateRatherThanRowsOrHolds() throws {
-        let store = try TranscriptStore(directory: directory), now = try date(9, hour: 12)
+        let store = try TranscriptStore(directory: directory, key: .scratch), now = try date(9, hour: 12)
         let began = try date(2), updated = try date(8, hour: 10)
         for state in [DictationAttempt.State.delivered, .deliveryUnverified, .deliveryFailed, .ready, .recognizing, .discarded] {
             try store.saveDictationAttempt(DictationAttempt(id: state.rawValue, sessionID: "private-session", startedAt: began,
@@ -119,7 +119,7 @@ final class ActivityReportTests: XCTestCase {
     }
 
     func testInvalidWindowsAndSocketArgumentsAreRejected() throws {
-        let store = try TranscriptStore(directory: directory), now = try date(9)
+        let store = try TranscriptStore(directory: directory, key: .scratch), now = try date(9)
         for days in [-1, 0, 1, 8, 31, Int.max] { XCTAssertThrowsError(try store.activity(days: days, now: now, calendar: calendar)) }
         XCTAssertThrowsError(try store.activity(now: Date(timeIntervalSince1970: .infinity), calendar: calendar))
         XCTAssertEqual(try ActivityRequest.days(arguments: [:]), 7)

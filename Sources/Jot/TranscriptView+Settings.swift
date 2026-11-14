@@ -103,9 +103,10 @@ private struct AppearanceSettings: View {
     private func save(_ key: String, _ value: String) { try? JotSettings.standard.set(key, value) }
 }
 
-/// The two things Jot sends over the network on its own: usage counts and the daily update check. Both save through
-/// JotSettings, so on (the default) leaves no key.
+/// The two things Jot sends over the network on its own, usage counts and the daily update check, and the key that
+/// encrypts saved history. The switches save through JotSettings, so on (the default) leaves no key.
 private struct PrivacySettings: View {
+    @ObservedObject var service: SpeechService
     @AppStorage(JotDefaultsKey.shareUsage) private var share = true
     @AppStorage(JotDefaultsKey.checkForUpdates) private var checkForUpdates = true
     var body: some View {
@@ -115,6 +116,8 @@ private struct PrivacySettings: View {
             RowDivider()
             SettingToggle(title: "Check for updates daily", info: "Once a day, Jot asks GitHub for its list of releases. When one is newer, a dot appears on Models & updates and a line in the menu bar. Nothing downloads until you press Update Jot. The request carries no ID or cookies; GitHub sees this Mac's IP address, as with any web request. Off checks only when you press Check for updates.",
                           isOn: Binding(get: { checkForUpdates }, set: { JotSettings.standard.set(JotDefaultsKey.checkForUpdates, $0) }))
+            RowDivider()
+            HistoryKeySettings(service: service)
         }
     }
 }
@@ -162,7 +165,7 @@ extension TranscriptView {
                 listeningSettings
                 speakerSettings
                 AppearanceSettings()
-                PrivacySettings()
+                PrivacySettings(service: service)
                 // These choices only matter next to Vorssaint; once one is off, they stay visible so it can be turned back on.
                 if !showMenuBarIcon || !shareTranscriptPreview || Self.vorssaintRunning {
                     SettingsGroup(title: "App", symbol: "menubar.rectangle") {

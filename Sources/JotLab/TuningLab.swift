@@ -67,7 +67,7 @@ struct TuningLab {
     private func recognize(_ samples: [Float], settings: JotSettings) async throws -> Recognized {
         let directory = scratch.appendingPathComponent("store-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         let service = SpeechService(dependencies: .init(
             infer: { pipeline, job, tuning in try await pipeline.infer(job, tuning: tuning) },
             deliver: { _, _ in .init(verified: true, path: "lab", outcome: "verified", targetApp: "jot-lab", targetPID: 0, role: "AXTextField", subrole: nil) },

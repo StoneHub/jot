@@ -49,7 +49,7 @@ extension RecoveryFlowChecks {
         for run in runs {
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent("jot-overhead-\(UUID().uuidString)")
             defer { try? FileManager.default.removeItem(at: directory) }
-            let store = try TranscriptStore(directory: directory)
+            let store = try TranscriptStore(directory: directory, key: .scratch)
             var jobs = 0, rowsSaved = 0
             var dependencies = SpeechServiceDependencies(infer: { _, job, _ in
                 jobs += 1
