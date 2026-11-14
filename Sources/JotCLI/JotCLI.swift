@@ -79,6 +79,9 @@ struct JotCLI {
     jot lab <audio> --variants <file.json> --out <dir> [--captions <file.srt|.vtt>]
                                        Run a recording through the real pipeline once per settings variant
                                        and compare them; capture keeps running, output stays outside git
+    jot lab --set <folder> --out <dir> [--variants <file.json>]
+                                       Score every recording of a set (set.json beside the audio and captions);
+                                       set-scores.json holds numbers only
     jot settings                       Every setting: value, default, whether you changed it
     jot settings set <key> <value>     Change one setting; it applies at once
     jot settings reset <key>           Back to the default, and follow it in later versions

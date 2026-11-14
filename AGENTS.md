@@ -11,7 +11,7 @@ Jot is a personal Mac app, and Monroe is its only user. Merge authorized fixes a
 - When installation or release is requested, deliver the checked Release product and verify it using [docs/RELEASING.md](docs/RELEASING.md). A release needs the [real-app insertion matrix](docs/INSERTION-MATRIX.md) to pass on that commit; it is the delivery check the synthetic gates cannot give. Batch delivery rather than rebuilding each intermediate change. The installer needs Jot paused and idle; ask only if replacing the running app would interrupt capture. Tooling/documentation changes need no app installation.
 - **Swarm:** when you lead or work the swarm queue (claiming an issue, running a tick, a hand-off), follow [docs/SWARM.md](docs/SWARM.md).
 - Fix forward. When `main` fails to build or the installed app misbehaves, fixing that comes before new work. A small revert is acceptable when the fix is not obvious.
-- For recognition, speaker or cleanup changes, choose a relevant local real-model audio comparison when model quality needs evidence; `local-pr-check`'s synthetic recovery does not prove accuracy. Keep private audio local.
+- For recognition, speaker or cleanup changes, run the lab set comparison against `main` (`local-pr-check`'s `accuracy` gate, or `scripts/lab-accuracy-check.py`; see [docs/TUNING.md](docs/TUNING.md#score-a-fixed-set)); the synthetic recovery check does not prove accuracy. Keep private audio local: a set folder and the lab's transcripts never enter the repository, only `set-scores.json`.
 - For a CPU problem, export `jot diagnostics` before relaunching Jot. Its buffer clears on quit.
 
 These gates do not relax:

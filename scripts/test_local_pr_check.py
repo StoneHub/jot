@@ -69,9 +69,20 @@ class PlanTests(unittest.TestCase):
         gates = self.plan(['Sources/JotCore/TranscriptExport.swift'])
         self.assertEqual(names(gates), ['portable', 'swift-test', 'app-build', 'recovery-checks'])
 
-    def test_engine_change_needs_every_mac_gate(self):
+    def test_engine_change_needs_every_mac_gate_and_the_accuracy_comparison(self):
         gates = self.plan(['Sources/JotEngine/SpeechPipeline.swift'])
-        self.assertEqual(names(gates), ['portable', 'swift-test', 'app-build', 'recovery-checks'])
+        self.assertEqual(names(gates), ['portable', 'swift-test', 'app-build', 'recovery-checks', 'accuracy'])
+        self.assertEqual(gates[4].status, 'unavailable', 'no lab set named')
+        self.assertIn('JOT_LAB_SET', gates[4].note)
+        gates = self.plan(['Sources/Jot/Transcriber.swift'], lab_set='/sets/synthetic')
+        accuracy = gates[-1]
+        self.assertEqual(accuracy.name, 'accuracy')
+        self.assertEqual(accuracy.steps, [[sys.executable, 'scripts/lab-accuracy-check.py', '--set', '/sets/synthetic', '--baseline-ref', 'base']])
+        self.assertEqual(self.plan(['Sources/Jot/Transcriber.swift'], lab_set='/sets/synthetic', skip={'accuracy'})[-1].status, 'skipped')
+        for path in ('docs/TUNING.md', 'Sources/JotCore/TranscriptExport.swift', 'Sources/Jot/SessionsView.swift'):
+            self.assertNotIn('accuracy', names(self.plan([path], lab_set='/sets/synthetic')), path)
+        self.assertNotIn('accuracy', names(self.plan(['README.md'], everything=True)), '--all without a set stays four gates')
+        self.assertEqual(names(self.plan(['README.md'], everything=True, lab_set='/sets/synthetic'))[-1], 'accuracy')
 
     def test_test_only_and_build_configuration_changes(self):
         self.assertEqual(names(self.plan(['Tests/JotCoreTests/TranscriptExportTests.swift'])), ['portable', 'swift-test'])
@@ -544,6 +555,9 @@ class WorktreeTests(unittest.TestCase):
         data['checks']['real-model-audio'] = {'result': 'passed', 'details': 'Ran actual model recovery check'}
         path.write_text(json.dumps(data))
         result, states = self.simulated_status_run(32, '--ui-attestation', str(path))
+        self.assertEqual(result, 3, 'a recognition change also needs the lab accuracy comparison, so a run without a set stays incomplete')
+        self.assertEqual(states, ['pending', 'error'])
+        result, states = self.simulated_status_run(32, '--ui-attestation', str(path), '--lab-set', '/sets/synthetic')
         self.assertEqual(result, 0)
         self.assertEqual(states, ['pending', 'success'])
 
