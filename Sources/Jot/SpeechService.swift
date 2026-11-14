@@ -187,6 +187,7 @@ final class SpeechService: ObservableObject {
     }
     var mode: String { listeningState.mode }
     var modelState: ListeningState.Models { listeningState.models }
+    @Published private(set) var loadedSpeechRecognitionEngine: SpeechRecognitionEngine?
     /// What Jot tells the person. Assigning it directly reads as `ControlNotice.other`; `post(_:_:)` names the code.
     @Published var notice = "" {
         didSet { noticeCode = notice.isEmpty ? nil : (stagedNoticeCode ?? ControlNotice.other); stagedNoticeCode = nil }
@@ -503,6 +504,7 @@ final class SpeechService: ObservableObject {
                 try Task.checkCancellation()
                 guard lifecycle.finishStart(token, succeeded: true) else { return }
                 markPerformance(.modelsReady)
+                loadedSpeechRecognitionEngine = await pipeline.loadedRecognitionEngine
                 UserDefaults.standard.set(true, forKey: JotDefaultsKey.modelsPrepared)
                 cachedModelBytes = ModelCache.bytesOnDisk()
                 if dictationRequested { await enableDictation() }
@@ -512,6 +514,7 @@ final class SpeechService: ObservableObject {
                 if lifecycle.finishStart(token, succeeded: false) {
                     notice = error.localizedDescription
                     await dependencies.unloadModels(pipeline)
+                    loadedSpeechRecognitionEngine = nil
                 } else if lifecycle.acceptsWork(token) { notice = error.localizedDescription }
             }
             preparation = nil; scheduleTimer()
@@ -764,6 +767,7 @@ final class SpeechService: ObservableObject {
             guard let token = lifecycle.beginPause() else { unloading = nil; return }
             notice = "Releasing models…"; scheduleTimer()
             await dependencies.unloadModels(pipeline)
+            loadedSpeechRecognitionEngine = nil
             if lifecycle.finishPause(token) {
                 preparation = nil; notice = ""
                 // No models, no dictation: the tap stays on only for suggestions.

@@ -30,6 +30,7 @@ public final class JotSettings: @unchecked Sendable {
     public static let chunkSilenceSeconds = "chunkSilenceSeconds"
     public static let silenceLevel = "silenceLevel"
     public static let speechGate = "speechGate"
+    public static let speechRecognitionEngine = "speechRecognitionEngine"
     public static let phrasePause = "phrasePause"
     public static let phraseMaximumSeconds = "phraseMaximumSeconds"
     public static let phraseMinimumWords = "phraseMinimumWords"
@@ -81,6 +82,7 @@ public final class JotSettings: @unchecked Sendable {
         .init(key: JotDefaultsKey.newSessionAfterSilence, kind: .int(SessionSplit.defaultMinutes, range: 0...60, choices: SessionSplit.choices), summary: "Minutes of quiet that start a new session; 0 never splits"),
         .init(key: JotDefaultsKey.cleanUpTranscriptions, kind: .bool(true), summary: "Clean up live speech and meetings with Apple Intelligence"),
         .init(key: JotDefaultsKey.keepAudioForSpeakerPass, kind: .bool(true), summary: "Keep session audio until the speaker pass finishes"),
+        .init(key: speechRecognitionEngine, kind: .int(SpeechRecognitionEngine.parakeetV3.rawValue, range: 0...1, choices: SpeechRecognitionEngine.allCases.map(\.rawValue)), summary: "Speech-to-text model for continuous listening and Hold-Fn dictation; changing requires Unload Models then Resume"),
         .init(key: keepTuningAudio, kind: .bool(false), summary: "Keep session audio for 30 days to tune recognition"),
         .init(key: JotDefaultsKey.keepMacAwakeWhileListening, kind: .bool(false), summary: "Keep the Mac awake while listening"),
         .init(key: speakerConfidence, kind: .double(tuningDefaults.speakerConfidence, range: TranscriptionTuning.speakerConfidenceRange), summary: "Evidence needed for a speaker label"),

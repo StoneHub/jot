@@ -11,6 +11,27 @@ final class JotSettingsTests: XCTestCase {
 
     private func legacyTuning(_ json: String) { defaults.set(Data(json.utf8), forKey: JotDefaultsKey.transcriptionTuning) }
 
+    func testSpeechRecognitionEngineSelectionPersistsAndRejectsUnknownChoices() throws {
+        let settings = JotSettings(defaults: defaults)
+        let key = JotSettings.speechRecognitionEngine
+
+        XCTAssertEqual(settings.int(key), SpeechRecognitionEngine.parakeetV3.rawValue)
+        XCTAssertFalse(settings.isChanged(key))
+        try settings.set(key, raw: "1")
+        XCTAssertEqual(settings.int(key), SpeechRecognitionEngine.parakeetV2.rawValue)
+        XCTAssertTrue(settings.isChanged(key))
+        XCTAssertThrowsError(try settings.set(key, raw: "2"))
+        XCTAssertEqual(settings.int(key), SpeechRecognitionEngine.parakeetV2.rawValue)
+
+        let row = try XCTUnwrap(settings.report().first { $0["key"] as? String == key })
+        XCTAssertEqual(row["value"] as? Int, SpeechRecognitionEngine.parakeetV2.rawValue)
+        XCTAssertEqual(row["choices"] as? [Int], SpeechRecognitionEngine.allCases.map(\.rawValue))
+
+        try settings.reset(key)
+        XCTAssertEqual(settings.int(key), SpeechRecognitionEngine.parakeetV3.rawValue)
+        XCTAssertFalse(settings.isChanged(key))
+    }
+
     func testFreshInstallReadsCodeDefaultsAndSavesNothing() {
         let settings = JotSettings(defaults: defaults)
         XCTAssertEqual(settings.tuning, TranscriptionTuning())

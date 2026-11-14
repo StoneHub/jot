@@ -48,6 +48,13 @@ extension SpeechService {
     private func save(_ key: String, _ value: Bool) { settings.set(key, value); settingChanged(key) }
     private func save(_ key: String, _ value: Int) { settings.set(key, value); settingChanged(key) }
 
+    /// Selection is persisted immediately, but the resident model is not replaced until Unload Models + Resume.
+    /// This is shared by continuous listening and Hold-Fn dictation until their pipelines are decoupled.
+    var speechRecognitionEngine: SpeechRecognitionEngine {
+        get { SpeechRecognitionEngine(rawValue: settings.int(JotSettings.speechRecognitionEngine)) ?? .parakeetV3 }
+        set { save(JotSettings.speechRecognitionEngine, newValue.rawValue) }
+    }
+
     var automaticMicrophone: Bool {
         get { settings.bool(JotDefaultsKey.automaticMicrophone) }
         set { save(JotDefaultsKey.automaticMicrophone, newValue) }
