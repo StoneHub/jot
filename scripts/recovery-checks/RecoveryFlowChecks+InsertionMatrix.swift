@@ -39,14 +39,16 @@ extension RecoveryFlowChecks {
             var rows: [Row]
         }
 
-        enum Failure: Error, LocalizedError {
+        /// Printed whole by the tool's `FAIL: \(error)`, so each case says what to do instead of only its name.
+        enum Failure: Error, LocalizedError, CustomStringConvertible {
             case usage(String), accessibility, timeout(String), unexpected(String)
+            var description: String { errorDescription ?? "insertion matrix failed" }
             var errorDescription: String? {
                 switch self {
                 case .usage(let message): return message
                 case .accessibility:
-                    return "Accessibility is not granted to the app running this check (usually Terminal). "
-                        + "Open System Settings → Privacy & Security → Accessibility, add it, then run again."
+                    return "Accessibility is not granted to the terminal app running this check (echo $TERM_PROGRAM names it). "
+                        + "Switch it on in System Settings → Privacy & Security → Accessibility, quit and reopen it, then run again."
                 case .timeout(let message): return message
                 case .unexpected(let message): return message
                 }

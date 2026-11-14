@@ -135,6 +135,16 @@ class MainTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertTrue(json.loads((self.root / 'build/insertion-matrix.json').read_text())['dirty'])
 
+    def test_stray_untracked_files_do_not_void_the_proof_but_untracked_sources_do(self):
+        self.dirty = '?? notes.txt\n?? old/screenshot.png\n'
+        code, _ = self.run_main()
+        self.assertEqual(code, 0)
+        self.assertFalse(json.loads((self.root / 'build/insertion-matrix.json').read_text())['dirty'])
+        self.dirty = '?? notes.txt\n?? Sources/Jot/Extra.swift\n'
+        code, _ = self.run_main()
+        self.assertEqual(code, 1, 'an untracked source file is built into the tool')
+        self.assertTrue(json.loads((self.root / 'build/insertion-matrix.json').read_text())['dirty'])
+
     def test_refuses_off_mac(self):
         with patch('platform.system', return_value='Linux'), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             insertion_matrix.main(['--binary', str(self.binary)])

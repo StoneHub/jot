@@ -21,10 +21,22 @@ ROWS = ('textedit', 'safari', 'password', 'terminal', 'electron')
 PROOF = Path('build/insertion-matrix.json')
 DERIVED = Path('build/DerivedData.noindex')
 RUN_HINT = 'python3 scripts/insertion_matrix.py --electron <bundle id>'
+# Untracked files here are compiled into the tool, so they void a proof; stray notes elsewhere in the checkout do not.
+BUILD_INPUTS = ('Sources/', 'scripts/', 'Resources/', 'project.yml', 'Package.swift', 'Package.resolved')
 
 
 def git(root, *args):
     return subprocess.check_output(['git', *args], cwd=root, text=True).strip()
+
+
+def uncommitted(root):
+    """Changes that make the built tool differ from HEAD: every tracked change, and untracked files among the build inputs."""
+    changed = []
+    for line in git(root, 'status', '--porcelain', '--untracked-files=all').splitlines():
+        status, path = line[:2], line[3:]
+        if status != '??' or path.startswith(BUILD_INPUTS):
+            changed.append(path)
+    return changed
 
 
 def build_tool(root, derived):
@@ -113,9 +125,11 @@ def main(argv=None):
         raise SystemExit('The insertion matrix opens real Mac apps; run it on the Mac.')
     root = Path(git(Path.cwd(), 'rev-parse', '--show-toplevel'))
     head = git(root, 'rev-parse', 'HEAD')
-    dirty = bool(git(root, 'status', '--porcelain'))
+    changed = uncommitted(root)
+    dirty = bool(changed)
     if dirty:
-        print('Warning: uncommitted changes; this proof will not count for a release.', file=sys.stderr)
+        shown = ', '.join(changed[:5]) + (f' and {len(changed) - 5} more' if len(changed) > 5 else '')
+        print(f'Warning: uncommitted changes ({shown}); this proof will not count for a release.', file=sys.stderr)
     binary = args.binary or build_tool(root, root / DERIVED)
     if not os.access(binary, os.X_OK):
         raise SystemExit(f'{binary} is not an executable JotRecoveryChecks.')

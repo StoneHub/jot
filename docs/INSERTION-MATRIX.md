@@ -43,11 +43,12 @@ TextEdit document (unsaved), the two Safari tabs and the Terminal window. The El
 it afterwards. Keep your hands off the keyboard and mouse while it runs: a focus change cancels the row, as it does a
 real dictation.
 
-Permissions, granted once to the terminal app that runs the script (Terminal or iTerm), because macOS attributes a
-command-line tool to it:
+Permissions, granted once to the terminal app that runs the script (`echo $TERM_PROGRAM` names it: Terminal, iTerm,
+VS Code, Warp, Ghostty), because macOS attributes a command-line tool to it:
 
 - **Accessibility** (System Settings → Privacy & Security → Accessibility), for reading fields and posting key events.
-  Without it the check stops at once.
+  Without it the check stops at once. Quit and reopen the terminal after switching it on; one that was already open
+  often keeps acting as if it has none.
 - **Automation** prompts for TextEdit, Safari, Terminal and, with `--electron-new`, System Events, the first time.
 
 Jot.app can keep running. The check never starts capture, the shortcut listener or a socket; it only uses the delivery
@@ -57,7 +58,8 @@ end-to-end list.
 ## Releases
 
 `release.py` reads `build/insertion-matrix.json` and refuses when it is missing, was made on another commit or a dirty
-tree, or any row did not pass. Run the matrix again after every merge you release. `--skip-insertion-matrix` cuts the
+tree, or any row did not pass. A dirty tree means a tracked change, or an untracked file among the build inputs
+(`Sources/`, `scripts/`, `Resources/`, `project.yml`, `Package.*`); stray untracked notes elsewhere do not count. Run the matrix again after every merge you release. `--skip-insertion-matrix` cuts the
 release anyway and says so in its output; use it when the release does not touch dictation and the Mac cannot open the
 apps, not to get past a failed row.
 
