@@ -64,8 +64,13 @@ extension RecoveryFlowChecks {
         service.ingestRecoveryVerification(samples: Array(repeating: 7, count: 32_000), at: probe.now)
         service.dictation.end()
         await service.dictation.waitForRecovery()
-        let attempt = try store.latestRecoverableDictationAttempt()
-        precondition(attempt?.hasGap == true && probe.delivered.isEmpty, "A dictation released into the stall was not saved with its gap")
+        // The whole hold was withheld, so the saved attempt carries its gap and no words. With nothing to insert or retry it
+        // is not offered for review (the recoverable query wants text); the notices say what happened instead.
+        let attempt = service.dictation.currentAttempt
+        precondition(attempt?.state == .deliveryFailed && attempt?.hasGap == true && attempt?.text == "" && probe.delivered.isEmpty,
+                     "A dictation released into the stall was not saved with its gap: \(String(describing: attempt))")
+        let offered = try store.latestRecoverableDictationAttempt()
+        precondition(offered == nil, "An empty stalled hold was offered for review: \(String(describing: offered))")
         precondition(service.recoveryNotice.hasPrefix("Recognition stalled"), "The stalled dictation was not announced: \(service.recoveryNotice)")
         print("PASS: a dictation released into the stall is saved with its gap once the wait gives up.")
 
