@@ -13,6 +13,8 @@ The Worker stores no IP address, install ID, user agent or text, and request log
 
 Jot's Worker is already deployed: `wrangler.toml` holds its D1 `database_id`, and `UsageReport.endpoint` holds its URL. To redeploy after changing `src/`, run `npx wrangler deploy` from this folder.
 
+The Worker stores only the counter names in `src/counters.js` and drops any other name from a report, so a Jot release that adds counters before the Worker is redeployed still has its other counters counted. Redeploy the Worker after merging a PR that adds counters, or the new ones read zero until then.
+
 To set it up on a new Cloudflare account, you need Node 18 or later. Run the steps in two blocks, because the second block needs an id that the first one prints. First, from a Mac:
 
 ```sh
