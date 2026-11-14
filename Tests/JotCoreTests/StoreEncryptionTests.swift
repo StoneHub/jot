@@ -93,7 +93,8 @@ final class StoreEncryptionTests: XCTestCase {
         XCTAssertEqual(try StoreKey(hex: key.hex), key)
         XCTAssertEqual(try StoreKey(hex: key.hex.uppercased().replacingOccurrences(of: " ", with: "-")), key)
         XCTAssertThrowsError(try StoreKey(hex: String(key.hex.dropLast())))
-        XCTAssertThrowsError(try StoreKey(hex: key.hex.replacingOccurrences(of: "a", with: "g")))
+        // Not a hex digit, wherever it lands: a random key has no "a" one time in sixty, so replacing "a" could change nothing.
+        XCTAssertThrowsError(try StoreKey(hex: "g" + key.hex.dropFirst()))
         XCTAssertThrowsError(try StoreKey(bytes: Data(count: 31)))
         XCTAssertNotEqual(StoreKey.random(), StoreKey.random())
         XCTAssertFalse(key.rawLiteral.contains(" "), "A pragma value is one token")
