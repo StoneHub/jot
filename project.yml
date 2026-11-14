@@ -270,6 +270,10 @@ schemes:
     build:
       targets:
         JotRecoveryChecks: all
+  JotLab:
+    build:
+      targets:
+        JotLab: all
   JotWindowChecks:
     build:
       targets:

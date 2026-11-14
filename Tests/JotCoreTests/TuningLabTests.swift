@@ -255,6 +255,61 @@ final class TuningLabTests: XCTestCase {
         XCTAssertEqual(paragraphs.map(\.liveSpeaker), ["speaker-1", "speaker-2"], "A paragraph keeps its live speaker as recorded")
     }
 
+    // MARK: Sets
+
+    func testASetNamesItsItemsAndTheirFilesInsideItsFolder() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("lab-set-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try Data("RIFF".utf8).write(to: folder.appendingPathComponent("a.wav"))
+        try Data("WEBVTT".utf8).write(to: folder.appendingPathComponent("a.vtt"))
+        let manifest = #"{"name": "synthetic", "items": [{"name": "script-clean", "audio": "a.wav", "captions": "a.vtt"}]}"#
+        let set = try LabSet.parse(Data(manifest.utf8), folder: folder)
+        XCTAssertEqual(set.items.map(\.name), ["script-clean"])
+        XCTAssertEqual(set.audio(set.items[0], in: folder).lastPathComponent, "a.wav")
+        XCTAssertThrowsError(try LabSet.load(folder), "No set.json yet")
+        try Data(manifest.utf8).write(to: folder.appendingPathComponent(LabSet.manifest))
+        XCTAssertEqual(try LabSet.load(folder), set)
+        for bad in [#"{"name": "s", "items": []}"#,
+                    #"{"name": "s", "items": [{"name": "x/y", "audio": "a.wav", "captions": "a.vtt"}]}"#,
+                    #"{"name": "s", "items": [{"name": "a", "audio": "../a.wav", "captions": "a.vtt"}]}"#,
+                    #"{"name": "s", "items": [{"name": "a", "audio": "missing.wav", "captions": "a.vtt"}]}"#,
+                    #"{"name": "s", "items": [{"name": "a", "audio": "a.wav", "captions": "a.vtt"}, {"name": "a", "audio": "a.wav", "captions": "a.vtt"}]}"#] {
+            XCTAssertThrowsError(try LabSet.parse(Data(bad.utf8), folder: folder), bad)
+        }
+    }
+
+    func testSetScoresKeepNumbersOnlyAndCPUPerAudioMinute() throws {
+        let row = LabRow(start: 0, end: 1, liveSpeaker: "speaker-1", passSpeaker: "speaker-1", rawText: "private words", cleanedText: "Private words.", cleanup: .changed)
+        let wer = WordErrorRate.score(reference: "private words", hypothesis: "private word")
+        let words = [StoredWord(transcriptID: "r", position: 0, word: "private", startSeconds: 0, endSeconds: 0.5, probabilities: [])]
+        var score = LabScore(raw: wer, cleaned: wer)
+        score.liveSpeakers = try XCTUnwrap(LabSpeakerScore(words: words, speakers: ["speaker-1"], captions: [cue(0, 1, "Kim")]))
+        let timings = LabVariantResult.Timings(audioSeconds: 120, recognitionSeconds: 10, speakerPassSeconds: 4, cpuSeconds: 6, speakerPassCPUSeconds: 2)
+        let result = LabVariantResult(name: "current", settings: [:], recognitionRun: 1, rows: [row], paragraphs: [row], timings: timings, score: score)
+        let item = try LabSetScores.Item(name: "clean", results: [result])
+        let scores = LabSetScores(set: "synthetic", jotVersion: "0.3.7", createdAt: Date(timeIntervalSince1970: 0), items: [item])
+        let variant = scores.items[0].variants[0]
+        XCTAssertEqual(variant.raw, wer)
+        XCTAssertEqual(variant.liveSpeakerAccuracy, 1)
+        XCTAssertNil(variant.passSpeakerAccuracy)
+        XCTAssertEqual(variant.cpuSecondsPerAudioMinute, 4, accuracy: 0.0001, "(6 + 2) CPU seconds over 2 minutes of audio")
+        let json = String(decoding: try scores.json(), as: UTF8.self)
+        XCTAssertFalse(json.contains("private"), "Scores carry no transcript text")
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        XCTAssertEqual(try decoder.decode(LabSetScores.self, from: scores.json()), scores)
+        XCTAssertTrue(scores.table().contains("| clean | current | 50.0% | 1 / 0 / 0 | 50.0% | 100.0% / – | 4.0 |"))
+        let unscored = LabVariantResult(name: "current", settings: [:], recognitionRun: 1, rows: [], timings: timings, score: nil)
+        XCTAssertThrowsError(try LabSetScores.Item(name: "x", results: [unscored]), "A set item without captions cannot be scored")
+    }
+
+    func testOlderVariantsFilesWithoutCPUFiguresStillDecode() throws {
+        let json = #"{"audioSeconds": 90, "recognitionSeconds": 5, "speakerPassSeconds": 2}"#
+        let timings = try JSONDecoder().decode(LabVariantResult.Timings.self, from: Data(json.utf8))
+        XCTAssertEqual(timings, .init(audioSeconds: 90, recognitionSeconds: 5, speakerPassSeconds: 2))
+    }
+
     // MARK: Report
 
     func testReportPageEscapesTextAndListsEveryVariant() throws {

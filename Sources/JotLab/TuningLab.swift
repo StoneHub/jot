@@ -24,14 +24,18 @@ struct TuningLab {
         log(String(format: "Audio: %.1f s. %d variants in %d recognition runs.", audioSeconds, variants.count, runs.count))
         // The pass depends only on the audio, so every run shares it.
         log("Speaker pass…")
+        let passCPUBefore = processCPUSeconds()
         let pass = try await speakerPass(samples)
-        log(String(format: "Speaker pass: %d speakers in %.1f s.", Set(pass.segments.map(\.speaker)).count, pass.processingSeconds))
+        let passCPU = processCPUSeconds() - passCPUBefore
+        log(String(format: "Speaker pass: %d speakers in %.1f s (%.1f CPU s).", Set(pass.segments.map(\.speaker)).count, pass.processingSeconds, passCPU))
         var results: [LabVariantResult] = []
         for (number, group) in runs.enumerated() {
             let settings = try LabSettings(base: base, variant: group[0])
             log("Run \(number + 1): recognizing for \(group.map(\.name).joined(separator: ", "))…")
+            let cpuBefore = processCPUSeconds()
             let recognized = try await recognize(samples, settings: settings.value)
-            log(String(format: "Run %d: %d rows in %.1f s.", number + 1, recognized.rows.count, recognized.seconds))
+            let cpu = processCPUSeconds() - cpuBefore
+            log(String(format: "Run %d: %d rows in %.1f s (%.1f CPU s).", number + 1, recognized.rows.count, recognized.seconds, cpu))
             for variant in group {
                 let tuning = try settings.tuning(for: variant)
                 let live = TranscriptGrouping.speakers(words: recognized.words, tuning: tuning)
@@ -47,11 +51,20 @@ struct TuningLab {
                 }
                 results.append(LabVariantResult(name: variant.name, settings: variant.settings, recognitionRun: number + 1, rows: rows,
                     paragraphs: LabRows.paragraphs(rows, tuning: tuning),
-                    timings: .init(audioSeconds: audioSeconds, recognitionSeconds: recognized.seconds, speakerPassSeconds: pass.processingSeconds),
+                    timings: .init(audioSeconds: audioSeconds, recognitionSeconds: recognized.seconds, speakerPassSeconds: pass.processingSeconds,
+                                   cpuSeconds: cpu, speakerPassCPUSeconds: passCPU),
                     score: score, cleanupOutcomes: recognized.cleanupOutcomes))
             }
         }
         return results
+    }
+
+    /// User and system CPU time this process has used, for the CPU-per-audio-minute figure.
+    private func processCPUSeconds() -> Double {
+        var usage = rusage()
+        guard getrusage(RUSAGE_SELF, &usage) == 0 else { return 0 }
+        return Double(usage.ru_utime.tv_sec) + Double(usage.ru_utime.tv_usec) / 1_000_000
+            + Double(usage.ru_stime.tv_sec) + Double(usage.ru_stime.tv_usec) / 1_000_000
     }
 
     private struct Recognized {
