@@ -79,6 +79,11 @@ struct RecoveryFlowChecks {
 
     @MainActor static func run() async throws {
         ShortcutInputChecks.run()
+        if let flag = CommandLine.arguments.firstIndex(of: "--insertion-matrix") {
+            // Opens real apps and waits for them, so it runs without the recovery watchdog.
+            try await InsertionMatrix.run(Array(CommandLine.arguments.dropFirst(flag + 1)))
+            return
+        }
         if let flag = CommandLine.arguments.firstIndex(of: "--quiet-cpu") {
             try await profileQuietListening(CommandLine.arguments.dropFirst(flag + 1).map { URL(fileURLWithPath: $0) })
             return

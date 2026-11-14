@@ -2,6 +2,7 @@
 import contextlib
 import importlib.util
 import io
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -11,6 +12,14 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent))
+import insertion_matrix  # noqa: E402
+
+HEAD = 'c' * 40
+
+
+def passing_matrix(head=HEAD):
+    rows = [dict(target=name, expected='refused' if name == 'password' else 'verified', result='passed') for name in insertion_matrix.ROWS]
+    return insertion_matrix.proof_document(dict(phrase='fixture', rows=rows), head, False, machine='fixture', checked_at='fixture')
 
 
 class ReleaseNotesTests(unittest.TestCase):
@@ -29,6 +38,9 @@ class ReleaseNotesTests(unittest.TestCase):
         (self.root / 'Resources/Info.plist').write_text(
             '<key>CFBundleShortVersionString</key><string>0.3.3</string><key>CFBundleVersion</key><string>24</string>')
         self.draft = self.root / 'docs/release-notes/next.md'
+        (self.root / 'build').mkdir()
+        self.matrix = self.root / 'build/insertion-matrix.json'
+        self.matrix.write_text(json.dumps(passing_matrix()))
         spec = importlib.util.spec_from_file_location('release_notes_fixture', Path(__file__).with_name('release.py'))
         self.release = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.release)
@@ -41,6 +53,8 @@ class ReleaseNotesTests(unittest.TestCase):
             return 'main'
         if command[:2] == ['git', 'tag']:
             return 'v0.3.3'
+        if command[:2] == ['git', 'rev-parse']:
+            return HEAD
         return ''
 
     def fake_run(self, command, **kwargs):
@@ -86,6 +100,20 @@ class ReleaseNotesTests(unittest.TestCase):
                 self.assertIsNone(self.written)
                 self.assertIn('0.3.3', (self.root / 'project.yml').read_text())
 
+
+    def test_release_needs_a_passing_insertion_matrix_for_this_commit_unless_skipped(self):
+        self.draft.write_text('# Jot (next release)\n\nFixed the thing.\n')
+        for proof in (None, passing_matrix('d' * 40)):
+            with self.subTest(proof='none' if proof is None else 'other commit'):
+                if proof is None:
+                    self.matrix.unlink()
+                else:
+                    self.matrix.write_text(json.dumps(proof))
+                self.cut()
+                self.assertIsNone(self.written, 'the release went past its preconditions without a matrix proof')
+                self.assertIn('0.3.3', (self.root / 'project.yml').read_text())
+        self.cut('--skip-insertion-matrix')
+        self.assertEqual(self.written, '# Jot 0.3.4\n\nFixed the thing.\n')
 
     def test_release_body_leads_with_notes_for_the_updater_and_ends_with_install_steps(self):
         notes = '# Jot 0.3.4\n\nFixed the thing.\n'

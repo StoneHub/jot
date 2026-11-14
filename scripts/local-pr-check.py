@@ -41,7 +41,8 @@ TOOL_TESTS = {
     'scripts/signing.py': ('test_signing.py', 'test_packaged_install.py', 'test_release_install.py'),
     'scripts/build-install.py': ('test_packaged_install.py', 'test_release_install.py', 'test_build_cleanup.py'),
     'scripts/packaged_product.py': ('test_packaged_install.py', 'test_release_install.py'),
-    'scripts/release.py': ('test_release_install.py', 'test_release_notes.py', 'test_notarization.py'),
+    'scripts/release.py': ('test_release_install.py', 'test_release_notes.py', 'test_notarization.py', 'test_insertion_matrix.py'),
+    'scripts/insertion_matrix.py': ('test_insertion_matrix.py', 'test_release_notes.py'),
     'scripts/notarization.py': ('test_notarization.py', 'test_release_install.py'),
     'scripts/check-suggestion-fixtures.py': ('test_suggestion_fixtures.py',),
     'scripts/check-suggestion-results.py': ('test_suggestion_results.py',),
@@ -54,6 +55,7 @@ FIXTURE_TRIGGERS = ('scripts/check-suggestion-fixtures.py', 'scripts/test_sugges
                     'docs/evaluation/contextual-suggestions/scenarios.json')
 NOT_COVERED = ('interactive UI, Accessibility and physical Fn behavior',
                'installed-app, updater and live capture behavior',
+               'the real-app insertion matrix (scripts/insertion_matrix.py, run before a release)',
                'manual checks the PR description lists')
 GATES = ('portable', 'swift-test', 'app-build', 'recovery-checks')
 EXIT_CODES = {'PASS': 0, 'FAIL': 1, 'INCOMPLETE': 3}
