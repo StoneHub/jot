@@ -102,7 +102,6 @@ extension RecoveryFlowChecks {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             try encoder.encode(report).write(to: URL(fileURLWithPath: out))
-            print(table(report.rows))
             if report.rows.contains(where: { $0.result == "failed" }) { exit(1) }
         }
 
@@ -116,7 +115,8 @@ extension RecoveryFlowChecks {
                 // The app does this when an app comes to the front: Electron keeps its tree off until asked.
                 DictationInput.wakeAccessibility(app.processIdentifier)
                 let input = DictationInput(onStart: {}, onStop: { _ in })
-                let captured = await capture(input, pid: app.processIdentifier, timeout: target == "electron" ? 45 : 15)
+                let want: Want = target == "password" ? .secure : target == "electron" ? .anyEditable : .textArea
+                let captured = await capture(input, pid: app.processIdentifier, want: want, timeout: target == "electron" ? 45 : 15)
                 switch captured {
                 case .refused(let role, let subrole):
                     row.role = role; row.subrole = subrole
@@ -164,27 +164,61 @@ extension RecoveryFlowChecks {
             case notEditable(Error)
         }
 
-        /// Waits for the app to be in front with an editable field focused, up to `timeout` seconds. A password field
-        /// ends the wait at once: that is the refusal the matrix wants to see.
-        static func capture(_ input: DictationInput, pid: pid_t, timeout: Double) async -> Capture {
+        /// The kind of field a row waits for. TextEdit, the Safari textarea and Terminal focus a text area; Safari starts
+        /// in its address bar, a text field, and TextEdit may show its Open panel first, so a text field is not enough.
+        enum Want { case textArea, secure, anyEditable }
+
+        /// Waits until the app is in front and the same field of the wanted kind has kept focus for about a second, then
+        /// captures it as the app does at a key press. Capturing while a window or page is still settling loses the target
+        /// to Jot's own focus-change guard, which is what a person never sees: they start dictating into a field that holds
+        /// still. A password field the row wants ends the wait as a refusal. On a timeout the note says what had focus.
+        static func capture(_ input: DictationInput, pid: pid_t, want: Want, timeout: Double) async -> Capture {
             let deadline = ContinuousClock.now + .seconds(timeout)
-            var last: Error = Failure.timeout("no editable field was focused within \(Int(timeout)) s")
+            let application = AXUIElementCreateApplication(pid)
+            AXUIElementSetMessagingTimeout(application, 0.5)
+            var previous: AXUIElement?
+            var steady = 0
+            var seen = "the app never came to the front"
             while ContinuousClock.now < deadline {
-                if NSWorkspace.shared.frontmostApplication?.processIdentifier == pid {
-                    do {
-                        try input.captureTarget()
-                        return .captured
-                    } catch DictationInput.InputError.secureField {
-                        let field = DictationInput.focusedField(AXUIElementCreateApplication(pid))
-                        return .refused(role: field.flatMap { DictationInput.stringAttribute($0, kAXRoleAttribute) },
-                                        subrole: field.flatMap { DictationInput.stringAttribute($0, kAXSubroleAttribute) })
-                    } catch {
-                        last = error
+                let front = NSWorkspace.shared.frontmostApplication
+                if front?.processIdentifier != pid {
+                    seen = "\(front?.localizedName ?? "no app") was in front instead"
+                    previous = nil; steady = 0
+                } else if let field = DictationInput.focusedField(application) {
+                    // Electron turns its tree on only when asked, and may turn it on late; asking again is harmless.
+                    DictationInput.wakeAccessibility(pid)
+                    AXUIElementSetMessagingTimeout(field, 0.5)
+                    let role = DictationInput.stringAttribute(field, kAXRoleAttribute)
+                    let subrole = DictationInput.stringAttribute(field, kAXSubroleAttribute)
+                    let kind = [role, subrole].compactMap { $0 }.joined(separator: "/")
+                    seen = "focus was on \(kind.isEmpty ? "an element with no role" : kind)"
+                    let secure = subrole == kAXSecureTextFieldSubrole
+                    let wanted: Bool
+                    switch want {
+                    case .secure: wanted = secure
+                    case .textArea: wanted = !secure && role == kAXTextAreaRole
+                    case .anyEditable: wanted = !secure && [kAXTextAreaRole, kAXTextFieldRole, kAXComboBoxRole].contains(role ?? "")
                     }
+                    if wanted, let held = previous, CFEqual(held, field) { steady += 1 } else { steady = wanted ? 1 : 0 }
+                    previous = wanted ? field : nil
+                    if steady >= 4 {
+                        do {
+                            try input.captureTarget()
+                            return .captured
+                        } catch DictationInput.InputError.secureField {
+                            return .refused(role: role, subrole: subrole)
+                        } catch {
+                            seen = error.localizedDescription
+                            previous = nil; steady = 0
+                        }
+                    }
+                } else {
+                    seen = "nothing in the app had focus"
+                    previous = nil; steady = 0
                 }
                 try? await Task.sleep(for: .milliseconds(250))
             }
-            return .notEditable(last)
+            return .notEditable(Failure.timeout("no \(want == .secure ? "password" : "editable") field held focus within \(Int(timeout)) s; \(seen)"))
         }
 
         /// The focused field's Accessibility value after delivery. Terminal reports its whole screen, so containment is enough.
@@ -225,6 +259,8 @@ extension RecoveryFlowChecks {
                     // A fresh field without a click: Command-N opens an untitled file in Visual Studio Code and most editors.
                     let launched = Date().addingTimeInterval(20)
                     while !app.isFinishedLaunching, Date() < launched { Thread.sleep(forTimeInterval: 0.25) }
+                    DictationInput.wakeAccessibility(app.processIdentifier)
+                    try osascript("tell application id \"\(electron.bundle)\" to activate")
                     Thread.sleep(forTimeInterval: 1.5)
                     try osascript("tell application \"System Events\" to keystroke \"\(key)\" using command down")
                     print("electron: sent Command-\(key.uppercased()) to \(name) for a fresh field; waiting up to 45 s for it to be focused…")
@@ -243,7 +279,9 @@ extension RecoveryFlowChecks {
         /// Electron field keeps the phrase, which the report says to remove.
         static func cleanUp() {
             try? osascript("tell application \"TextEdit\"",
-                           "close (every document whose text contains \"\(windowTitle)\") saving no", "end tell")
+                           "close (every document whose text contains \"\(windowTitle)\") saving no",
+                           "try", "close (every document whose text is \"\" and path is missing value) saving no", "end try",
+                           "end tell")
             try? osascript("tell application \"Safari\"", "repeat with w in windows", "repeat with t in (tabs of w)", "try",
                            "if URL of t contains \"jot-insertion-matrix\" then close t", "end try", "end repeat", "end repeat", "end tell")
             try? osascript("tell application \"Terminal\"", "repeat with w in windows", "try",
@@ -312,15 +350,6 @@ extension RecoveryFlowChecks {
 
                 """
             }
-        }
-
-        static func table(_ rows: [Row]) -> String {
-            var lines = ["| Row | Expected | Result | Path | Outcome | Role | Note |", "| --- | --- | --- | --- | --- | --- | --- |"]
-            for row in rows {
-                let role = [row.role, row.subrole].compactMap { $0 }.joined(separator: "/")
-                lines.append("| \(row.target) | \(row.expected) | \(row.result) | \(row.path ?? "–") | \(row.outcome ?? "–") | \(role.isEmpty ? "–" : role) | \(row.note ?? "") |")
-            }
-            return lines.joined(separator: "\n")
         }
     }
 }
