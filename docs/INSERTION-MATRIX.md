@@ -21,8 +21,10 @@ through every path. `--phrase` changes it.
 
 Each row first waits until the app is in front and one field of the right kind has held focus for about a second (a
 text area; the password field for that row), because Safari starts in its address bar and TextEdit may show its Open
-panel, and a capture taken while focus is still moving is lost to Jot's focus-change guard. A row that times out says
-what had focus instead. A row passes when the delivery is `verified` by Jot's own read-back; the password row passes
+panel, and a capture taken while focus is still moving is lost to Jot's focus-change guard. If another app takes the front
+while a row waits, the row brings its app back (at most every 2 s). A row that times out says what had focus
+instead. When Jot drops a field that had held focus ("Focus changed"), the note adds what was in front, whether
+focus really moved, and how many of ten focus reads the app answered within the 5 ms Jot allows each check. A row passes when the delivery is `verified` by Jot's own read-back; the password row passes
 only when `captureTarget` throws the secure-field error. The report records the
 path (`accessibility`, `unicode_hid`, `clipboard_hid`), the outcome, the field's role and subrole, and a note. Field
 contents are never written to the report.

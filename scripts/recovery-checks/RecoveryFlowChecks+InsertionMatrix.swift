@@ -109,14 +109,17 @@ extension RecoveryFlowChecks {
 
         static func check(_ target: String, electron: (bundle: String, new: String?)?, phrase: String, pages: Pages) async -> Row {
             var row = Row(target: target, expected: refused.contains(target) ? "refused" : "verified", result: "failed")
+            var field: AXUIElement?
+            var pid: pid_t = 0
             do {
                 let app = try open(target, electron: electron, pages: pages)
+                pid = app.processIdentifier
                 row.app = app.bundleIdentifier ?? app.localizedName
                 // The app does this when an app comes to the front: Electron keeps its tree off until asked.
                 DictationInput.wakeAccessibility(app.processIdentifier)
                 let input = DictationInput(onStart: {}, onStop: { _ in })
                 let want: Want = target == "password" ? .secure : target == "electron" ? .anyEditable : .textArea
-                let captured = await capture(input, pid: app.processIdentifier, want: want, timeout: target == "electron" ? 45 : 15)
+                let captured = await capture(input, app: app, want: want, timeout: target == "electron" ? 45 : 15)
                 switch captured {
                 case .refused(let role, let subrole):
                     row.role = role; row.subrole = subrole
@@ -129,8 +132,8 @@ extension RecoveryFlowChecks {
                 case .notEditable(let error):
                     row.note = error.localizedDescription
                     return row
-                case .captured:
-                    break
+                case .captured(let held):
+                    field = held
                 }
                 if row.expected == "refused" {
                     // Nothing is written into a field that should have been refused; the capture alone is the failure.
@@ -152,6 +155,10 @@ extension RecoveryFlowChecks {
             } catch DictationInput.InputError.secureField {
                 row.note = "secure field refused during insertion"
                 row.result = row.expected == "refused" ? "passed" : "failed"
+            } catch DictationInput.InputError.targetChanged where field != nil {
+                // Jot gave up on a field that had held focus for a second. Say why it might have: another app in front,
+                // focus really moving, or the app not answering within the 5 ms Jot allows each focus check.
+                row.note = DictationInput.InputError.targetChanged.localizedDescription + " " + diagnose(field!, pid: pid)
             } catch {
                 row.note = error.localizedDescription
             }
@@ -159,7 +166,7 @@ extension RecoveryFlowChecks {
         }
 
         enum Capture {
-            case captured
+            case captured(AXUIElement)
             case refused(role: String?, subrole: String?)
             case notEditable(Error)
         }
@@ -172,8 +179,11 @@ extension RecoveryFlowChecks {
         /// captures it as the app does at a key press. Capturing while a window or page is still settling loses the target
         /// to Jot's own focus-change guard, which is what a person never sees: they start dictating into a field that holds
         /// still. A password field the row wants ends the wait as a refusal. On a timeout the note says what had focus.
-        static func capture(_ input: DictationInput, pid: pid_t, want: Want, timeout: Double) async -> Capture {
+        static func capture(_ input: DictationInput, app: NSRunningApplication, want: Want, timeout: Double) async -> Capture {
+            let pid = app.processIdentifier
             let deadline = ContinuousClock.now + .seconds(timeout)
+            var lastActivation = ContinuousClock.now
+            var returned = 0
             let application = AXUIElementCreateApplication(pid)
             AXUIElementSetMessagingTimeout(application, 0.5)
             var previous: AXUIElement?
@@ -182,8 +192,14 @@ extension RecoveryFlowChecks {
             while ContinuousClock.now < deadline {
                 let front = NSWorkspace.shared.frontmostApplication
                 if front?.processIdentifier != pid {
-                    seen = "\(front?.localizedName ?? "no app") was in front instead"
+                    seen = "\(front?.localizedName ?? "no app") was in front instead" + (returned > 0 ? " (brought the app back \(returned) times)" : "")
                     previous = nil; steady = 0
+                    // A notification or another app can take the front mid-run; bring the row's app back, at most every 2 s.
+                    if ContinuousClock.now - lastActivation > .seconds(2) {
+                        lastActivation = ContinuousClock.now
+                        returned += 1
+                        activate(app)
+                    }
                 } else if let field = DictationInput.focusedField(application) {
                     // Electron turns its tree on only when asked, and may turn it on late; asking again is harmless.
                     DictationInput.wakeAccessibility(pid)
@@ -204,7 +220,7 @@ extension RecoveryFlowChecks {
                     if steady >= 4 {
                         do {
                             try input.captureTarget()
-                            return .captured
+                            return .captured(field)
                         } catch DictationInput.InputError.secureField {
                             return .refused(role: role, subrole: subrole)
                         } catch {
@@ -219,6 +235,37 @@ extension RecoveryFlowChecks {
                 try? await Task.sleep(for: .milliseconds(250))
             }
             return .notEditable(Failure.timeout("no \(want == .secure ? "password" : "editable") field held focus within \(Int(timeout)) s; \(seen)"))
+        }
+
+        /// Brings an app to the front through Apple Events, which macOS allows from the terminal running the check.
+        static func activate(_ app: NSRunningApplication) {
+            if let bundle = app.bundleIdentifier {
+                do { try osascript("tell application id \"\(bundle)\" to activate"); return } catch {}
+            }
+            app.activate()
+        }
+
+        /// Why Jot may have dropped a field that had held focus: what is in front, whether focus moved, and how many quick
+        /// focus reads the app answers within Jot's 5 ms limit. A slow answer reads as a focus change by design.
+        static func diagnose(_ captured: AXUIElement, pid: pid_t) -> String {
+            var facts: [String] = []
+            let front = NSWorkspace.shared.frontmostApplication
+            if front?.processIdentifier != pid { facts.append("\(front?.localizedName ?? "no app") was in front") }
+            let patient = AXUIElementCreateApplication(pid)
+            AXUIElementSetMessagingTimeout(patient, 0.5)
+            if let now = DictationInput.focusedField(patient) {
+                AXUIElementSetMessagingTimeout(now, 0.5)
+                let kind = [DictationInput.stringAttribute(now, kAXRoleAttribute), DictationInput.stringAttribute(now, kAXSubroleAttribute)]
+                    .compactMap { $0 }.joined(separator: "/")
+                facts.append(CFEqual(now, captured) ? "the captured field still had focus" : "focus had moved to \(kind.isEmpty ? "another element" : kind)")
+            } else {
+                facts.append("nothing had focus")
+            }
+            let quick = AXUIElementCreateApplication(pid)
+            AXUIElementSetMessagingTimeout(quick, 0.005)
+            let answered = (0..<10).filter { _ in DictationInput.focusedField(quick) != nil }.count
+            facts.append("\(answered) of 10 focus reads answered within 5 ms")
+            return "(" + facts.joined(separator: "; ") + ")"
         }
 
         /// The focused field's Accessibility value after delivery. Terminal reports its whole screen, so containment is enough.
