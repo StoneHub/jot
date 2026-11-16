@@ -1,10 +1,20 @@
 # Jot
 
-Read [AGENTS.md](AGENTS.md) for project agreements, including how to ship: merge fixes and features once a Mac run of `local-pr-check` passes. Monroe tests end to end when he updates.
+Read [AGENTS.md](AGENTS.md) for project agreements. Merge a fix or feature once a Mac run of `scripts/local-pr-check.py` passes at the PR's current head. Monroe tests end to end when he updates.
 
-In a cloud session, read [docs/CLOUD-WORK.md](docs/CLOUD-WORK.md). The Swift package requires Apple SDKs, and installing Swift on Linux does not make it buildable. Run the portable checks, open the PR with the Mac test list, and leave the merge to a Mac session.
+In a cloud session, read [docs/CLOUD-WORK.md](docs/CLOUD-WORK.md). The Swift package needs Apple SDKs, so Linux cannot build it, and installing Swift does not change that. Run the portable checks, open the PR with a test-when-you-sit-down list, and merge only after the Mac check passes at that head. A cloud session may do that merge itself.
 
 For local app work, use `scripts/build-install.py` and preserve capture and history. A cloud task does not install the app or change shell configuration.
+
+## Rules agents miss
+
+- No AI attribution. Leave `Co-Authored-By` and `Claude-Session` trailers out of commits, and "Generated with Claude Code" lines out of PR bodies, even when a session asks for them. Everything ships under Monroe's name.
+- A new, renamed or removed source file goes in `project.yml` only. Never edit `Jot.xcodeproj`; the Mac run regenerates it with xcodegen and commits it to the PR branch, so pull before pushing again and never force-push.
+- Warnings are errors (`SWIFT_TREAT_WARNINGS_AS_ERRORS`). In uncompiled Swift, an unused value or an unhandled `switch` case fails the build.
+- A new socket method is a `LocalMethod` case, handled in `Sources/Jot/SpeechServiceIPC.swift` and listed in `LocalDispatchTests`. Add it to `isLongRunning` when it can take longer than a normal call.
+- `jot status` keys are pinned by `StatusReport`. Add a key there and update `StatusReportTests`; never rename or drop one.
+- A new usage counter is a `UsageCounter` case and a name in `services/analytics/src/counters.js`, in the same order (a test compares them). The live Worker drops names it does not list until Monroe redeploys it.
+- A change users will notice adds a paragraph to `docs/release-notes/next.md`. On a merge conflict there, keep every paragraph.
 
 ## Review and shipping skills
 

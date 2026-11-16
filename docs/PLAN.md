@@ -4,6 +4,8 @@
 
 Say it once. Jot types it where you are and remembers who said it, all on your Mac.
 
+Status on November 16, 2026: priorities 1 and 5 below have shipped (#218 via #231, #222 via #370), and the `RecognitionEngine` seam (#367) and encrypted history (#369) landed since. The rest of this page is the October 12 order and has not been re-ranked.
+
 Updated October 12, 2026. The order now puts speaker and recognition accuracy first; the tuning lab (#59 via #217), dropped-words fix (#215 via #216), and JotEngine package target (#220) have shipped. The [architecture review](reviews/2026-10-07-architecture.md) records the source evidence, remaining large files and performance risks. [AGENTS.md](../AGENTS.md) governs delivery and preservation; [SWARM.md](SWARM.md) governs claims and integration. GitHub issues hold the work; this page orders it. Unsupported database preservation (#205 via #211) and the bounded `jot listen` CLI (#192 via #212) have shipped; #193 adds its opt-in agent skill and matching instructions. Pending session-audio writes are bounded (#207 via #213).
 
 The main architecture chain has shipped: direct owners, one continuous capture/recognition timeline, off-main store execution and keyboard classification, shared live settings, named production types, separated suggestion evaluation, and Swift 6 complete strict concurrency. #63 retains physical responsiveness acceptance; #65 retains bounded readability/terminology improvements as code is touched; #128 is closed. These are not another queue/concurrency migration. Physical acceptance is a test-when-you-sit-down list, not a merge gate.
