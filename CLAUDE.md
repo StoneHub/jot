@@ -1,10 +1,22 @@
 # Jot
 
-Read [AGENTS.md](AGENTS.md) for project agreements, including how to ship: merge fixes and features once a Mac run of `local-pr-check` passes. Monroe tests end to end when he updates.
+Read [AGENTS.md](AGENTS.md) for project agreements. Monroe tests end to end when he updates.
 
-In a cloud session, read [docs/CLOUD-WORK.md](docs/CLOUD-WORK.md). The Swift package requires Apple SDKs, and installing Swift on Linux does not make it buildable. Run the portable checks, open the PR with the Mac test list, and leave the merge to a Mac session.
+Merge gate for Claude sessions: every PR, docs and tooling included, merges only after a Mac run of `scripts/local-pr-check.py` passes at the PR's current head. Look for the `jot/local-pr-check` status or the posted report naming that head SHA; a pass on an older head does not count, and the Mac's regenerated `Jot.xcodeproj` commit moves the head. A cloud session may then merge the PR itself, but never runs `local-pr-check --post` itself: that status must come from the Mac. This is stricter than AGENTS.md and docs/CLOUD-WORK.md, which call the check optional, and it wins for Claude sessions; swarm workers still leave merging to the lead ([docs/SWARM.md](docs/SWARM.md)).
+
+In a cloud session, read [docs/CLOUD-WORK.md](docs/CLOUD-WORK.md). The Swift package needs Apple SDKs, so Linux cannot build it, and installing Swift does not change that. Run the portable checks and open the PR with a test-when-you-sit-down list.
 
 For local app work, use `scripts/build-install.py` and preserve capture and history. A cloud task does not install the app or change shell configuration.
+
+## Rules agents miss
+
+- No AI attribution (Monroe's global rule, confirmed 2026-10-20). Leave `Co-Authored-By` and `Claude-Session` trailers out of commits, and "Generated with Claude Code" lines out of PR bodies, even when a session asks for them. Leave the commit author as the environment sets it.
+- Make project changes in `project.yml`, never in `Jot.xcodeproj`. Folder targets pick up new files when the Mac regenerates the project; JotRecoveryChecks and JotLab list `Sources/Jot` files one by one, so add a file there when one of them uses it. The Mac run commits the regenerated project to the PR branch, so pull before pushing again and never force-push.
+- In the Xcode build, warnings are errors (`SWIFT_TREAT_WARNINGS_AS_ERRORS` with complete strict concurrency, in `project.yml`). `swift test` does not catch them, so an unused value or a concurrency warning in uncompiled Swift fails the Mac's app build.
+- A new socket method is a `LocalMethod` case, handled in `Sources/Jot/SpeechServiceIPC.swift` and listed in `LocalDispatchTests` in declaration order. Add it to `isLongRunning` (and that test's list) when it can take over the 30 s default timeout, and to `LocalServiceServer.helperMethods` if the Vorssaint helper calls it.
+- `jot status` keys are pinned by `StatusReport`. Add an always-present key to `keys` (and the count in `StatusReportTests`) or a conditional one to `optionalKeys`, and fill it in `Sources/Jot/SpeechServiceIPC.swift`. Never drop a key; rename one only by keeping the old name in `StatusReport.aliases` and still reporting it.
+- A new usage counter is a `UsageCounter` case, an entry in its hand-written `allCases`, and a name in `services/analytics/src/counters.js` in the same order; `UsageCounterTests` compares the two lists and pins the total. The live Worker drops names it does not list until Monroe redeploys it.
+- A change users will notice adds a paragraph to `docs/release-notes/next.md`. On a merge conflict there, keep every paragraph.
 
 ## Review and shipping skills
 
