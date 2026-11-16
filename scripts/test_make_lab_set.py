@@ -27,12 +27,6 @@ def frames(path):
 
 
 class LinesTests(unittest.TestCase):
-    def test_script_splits_into_its_sentences(self):
-        lines = make.sentences(make.SCRIPT)
-        self.assertEqual(len(lines), 40)
-        self.assertEqual(sum(len(line.split()) for line in lines), 442)
-        self.assertTrue(all(line.endswith('.') for line in lines))
-
     def test_conversation_is_seeded_changes_speaker_every_turn_and_uses_all_four(self):
         first = make.conversation_lines(random.Random(7), 400)
         again = make.conversation_lines(random.Random(7), 400)

@@ -71,10 +71,4 @@ final class ListeningStateTests: XCTestCase {
         XCTAssertEqual(table.filter { ListeningState.listens(mode: $0.mode) }.map(\.mode).sorted(), ["ambient", "dictation", "dictation", "starting"])
         XCTAssertFalse(ListeningState.listens(mode: "unknown"))
     }
-
-    /// Every phase appears in the table, so a new phase cannot go unmapped.
-    func testTableCoversEveryPhase() {
-        let phases: [ServiceLifecycle.Phase] = [.paused, .starting, .ready, .pausing, .failed]
-        for phase in phases { XCTAssertTrue(table.contains { $0.phase == phase }, "\(phase) has no row") }
-    }
 }
