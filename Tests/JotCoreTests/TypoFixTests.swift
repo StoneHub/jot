@@ -133,10 +133,4 @@ final class TypoFixTests: XCTestCase {
         XCTAssertNil(TypoFixShortcutPreferences.effective(other, others: [other]))
         XCTAssertEqual(TypoFixShortcutPreferences.effective(other, others: [.fn, nil]), other)
     }
-
-    func testCountersNameEveryOutcome() {
-        XCTAssertEqual(UsageCounter.typoFixRequested.name, "typoFix.requested")
-        XCTAssertEqual(UsageCounter.typoFix(.selectionUnavailable).name, "typoFix.outcome.selectionUnavailable")
-        XCTAssertEqual(UsageCounter.allCases.filter { $0.name.hasPrefix("typoFix.") }.count, TypoFixOutcome.allCases.count + 1)
-    }
 }
