@@ -6,7 +6,7 @@ A swarm of agents works Jot's issue queue. One lead keeps the shared state, and 
 
 - **Lead:** Claude is the only lead (Codex was dropped on 2026-11-14). Its jobs run on the days Monroe schedules in Routines (US Eastern).
 - **Host:** Monroe's MacBook Pro runs the lead and every Mac worker.
-- **State:** GitHub only. Labels, blocked-by links, the pinned control issue [#201](https://github.com/StoneHub/jot/issues/201) and [PLAN.md](PLAN.md). Whatever a chat knows that isn't written there is lost at the next hand-off.
+- **State:** GitHub only. Labels, blocked-by links, the pinned control issue [#201](https://github.com/StoneHub/jot/issues/201) and [PLAN.md](PLAN.md). Whatever a chat knows that isn't written there is lost at the next tick.
 
 ## Labels
 
@@ -44,7 +44,7 @@ A tick runs every two hours from 08:00 to 22:00.
 3. For each non-draft PR, resolve actual integration conflicts and run `local-pr-check <PR> --post` on the Mac at its current head, then merge authorized work that passes or return a concrete failure to its worker. Fetch `main` again after every merge; an advanced base alone does not require repeating sufficient checks.
 4. Release stale claims: an `in-progress` issue with no push for 24 hours goes back to `ready`, with a comment.
 5. Dispatch `ready` issues up to the caps, using the brief below.
-6. Rewrite the status block of #201: on duty, in progress, PRs waiting and why, main's SHA and its last check, next.
+6. Rewrite the status block of #201: lead, in progress, PRs waiting and why, main's SHA and its last check, next.
 
 Done when every non-draft PR is merged, handed back with a comment, or waiting on a named check; every claim has a push from the last 24 hours or was released; and the status block carries this tick's time. When nothing changed since the last tick, update the time and stop.
 

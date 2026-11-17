@@ -16,7 +16,7 @@ Cloud sessions fix known issues and build features without the Mac. [AGENTS.md](
 
 | Work | Cloud proof | Proved later on the Mac |
 | --- | --- | --- |
-| Python tooling, synthetic JSON scenarios, documentation | Portable checks | The Mac `local-pr-check` pass at the PR head, which for standalone documentation/tooling runs only the portable gate |
+| Python tooling, synthetic JSON scenarios, documentation | Portable checks | The Mac `local-pr-check` pass at the PR head, which for documentation runs only the portable gate (tooling that feeds the build or recovery checks selects those gates too) |
 | Swift logic, SwiftUI, AX/event taps, capture/speaker timing, Foundation Models quality | Careful source review; uncompiled | Build, tests, and Monroe's end-to-end use |
 | Signing, installation, updater swap, shell integration | None | Local delivery under `AGENTS.md` |
 
