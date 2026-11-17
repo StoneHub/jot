@@ -1,11 +1,11 @@
 # Swarm
 
-A swarm of agents works Jot's issue queue. Two leads take turns over one shared state, and short-lived workers each take one issue.
+A swarm of agents works Jot's issue queue. One lead keeps the shared state, and short-lived workers each take one issue.
 
-[AGENTS.md](../AGENTS.md) governs proportional checks and delivery authority. Coordination below assigns owners; it does not add blanket native-validation, review or release gates.
+[AGENTS.md](../AGENTS.md) governs proportional checks, the merge gate and delivery authority. Coordination below assigns owners; it does not add review or release gates.
 
-- **On duty:** Codex Monday to Friday, Claude Saturday and Sunday (US Eastern). Claude swarm jobs are scheduled only on weekends.
-- **Host:** Monroe's MacBook Pro runs both leads and every Mac worker.
+- **On duty:** Claude is the only lead (Codex was dropped on 2026-11-14). Its jobs run on the days Monroe schedules in Routines (US Eastern).
+- **Host:** Monroe's MacBook Pro runs the lead and every Mac worker.
 - **State:** GitHub only. Labels, blocked-by links, the pinned control issue [#201](https://github.com/StoneHub/jot/issues/201) and [PLAN.md](PLAN.md). Whatever a chat knows that isn't written there is lost at the next hand-off.
 
 ## Labels
@@ -13,7 +13,7 @@ A swarm of agents works Jot's issue queue. Two leads take turns over one shared 
 | Label | Meaning |
 | --- | --- |
 | `ready` | Specified and unblocked. Any worker may claim it. |
-| `in-progress` | Claimed. The claim comment names the tool (`codex` or `claude`), the host and the branch. |
+| `in-progress` | Claimed. The claim comment names the tool (`claude`), the host and the branch. |
 | `needs-mac` | Needs a native build or test. Issues without it can be done in the cloud. |
 | `needs-monroe` | Waiting on Monroe: a decision, a recording, a physical test or an attestation. |
 | `blocked` | Waiting on its blocked-by issues. Mirrors GitHub's blocked-by links. |
@@ -52,8 +52,7 @@ Done when every non-draft PR is merged, handed back with a comment, or waiting o
 
 - **08:15 brief:** one comment on #201 listing what merged since the last brief, the `needs-monroe` items, the test-when-you-sit-down lists from merged PRs, and today's dispatch plan.
 - **18:30 integration:** review the integrated batch and complete relevant missing checks. When batch release/install delivery is authorized, use the checked Release product and verify it with Jot paused and idle. Otherwise record the current usable/source state and remaining delivery step in the next brief.
-- **Friday 18:00 hand-off (Codex):** push every claimed branch, comment each claim's next step, and write the weekend queue in #201.
-- **Sunday 18:00 hand-off (Claude):** the same, plus the weekly replan: re-rank `ready` work, refresh PLAN.md by PR, and report the week's numbers in #201. Those numbers are issues closed, PRs merged, fix-forwards and reverts, and Monroe's open `needs-monroe` items. Leave no Claude worker running into Monday.
+- **Sunday 18:00 weekly hand-off:** push every claimed branch, comment each claim's next step, write the next week's queue in #201, and do the weekly replan: re-rank `ready` work, refresh PLAN.md by PR, and report the week's numbers in #201. Those numbers are issues closed, PRs merged, fix-forwards and reverts, and Monroe's open `needs-monroe` items.
 
 ## Worker brief
 
@@ -76,6 +75,5 @@ These hold for every agent, every tick:
 ## Host setup (once, on the MacBook Pro)
 
 1. Clone Jot, sign in to `gh`, set `JOT_SIGN_IDENTITY` and `JOT_SIGN_TEAM` for the build (`scripts/signing.py`), and confirm `python3 scripts/local-pr-check.py --current` passes.
-2. Keep the Mac awake with the Claude and Codex apps open: scheduled runs on both skip while the Mac sleeps. Turn on **Keep computer awake** under **Settings > This computer > System** in the Claude app.
-3. **Codex:** open a chat in the Jot project named "Jot lead". Inside it, schedule a task Monday to Friday, every two hours from 08:00 to 22:00, that says: "You are the Jot lead on duty. Run one tick from docs/SWARM.md." Add the 08:15 brief, the 18:30 integration and the Friday 18:00 hand-off the same way. Use a background worktree for Mac workers.
-4. **Claude:** in the Code tab, go to **Routines**, then **New routine**, then **Local**, in the Jot folder with the worktree toggle on. Create the same jobs scheduled Saturday and Sunday only, with the Sunday 18:00 hand-off in place of Friday's. For the two-hour weekend cadence, ask Claude in a Desktop session to set the schedule; the picker has no such preset. Click **Run now** once and choose "always allow" for `git`, `gh`, `swift`, `python3 scripts/local-pr-check.py` and `python3 scripts/build-install.py`, so later runs don't stall.
+2. Keep the Mac awake with the Claude app open: scheduled runs skip while the Mac sleeps. Turn on **Keep computer awake** under **Settings > This computer > System** in the Claude app.
+3. **Claude:** in the Code tab, go to **Routines**, then **New routine**, then **Local**, in the Jot folder with the worktree toggle on. Create a tick that says "You are the Jot lead on duty. Run one tick from docs/SWARM.md.", every two hours from 08:00 to 22:00 on the days the swarm should run, plus the 08:15 brief, the 18:30 integration and the Sunday 18:00 hand-off. The picker has no two-hour preset, so ask Claude in a Desktop session to set that schedule. Click **Run now** once and choose "always allow" for `git`, `gh`, `swift`, `python3 scripts/local-pr-check.py` and `python3 scripts/build-install.py`, so later runs don't stall.

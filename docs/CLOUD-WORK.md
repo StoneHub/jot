@@ -1,6 +1,6 @@
 # Cloud work
 
-Cloud sessions fix known issues and build features without the Mac. [AGENTS.md](../AGENTS.md) governs proportional checks and solo delivery: merge authorized work after the relevant checks available in the environment pass, and report native work that remains uncompiled or untested. No dedicated runner or GitHub App is needed for the optional local checker.
+Cloud sessions fix known issues and build features without the Mac. [AGENTS.md](../AGENTS.md) governs proportional checks and solo delivery: run the relevant portable checks, report native work that remains uncompiled or untested, and merge authorized work only after a Mac run of the local checker passes at the PR's head. No dedicated runner or GitHub App is needed for it.
 
 ## Start here
 
