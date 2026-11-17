@@ -17,18 +17,23 @@ extension DictationInput {
                 try await Task.sleep(nanoseconds: 50_000_000)
             }
         }
-        guard let target else { throw InputError.targetChanged }
+        guard let target else {
+            // A dictation giving up here also ends its lookup still confirming the field, so it cannot set a target
+            // nobody will use. A suggestion leaves a dictation press's lookup alone.
+            if expected == nil { clearTarget() }
+            throw InputError.targetChanged
+        }
         let generation = targetGeneration
         var path = "accessibility"
         defer { if targetGeneration == generation { clearTarget() } }
         do {
-            try validateTransaction(target, generation: generation)
+            try await validateTransaction(target, generation: generation)
             guard !text.isEmpty else { return delivery(target, path: "none", outcome: "empty", verified: false) }
             if let expected, !(await suggestionFieldIsCurrent(expected)) { throw InputError.targetChanged }
             let before = await snapshot(target, forSuggestion: expected != nil)
-            try validateTransaction(target, generation: generation)
+            try await validateTransaction(target, generation: generation)
             if let expected, !(await matches(before, expected: expected)) { throw InputError.targetChanged }
-            try validateTransaction(target, generation: generation)
+            try await validateTransaction(target, generation: generation)
             var writable = DarwinBoolean(false)
             var accessibilityResult: AXError?
             let selectionAttribute = kAXSelectedTextAttribute as CFString
@@ -39,11 +44,11 @@ extension DictationInput {
                 // Electron may report AX success while ignoring the setter. Give its
                 // accessibility tree a turn, then inspect what actually changed.
                 try await Task.sleep(nanoseconds: 70_000_000)
-                try validateTransaction(target, generation: generation)
+                try await validateTransaction(target, generation: generation)
                 let after = await snapshot(target, forSuggestion: expected != nil)
-                try validateTransaction(target, generation: generation)
+                try await validateTransaction(target, generation: generation)
                 let readback = await compare(before, after, inserted: text, requireValue: expected != nil)
-                try validateTransaction(target, generation: generation)
+                try await validateTransaction(target, generation: generation)
                 if readback == .verified { return delivery(target, path: path, outcome: "verified", verified: true) }
                 if !readback.allowsAccessibilityRetry(after: result) {
                     return delivery(target, path: path, outcome: "ambiguous_ax_write_no_retry", verified: false)
@@ -51,15 +56,15 @@ extension DictationInput {
             }
             path = "clipboard_hid"
             // Use a fresh snapshot; do not overwrite a user's edit made while AX settled.
-            try validateTransaction(target, generation: generation)
+            try await validateTransaction(target, generation: generation)
             if let expected, !(await suggestionFieldIsCurrent(expected)) { throw InputError.targetChanged }
             let pasteBefore = await snapshot(target, forSuggestion: expected != nil)
-            try validateTransaction(target, generation: generation)
+            try await validateTransaction(target, generation: generation)
             if let expected, !(await matches(pasteBefore, expected: expected)) { throw InputError.targetChanged }
-            try validateTransaction(target, generation: generation)
+            try await validateTransaction(target, generation: generation)
             if let accessibilityResult {
                 let readback = await compare(before, pasteBefore, inserted: text, requireValue: expected != nil)
-                try validateTransaction(target, generation: generation)
+                try await validateTransaction(target, generation: generation)
                 if readback == .verified { return delivery(target, path: "accessibility", outcome: "verified", verified: true) }
                 if !readback.allowsAccessibilityRetry(after: accessibilityResult) {
                     return delivery(target, path: "accessibility", outcome: "ambiguous_ax_write_no_retry", verified: false)
@@ -68,26 +73,32 @@ extension DictationInput {
             // Prefer direct text events. Clipboard fallback is safe only if no direct events were sent.
             path = try await ClipboardInsertion.deliver(paste: {
                 path = "clipboard_hid"
-                try validateTransaction(target, generation: generation)
+                try await validateTransaction(target, generation: generation)
                 try paste(text, into: target)
             }, type: {
                 path = "unicode_hid"
                 try await typeUnicode(text, into: target, generation: generation)
             })
-            for delay in [70_000_000, 130_000_000, 250_000_000, 300_000_000] as [UInt64] {
-                try await Task.sleep(nanoseconds: delay)
-                try validateTransaction(target, generation: generation)
+            // Electron editors such as VS Code take typed text in turns and update their Accessibility value after it, so
+            // an early read can hold part of the text: a changed value is final only once two reads in a row agree.
+            // The text has been sent, so focus leaving now ends the read-back as unverified, never as not inserted.
+            // Nothing is sent again either way.
+            var readback = FieldInsertionReadback.unknown
+            var previous: FieldInsertionSnapshot?
+            for (index, delay) in Self.readbackDelays.enumerated() {
+                try await Task.sleep(for: delay)
+                do { try await validateTransaction(target, generation: generation) } catch { break }
                 let after = await snapshot(target, forSuggestion: expected != nil)
-                try validateTransaction(target, generation: generation)
-                let readback = await compare(pasteBefore, after, inserted: text, requireValue: expected != nil)
-                try validateTransaction(target, generation: generation)
-                switch readback {
-                case .verified: return delivery(target, path: path, outcome: "verified", verified: true)
-                case .changed: return delivery(target, path: path, outcome: "changed_unverified_no_retry", verified: false)
-                case .unchanged, .unknown: break
-                }
+                let result = await compare(pasteBefore, after, inserted: text, requireValue: expected != nil)
+                if result == .verified { return delivery(target, path: path, outcome: "verified", verified: true) }
+                if result != .unknown { readback = result }
+                // From the third read (about 450 ms) on, so a briefly stalled editor still gets its later reads.
+                if result == .changed, index >= 2, let previous, previous.value == after.value,
+                   previous.selection == after.selection { break }
+                previous = after
             }
-            return delivery(target, path: path, outcome: "dispatched_not_verified", verified: false)
+            return delivery(target, path: path, outcome: readback == .changed ? "changed_unverified_no_retry" : "dispatched_not_verified",
+                            verified: false)
         } catch {
             _ = delivery(target, path: path, outcome: "cancelled_or_failed", verified: false)
             throw error
@@ -95,7 +106,9 @@ extension DictationInput {
     }
 
     /// Copies field text off the main actor. Each worker configures a fresh AX
-    /// reference, and the caller revalidates focus/generation before any write.
+    /// reference, and the caller revalidates focus/generation before any write. The reads run on a worker, so they can
+    /// wait longer than the main actor's 5 ms: a web page still laying out text Jot just wrote answers late, and a
+    /// read that times out leaves the delivery unverified.
     private func snapshot(_ target: Target, forSuggestion: Bool = false) async -> FieldInsertionSnapshot {
         if forSuggestion {
             guard let draft = await readSuggestionField()?.draft else {
@@ -107,11 +120,11 @@ extension DictationInput {
         let identity = AccessibilityElement(value: target.field)
         return await Task.detached(priority: .userInitiated) {
             let application = AXUIElementCreateApplication(pid)
-            AXUIElementSetMessagingTimeout(application, 0.005)
+            AXUIElementSetMessagingTimeout(application, Self.snapshotReadTimeout)
             guard let field = Self.focusedField(application), CFEqual(field, identity.value) else {
                 return FieldInsertionSnapshot(value: nil, selection: nil)
             }
-            AXUIElementSetMessagingTimeout(field, 0.005)
+            AXUIElementSetMessagingTimeout(field, Self.snapshotReadTimeout)
             let selection = Self.selectedRange(of: field).map { NSRange(location: $0.location, length: $0.length) }
             return FieldInsertionSnapshot(value: Self.stringAttribute(field, kAXValueAttribute), selection: selection)
         }.value
@@ -132,10 +145,25 @@ extension DictationInput {
         }.value
     }
 
-    private func validateTransaction(_ target: Target, generation: Int) throws {
+    /// Timeout for each read-back on its worker, in seconds.
+    nonisolated static let snapshotReadTimeout: Float = 0.1
+
+    /// Waits after typed or pasted text before each read-back, 750 ms in all.
+    static let readbackDelays: [Duration] = [.milliseconds(70), .milliseconds(130), .milliseconds(250), .milliseconds(300)]
+
+    /// Before and after every step of a delivery: still this press's field, still focused. A busy app gets a moment to
+    /// answer the focus read (`confirmCurrent`), and the field is checked again for a release that came in meanwhile.
+    private func validateTransaction(_ target: Target, generation: Int) async throws {
         try Task.checkCancellation()
-        guard targetGeneration == generation else { throw InputError.targetChanged }
-        try validateCurrent(target)
+        guard targetGeneration == generation else { throw released() }
+        try await confirmCurrent(target, generation: generation)
+        try Task.checkCancellation()
+        guard targetGeneration == generation else { throw released() }
+    }
+
+    private func released() -> InputError {
+        if lastTargetLoss == nil { lastTargetLoss = "the field was let go during delivery" }
+        return InputError.targetChanged
     }
 
     private func typeUnicode(_ text: String, into target: Target, generation: Int) async throws {
@@ -143,7 +171,7 @@ extension DictationInput {
         let events = try await Task.detached(priority: .userInitiated) {
             try KeyboardTextEvents.make(text, marker: marker)
         }.value
-        try await events.dispatch { try self.validateTransaction(target, generation: generation) }
+        try await events.dispatch { try await self.validateTransaction(target, generation: generation) }
     }
 
     private func paste(_ text: String, into target: Target) throws {

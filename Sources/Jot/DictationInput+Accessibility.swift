@@ -39,6 +39,31 @@ extension DictationInput {
         return (value as! AXUIElement)
     }
 
+    enum FocusRead {
+        case element(AXUIElement), nothing, noAnswer
+    }
+
+    /// The focused element, nothing, or no answer within the timeout already set on `application`. Only a timeout
+    /// (`cannotComplete`) is silence; any other failure reads as nothing focused, so it still ends a delivery.
+    nonisolated static func focusRead(_ application: AXUIElement) -> FocusRead {
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(application, kAXFocusedUIElementAttribute as CFString, &value)
+        if result == .cannotComplete { return .noAnswer }
+        guard result == .success, let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return .nothing }
+        return .element(value as! AXUIElement)
+    }
+
+    enum StringRead {
+        case answered(String?), noAnswer
+    }
+
+    /// A string attribute, or no answer within the element's timeout. A missing or non-string value is an answer (nil).
+    nonisolated static func stringRead(_ element: AXUIElement, _ name: String) -> StringRead {
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(element, name as CFString, &value)
+        return result == .cannotComplete ? .noAnswer : .answered(result == .success ? value as? String : nil)
+    }
+
     /// Bundle id of the process that owns an element, for the focused-field error and doctor output.
     nonisolated private static func owner(of field: AXUIElement) -> String {
         var pid: pid_t = 0
@@ -54,8 +79,11 @@ extension DictationInput {
     }
 
     nonisolated static func validateEditable(_ field: AXUIElement) throws {
-        let role = stringAttribute(field, kAXRoleAttribute)
-        let subrole = stringAttribute(field, kAXSubroleAttribute)
+        try validateEditable(field, role: stringAttribute(field, kAXRoleAttribute), subrole: stringAttribute(field, kAXSubroleAttribute))
+    }
+
+    /// The editable check with the role and subrole already read.
+    nonisolated static func validateEditable(_ field: AXUIElement, role: String?, subrole: String?) throws {
         if subrole == kAXSecureTextFieldSubrole || subrole?.localizedCaseInsensitiveContains("secure") == true {
             throw InputError.secureField
         }
