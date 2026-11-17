@@ -423,14 +423,15 @@ final class TypoFixCoordinator {
         monitorTask?.cancel()
         monitorTask = Task { [weak self] in
             let expires = ContinuousClock.now.advanced(by: .seconds(30))
+            var requested = false
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(250))
                 guard let self, token == self.generation, self.showsPreview else { return }
                 guard ContinuousClock.now < expires else { self.endPreview(); return }
                 // Tab moves the keys to accepting, and a second request to requesting, before the main actor hears about
-                // it; the request ends the preview itself.
+                // it; the request ends the preview itself, and a request dropped on the way ends it here a tick later.
                 let keys = self.input.suggestionState
-                if keys == .requesting { continue }
+                if keys == .requesting && !requested { requested = true; continue }
                 guard keys == .ready || keys == .accepting else { self.endPreview(); return }
                 let place = await self.input.observeSuggestionField(field)
                 guard token == self.generation, self.showsPreview else { return }

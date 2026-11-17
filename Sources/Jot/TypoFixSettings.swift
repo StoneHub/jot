@@ -24,6 +24,6 @@ struct TypoFixSettings: View {
         return "Fixes misspellings and mistyped words in the selection, or the whole field when nothing is selected, and keeps your wording. "
             + "Jot reads the field only when you ask and keeps nothing afterward. Uses the cleanup model: "
             + CustomModelSettings.destination(service, usesCustomModel: service.customModelForCleanup)
-            + " With Suggestions on, double-tapping Fn in a field with text shows its typo fixes first: Tab applies them, and double-tapping Fn again asks for a suggestion."
+            + " With Suggestions on, double-tapping Fn in a field with text and nothing selected shows its typo fixes first: Tab applies them, and double-tapping Fn again asks for a suggestion."
     }
 }
