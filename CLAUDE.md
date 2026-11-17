@@ -2,7 +2,7 @@
 
 Read [AGENTS.md](AGENTS.md) for project agreements. Monroe tests end to end when he updates.
 
-Merge gate: every PR, docs and tooling included, merges only after a Mac run of `scripts/local-pr-check.py` passes at the PR's current head. Look for the `jot/local-pr-check` status or the posted report naming that head SHA; a pass on an older head does not count, and the Mac's regenerated `Jot.xcodeproj` commit moves the head. A cloud session may then merge the PR itself, but never runs `local-pr-check --post` itself: that status must come from the Mac. Swarm workers leave merging to the lead ([docs/SWARM.md](docs/SWARM.md)).
+Merge gate: a Mac run of `scripts/local-pr-check.py --post` passing at the PR's current head, every PR included ([AGENTS.md](AGENTS.md) says how to tell). A cloud session may then merge the PR itself, and so may a Jot full send, which stops at the full-stop handoff only when it cannot get that Mac run. Swarm workers leave merging to the lead ([docs/SWARM.md](docs/SWARM.md)).
 
 In a cloud session, read [docs/CLOUD-WORK.md](docs/CLOUD-WORK.md). The Swift package needs Apple SDKs, so Linux cannot build it, and installing Swift does not change that. Run the portable checks and open the PR with a test-when-you-sit-down list.
 
