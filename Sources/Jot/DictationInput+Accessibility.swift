@@ -39,6 +39,26 @@ extension DictationInput {
         return (value as! AXUIElement)
     }
 
+    enum FocusRead {
+        case element(AXUIElement), nothing, noAnswer
+    }
+
+    /// The focused element, nothing, or no answer within the timeout already set on `application`. Only a timeout
+    /// (`cannotComplete`) is silence; any other failure reads as nothing focused, so it still ends a delivery.
+    nonisolated static func focusRead(_ application: AXUIElement) -> FocusRead {
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(application, kAXFocusedUIElementAttribute as CFString, &value)
+        if result == .cannotComplete { return .noAnswer }
+        guard result == .success, let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return .nothing }
+        return .element(value as! AXUIElement)
+    }
+
+    /// Whether the element answered a read of `attribute` within its timeout, whatever the answer was.
+    nonisolated static func answers(_ element: AXUIElement, _ attribute: String) -> Bool {
+        var value: CFTypeRef?
+        return AXUIElementCopyAttributeValue(element, attribute as CFString, &value) != .cannotComplete
+    }
+
     /// Bundle id of the process that owns an element, for the focused-field error and doctor output.
     nonisolated private static func owner(of field: AXUIElement) -> String {
         var pid: pid_t = 0

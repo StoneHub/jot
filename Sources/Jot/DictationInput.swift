@@ -92,6 +92,10 @@ final class DictationInput {
     private var discardedTaps = 0
     private var targetCaptureFailures = 0
     private var lastShortcutError: String?
+    /// Why the last captured field was let go before or during delivery, as a fixed phrase; never field contents.
+    private(set) var lastTargetLoss: String?
+    /// What the latest focus read found, kept for `lastTargetLoss` when that read lets the field go.
+    private var focusFinding = ""
     /// Kept after a later press succeeds, so a rejection in one app survives a success in another.
     private var lastRejection: String?
     /// Health and counts only. Never includes typed text or accessibility field values.
@@ -104,6 +108,7 @@ final class DictationInput {
             "targetCaptureFailures": targetCaptureFailures]
         if let lastShortcutError { result["lastError"] = lastShortcutError }
         if let lastRejection { result["lastRejection"] = lastRejection }
+        if let lastTargetLoss { result["lastTargetLoss"] = lastTargetLoss }
         return result
     }
 
@@ -235,6 +240,7 @@ final class DictationInput {
         AXUIElementSetMessagingTimeout(application, 0.005)
         let field = try editableField(in: application, of: app)
         target = Target(pid: app.processIdentifier, field: field)
+        lastTargetLoss = nil
         observeFocus(application, pid: app.processIdentifier)
     }
 
@@ -385,7 +391,6 @@ final class DictationInput {
         observeFocus(application, pid: pid)
         let acquisition = ShortcutTargetAcquisition(pid: pid,
             appName: app.bundleIdentifier ?? app.localizedName ?? "unknown app")
-        let applicationReference = AccessibilityElement(value: application)
         let acquisitionTask = Task.detached(priority: .userInitiated) {
             try await acquisition.acquire()
         }
@@ -396,15 +401,15 @@ final class DictationInput {
                 frontmostPID: NSWorkspace.shared.frontmostApplication?.processIdentifier) else { return }
             self.targetAcquisition = nil
             do {
-                let field = try result.get().value
-                guard let focused = Self.focusedField(applicationReference.value),
-                      CFEqual(focused, field) else { throw InputError.targetChanged }
-                AXUIElementSetMessagingTimeout(focused, 0.005)
-                try Self.validateEditable(focused)
+                let candidate = Target(pid: pid, field: try result.get().value)
+                try await self.confirmCurrent(candidate)
                 guard ticket.accepts(generation: self.targetGeneration,
                     frontmostPID: NSWorkspace.shared.frontmostApplication?.processIdentifier) else { return }
-                self.target = Target(pid: pid, field: field)
+                self.target = candidate
+                self.lastTargetLoss = nil
             } catch {
+                // A busy app may have been given a moment to answer; a newer press or release owns the field by now.
+                guard self.targetGeneration == ticket.generation else { return }
                 self.targetCaptureFailures += 1
                 self.report(error)
             }
@@ -433,14 +438,29 @@ final class DictationInput {
         if wasRecording { onStop(ProcessInfo.processInfo.systemUptime) }
     }
 
+    /// A focus notification from the target app. Only an answer naming another element lets the field go here: a busy
+    /// app is asked again, and every write checks focus for itself before it lands.
     private func checkFocus() {
         guard let target else { return }
-        do { try validateCurrent(target) }
-        catch {
-            if typoFixOwnsTarget { onTypoFixInterrupted?() }
-            else if eventTap.suggestionState != .idle { onSuggestionDismiss?(.focusChanged) }
-            else { cancel(error) }
+        let check: FocusCheck
+        do { check = try focusCheck(target) } catch { targetLost(error); return }
+        switch check {
+        case .current: return
+        case .moved: lastTargetLoss = focusFinding; targetLost(InputError.targetChanged)
+        case .noAnswer:
+            let generation = targetGeneration
+            Task { [weak self] in
+                guard let self, let target = self.target, self.targetGeneration == generation else { return }
+                do { try await self.confirmCurrent(target) }
+                catch { if self.targetGeneration == generation { self.targetLost(error) } }
+            }
         }
+    }
+
+    private func targetLost(_ error: Error) {
+        if typoFixOwnsTarget { onTypoFixInterrupted?() }
+        else if eventTap.suggestionState != .idle { onSuggestionDismiss?(.focusChanged) }
+        else { cancel(error) }
     }
 
     private func focusChanged() {
@@ -455,15 +475,58 @@ final class DictationInput {
         report(InputError.targetChanged)
     }
 
-    /// Insertion's focus check uses short timeouts; an app that does not answer is never written into.
-    func validateCurrent(_ target: Target) throws {
+    /// Reads that wait for a busy app before a write: 20 reads 15 ms apart, about 300 ms with each read's 5 ms timeout.
+    static let focusReadAttempts = 20
+    static let focusReadInterval: Duration = .milliseconds(15)
+
+    /// Where focus is now, against the captured field. Each read has a 5 ms timeout, so a hung app never stalls Jot;
+    /// a timeout is reported as `.noAnswer`, not as focus moving. Throws when the field stopped being one Jot may write into.
+    func focusCheck(_ target: Target) throws -> FocusCheck {
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == target.pid else {
+            focusFinding = "another app came to the front"
+            return .moved
+        }
         let application = AXUIElementCreateApplication(target.pid)
         AXUIElementSetMessagingTimeout(application, 0.005)
-        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == target.pid,
-              let current = Self.focusedField(application),
-              CFEqual(current, target.field) else { throw InputError.targetChanged }
+        let current: AXUIElement
+        switch Self.focusRead(application) {
+        case .noAnswer:
+            focusFinding = "the app did not answer focus reads"
+            return .noAnswer
+        case .nothing:
+            focusFinding = "nothing had focus"
+            return .moved
+        case .element(let element): current = element
+        }
+        guard CFEqual(current, target.field) else {
+            focusFinding = "focus moved to another element"
+            return .moved
+        }
         AXUIElementSetMessagingTimeout(current, 0.005)
+        // The role read behind the editable check can time out the same way; an unanswered role is silence, not a refusal.
+        guard Self.answers(current, kAXRoleAttribute) else {
+            focusFinding = "the app did not answer focus reads"
+            return .noAnswer
+        }
         try Self.validateEditable(current)
+        return .current
+    }
+
+    /// Synchronous focus check for the moment just before a paste: an app that does not answer is never written into.
+    func validateCurrent(_ target: Target) throws {
+        guard try focusCheck(target) == .current else { lastTargetLoss = focusFinding; throw InputError.targetChanged }
+    }
+
+    /// Focus check before each write of a delivery. An app that does not answer is asked again for about 300 ms
+    /// without blocking Jot, and still never written into; an answer naming another element ends it at once.
+    func confirmCurrent(_ target: Target) async throws {
+        let check = try await FocusCheck.settle(attempts: Self.focusReadAttempts,
+            wait: { try await Task.sleep(for: Self.focusReadInterval) },
+            read: { try self.focusCheck(target) })
+        guard check == .current else {
+            lastTargetLoss = check == .noAnswer ? "the app did not answer focus reads for 300 ms" : focusFinding
+            throw InputError.targetChanged
+        }
     }
 
     private func observeFocus(_ application: AXUIElement, pid: pid_t) {

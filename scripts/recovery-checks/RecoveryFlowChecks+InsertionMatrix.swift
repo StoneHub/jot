@@ -110,6 +110,7 @@ extension RecoveryFlowChecks {
         static func check(_ target: String, electron: (bundle: String, new: String?)?, phrase: String, pages: Pages) async -> Row {
             var row = Row(target: target, expected: refused.contains(target) ? "refused" : "verified", result: "failed")
             var field: AXUIElement?
+            var dictation: DictationInput?
             var pid: pid_t = 0
             do {
                 let app = try open(target, electron: electron, pages: pages)
@@ -118,6 +119,7 @@ extension RecoveryFlowChecks {
                 // The app does this when an app comes to the front: Electron keeps its tree off until asked.
                 DictationInput.wakeAccessibility(app.processIdentifier)
                 let input = DictationInput(onStart: {}, onStop: { _ in })
+                dictation = input
                 let want: Want = target == "password" ? .secure : target == "electron" ? .anyEditable : .textArea
                 let captured = await capture(input, app: app, want: want, timeout: target == "electron" ? 45 : 15)
                 switch captured {
@@ -145,12 +147,13 @@ extension RecoveryFlowChecks {
                 row.path = delivery.path; row.outcome = delivery.outcome; row.verified = delivery.verified
                 row.role = delivery.role; row.subrole = delivery.subrole
                 // Jot's own read-back decides; a second read is recorded for the report, as some editors expose only the current line.
-                row.readback = fieldHolds(phrase, pid: app.processIdentifier)
+                let second = fieldHolds(phrase, pid: app.processIdentifier)
+                row.readback = second.holds
                 if delivery.verified {
                     row.result = "passed"
                     if row.readback == false { row.note = "the field's value did not show the phrase on a second read" }
                 } else {
-                    row.note = "delivery not verified"
+                    row.note = "delivery not verified" + (second.shape.map { "; a second read found \($0)" } ?? "")
                 }
             } catch DictationInput.InputError.secureField {
                 row.note = "secure field refused during insertion"
@@ -158,7 +161,8 @@ extension RecoveryFlowChecks {
             } catch DictationInput.InputError.targetChanged where field != nil {
                 // Jot gave up on a field that had held focus for a second. Say why it might have: another app in front,
                 // focus really moving, or the app not answering within the 5 ms Jot allows each focus check.
-                row.note = DictationInput.InputError.targetChanged.localizedDescription + " " + diagnose(field!, pid: pid)
+                row.note = DictationInput.InputError.targetChanged.localizedDescription + " "
+                    + diagnose(field!, pid: pid, loss: dictation?.lastTargetLoss)
             } catch {
                 row.note = error.localizedDescription
             }
@@ -245,10 +249,12 @@ extension RecoveryFlowChecks {
             app.activate()
         }
 
-        /// Why Jot may have dropped a field that had held focus: what is in front, whether focus moved, and how many quick
-        /// focus reads the app answers within Jot's 5 ms limit. A slow answer reads as a focus change by design.
-        static func diagnose(_ captured: AXUIElement, pid: pid_t) -> String {
+        /// Why Jot dropped a field that had held focus: the reason Jot recorded, then what is in front, whether focus moved,
+        /// and how many quick focus reads the app answers within Jot's 5 ms limit. Jot asks a silent app again for about
+        /// 300 ms before a write, so silence alone drops a field only when it lasts that long.
+        static func diagnose(_ captured: AXUIElement, pid: pid_t, loss: String?) -> String {
             var facts: [String] = []
+            if let loss { facts.append("Jot saw: \(loss)") }
             let front = NSWorkspace.shared.frontmostApplication
             if front?.processIdentifier != pid { facts.append("\(front?.localizedName ?? "no app") was in front") }
             let patient = AXUIElementCreateApplication(pid)
@@ -269,13 +275,27 @@ extension RecoveryFlowChecks {
         }
 
         /// The focused field's Accessibility value after delivery. Terminal reports its whole screen, so containment is enough.
-        static func fieldHolds(_ phrase: String, pid: pid_t) -> Bool? {
+        /// `shape` says, in lengths only, how the value relates to the phrase, so a row Jot could not verify shows whether
+        /// the text arrived whole, in part, or with other text around it. Field contents never reach the report.
+        static func fieldHolds(_ phrase: String, pid: pid_t) -> (holds: Bool?, shape: String?) {
             let application = AXUIElementCreateApplication(pid)
             AXUIElementSetMessagingTimeout(application, 0.5)
-            guard let field = DictationInput.focusedField(application) else { return nil }
+            guard let field = DictationInput.focusedField(application) else { return (nil, "nothing focused") }
             AXUIElementSetMessagingTimeout(field, 0.5)
-            guard let value = DictationInput.stringAttribute(field, kAXValueAttribute) else { return nil }
-            return value.contains(phrase)
+            guard let value = DictationInput.stringAttribute(field, kAXValueAttribute) else { return (nil, "no readable value") }
+            return (value.contains(phrase), readbackShape(value, phrase: phrase))
+        }
+
+        /// Lengths only: "the phrase alone", "the phrase with 3 characters before and 1 after", "the first 20 of 32
+        /// characters", or "a 12-character value without the phrase".
+        static func readbackShape(_ value: String, phrase: String) -> String {
+            if value == phrase { return "the phrase alone" }
+            if let range = value.range(of: phrase) {
+                return "the phrase with \(value[..<range.lowerBound].count) characters before and \(value[range.upperBound...].count) after"
+            }
+            let prefix = zip(value, phrase).prefix { $0 == $1 }.count
+            if prefix > 0, prefix == value.count { return "the first \(prefix) of \(phrase.count) characters" }
+            return "a \(value.count)-character value without the phrase"
         }
 
         // MARK: Opening and closing the apps
