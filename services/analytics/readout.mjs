@@ -67,6 +67,7 @@ export function readout(reports, usage, days) {
         "", "Fix typos",
         `  ${m.typoPresses} presses: ${m.fixes} fixed, ${m.undone} undone (${percent(m.undone, m.fixes)} of fixes), ${m.rejected} rejected, ${m.unchanged} nothing to fix, ${m.notRun} could not run.`,
         `  ${breakdown("typoFix.outcome.")}`,
+        `  Double-tap Fn checks: ${breakdown("typoFix.preview.")}`,
         "", "Suggestions",
         `  ${m.suggestions} requested, ${m.shown} shown, ${m.accepted} accepted (${percent(m.accepted, m.shown)} of shown).`,
         `  Ended by: ${breakdown("suggestion.action.")}`,

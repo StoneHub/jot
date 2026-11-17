@@ -71,6 +71,8 @@ final class DictationInput {
     var onTypoFixInterrupted: (() -> Void)?
     /// Fix typos holds the captured field while it runs: focus leaving it ends the fix rather than reporting a dictation error.
     var typoFixOwnsTarget = false
+    /// The user typed, clicked or brought another app forward, so the field a double-Fn sequence was in may have changed.
+    var onFieldActivity: (() -> Void)?
     var fnSuggestionsEnabled = false { didSet { eventTap.resetFnSuggestion(); refreshShortcutState() } }
     var suggestionAllowed: () -> Bool = { false }
     var onSuggestionRequest: (() -> Void)?
@@ -185,6 +187,7 @@ final class DictationInput {
                     Task.detached { Self.wakeAccessibility(pid) }
                 }
                 self?.focusChanged()
+                self?.onFieldActivity?()
             }
         }
         // A drag or window click finishes an interactive screenshot; the keys after it belong to the field again.
@@ -192,7 +195,7 @@ final class DictationInput {
             MainActor.assumeIsolated { self?.eventTap.endScreenshot() }
         }
         mouseDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
-            MainActor.assumeIsolated { self?.invalidatePendingTarget() }
+            MainActor.assumeIsolated { self?.invalidatePendingTarget(); self?.onFieldActivity?() }
         }
         if let front = NSWorkspace.shared.frontmostApplication {
             let pid = front.processIdentifier
@@ -298,6 +301,7 @@ final class DictationInput {
                 suggestionKeyRevision += 1
                 invalidatePendingTarget()
                 onTypoFixInterrupted?()
+                onFieldActivity?()
             case .typoFixRequest:
                 onTypoFixRequest?()
             case .suggestionRequest:

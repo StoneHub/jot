@@ -396,6 +396,7 @@
 		BE231E62D1A7EF570EFA8F40 /* PerformanceEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = E140FD55F4DBB4651999774E /* PerformanceEvent.swift */; };
 		BE8F79826254F5A142D584DE /* SpeechService+Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D0A8B91F18F4F1888258C1E /* SpeechService+Settings.swift */; };
 		BF8F2F375F54EC6CA71E6060 /* SuggestionFieldReadback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73D98812F8A03430DA0CB687 /* SuggestionFieldReadback.swift */; };
+		C0301D98FBD850C843A355CD /* TypoFixPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA5D3B664C617C0F61DB5572 /* TypoFixPreview.swift */; };
 		C08E47646BE2FFC7640AE555 /* PeopleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD326956C3E7FB03D26E6E5E /* PeopleView.swift */; };
 		C0A99709F77B44220AA92304 /* SpeechService+Sessions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7834B66DCA60B5D6F446623F /* SpeechService+Sessions.swift */; };
 		C0C4FD5316381184F6533F82 /* TypoFixShortcutPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2650B2C10BC178AED248B550 /* TypoFixShortcutPreferences.swift */; };
@@ -946,6 +947,7 @@
 		D725C039217C7DD662C7B1AC /* DictationInput+SuggestionField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DictationInput+SuggestionField.swift"; sourceTree = "<group>"; };
 		D8260B75D679FF88E8921F1B /* JotVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JotVersion.swift; sourceTree = "<group>"; };
 		D9D0FAC107D2E584A4316C77 /* ModelCallResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCallResult.swift; sourceTree = "<group>"; };
+		DA5D3B664C617C0F61DB5572 /* TypoFixPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypoFixPreview.swift; sourceTree = "<group>"; };
 		DA9537B67BAEC63747D1D39F /* TextDistance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextDistance.swift; sourceTree = "<group>"; };
 		DAC4D8304004A11BC13D0D23 /* JotWindowChecks */ = {isa = PBXFileReference; includeInIndex = 0; path = JotWindowChecks; sourceTree = BUILT_PRODUCTS_DIR; };
 		DAFBCDD4D3FB010F8B111982 /* UpdateHandoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateHandoff.swift; sourceTree = "<group>"; };
@@ -1425,6 +1427,7 @@
 				914C2CACA0E848A1CA1CE1E8 /* TypoFixEdit.swift */,
 				6A2672065AE53EDACD3D025C /* TypoFixKeyTracker.swift */,
 				CA444CB8A7A1504D2B5B8D8C /* TypoFixOutcome.swift */,
+				DA5D3B664C617C0F61DB5572 /* TypoFixPreview.swift */,
 				D3F58A6425C62B3D03D4F631 /* TypoFixPrompt.swift */,
 				BC3828192D0596C8E63CD6F9 /* TypoFixReview.swift */,
 				2650B2C10BC178AED248B550 /* TypoFixShortcutPreferences.swift */,
@@ -2088,6 +2091,7 @@
 				C3C65C422877B1E15208A1D8 /* TypoFixEdit.swift in Sources */,
 				56F47F487104EDD8CF8269BD /* TypoFixKeyTracker.swift in Sources */,
 				7355A35B8EEC9DDE0168B6BE /* TypoFixOutcome.swift in Sources */,
+				C0301D98FBD850C843A355CD /* TypoFixPreview.swift in Sources */,
 				8995337DEA227A28591B5282 /* TypoFixPrompt.swift in Sources */,
 				2982176482A3FAA1651DB258 /* TypoFixReview.swift in Sources */,
 				C0C4FD5316381184F6533F82 /* TypoFixShortcutPreferences.swift in Sources */,
