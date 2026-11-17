@@ -451,19 +451,20 @@ final class DictationInput {
         case .current: return
         case .moved: lastTargetLoss = focusFinding; targetLost(InputError.targetChanged)
         case .noAnswer:
-            guard focusRecheck == nil else { return }
             let generation = targetGeneration
-            focusRecheck = Task { [weak self] in
-                defer { self?.focusRecheck = nil }
+            guard focusRecheck?.generation != generation else { return }
+            focusRecheck = (generation, Task { [weak self] in
+                defer { if self?.focusRecheck?.generation == generation { self?.focusRecheck = nil } }
                 guard let self, let target = self.target, self.targetGeneration == generation else { return }
                 do { try await self.confirmCurrent(target, generation: generation) }
                 catch { if self.targetGeneration == generation { self.targetLost(error) } }
-            }
+            })
         }
     }
 
-    /// One recheck at a time after focus notifications that got no answer; a burst of them shares it.
-    private var focusRecheck: Task<Void, Never>?
+    /// One recheck per captured field after focus notifications that got no answer; a burst of them shares it, and a
+    /// recheck left over from an earlier field never stands in for the current one's.
+    private var focusRecheck: (generation: Int, task: Task<Void, Never>)?
 
     private func targetLost(_ error: Error) {
         if typoFixOwnsTarget { onTypoFixInterrupted?() }

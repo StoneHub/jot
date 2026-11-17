@@ -17,8 +17,12 @@ extension DictationInput {
                 try await Task.sleep(nanoseconds: 50_000_000)
             }
         }
-        // Giving up here also ends a lookup still confirming the field, so it cannot set a target nobody will use.
-        guard let target else { clearTarget(); throw InputError.targetChanged }
+        guard let target else {
+            // A dictation giving up here also ends its lookup still confirming the field, so it cannot set a target
+            // nobody will use. A suggestion leaves a dictation press's lookup alone.
+            if expected == nil { clearTarget() }
+            throw InputError.targetChanged
+        }
         let generation = targetGeneration
         var path = "accessibility"
         defer { if targetGeneration == generation { clearTarget() } }
@@ -81,14 +85,16 @@ extension DictationInput {
             // Nothing is sent again either way.
             var readback = FieldInsertionReadback.unknown
             var previous: FieldInsertionSnapshot?
-            for delay in Self.readbackDelays {
+            for (index, delay) in Self.readbackDelays.enumerated() {
                 try await Task.sleep(for: delay)
                 do { try await validateTransaction(target, generation: generation) } catch { break }
                 let after = await snapshot(target, forSuggestion: expected != nil)
                 let result = await compare(pasteBefore, after, inserted: text, requireValue: expected != nil)
                 if result == .verified { return delivery(target, path: path, outcome: "verified", verified: true) }
                 if result != .unknown { readback = result }
-                if result == .changed, let previous, previous.value == after.value, previous.selection == after.selection { break }
+                // From the third read (about 450 ms) on, so a briefly stalled editor still gets its later reads.
+                if result == .changed, index >= 2, let previous, previous.value == after.value,
+                   previous.selection == after.selection { break }
                 previous = after
             }
             return delivery(target, path: path, outcome: readback == .changed ? "changed_unverified_no_retry" : "dispatched_not_verified",
