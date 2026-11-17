@@ -7,6 +7,9 @@ import JotCore
 /// checked insertion path. Pressing again while it runs cancels; pressing again within 30 seconds of a fix, on the
 /// unchanged field, puts the original back. That original stays in memory until then. No field or model text is saved,
 /// logged or counted.
+///
+/// The first double-tap of Fn in a field with text runs the same check as a preview (`check(then:)`): the fixes show on the
+/// card and Tab writes them. A second double-tap on that field goes on to a suggestion, whether Tab was pressed or not.
 @MainActor
 final class TypoFixCoordinator {
     private let input: DictationInput
@@ -18,6 +21,7 @@ final class TypoFixCoordinator {
     private let gate = ModelCallGate(deadline: .seconds(30))
     private var task: Task<Void, Never>?
     private var hideTask: Task<Void, Never>?
+    private var monitorTask: Task<Void, Never>?
     private var generation = 0
     private var ownsTarget = false { didSet { input.typoFixOwnsTarget = ownsTarget } }
     private var frame: CGRect?
@@ -38,19 +42,57 @@ final class TypoFixCoordinator {
     }
     private static let undoWindow: Duration = .seconds(30)
 
+    // MARK: Double-Fn preview state
+
+    /// Where a double-Fn check is. Nil while none runs, including during a shortcut press.
+    private enum Phase {
+        case checking
+        case showing(Preview)
+        case applying
+    }
+    /// A checked fix on the card, waiting for Tab.
+    private struct Preview {
+        let edit: TypoFixEdit
+        let field: DictationInput.SuggestionField
+        let changes: Int
+    }
+    /// The field the last double-Fn check read, and a hash of its text so no copy of it is kept. The next request on that
+    /// field, while it still hashes the same, goes straight to a suggestion. Typing, a click or another app ends it.
+    private struct Step {
+        let pid: pid_t
+        let field: AXUIElement
+        let valueHash: Int
+    }
+    private var phase: Phase?
+    private var step: Step?
+    private var suggest: (() -> Void)?
+    /// A check the model was asked for and whose outcome is not counted yet.
+    private var previewCounted = false
+    private var previewChecks = 0
+    private var previewOutcome = "idle"
+    private static let previewFooter = "Tab to fix · double-tap Fn for a suggestion · Esc to dismiss"
+
     /// Counts and codes only; never field or model text.
     var diagnostics: [String: Any] { ["requests": requests, "fixes": fixes, "outcome": outcome, "reason": reason,
-                                      "running": task != nil, "undoAvailable": undo != nil, "model": model.displayName] }
+                                      "running": task != nil, "undoAvailable": undo != nil, "model": model.displayName,
+                                      "previewChecks": previewChecks, "previewOutcome": previewOutcome, "previewShowing": showsPreview] }
+
+    /// A double-Fn preview is on the card, so Tab is the preview's.
+    var showsPreview: Bool {
+        if case .showing = phase { return true }
+        return false
+    }
 
     init(input: DictationInput, model: ChosenModel, countUsage: @escaping ([UsageCounter]) -> Void,
          shortcutName: @escaping () -> String, notice: @escaping (String) -> Void) {
         self.input = input; self.model = model; self.countUsage = countUsage
         self.shortcutName = shortcutName; self.notice = notice
     }
-    isolated deinit { task?.cancel(); hideTask?.cancel() }
+    isolated deinit { task?.cancel(); hideTask?.cancel(); monitorTask?.cancel() }
 
     /// The shortcut. `blocker` is why Jot cannot take a request now, in the words the card shows.
     func press(blocker: String?) {
+        endPreview()
         if task != nil { stop(); return }
         reset()
         requests += 1
@@ -80,6 +122,7 @@ final class TypoFixCoordinator {
     /// Ends a request in flight, counted as cancelled, and hides the card without a notice: a second press, a suggestion or
     /// a setting took over.
     func stop() {
+        if endPreview() { return }
         let running = task != nil
         reset()
         if running { record(.cancelled) }
@@ -89,14 +132,19 @@ final class TypoFixCoordinator {
         generation += 1
         task?.cancel(); task = nil
         hideTask?.cancel(); hideTask = nil
+        monitorTask?.cancel(); monitorTask = nil
         gate.cancel()
         card.hide()
         frame = nil
+        suggest = nil
+        // A double-Fn check holds the suggestion keys for Escape and Tab; give them back.
+        if phase != nil { phase = nil; input.dismissSuggestionKeys() }
         if ownsTarget { ownsTarget = false; input.clearTarget() }
     }
 
     /// The user went on typing, focus left the field, or a dictation began before the fix was written.
     func interrupted() {
+        if endPreview() { return }
         guard task != nil else { return }
         reset()
         record(.fieldChanged)
@@ -113,14 +161,11 @@ final class TypoFixCoordinator {
             await apply(undo.edit.reversed, field: field, token: token, undoing: true, changes: 0)
             return
         }
-        let draft = field.draft
-        let selected = draft.length > 0 && !draft.selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let text = selected ? draft.selectedText : draft.value
-        let offset = selected ? draft.location : 0
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !draft.isBlank else {
+        guard let scope = Self.scope(of: field.draft) else {
             finish(.empty, "Nothing to fix here.")
             return
         }
+        let text = scope.text, offset = scope.offset
         guard (text as NSString).length <= TypoFixPrompt.maximumCharacters else {
             finish(.oversized, "Too long to fix at once. Select a part, up to about 3,000 characters, and press \(shortcutName()) again.")
             return
@@ -160,6 +205,15 @@ final class TypoFixCoordinator {
         }
     }
 
+    /// The text a fix covers and where it starts in the field: the selection when it has text, otherwise the whole field.
+    /// Nil when that is blank.
+    private static func scope(of draft: SuggestionDraftSnapshot) -> (text: String, offset: Int)? {
+        let selected = draft.length > 0 && !draft.selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let text = selected ? draft.selectedText : draft.value
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !draft.isBlank else { return nil }
+        return (text, selected ? draft.location : 0)
+    }
+
     /// Selects exactly the edit's original text and inserts its replacement, through the same verified path as dictation
     /// and suggestions. Nothing is written when the field no longer holds what was read.
     private func apply(_ edit: TypoFixEdit, field: DictationInput.SuggestionField, token: Int, undoing: Bool, changes: Int) async {
@@ -182,6 +236,8 @@ final class TypoFixCoordinator {
             if let fixedValue {
                 undo = Undo(pid: target.pid, field: target.field, edit: edit, fixedValue: fixedValue,
                             expires: ContinuousClock.now.advanced(by: Self.undoWindow))
+                // The next double-Fn on this field asks for a suggestion rather than checking the fixed text again.
+                if phase != nil { step = Step(pid: target.pid, field: target.field, valueHash: fixedValue.hashValue) }
             }
             finish(.fixed, changes == 1 ? "Fixed 1 typo." : "Fixed \(changes) typos.", action: "\(shortcutName()) within 30 s to undo")
         } catch DictationInput.InputError.selectionUnavailable {
@@ -204,7 +260,9 @@ final class TypoFixCoordinator {
         return undo
     }
 
+    /// A shortcut press's outcome, or, for the write that Tab started on a preview, the preview's.
     private func record(_ result: TypoFixOutcome) {
+        if phase != nil { recordPreview(result == .fixed ? .applied : .notApplied); return }
         outcome = result.rawValue
         if result != .rejected { reason = "none" }
         countUsage([.typoFix(result)])
@@ -213,6 +271,7 @@ final class TypoFixCoordinator {
     /// Records how the press ended and shows why at the field for a moment, or as a notice when there is no field.
     private func finish(_ result: TypoFixOutcome, _ text: String, action: String = "") {
         record(result)
+        if phase != nil { phase = nil; input.dismissSuggestionKeys() }
         let place = frame ?? input.targetFrame(timeout: 0.005)
         if ownsTarget { ownsTarget = false; input.clearTarget() }
         guard let place else { card.hide(); notice(text); return }
@@ -230,5 +289,150 @@ final class TypoFixCoordinator {
     private func show(_ text: String, action: String, loading: Bool) {
         guard let frame else { return }
         card.show(text: text, title: "Fix typos", loading: loading, footer: action, at: frame)
+    }
+
+    // MARK: Double-Fn preview
+
+    /// Double-tap Fn, or the extra suggestion shortcut, with Fix typos on. In a field with text, the first request checks
+    /// typos and shows the fixes for Tab. Anything else goes to `suggest`: a blank or oversized field, a field the check
+    /// cannot read, no typos, a result that changed more than typos, a model that could not answer, and a second request
+    /// on the same field, whether it comes while the check runs, while the fixes show, or after Tab or Escape.
+    func check(then suggest: @escaping () -> Void) {
+        if phase != nil { endPreview(); suggest(); return }
+        // A shortcut press still running gives way, counted as cancelled, as it does for a suggestion.
+        stop()
+        do { try input.captureTarget() } catch { suggest(); return }
+        ownsTarget = true
+        guard let place = input.targetFrame(timeout: 0.005) else { reset(); suggest(); return }
+        frame = place
+        phase = .checking
+        self.suggest = suggest
+        let token = generation
+        task = Task { [weak self] in
+            await self?.runCheck(token: token)
+            if let self, token == self.generation { self.task = nil }
+        }
+    }
+
+    /// Ends a double-Fn check or its preview without writing anything. False when none was running.
+    @discardableResult
+    func endPreview() -> Bool {
+        guard let phase else { return false }
+        let ended: TypoFixPreview.Outcome
+        switch phase {
+        case .checking: ended = .cancelled
+        case .showing: ended = .skipped
+        case .applying: ended = .notApplied
+        }
+        reset()
+        recordPreview(ended)
+        return true
+    }
+
+    /// The user typed, clicked or switched apps: the next double-Fn starts over with a typo check.
+    func endSequence() { step = nil }
+
+    /// Tab on the preview: writes the fix through the same checked path as a shortcut press.
+    func acceptPreview() {
+        guard case .showing(let preview) = phase, input.suggestionState == .accepting else { endPreview(); return }
+        phase = .applying
+        monitorTask?.cancel(); monitorTask = nil
+        card.hide()
+        let token = generation
+        task = Task { [weak self] in
+            await self?.apply(preview.edit, field: preview.field, token: token, undoing: false, changes: preview.changes)
+            if let self, token == self.generation { self.task = nil }
+        }
+    }
+
+    private func runCheck(token: Int) async {
+        let read = await input.readSuggestionField()
+        guard token == generation else { return }
+        guard let field = read, let target = input.target else { handOff(); return }
+        let valueHash = field.draft.value.hashValue
+        if let step, step.pid == target.pid, CFEqual(step.field, target.field), step.valueHash == valueHash {
+            handOff(); return
+        }
+        step = Step(pid: target.pid, field: target.field, valueHash: valueHash)
+        guard let scope = Self.scope(of: field.draft), (scope.text as NSString).length <= TypoFixPrompt.maximumCharacters else {
+            handOff(); return
+        }
+        let text = scope.text, offset = scope.offset
+        previewChecks += 1
+        previewCounted = true
+        countUsage([.typoFixPreviewRequested])
+        input.showSuggestionKeys(.loading)
+        show("Checking typos…", action: "Esc to cancel · double-tap Fn for a suggestion", loading: true)
+        let model = self.model
+        let result = await gate.call(TypoFixPrompt.request(for: text), deadline: TypoFixPrompt.deadline(for: text)) {
+            try await model.generate($0)
+        }
+        guard token == generation else { return }
+        switch result {
+        case .output(let raw):
+            let review = await Task.detached(priority: .userInitiated) { TypoFixReview.review(raw, source: text) }.value
+            guard token == generation else { return }
+            switch review {
+            case .unchanged:
+                handOff(.noTypos)
+            case .rejected:
+                handOff(.rejected)
+            case .fixed(let corrected, let changes):
+                guard let edit = TypoFixEdit(source: text, corrected: corrected, offset: offset) else { handOff(.noTypos); return }
+                showPreview(Preview(edit: edit, field: field, changes: changes),
+                            summary: TypoFixPreview.summary(source: text, corrected: corrected), token: token)
+            }
+        case .timedOut, .unavailable, .blocked, .failed:
+            handOff(.failed)
+        case .cancelled:
+            break
+        }
+    }
+
+    /// Ends the check with nothing to show and goes on to the suggestion.
+    private func handOff(_ ended: TypoFixPreview.Outcome? = nil) {
+        if let ended { recordPreview(ended) }
+        let suggest = self.suggest
+        reset()
+        suggest?()
+    }
+
+    private func showPreview(_ preview: Preview, summary: String, token: Int) {
+        guard let frame else { endPreview(); return }
+        phase = .showing(preview)
+        input.showSuggestionKeys(.ready)
+        card.show(text: summary.isEmpty ? "Jot found typos in this field." : summary,
+                  title: preview.changes == 1 ? "Fix 1 typo?" : "Fix \(preview.changes) typos?",
+                  footer: Self.previewFooter, at: frame)
+        monitorPreview(preview.field, token: token)
+    }
+
+    /// While the fixes show: four times a second, the field is read again off the main actor, and the card follows it or
+    /// goes away when the field, its text or the card's keys changed, or after 30 seconds.
+    private func monitorPreview(_ field: DictationInput.SuggestionField, token: Int) {
+        monitorTask?.cancel()
+        monitorTask = Task { [weak self] in
+            let expires = ContinuousClock.now.advanced(by: .seconds(30))
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(250))
+                guard let self, token == self.generation, self.showsPreview else { return }
+                // Tab moves the keys to accepting before the main actor hears about it.
+                let keys = self.input.suggestionState
+                guard ContinuousClock.now < expires, keys == .ready || keys == .accepting else { self.endPreview(); return }
+                let place = await self.input.observeSuggestionField(field)
+                guard token == self.generation, self.showsPreview else { return }
+                guard let place else { self.endPreview(); return }
+                self.frame = place
+                self.card.place(at: place)
+            }
+        }
+    }
+
+    /// Counts how a check the model was asked for ended, once.
+    private func recordPreview(_ ended: TypoFixPreview.Outcome) {
+        guard previewCounted else { return }
+        previewCounted = false
+        previewOutcome = ended.rawValue
+        countUsage([.typoFixPreview(ended)])
     }
 }

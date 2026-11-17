@@ -65,7 +65,7 @@ final class UsageCounterTests: XCTestCase {
 
     func testNamesComeOnlyFromFixedCodes() {
         let names = UsageCounter.allCases.map(\.name)
-        XCTAssertEqual(names.count, 92)
+        XCTAssertEqual(names.count, 100)
         XCTAssertEqual(Set(names).count, names.count, "Every counter has its own name")
         for name in names {
             XCTAssertNotNil(name.range(of: "^[a-z][A-Za-z]*(\\.[A-Za-z]+)+$", options: .regularExpression), name)

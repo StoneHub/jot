@@ -84,6 +84,46 @@ final class TypoFixTests: XCTestCase {
         XCTAssertEqual(edit.seed.text, "eh")
     }
 
+    // MARK: Preview
+
+    func testPreviewListsEachFixInFieldOrder() {
+        let source = "i thnik teh meeting is tomorow"
+        guard case .fixed(let corrected, _) = TypoFixReview.review("I think the meeting is tomorrow", source: source) else {
+            return XCTFail("The review should accept these fixes")
+        }
+        XCTAssertEqual(TypoFixPreview.summary(source: source, corrected: corrected),
+                       "i thnik teh → I think the\ntomorow → tomorrow")
+    }
+
+    func testPreviewShowsARemovedWordWithItsNeighbor() {
+        XCTAssertEqual(TypoFixPreview.summary(source: "see you at the the office", corrected: "see you at the office"),
+                       "the the → the")
+        XCTAssertEqual(TypoFixPreview.summary(source: "uh hello there", corrected: "hello there"), "uh hello → hello",
+                       "At the start, the word after it is shown")
+    }
+
+    func testPreviewCountsTheFixesPastItsLimit() {
+        let source = "teh cat adn dog teh bird adn fish"
+        let corrected = "the cat and dog the bird and fish"
+        XCTAssertEqual(TypoFixPreview.summary(source: source, corrected: corrected, limit: 2),
+                       "teh → the\nadn → and\nand 2 more")
+        XCTAssertEqual(TypoFixPreview.summary(source: source, corrected: corrected).components(separatedBy: "\n").count, 4)
+        XCTAssertEqual(TypoFixPreview.summary(source: "teh cat adn", corrected: "the cat and", limit: 1),
+                       "teh → the\nand 1 more")
+    }
+
+    func testPreviewShortensLongWords() {
+        let long = String(repeating: "a", count: 50)
+        let line = TypoFixPreview.summary(source: long + "x", corrected: long)
+        XCTAssertEqual(line, String(repeating: "a", count: 39) + "… → " + String(repeating: "a", count: 39) + "…")
+    }
+
+    func testPreviewOutcomesAreCountedUnderTheirOwnNames() {
+        XCTAssertEqual(UsageCounter.typoFixPreviewRequested.name, "typoFix.preview.requested")
+        XCTAssertEqual(TypoFixPreview.Outcome.allCases.map { UsageCounter.typoFixPreview($0).name },
+                       ["applied", "notApplied", "skipped", "noTypos", "rejected", "failed", "cancelled"].map { "typoFix.preview.\($0)" })
+    }
+
     // MARK: Distance
 
     func testDistanceCountsASwapAsOneEdit() {

@@ -1,8 +1,8 @@
 import Foundation
 import JotCore
 
-/// Fix typos: when the shortcut is live, what can refuse a press, and what `jot status` reports. The work itself is
-/// `TypoFixCoordinator`'s.
+/// Fix typos: when the shortcut is live, what can refuse a press, how double-tap Fn checks typos before a suggestion,
+/// and what `jot status` reports. The work itself is `TypoFixCoordinator`'s.
 extension SpeechService {
     /// The shortcut the event tap listens for: nil while Fix typos is off or its key belongs to another shortcut.
     var effectiveTypoFixShortcut: DictationShortcut? {
@@ -25,6 +25,29 @@ extension SpeechService {
     func typoFixPressed() {
         suggestions.dismiss(action: .newRequest)
         typoFix.press(blocker: typoFixBlocker)
+    }
+
+    /// Double-tap Fn, or the extra suggestion shortcut. With Fix typos on and able to run, the first request in a field with
+    /// text shows its typo fixes for Tab and the next asks for a suggestion; otherwise every request asks for a suggestion.
+    func suggestionRequested() {
+        suggestions.dismiss(action: .newRequest)
+        guard typoFixEnabled, typoFixBlocker == nil else {
+            typoFix.stop()
+            suggestions.request()
+            return
+        }
+        typoFix.check { [weak self] in self?.suggestions.request() }
+    }
+
+    /// Tab on a ready card: the typo preview's when one shows, otherwise the suggestion's.
+    func suggestionAccepted() {
+        if typoFix.showsPreview { typoFix.acceptPreview() } else { suggestions.accept() }
+    }
+
+    /// Escape, typing, a focus change or a dictation hold ends whichever card is up.
+    func suggestionDismissed(_ action: SuggestionHistoryEntry.Action) {
+        typoFix.endPreview()
+        suggestions.dismiss(action: action)
     }
 
     /// `jot status` → `typoFix`: the setting, the shortcut and the coordinator's counts. Never text.
