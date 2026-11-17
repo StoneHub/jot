@@ -293,8 +293,10 @@ extension RecoveryFlowChecks {
             if let range = value.range(of: phrase) {
                 return "the phrase with \(value[..<range.lowerBound].count) characters before and \(value[range.upperBound...].count) after"
             }
-            let prefix = zip(value, phrase).prefix { $0 == $1 }.count
-            if prefix > 0, prefix == value.count { return "the first \(prefix) of \(phrase.count) characters" }
+            // Editors often add a line break around the text, so a partial value is judged without surrounding white space.
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            let prefix = zip(trimmed, phrase).prefix { $0 == $1 }.count
+            if prefix > 0, prefix == trimmed.count { return "the first \(prefix) of \(phrase.count) characters" }
             return "a \(value.count)-character value without the phrase"
         }
 

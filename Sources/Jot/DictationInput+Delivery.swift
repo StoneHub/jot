@@ -17,7 +17,8 @@ extension DictationInput {
                 try await Task.sleep(nanoseconds: 50_000_000)
             }
         }
-        guard let target else { throw InputError.targetChanged }
+        // Giving up here also ends a lookup still confirming the field, so it cannot set a target nobody will use.
+        guard let target else { clearTarget(); throw InputError.targetChanged }
         let generation = targetGeneration
         var path = "accessibility"
         defer { if targetGeneration == generation { clearTarget() } }
@@ -75,17 +76,20 @@ extension DictationInput {
                 try await typeUnicode(text, into: target, generation: generation)
             })
             // Electron editors such as VS Code take typed text in turns and update their Accessibility value after it, so
-            // an early read can hold part of the text. Only the last read decides that a change is not the insertion;
-            // nothing is sent again either way.
+            // an early read can hold part of the text: a changed value is final only once two reads in a row agree.
+            // The text has been sent, so focus leaving now ends the read-back as unverified, never as not inserted.
+            // Nothing is sent again either way.
             var readback = FieldInsertionReadback.unknown
+            var previous: FieldInsertionSnapshot?
             for delay in Self.readbackDelays {
                 try await Task.sleep(for: delay)
-                try await validateTransaction(target, generation: generation)
+                do { try await validateTransaction(target, generation: generation) } catch { break }
                 let after = await snapshot(target, forSuggestion: expected != nil)
-                try await validateTransaction(target, generation: generation)
-                readback = await compare(pasteBefore, after, inserted: text, requireValue: expected != nil)
-                try await validateTransaction(target, generation: generation)
-                if readback == .verified { return delivery(target, path: path, outcome: "verified", verified: true) }
+                let result = await compare(pasteBefore, after, inserted: text, requireValue: expected != nil)
+                if result == .verified { return delivery(target, path: path, outcome: "verified", verified: true) }
+                if result != .unknown { readback = result }
+                if result == .changed, let previous, previous.value == after.value, previous.selection == after.selection { break }
+                previous = after
             }
             return delivery(target, path: path, outcome: readback == .changed ? "changed_unverified_no_retry" : "dispatched_not_verified",
                             verified: false)
@@ -138,15 +142,15 @@ extension DictationInput {
     /// Timeout for each read-back on its worker, in seconds.
     nonisolated static let snapshotReadTimeout: Float = 0.1
 
-    /// Waits after typed or pasted text before each read-back, about 1.25 s in all.
-    static let readbackDelays: [Duration] = [.milliseconds(70), .milliseconds(130), .milliseconds(250), .milliseconds(300), .milliseconds(500)]
+    /// Waits after typed or pasted text before each read-back, 750 ms in all.
+    static let readbackDelays: [Duration] = [.milliseconds(70), .milliseconds(130), .milliseconds(250), .milliseconds(300)]
 
     /// Before and after every step of a delivery: still this press's field, still focused. A busy app gets a moment to
     /// answer the focus read (`confirmCurrent`), and the field is checked again for a release that came in meanwhile.
     private func validateTransaction(_ target: Target, generation: Int) async throws {
         try Task.checkCancellation()
         guard targetGeneration == generation else { throw released() }
-        try await confirmCurrent(target)
+        try await confirmCurrent(target, generation: generation)
         try Task.checkCancellation()
         guard targetGeneration == generation else { throw released() }
     }

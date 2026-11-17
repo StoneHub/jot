@@ -53,10 +53,15 @@ extension DictationInput {
         return .element(value as! AXUIElement)
     }
 
-    /// Whether the element answered a read of `attribute` within its timeout, whatever the answer was.
-    nonisolated static func answers(_ element: AXUIElement, _ attribute: String) -> Bool {
+    enum StringRead {
+        case answered(String?), noAnswer
+    }
+
+    /// A string attribute, or no answer within the element's timeout. A missing or non-string value is an answer (nil).
+    nonisolated static func stringRead(_ element: AXUIElement, _ name: String) -> StringRead {
         var value: CFTypeRef?
-        return AXUIElementCopyAttributeValue(element, attribute as CFString, &value) != .cannotComplete
+        let result = AXUIElementCopyAttributeValue(element, name as CFString, &value)
+        return result == .cannotComplete ? .noAnswer : .answered(result == .success ? value as? String : nil)
     }
 
     /// Bundle id of the process that owns an element, for the focused-field error and doctor output.
@@ -74,8 +79,11 @@ extension DictationInput {
     }
 
     nonisolated static func validateEditable(_ field: AXUIElement) throws {
-        let role = stringAttribute(field, kAXRoleAttribute)
-        let subrole = stringAttribute(field, kAXSubroleAttribute)
+        try validateEditable(field, role: stringAttribute(field, kAXRoleAttribute), subrole: stringAttribute(field, kAXSubroleAttribute))
+    }
+
+    /// The editable check with the role and subrole already read.
+    nonisolated static func validateEditable(_ field: AXUIElement, role: String?, subrole: String?) throws {
         if subrole == kAXSecureTextFieldSubrole || subrole?.localizedCaseInsensitiveContains("secure") == true {
             throw InputError.secureField
         }

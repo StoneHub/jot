@@ -399,17 +399,20 @@ final class DictationInput {
             let result = await acquisitionTask.result
             guard let self, ticket.accepts(generation: self.targetGeneration,
                 frontmostPID: NSWorkspace.shared.frontmostApplication?.processIdentifier) else { return }
-            self.targetAcquisition = nil
+            // The acquisition stays pending until the field is confirmed, so a quick release waits for it in `insert`
+            // and a click or key press meanwhile still invalidates the press.
             do {
                 let candidate = Target(pid: pid, field: try result.get().value)
-                try await self.confirmCurrent(candidate)
+                try await self.confirmCurrent(candidate, generation: ticket.generation)
                 guard ticket.accepts(generation: self.targetGeneration,
                     frontmostPID: NSWorkspace.shared.frontmostApplication?.processIdentifier) else { return }
+                self.targetAcquisition = nil
                 self.target = candidate
                 self.lastTargetLoss = nil
             } catch {
                 // A busy app may have been given a moment to answer; a newer press or release owns the field by now.
                 guard self.targetGeneration == ticket.generation else { return }
+                self.targetAcquisition = nil
                 self.targetCaptureFailures += 1
                 self.report(error)
             }
@@ -448,14 +451,19 @@ final class DictationInput {
         case .current: return
         case .moved: lastTargetLoss = focusFinding; targetLost(InputError.targetChanged)
         case .noAnswer:
+            guard focusRecheck == nil else { return }
             let generation = targetGeneration
-            Task { [weak self] in
+            focusRecheck = Task { [weak self] in
+                defer { self?.focusRecheck = nil }
                 guard let self, let target = self.target, self.targetGeneration == generation else { return }
-                do { try await self.confirmCurrent(target) }
+                do { try await self.confirmCurrent(target, generation: generation) }
                 catch { if self.targetGeneration == generation { self.targetLost(error) } }
             }
         }
     }
+
+    /// One recheck at a time after focus notifications that got no answer; a burst of them shares it.
+    private var focusRecheck: Task<Void, Never>?
 
     private func targetLost(_ error: Error) {
         if typoFixOwnsTarget { onTypoFixInterrupted?() }
@@ -475,8 +483,8 @@ final class DictationInput {
         report(InputError.targetChanged)
     }
 
-    /// Reads that wait for a busy app before a write: 20 reads 15 ms apart, about 300 ms with each read's 5 ms timeout.
-    static let focusReadAttempts = 20
+    /// Reads that wait for a busy app before a write: 15 reads 15 ms apart, about 300 ms with each read's 5 ms timeout.
+    static let focusReadAttempts = 15
     static let focusReadInterval: Duration = .milliseconds(15)
 
     /// Where focus is now, against the captured field. Each read has a 5 ms timeout, so a hung app never stalls Jot;
@@ -503,12 +511,13 @@ final class DictationInput {
             return .moved
         }
         AXUIElementSetMessagingTimeout(current, 0.005)
-        // The role read behind the editable check can time out the same way; an unanswered role is silence, not a refusal.
-        guard Self.answers(current, kAXRoleAttribute) else {
+        // The role and subrole reads behind the editable check can time out the same way: silence, not a refusal.
+        guard case .answered(let role) = Self.stringRead(current, kAXRoleAttribute),
+              case .answered(let subrole) = Self.stringRead(current, kAXSubroleAttribute) else {
             focusFinding = "the app did not answer focus reads"
             return .noAnswer
         }
-        try Self.validateEditable(current)
+        try Self.validateEditable(current, role: role, subrole: subrole)
         return .current
     }
 
@@ -519,12 +528,15 @@ final class DictationInput {
 
     /// Focus check before each write of a delivery. An app that does not answer is asked again for about 300 ms
     /// without blocking Jot, and still never written into; an answer naming another element ends it at once.
-    func confirmCurrent(_ target: Target) async throws {
+    /// The reason is recorded only while `generation` is still the current capture.
+    func confirmCurrent(_ target: Target, generation: Int) async throws {
         let check = try await FocusCheck.settle(attempts: Self.focusReadAttempts,
             wait: { try await Task.sleep(for: Self.focusReadInterval) },
             read: { try self.focusCheck(target) })
         guard check == .current else {
-            lastTargetLoss = check == .noAnswer ? "the app did not answer focus reads for 300 ms" : focusFinding
+            if targetGeneration == generation {
+                lastTargetLoss = check == .noAnswer ? "the app did not answer focus reads for 300 ms" : focusFinding
+            }
             throw InputError.targetChanged
         }
     }
