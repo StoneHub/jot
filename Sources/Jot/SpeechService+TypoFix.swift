@@ -31,12 +31,19 @@ extension SpeechService {
     /// text shows its typo fixes for Tab and the next asks for a suggestion; otherwise every request asks for a suggestion.
     func suggestionRequested() {
         suggestions.dismiss(action: .newRequest)
-        guard typoFixEnabled, typoFixBlocker == nil else {
+        guard typoFixEnabled, typoFixBlocker == nil, !typoCheckSendsFurther else {
             typoFix.stop()
             suggestions.request()
             return
         }
         typoFix.check { [weak self] in self?.suggestions.request() }
+    }
+
+    /// The cleanup model would take the field's text off this Mac while suggestions keep it here, so a double-tap does not
+    /// check typos: asking for a suggestion should not send text further than the suggestion does.
+    private var typoCheckSendsFurther: Bool {
+        let offMac = settings.customModel.map { !$0.isOnDevice } ?? false
+        return offMac && customModelForCleanup && !customModelForSuggestions
     }
 
     /// Tab on a ready card: the typo preview's when one shows, otherwise the suggestion's.

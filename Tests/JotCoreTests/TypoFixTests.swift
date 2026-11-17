@@ -112,10 +112,13 @@ final class TypoFixTests: XCTestCase {
                        "teh → the\nand 1 more")
     }
 
-    func testPreviewShortensLongWords() {
-        let long = String(repeating: "a", count: 50)
-        let line = TypoFixPreview.summary(source: long + "x", corrected: long)
-        XCTAssertEqual(line, String(repeating: "a", count: 39) + "… → " + String(repeating: "a", count: 39) + "…")
+    func testPreviewShortensLongWordsAroundTheirChange() {
+        let start = String(repeating: "b", count: 50)
+        XCTAssertEqual(TypoFixPreview.summary(source: "x" + start, corrected: "y" + start),
+                       "x" + String(repeating: "b", count: 38) + "… → y" + String(repeating: "b", count: 38) + "…")
+        let path = "https://example.com/some/really/long/path/that/goes/on/and/on/"
+        XCTAssertEqual(TypoFixPreview.summary(source: path + "recieve", corrected: path + "receive"),
+                       "…and/on/recieve → …and/on/receive", "A change past the cut stays visible")
     }
 
     func testPreviewOutcomesAreCountedUnderTheirOwnNames() {

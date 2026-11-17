@@ -43,7 +43,7 @@ final class SpeechService: ObservableObject {
     /// Fix typos uses the cleanup model and its custom-model switch: both only tidy the user's own text.
     lazy var typoFix = TypoFixCoordinator(input: input, model: ChosenModel(.cleanup, settings: settings),
         countUsage: { [weak self] in self?.library.countUsage($0) },
-        shortcutName: { [weak self] in self?.typoFixShortcut.displayName ?? "the shortcut" },
+        shortcutName: { [weak self] in self?.effectiveTypoFixShortcut?.displayName },
         notice: { [weak self] in self?.notice = $0 })
     lazy var timeline: ListeningTimeline = ListeningTimeline(settings: settings, library: library, speakers: speakers,
         transcriber: transcriber, now: dependencies.now, lowPowerMode: { [unowned self] in lowPowerMode() },

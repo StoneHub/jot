@@ -37,15 +37,25 @@ public enum TypoFixPreview {
                     before = before.lowerBound..<(before.upperBound + 1); after = after.lowerBound..<(after.upperBound + 1)
                 }
             }
-            return shortened(from[before].map(\.text).joined(separator: " ")) + " → "
-                + shortened(to[after].map(\.text).joined(separator: " "))
+            return pair(from[before].map(\.text).joined(separator: " "), to[after].map(\.text).joined(separator: " "))
         }
         guard lines.count > limit else { return lines.joined(separator: "\n") }
         let rest = lines.count - limit
         return (lines.prefix(limit) + [rest == 1 ? "and 1 more" : "and \(rest) more"]).joined(separator: "\n")
     }
 
-    private static func shortened(_ text: String) -> String {
-        text.count <= 40 ? text : String(text.prefix(39)) + "…"
+    /// "before → after", each side at most 40 characters. A long word keeps the stretch around its first change, so the two
+    /// sides never read the same.
+    private static func pair(_ before: String, _ after: String) -> String {
+        var a = Substring(before), b = Substring(after)
+        let same = zip(a, b).prefix { $0 == $1 }.count
+        if max(a.count, b.count) > 40 && same > 20 {
+            a = Substring("…" + String(a.dropFirst(same - 10))); b = Substring("…" + String(b.dropFirst(same - 10)))
+        }
+        return shortened(a) + " → " + shortened(b)
+    }
+
+    private static func shortened(_ text: Substring) -> String {
+        text.count <= 40 ? String(text) : String(text.prefix(39)) + "…"
     }
 }

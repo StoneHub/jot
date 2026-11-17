@@ -16,7 +16,8 @@ final class TypoFixCoordinator {
     private let model: ChosenModel
     private let countUsage: ([UsageCounter]) -> Void
     private let notice: (String) -> Void
-    private let shortcutName: () -> String
+    /// The live Fix typos shortcut's name, or nil while it is off or its key belongs to another shortcut.
+    private let shortcutName: () -> String?
     private let card = SuggestionCard()
     private let gate = ModelCallGate(deadline: .seconds(30))
     private var task: Task<Void, Never>?
@@ -71,6 +72,9 @@ final class TypoFixCoordinator {
     private var previewChecks = 0
     private var previewOutcome = "idle"
     private static let previewFooter = "Tab to fix · double-tap Fn for a suggestion · Esc to dismiss"
+    /// The double-Fn check stands between the user and a suggestion, so it takes less text and less time than a press.
+    private static let previewMaximumCharacters = 800
+    private static let previewDeadline: Duration = .seconds(8)
 
     /// Counts and codes only; never field or model text.
     var diagnostics: [String: Any] { ["requests": requests, "fixes": fixes, "outcome": outcome, "reason": reason,
@@ -84,7 +88,7 @@ final class TypoFixCoordinator {
     }
 
     init(input: DictationInput, model: ChosenModel, countUsage: @escaping ([UsageCounter]) -> Void,
-         shortcutName: @escaping () -> String, notice: @escaping (String) -> Void) {
+         shortcutName: @escaping () -> String?, notice: @escaping (String) -> Void) {
         self.input = input; self.model = model; self.countUsage = countUsage
         self.shortcutName = shortcutName; self.notice = notice
     }
@@ -167,10 +171,10 @@ final class TypoFixCoordinator {
         }
         let text = scope.text, offset = scope.offset
         guard (text as NSString).length <= TypoFixPrompt.maximumCharacters else {
-            finish(.oversized, "Too long to fix at once. Select a part, up to about 3,000 characters, and press \(shortcutName()) again.")
+            finish(.oversized, "Too long to fix at once. Select a part, up to about 3,000 characters, and press \(shortcutName() ?? "the shortcut") again.")
             return
         }
-        show("Fixing typos…", action: "\(shortcutName()) again to cancel", loading: true)
+        show("Fixing typos…", action: "\(shortcutName() ?? "The shortcut") again to cancel", loading: true)
         let model = self.model
         let result = await gate.call(TypoFixPrompt.request(for: text), deadline: TypoFixPrompt.deadline(for: text)) {
             try await model.generate($0)
@@ -232,14 +236,15 @@ final class TypoFixCoordinator {
                 finish(.undone, "Your original text is back.")
                 return
             }
-            fixes += 1
+            if phase == nil { fixes += 1 }
             if let fixedValue {
                 undo = Undo(pid: target.pid, field: target.field, edit: edit, fixedValue: fixedValue,
                             expires: ContinuousClock.now.advanced(by: Self.undoWindow))
                 // The next double-Fn on this field asks for a suggestion rather than checking the fixed text again.
                 if phase != nil { step = Step(pid: target.pid, field: target.field, valueHash: fixedValue.hashValue) }
             }
-            finish(.fixed, changes == 1 ? "Fixed 1 typo." : "Fixed \(changes) typos.", action: "\(shortcutName()) within 30 s to undo")
+            finish(.fixed, changes == 1 ? "Fixed 1 typo." : "Fixed \(changes) typos.",
+                   action: shortcutName().map { "\($0) within 30 s to undo" } ?? "")
         } catch DictationInput.InputError.selectionUnavailable {
             ownsTarget = false
             guard token == generation else { return }
@@ -354,7 +359,9 @@ final class TypoFixCoordinator {
             handOff(); return
         }
         step = Step(pid: target.pid, field: target.field, valueHash: valueHash)
-        guard let scope = Self.scope(of: field.draft), (scope.text as NSString).length <= TypoFixPrompt.maximumCharacters else {
+        // A selection goes to the rewrite, which replaces it anyway; a long draft would keep the suggestion waiting.
+        guard field.draft.selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let scope = Self.scope(of: field.draft), (scope.text as NSString).length <= Self.previewMaximumCharacters else {
             handOff(); return
         }
         let text = scope.text, offset = scope.offset
@@ -364,13 +371,17 @@ final class TypoFixCoordinator {
         input.showSuggestionKeys(.loading)
         show("Checking typos…", action: "Esc to cancel · double-tap Fn for a suggestion", loading: true)
         let model = self.model
-        let result = await gate.call(TypoFixPrompt.request(for: text), deadline: TypoFixPrompt.deadline(for: text)) {
+        let result = await gate.call(TypoFixPrompt.request(for: text), deadline: min(TypoFixPrompt.deadline(for: text), Self.previewDeadline)) {
             try await model.generate($0)
         }
         guard token == generation else { return }
         switch result {
         case .output(let raw):
-            let review = await Task.detached(priority: .userInitiated) { TypoFixReview.review(raw, source: text) }.value
+            let (review, summary) = await Task.detached(priority: .userInitiated) { () -> (TypoFixReview.Result, String) in
+                let review = TypoFixReview.review(raw, source: text)
+                guard case .fixed(let corrected, _) = review else { return (review, "") }
+                return (review, TypoFixPreview.summary(source: text, corrected: corrected))
+            }.value
             guard token == generation else { return }
             switch review {
             case .unchanged:
@@ -379,8 +390,7 @@ final class TypoFixCoordinator {
                 handOff(.rejected)
             case .fixed(let corrected, let changes):
                 guard let edit = TypoFixEdit(source: text, corrected: corrected, offset: offset) else { handOff(.noTypos); return }
-                showPreview(Preview(edit: edit, field: field, changes: changes),
-                            summary: TypoFixPreview.summary(source: text, corrected: corrected), token: token)
+                showPreview(Preview(edit: edit, field: field, changes: changes), summary: summary, token: token)
             }
         case .timedOut, .unavailable, .blocked, .failed:
             handOff(.failed)
@@ -416,9 +426,12 @@ final class TypoFixCoordinator {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(250))
                 guard let self, token == self.generation, self.showsPreview else { return }
-                // Tab moves the keys to accepting before the main actor hears about it.
+                guard ContinuousClock.now < expires else { self.endPreview(); return }
+                // Tab moves the keys to accepting, and a second request to requesting, before the main actor hears about
+                // it; the request ends the preview itself.
                 let keys = self.input.suggestionState
-                guard ContinuousClock.now < expires, keys == .ready || keys == .accepting else { self.endPreview(); return }
+                if keys == .requesting { continue }
+                guard keys == .ready || keys == .accepting else { self.endPreview(); return }
                 let place = await self.input.observeSuggestionField(field)
                 guard token == self.generation, self.showsPreview else { return }
                 guard let place else { self.endPreview(); return }
