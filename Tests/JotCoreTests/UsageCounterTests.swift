@@ -98,7 +98,7 @@ final class UsageCounterTests: XCTestCase {
     }
 
     func testFeaturesCountOnlySwitchesThatAreOn() throws {
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: "jot-usage-features-" + UUID().uuidString))
+        let defaults = MemoryDefaults()
         for feature in UsageCounter.Feature.allCases { defaults.set(false, forKey: feature.settingKey) }
         defaults.set(true, forKey: JotDefaultsKey.typoFixEnabled)
         defaults.set(true, forKey: JotSettings.customModelForNotes)
