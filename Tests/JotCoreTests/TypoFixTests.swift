@@ -120,7 +120,7 @@ final class TypoFixTests: XCTestCase {
     }
 
     func testShortcutDefaultsToControlOptionSpaceAndAvoidsOtherShortcuts() throws {
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: "jot-typo-fix-" + UUID().uuidString))
+        let defaults = MemoryDefaults()
         let preferences = TypoFixShortcutPreferences(defaults: defaults)
         XCTAssertEqual(preferences.load(), TypoFixShortcutPreferences.standard)
         XCTAssertEqual(preferences.load().displayName, "⌃⌥Space")
