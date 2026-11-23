@@ -6,7 +6,8 @@ import JotCore
 
 /// One inference worker. The controller never submits overlapping jobs.
 public actor SpeechPipeline {
-    private var asr: AsrManager?
+    /// Turns gated audio into timed words; see `RecognitionEngine`.
+    private let engine: any RecognitionEngine
     private var vad: VadManager?
     private var diarizer: SortformerDiarizer?
     private var sessionID = ""
@@ -24,17 +25,13 @@ public actor SpeechPipeline {
     /// The owner's settings; the speech gate is read from them at each job.
     private let settings: JotSettings
 
-    public init(settings: JotSettings) { self.settings = settings }
+    public init(settings: JotSettings, engine: any RecognitionEngine = ParakeetEngine()) {
+        self.settings = settings
+        self.engine = engine
+    }
 
     public func prepare() async throws {
-        if asr == nil {
-            let config = MLModelConfiguration()
-            config.computeUnits = .cpuAndNeuralEngine
-            let models = try await AsrModels.downloadAndLoad(configuration: config, version: .v3)
-            let manager = AsrManager()
-            try await manager.loadModels(models)
-            asr = manager
-        }
+        try await engine.load()
         try Task.checkCancellation()
         if vad == nil { vad = try await VadManager() }
         try Task.checkCancellation()
@@ -54,7 +51,8 @@ public actor SpeechPipeline {
 
     public func unload() async {
         await speakerPass.unload()
-        asr = nil; vad = nil; diarizer = nil; lastSpeaker = nil; speakerFeed.reset()
+        await engine.unload()
+        vad = nil; diarizer = nil; lastSpeaker = nil; speakerFeed.reset()
         probabilities.removeAll(keepingCapacity: false)
         recognitionWindow.reset()
         sessionID = ""; expectedOffset = 0; baseOffset = 0
@@ -69,7 +67,7 @@ public actor SpeechPipeline {
     }
 
     public func infer(_ job: AudioJob, tuning: TranscriptionTuning = .init()) async throws -> SpeechOutput {
-        guard let asr, let vad, let diarizer else { throw JotError.message("Prepare models before listening.") }
+        guard let vad, let diarizer else { throw JotError.message("Prepare models before listening.") }
         try Task.checkCancellation()
         let begin = Date()
         var recognitionPlanResolved = false
@@ -134,13 +132,9 @@ public actor SpeechPipeline {
             return SpeechOutput(transcripts: [], text: "", processingSeconds: Date().timeIntervalSince(begin), speechProbability: speechProbability)
         }
         try Task.checkCancellation()
-        var state = try TdtDecoderState()
-        let result = try await asr.transcribe(Self.recognitionAudio(recognitionSamples), decoderState: &state)
+        let decoded = try await engine.recognize(recognitionSamples)
         try Task.checkCancellation()
-        guard let tokenTimings = result.tokenTimings else {
-            throw JotError.message("Streaming recognition did not return word timing data.")
-        }
-        let words = recognitionWindow.newWords(from: buildWordTimings(from: tokenTimings), for: recognitionPlan)
+        let words = recognitionWindow.newWords(from: decoded, for: recognitionPlan)
         let text = words.map(\.word).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         recognitionWindow.commit(recognitionPlan, words: words)
         recognitionPlanResolved = true
@@ -168,13 +162,5 @@ public actor SpeechPipeline {
                 endSeconds: job.offset + Double(job.samples.count) / 16000, text: text, speakerID: nil, mode: "ambient")]
         }
         return SpeechOutput(transcripts: segments, text: text, processingSeconds: Date().timeIntervalSince(begin), wordsByTranscript: wordsByTranscript, speechProbability: speechProbability)
-    }
-
-    /// The recognizer rejects audio under 0.3 seconds, which a final job can be once a boundary has reset the recognition window.
-    /// Trailing silence brings it to length: word times count from the first sample, so real words keep theirs, and a word decoded
-    /// in the silence falls past the plan's commit end. The VAD pads short audio itself, and the session clock uses the job's samples.
-    static func recognitionAudio(_ samples: [Float]) -> [Float] {
-        let minimum = ASRConstants.minimumRequiredSamples(forSampleRate: AudioClock.sampleRate)
-        return samples.count >= minimum ? samples : samples + [Float](repeating: 0, count: minimum - samples.count)
     }
 }

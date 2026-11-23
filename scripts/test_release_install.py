@@ -16,6 +16,9 @@ import unittest
 import zipfile
 from unittest.mock import patch
 
+sys.path.insert(0, str(Path(__file__).parent))
+import insertion_matrix  # noqa: E402
+
 
 def load_release():
     spec = importlib.util.spec_from_file_location('release', Path(__file__).parent / 'release.py')
@@ -178,6 +181,9 @@ class ReleaseInstallTests(unittest.TestCase):
         (product / 'Contents/MacOS/Jot').write_bytes(b'synthetic release executable')
         sha = hashlib.sha256((product / 'Contents/MacOS/Jot').read_bytes()).hexdigest()
         (product / 'Contents/Info.plist').write_bytes(plistlib.dumps(dict(CFBundleShortVersionString='0.2.14', CFBundleVersion='21')))
+        rows = [dict(target=name, expected='refused' if name == 'password' else 'verified', result='passed') for name in insertion_matrix.ROWS]
+        (self.root / 'build/insertion-matrix.json').write_text(json.dumps(insertion_matrix.proof_document(
+            dict(phrase='fixture', rows=rows), 'b' * 40, False, machine='fixture', checked_at='fixture')))
 
         def output(command, **kwargs):
             if command[:3] == ['git', 'branch', '--show-current']:

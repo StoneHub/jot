@@ -50,7 +50,7 @@ final class UsageReportTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         for day in [18, 19, 21] {
             let date = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 10, day: day, hour: 12)))
             try store.countUsage([.suggestionRequested], at: date, calendar: calendar)

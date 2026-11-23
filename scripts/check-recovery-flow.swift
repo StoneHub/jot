@@ -79,6 +79,11 @@ struct RecoveryFlowChecks {
 
     @MainActor static func run() async throws {
         ShortcutInputChecks.run()
+        if let flag = CommandLine.arguments.firstIndex(of: "--insertion-matrix") {
+            // Opens real apps and waits for them, so it runs without the recovery watchdog.
+            try await InsertionMatrix.run(Array(CommandLine.arguments.dropFirst(flag + 1)))
+            return
+        }
         if let flag = CommandLine.arguments.firstIndex(of: "--quiet-cpu") {
             try await profileQuietListening(CommandLine.arguments.dropFirst(flag + 1).map { URL(fileURLWithPath: $0) })
             return
@@ -105,7 +110,7 @@ struct RecoveryFlowChecks {
             try await checkHousekeepingCadence(directory: directory)
             return
         }
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         let probe = Probe()
         let service = SpeechService(dependencies: .init(
             infer: { _, job, _ in probe.infer(job) },
@@ -140,7 +145,7 @@ struct RecoveryFlowChecks {
         precondition(retained?.text == expected, "A 75-second hold lost recognized words")
         precondition(retained?.hasGap == false, "Audio lost after the release marked the finished hold partial")
         precondition(probe.attempts == 1 && probe.delivered.isEmpty, "Failed delivery was retried automatically")
-        let reopened = try TranscriptStore(directory: directory)
+        let reopened = try TranscriptStore(directory: directory, key: .scratch)
         let reopenedAttempt = try reopened.latestRecoverableDictationAttempt()
         precondition(reopenedAttempt?.text == expected, "Saved dictation did not survive reopening storage")
         print("PASS: 75-second hold persisted all 25 chunks before release; failed delivery retained across store reopen.")
@@ -197,11 +202,13 @@ struct RecoveryFlowChecks {
         print("PASS: Pause during model preparation or failed preparation does not enqueue unprocessable final audio.")
 
         try await checkQuietAndStall(directory: directory)
+        try await checkStalledRecognition(directory: directory)
         try await checkCPUReadoutWhileListening(directory: directory)
         try await checkResourceReadoutTransitions(directory: directory)
         try await checkIdleRedraws(directory: directory)
         try await checkHousekeepingCadence(directory: directory)
         try await checkSpeakerPassKeepsCleanup(directory: directory)
+        try await checkFailedFinalKeepsCleanup(directory: directory)
         try await checkRelabelsTakeTurns(directory: directory)
         try await checkControlsRedrawWhenWorkEnds(directory: directory)
         try await checkSpeakerPassKeepsMainFree(directory: directory)

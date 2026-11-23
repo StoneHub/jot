@@ -1,5 +1,5 @@
 import Foundation
-import SQLite3
+import SQLCipher
 
 /// The row insert shared by `append` and a relabel split.
 enum TranscriptRows {

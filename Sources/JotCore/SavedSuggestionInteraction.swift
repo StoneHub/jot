@@ -1,5 +1,5 @@
 import Foundation
-import SQLite3
+import SQLCipher
 
 /// Adds a flag when a prior run ended before recording the request's final action.
 public struct SavedSuggestionInteraction: Codable, Sendable, Equatable {

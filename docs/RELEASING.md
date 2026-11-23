@@ -10,7 +10,7 @@ python3 scripts/release.py patch --notes "What changed" --install
 
 `patch`, `minor`, `major`, or an explicit `X.Y.Z` picks the new version. The script, one printed line per step:
 
-1. Refuses unless it is on `main`, the tree is clean, `HEAD` equals `origin/main` after a fetch, `gh auth status` passes, and a signing identity is set. An official release also needs the Developer ID certificate and asks `notarytool history` whether the notary profile works, so missing credentials stop it before the tests and build.
+1. Refuses unless it is on `main`, the tree is clean, `HEAD` equals `origin/main` after a fetch, `gh auth status` passes, and a signing identity is set. An official release also needs the Developer ID certificate and asks `notarytool history` whether the notary profile works, so missing credentials stop it before the tests and build. It also needs a passing [real-app insertion matrix](INSERTION-MATRIX.md) for this exact commit in `build/insertion-matrix.json`, from `python3 scripts/insertion_matrix.py`; `--skip-insertion-matrix` releases without it and says so.
 2. Bumps `JotVersion.current`, `project.yml`, and `Resources/Info.plist`. `CFBundleShortVersionString` is the version; `CFBundleVersion` is the number of existing `v*` tags plus one, so it increases every release. Writes `docs/release-notes/<version>.md` from `--notes`. Without `--notes`, it uses the reviewed draft in `docs/release-notes/next.md`, drops the draft's title line, and renames the draft in the release commit. Draft user-facing notes there in PRs as changes land, so the release needs no notes typed at the terminal.
 3. Runs `swift test`, then `build-install.py --configuration Release --build-only`, and reads `build/release-proof.json`. The build check requires every bundled helper (`jot`, `jot-lab`, `jot-vorssaint`) and `VorssaintIntegration.json`, and for Release checks that each helper is signed by the release team with the hardened runtime, which notarization requires.
 4. Zips the product, submits it to Apple with `notarytool`, and waits for `Accepted` before continuing. Any other result prints Apple's issue log (`notarytool log`) and stops.
@@ -30,6 +30,14 @@ Done once, on the Mac that cuts releases, by the Account Holder of team `N6GPP46
 4. **Proof without publishing.** `python3 scripts/release.py patch --dry-run --with-notarization` checks the certificate and profile, tests, builds, submits the candidate to Apple, staples it and checks Gatekeeper, then restores the tree. It tags and publishes nothing.
 
 `release.py` uses the profile named `jot-notary`; set `JOT_NOTARY_PROFILE` only to use another name. The first notarized build carries a Developer ID signature instead of the Apple Development one, so macOS may ask again for Microphone, Accessibility and the other permissions once after that update.
+
+## Before a release
+
+Run the [insertion matrix](INSERTION-MATRIX.md) on the commit you are releasing. It opens TextEdit, Safari and Terminal, inserts one fixed phrase with the app's own delivery code, checks that a password field refuses it, and writes the proof `release.py` reads:
+
+```sh
+cd ~/Developer/jot && python3 scripts/insertion_matrix.py --electron com.microsoft.VSCode --electron-new n
+```
 
 ## Local pre-releases
 

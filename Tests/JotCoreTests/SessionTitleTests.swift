@@ -8,7 +8,7 @@ final class SessionTitleTests: XCTestCase {
         let directory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(Transcript(sessionID: "s1", startedAt: started, startSeconds: 0, endSeconds: 1, text: "hi", mode: "ambient"))
         try store.append(Transcript(sessionID: "s2", startedAt: started.addingTimeInterval(100), startSeconds: 0, endSeconds: 1, text: "yo", mode: "ambient"))
         XCTAssertNil(try store.sessions().first?.title)
@@ -28,7 +28,7 @@ final class SessionTitleTests: XCTestCase {
         let directory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(Transcript(sessionID: "meeting", startedAt: started, startSeconds: 0, endSeconds: 5, text: "hello", mode: "ambient"))
         for index in 0..<3 {
             try store.append(Transcript(sessionID: "fn-\(index)", startedAt: started.addingTimeInterval(Double(index) + 10), startSeconds: 0, endSeconds: 1, text: "typed", mode: "dictation"))

@@ -45,8 +45,6 @@ test("nothing that could identify a Mac or hold text is accepted", () => {
         report({ app: "0.3.4 (hello)" }),
         report({ app: "0.3.4-beta" }),
         report({ os: "Darwin" }),
-        report({ days: [{ day: yesterday, counters: { "dictation.madeUp": 1 } }] }),
-        report({ days: [{ day: yesterday, counters: { "transcript text here": 1 } }] }),
         report({ days: [{ day: yesterday, counters: { "dictation.completed": 1.5 } }] }),
         report({ days: [{ day: yesterday, counters: { "dictation.completed": -1 } }] }),
         report({ days: [{ day: yesterday, counters: {}, app: "com.example" }] }),
@@ -59,6 +57,24 @@ test("nothing that could identify a Mac or hold text is accepted", () => {
     ];
     for (const body of refused) assert.ok(validate(body, today).error, JSON.stringify(body));
     assert.equal(validate(report(), today).error, undefined);
+});
+
+test("a counter this Worker does not know is dropped, not a reason to refuse the report", async () => {
+    const env = { DB: database() };
+    // A Jot release that adds counters can run ahead of the Worker redeploy, and Jot marks the report sent either way.
+    const counters = { "dictation.completed": 3, "dictation.madeUp": 1, "transcript text here": 1 };
+    const { report: kept, error } = validate(report({ days: [{ day: yesterday, counters }] }), today);
+    assert.equal(error, undefined);
+    assert.deepEqual(kept.days, [{ day: yesterday, counters: { "dictation.completed": 3 } }]);
+    assert.equal((await worker.fetch(post(report({ days: [{ day: yesterday, counters }] })), env)).status, 204);
+    const usage = env.DB.raw.prepare("SELECT name,count FROM usage").all();
+    assert.deepEqual(usage.map((row) => [row.name, row.count]), [["dictation.completed", 3]]);
+    // A day with only unknown counters still counts the Mac, so Macs per day stays right across the redeploy.
+    assert.equal((await worker.fetch(post(report({ days: [{ day: yesterday, counters: { "dictation.madeUp": 1 } }] })), env)).status, 204);
+    assert.equal(env.DB.raw.prepare("SELECT macs FROM reports").get().macs, 2);
+    assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM usage").get().n, 1);
+    // An unknown counter never makes a bad count on a known one acceptable.
+    assert.ok(validate(report({ days: [{ day: yesterday, counters: { "dictation.madeUp": "x", "dictation.completed": -1 } }] }), today).error);
 });
 
 test("a week of reports with every counter is two statements per day", async () => {

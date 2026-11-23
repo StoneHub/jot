@@ -17,7 +17,7 @@ extension RecoveryFlowChecks {
             guard condition else { throw NSError(domain: "ResourceReadoutChecks", code: 1,
                                                  userInfo: [NSLocalizedDescriptionKey: message]) }
         }
-        let store = try TranscriptStore(directory: directory.appendingPathComponent("resource-transitions"))
+        let store = try TranscriptStore(directory: directory.appendingPathComponent("resource-transitions"), key: .scratch)
         service.beginRecoveryVerification(store: store, startedAt: Date())
         func seedOldReading() {
             service.resourceReadout.snapshot = ResourceSnapshot(valid: true, processCPUPercent: 13.8,
@@ -97,7 +97,7 @@ extension RecoveryFlowChecks {
     /// A finished recognition samples CPU for `jot diagnostics`, and the readout must still count that recognition's CPU. Each readout covers the time since the one before it, so weighting each by its interval adds up the CPU they report together.
     @MainActor static func checkCPUReadoutWhileListening(directory: URL) async throws {
         let probe = Probe()
-        let store = try TranscriptStore(directory: directory.appendingPathComponent("cpu"))
+        let store = try TranscriptStore(directory: directory.appendingPathComponent("cpu"), key: .scratch)
         let service = SpeechService(dependencies: .init(infer: { _, _, _ in
             let began = ProcessInfo.processInfo.systemUptime
             while ProcessInfo.processInfo.systemUptime - began < 0.2 {}

@@ -209,7 +209,7 @@ final class SuggestionHeardSpeechTests: XCTestCase {
     func testStoreReadsRecentAmbientRowsAndRevalidatesThem() throws {
         let directory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         func stored(_ id: String, session: String, age: Double, mode: String = "ambient") -> Transcript {
             Transcript(id: id, sessionID: session, startedAt: now.addingTimeInterval(-age), startSeconds: 0, endSeconds: 1,
                        text: "Synthetic " + id, speakerID: "speaker-1", mode: mode)

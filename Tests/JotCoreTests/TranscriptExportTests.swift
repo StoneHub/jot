@@ -174,7 +174,7 @@ final class TranscriptExportTests: XCTestCase {
         let directory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         for index in 0..<450 { try store.append(row(Double(index), Double(index) + 0.5, "row \(index)", speaker: nil)) }
         try store.append(row(0, 1, "other", speaker: nil, session: "other"))
         let rows = try store.session(id: "s")

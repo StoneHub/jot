@@ -1,5 +1,5 @@
 import Foundation
-import SQLite3
+import SQLCipher
 
 /// Speaker pass rows, kept in the transcripts database next to the session's text, on a connection of its own.
 public final class SpeakerPassStore: @unchecked Sendable {
@@ -17,7 +17,7 @@ public final class SpeakerPassStore: @unchecked Sendable {
 
     /// Opens after `store`, which created the tables.
     public init(sharing store: TranscriptStore) throws {
-        db = try SQLiteConnection(url: store.databaseURL)
+        db = try SQLiteConnection(url: store.databaseURL, key: store.key)
     }
 
     /// Replaces whatever an earlier pass stored for the session. A speaker's duration is the sum of its segments.

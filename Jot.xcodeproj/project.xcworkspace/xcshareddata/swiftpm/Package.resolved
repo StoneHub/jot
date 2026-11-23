@@ -1,5 +1,5 @@
 {
-  "originHash" : "0a257ae3dabd1727f4124c2704bd782370f0e27a821ae96fa44123a16d50c0d1",
+  "originHash" : "9293c9637cda6c15648ad8f8d24b102ff368eef6c79bdb3678daf6dc88108d4e",
   "pins" : [
     {
       "identity" : "apple-fm-swift",
@@ -15,6 +15,14 @@
       "location" : "https://github.com/FluidInference/FluidAudio.git",
       "state" : {
         "revision" : "5c19d5e12320e22bbfb7a1877b089d2665a69add"
+      }
+    },
+    {
+      "identity" : "swift-sqlcipher",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/skiptools/swift-sqlcipher.git",
+      "state" : {
+        "revision" : "cf5c89ad63146db3a4258a1e26da4d2b3fa4a087"
       }
     }
   ],

@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 from signing import local_signing_configuration, official_signing_configuration
+import insertion_matrix
 import notarization
 from packaged_product import validate_product_paths
 
@@ -58,6 +59,8 @@ def main():
     parser.add_argument('--dry-run', action='store_true', help='Bump, test, build, and zip, then restore the tree without committing, tagging, or publishing')
     parser.add_argument('--with-notarization', action='store_true',
                         help='With --dry-run: also submit the candidate to Apple, staple it and check Gatekeeper, still without publishing')
+    parser.add_argument('--skip-insertion-matrix', action='store_true',
+                        help='Release without a passing real-app insertion matrix for this commit (scripts/insertion_matrix.py)')
     options = parser.parse_args()
     if options.with_notarization and (options.local or not options.dry_run):
         parser.error('--with-notarization only applies to a --dry-run of an official (not --local) release')
@@ -97,6 +100,15 @@ def main():
     release_environment = os.environ.copy()
     release_environment['JOT_SIGN_IDENTITY'] = identity
     release_environment['JOT_SIGN_TEAM'] = team
+    # The real-app insertion matrix is the release checklist for dictation: it must have passed on this exact commit.
+    if options.skip_insertion_matrix:
+        step('Skipping the insertion matrix check (--skip-insertion-matrix); dictation into real apps is unchecked for this release')
+    else:
+        problems = insertion_matrix.proof_problems(work / insertion_matrix.PROOF.name, out(['git', 'rev-parse', 'HEAD']))
+        if problems:
+            raise SystemExit('Insertion matrix: ' + '; '.join(problems) + f'. Run {insertion_matrix.RUN_HINT} on this commit, '
+                             'or pass --skip-insertion-matrix to release without it.')
+        step('Insertion matrix passed on this commit: ' + ', '.join(insertion_matrix.ROWS))
     step(f'Preconditions passed on main at {out(["git", "rev-parse", "--short", "HEAD"])}; signing as {identity}'
          + (f'; notarizing with keychain profile {notary_profile}' if notary_profile else ''))
 

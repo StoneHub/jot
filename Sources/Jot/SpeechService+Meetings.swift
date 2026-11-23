@@ -88,8 +88,10 @@ extension SpeechService {
             recordEvent(.started, "Listening continued in a fresh session after meeting export.")
             transcriber.kick()
         }
+        // A stalled recognizer keeps the meeting's last blocks queued for a restart; the export takes what was recognized and says so.
+        var recognitionUnfinished = false
         if lifecycle.acceptsWork(generation) {
-            await transcriber.waitUntilProcessed(sessionID: id, through: throughOffset)
+            recognitionUnfinished = !(await transcriber.waitUntilProcessed(sessionID: id, through: throughOffset))
             if !lifecycle.acceptsWork(generation) {
                 throw failure("Meeting export interrupted. Saved transcripts remain in Sessions; no file was exported.")
             }
@@ -126,13 +128,19 @@ extension SpeechService {
             NSWorkspace.shared.activateFileViewerSelecting(files)
             throw failure("Saved \(files.count) of the meeting's parts, then: \(error.localizedDescription)")
         }
-        guard !files.isEmpty else { library.countUsage([.meeting(.empty)]); return [] }
+        guard !files.isEmpty else {
+            guard !recognitionUnfinished else {
+                throw failure("Nothing was exported: recognition stalled with the meeting's speech still waiting. Choose Unload Models, then Resume, to recognize it, then export it from Sessions.")
+            }
+            library.countUsage([.meeting(.empty)]); return []
+        }
         library.countUsage([.meeting(.exported)])
         NSWorkspace.shared.activateFileViewerSelecting(files)
         var notes: [String] = []
         if files.count > 1 { notes.append("The meeting was paused along the way, so it was saved as \(files.count) files.") }
+        if recognitionUnfinished { notes.append("Exported before recognition finished: speech still waiting for recognition is missing. Choose Unload Models, then Resume, to recognize it, then export it again from Sessions.") }
         if cleanupUnfinished { notes.append("Exported before cleanup finished: the last lines are as recognized. Export it again from Sessions once cleanup is done.") }
-        if !notes.isEmpty { post(cleanupUnfinished ? .meetingExportedUncleaned : .meetingSavedInParts, notes.joined(separator: " ")) }
+        if !notes.isEmpty { post(recognitionUnfinished || cleanupUnfinished ? .meetingExportedUncleaned : .meetingSavedInParts, notes.joined(separator: " ")) }
         return files
     }
 

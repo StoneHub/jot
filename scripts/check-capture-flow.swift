@@ -64,7 +64,7 @@ enum CaptureFlowChecks {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("jot-input-check-\(UUID())")
         defer { try? FileManager.default.removeItem(at: directory) }
         let service = SpeechService(dependencies: dependencies)
-        service.library.store = try TranscriptStore(directory: directory)
+        service.library.store = try TranscriptStore(directory: directory, key: .scratch)
         service.capture.refreshInputDevices()
         service.automaticMicrophone = true
         service.highlightTargetField = false

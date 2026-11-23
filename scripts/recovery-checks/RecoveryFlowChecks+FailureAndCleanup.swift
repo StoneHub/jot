@@ -7,7 +7,7 @@ extension RecoveryFlowChecks {
         enum SyntheticFailure: Error { case recognition }
         let probe = Probe()
         probe.deliveryFails = false
-        let store = try TranscriptStore(directory: directory.appendingPathComponent("failure"))
+        let store = try TranscriptStore(directory: directory.appendingPathComponent("failure"), key: .scratch)
         let service = SpeechService(dependencies: .init(
             infer: { _, job, _ in
                 if job.isFinal && probe.failFinal { throw SyntheticFailure.recognition }
@@ -51,7 +51,7 @@ extension RecoveryFlowChecks {
         service.shutdown()
         print("PASS: failed recognition and empty final barriers retain partial text without automatic insertion; disabling dictation keeps it.")
 
-        let cleanedStore = try TranscriptStore(directory: directory.appendingPathComponent("cleanup"))
+        let cleanedStore = try TranscriptStore(directory: directory.appendingPathComponent("cleanup"), key: .scratch)
         let cleaned = SpeechService(dependencies: .init(
             infer: { _, job, _ in probe.infer(job) }, deliver: { _, text in try probe.deliver(text) },
             now: { probe.now }, cleanup: { cleaner, texts, timeout in
@@ -89,7 +89,7 @@ extension RecoveryFlowChecks {
         print("PASS: raw text publishes before delayed cleanup; the next recognition completes while cleanup runs, then the first row is replaced.")
         print("PASS: Live shows raw rows as they are saved and puts each cleaned phrase in place, without re-reading the session.")
 
-        let slowStore = try TranscriptStore(directory: directory.appendingPathComponent("dictation-cleanup"))
+        let slowStore = try TranscriptStore(directory: directory.appendingPathComponent("dictation-cleanup"), key: .scratch)
         let slow = SpeechService(dependencies: .init(
             infer: { _, job, _ in probe.infer(job) }, deliver: { _, text in try probe.deliver(text) },
             now: { probe.now }, cleanup: { cleaner, texts, timeout in

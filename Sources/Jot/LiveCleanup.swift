@@ -9,6 +9,8 @@ final class LiveCleanup {
     private var cleanupQueue: [PhraseCleanup.Phrase] = []
     /// The session of the phrase the worker is cleaning now.
     private var runningSession: String?
+    /// Set by `shutdown`: a block that fails while Jot quits must not start a new worker.
+    private var isShutDown = false
     private let liveTranscriptCleanup: TranscriptCleanup
     private let transcriptCleanup: TranscriptCleanup
     // A live phrase carries up to 2000 bytes; measured on-device cleanup of that
@@ -26,17 +28,19 @@ final class LiveCleanup {
     private let library: SessionLibrary
     private let settings: JotSettings
     private let clean: @MainActor (TranscriptCleanup, [String], Duration) async -> CleanupResult
+    private let lowPowerMode: () -> Bool
     private let activityChanged: () -> Void
     private let workerFinished: () -> Void
 
     init(owner: AnyObject, library: SessionLibrary, settings: JotSettings,
          clean: @escaping @MainActor (TranscriptCleanup, [String], Duration) async -> CleanupResult,
-         availability: @escaping @MainActor () -> CleanupAvailability,
+         availability: @escaping @MainActor () -> CleanupAvailability, lowPowerMode: @escaping () -> Bool,
          activityChanged: @escaping () -> Void, workerFinished: @escaping () -> Void) {
         self.owner = owner
         self.library = library
         self.settings = settings
         self.clean = clean
+        self.lowPowerMode = lowPowerMode
         self.activityChanged = activityChanged
         self.workerFinished = workerFinished
         let model = ChosenModel(.cleanup, settings: settings)
@@ -57,9 +61,10 @@ final class LiveCleanup {
     }
 
     /// Live rows stay as recognized while the setting is off or macOS Low Power Mode is on; dictation cleanup is separate.
-    private var cleanupWanted: Bool { settings.bool(JotDefaultsKey.cleanUpTranscriptions) && !LowPowerListening.isOn }
+    private var cleanupWanted: Bool { settings.bool(JotDefaultsKey.cleanUpTranscriptions) && !lowPowerMode() }
 
     func scheduleCleanup(sources: [Transcript], final: Bool) {
+        guard !isShutDown else { return }
         guard cleanupWanted else { phraseCleanup = PhraseCleanup(); return }
         phraseCleanup.limits.pauseSeconds = settings.double(JotSettings.phrasePause)
         phraseCleanup.limits.maximumSeconds = settings.double(JotSettings.phraseMaximumSeconds)
@@ -128,6 +133,13 @@ final class LiveCleanup {
         activityChanged()
     }
 
+    /// Ends the session's phrase without a row, for a final block that failed: the rows buffered for it are cleaned now, while the
+    /// session still counts as cleaning for a relabel. Another session's buffered rows wait for their own final block.
+    func endPhrase(session: String) {
+        guard phraseCleanup.pendingSessionID == session else { return }
+        scheduleCleanup(sources: [], final: true)
+    }
+
     /// One dictation row through cleanup, counted with the live phrases in the recovery diagnostics and in the usage counters.
     func cleanDictation(_ text: String) async -> (text: String, outcome: CleanupResult.Outcome) {
         cleanupRequestedCount += 1
@@ -144,6 +156,7 @@ final class LiveCleanup {
 
     /// Quitting cancels the running phrase and drops the queue; recognized text is already saved.
     func shutdown() {
+        isShutDown = true
         for task in cleanupTasks.values { task.cancel() }
         cleanupQueue.removeAll(); phraseCleanup = PhraseCleanup()
     }

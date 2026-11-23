@@ -69,9 +69,20 @@ class PlanTests(unittest.TestCase):
         gates = self.plan(['Sources/JotCore/TranscriptExport.swift'])
         self.assertEqual(names(gates), ['portable', 'swift-test', 'app-build', 'recovery-checks'])
 
-    def test_engine_change_needs_every_mac_gate(self):
+    def test_engine_change_needs_every_mac_gate_and_the_accuracy_comparison(self):
         gates = self.plan(['Sources/JotEngine/SpeechPipeline.swift'])
-        self.assertEqual(names(gates), ['portable', 'swift-test', 'app-build', 'recovery-checks'])
+        self.assertEqual(names(gates), ['portable', 'swift-test', 'app-build', 'recovery-checks', 'accuracy'])
+        self.assertEqual(gates[4].status, 'unavailable', 'no lab set named')
+        self.assertIn('JOT_LAB_SET', gates[4].note)
+        gates = self.plan(['Sources/Jot/Transcriber.swift'], lab_set='/sets/synthetic')
+        accuracy = gates[-1]
+        self.assertEqual(accuracy.name, 'accuracy')
+        self.assertEqual(accuracy.steps, [[sys.executable, 'scripts/lab-accuracy-check.py', '--set', '/sets/synthetic', '--baseline-ref', 'base']])
+        self.assertEqual(self.plan(['Sources/Jot/Transcriber.swift'], lab_set='/sets/synthetic', skip={'accuracy'})[-1].status, 'skipped')
+        for path in ('docs/TUNING.md', 'Sources/JotCore/TranscriptExport.swift', 'Sources/Jot/SessionsView.swift'):
+            self.assertNotIn('accuracy', names(self.plan([path], lab_set='/sets/synthetic')), path)
+        self.assertNotIn('accuracy', names(self.plan(['README.md'], everything=True)), '--all without a set stays four gates')
+        self.assertEqual(names(self.plan(['README.md'], everything=True, lab_set='/sets/synthetic'))[-1], 'accuracy')
 
     def test_test_only_and_build_configuration_changes(self):
         self.assertEqual(names(self.plan(['Tests/JotCoreTests/TranscriptExportTests.swift'])), ['portable', 'swift-test'])
@@ -348,6 +359,8 @@ class WorktreeTests(unittest.TestCase):
         try:
             os.chdir(self.clone)
             with ExitStack() as stack:
+                stack.enter_context(patch.dict(os.environ))
+                os.environ.pop('JOT_LAB_SET', None)      # the machine's lab set must not change what a simulated run plans
                 stack.enter_context(patch.object(check, 'gh_pr', return_value=info))
                 stack.enter_context(patch.object(check, 'machine', return_value='Simulated test environment'))
                 stack.enter_context(patch.object(check.platform, 'system', return_value=system))
@@ -432,6 +445,18 @@ class WorktreeTests(unittest.TestCase):
             check.run_gate(gate, self.clone, logs, expected_head=head)
         self.assertEqual((self.clone / 'README.md').read_text(), 'changed\n')
         self.assertNotIn('$ git restore .', (logs / 'portable.log').read_text())
+
+    def test_run_gate_marks_the_accuracy_gate_unavailable_when_there_is_no_baseline_yet(self):
+        logs = self.clone / 'work/step-logs'
+        logs.mkdir(parents=True)
+        no_baseline = [sys.executable, '-c', 'raise SystemExit(3)']
+        gate = check.Gate(check.ACCURACY_GATE, 'Lab accuracy', [no_baseline])
+        check.run_gate(gate, self.clone, logs)
+        self.assertEqual(gate.status, 'unavailable')
+        self.assertIn('no baseline yet', gate.note)
+        other = check.Gate('portable', 'Portable', [no_baseline])
+        check.run_gate(other, self.clone, logs)
+        self.assertEqual(other.status, 'failed', 'only the accuracy gate has a no-baseline exit code')
 
     def test_simulated_head_base_and_worktree_races_never_publish_success(self):
         self.open_pull_request(25, 'base\nchange\n')
@@ -544,6 +569,9 @@ class WorktreeTests(unittest.TestCase):
         data['checks']['real-model-audio'] = {'result': 'passed', 'details': 'Ran actual model recovery check'}
         path.write_text(json.dumps(data))
         result, states = self.simulated_status_run(32, '--ui-attestation', str(path))
+        self.assertEqual(result, 3, 'a recognition change also needs the lab accuracy comparison, so a run without a set stays incomplete')
+        self.assertEqual(states, ['pending', 'error'])
+        result, states = self.simulated_status_run(32, '--ui-attestation', str(path), '--lab-set', '/sets/synthetic')
         self.assertEqual(result, 0)
         self.assertEqual(states, ['pending', 'success'])
 

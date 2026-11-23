@@ -1,5 +1,5 @@
 import XCTest
-import SQLite3
+import SQLCipher
 @testable import JotCore
 
 final class SuggestionHistoryTests: XCTestCase {
@@ -26,7 +26,7 @@ final class SuggestionHistoryTests: XCTestCase {
     func testPersistsFinalRevisionAndMarksOnlyUnfinishedRequestsInterruptedOnReopen() async throws {
         let url = try directory()
         defer { try? FileManager.default.removeItem(at: url) }
-        let transcriptStore = try TranscriptStore(directory: url)
+        let transcriptStore = try TranscriptStore(directory: url, key: .scratch)
         let history = try SuggestionHistory(sharing: transcriptStore)
         let id = UUID()
         try await history.save(entry(id: id))
@@ -48,7 +48,7 @@ final class SuggestionHistoryTests: XCTestCase {
     func testBoundsRowsAndAge() async throws {
         let url = try directory()
         defer { try? FileManager.default.removeItem(at: url) }
-        let transcriptStore = try TranscriptStore(directory: url)
+        let transcriptStore = try TranscriptStore(directory: url, key: .scratch)
         let history = try SuggestionHistory(sharing: transcriptStore)
         let now = Date()
         try await history.save(entry(date: now.addingTimeInterval(-SuggestionHistory.maximumAge - 1)), now: now)
@@ -66,7 +66,7 @@ final class SuggestionHistoryTests: XCTestCase {
     func testPersistenceRejectsUnboundedIdentityAndCountsAndStoresNoContent() async throws {
         let url = try directory()
         defer { try? FileManager.default.removeItem(at: url) }
-        let transcriptStore = try TranscriptStore(directory: url)
+        let transcriptStore = try TranscriptStore(directory: url, key: .scratch)
         let history = try SuggestionHistory(sharing: transcriptStore)
         let privateText = "PRIVATE FIELD AND PROMPT CONTENT"
         let bad = SuggestionHistoryEntry(id: UUID(), revision: 0, startedAt: Date(),
@@ -96,7 +96,7 @@ final class SuggestionHistoryTests: XCTestCase {
                                           outcome: .noSuggestion, reason: .init(code: privateText), complete: true)
         try await history.save(safe)
         var db: OpaquePointer?
-        XCTAssertEqual(sqlite3_open(transcriptStore.databaseURL.path, &db), SQLITE_OK)
+        XCTAssertEqual(sqlite3_open_scratch(transcriptStore.databaseURL.path, &db), SQLITE_OK)
         defer { sqlite3_close(db) }
         var stmt: OpaquePointer?
         XCTAssertEqual(sqlite3_prepare_v2(db, "SELECT payload FROM suggestion_interactions", -1, &stmt, nil), SQLITE_OK)

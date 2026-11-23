@@ -49,6 +49,8 @@ Names come only from fixed codes in `UsageCounter` (`Sources/JotCore/UsageCounte
 | `suggestion.outcome.<outcome>`, `suggestion.action.<action>` | A suggestion request finished, once each, by its final `SuggestionHistoryEntry` outcome and, when one ended it, its action. |
 | `typoFix.requested` | The Fix typos shortcut was pressed. |
 | `typoFix.outcome.<outcome>` | That press ended, by `TypoFixOutcome`: `fixed`, `undone`, `unchanged`, `rejected`, `fieldChanged`, `cancelled` and so on. |
+| `typoFix.preview.requested` | A double-tap of Fn asked the cleanup model to check a field's typos before a suggestion. |
+| `typoFix.preview.<outcome>` | That check ended: `applied` (Tab wrote the fixes), `notApplied`, `skipped` (shown, then passed over), `noTypos`, `rejected`, `failed` or `cancelled` (Escape, typing or a new request while it ran). `noTypos`, `rejected` and `failed` went on to a suggestion. |
 | `dictationLatency.<bucket>` | A hold completed, by the time from release until its text was in the field: `underOneSecond`, `underTwoSeconds`, `underFourSeconds`, `underEightSeconds` or `overEightSeconds`. |
 | `meeting.started`, `meeting.startFailed` | Start meeting began a meeting, or could not (no name, or listening did not start). |
 | `meeting.exported`, `meeting.empty`, `meeting.endFailed` | End meeting saved files, closed a meeting with nothing transcribed, or was refused or failed to export. |

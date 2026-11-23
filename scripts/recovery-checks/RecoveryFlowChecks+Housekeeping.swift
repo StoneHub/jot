@@ -7,7 +7,7 @@ extension RecoveryFlowChecks {
     /// Quiet and a stalled microphone are measured on the injected clock, so a tick at a later fake time reaches them without waiting.
     @MainActor static func checkQuietAndStall(directory: URL) async throws {
         let probe = Probe()
-        let store = try TranscriptStore(directory: directory.appendingPathComponent("quiet"))
+        let store = try TranscriptStore(directory: directory.appendingPathComponent("quiet"), key: .scratch)
         var dependencies = SpeechServiceDependencies(infer: { _, job, _ in
             job.samples.contains(where: { $0 != 0 }) ? probe.infer(job) : SpeechOutput(transcripts: [], text: "", processingSeconds: 0)
         }, deliver: { _, text in try probe.deliver(text) }, now: { probe.now })
@@ -58,7 +58,7 @@ extension RecoveryFlowChecks {
     /// Resource samples must refresh their readouts without invalidating every screen that observes the service.
     @MainActor static func checkIdleRedraws(directory: URL) async throws {
         let probe = Probe()
-        let store = try TranscriptStore(directory: directory.appendingPathComponent("idle"))
+        let store = try TranscriptStore(directory: directory.appendingPathComponent("idle"), key: .scratch)
         var recognitions = 0
         // The timer tick drains the microphone itself, as in the app, so a chunk cut by a drain is still in the queue when the same tick does its once-a-second status work.
         let microphone = ConstantMicrophone(seconds: 0.2, value: 0)
@@ -112,7 +112,7 @@ extension RecoveryFlowChecks {
     /// state; starting a hold still checks microphone authorization at point of use.
     @MainActor static func checkHousekeepingCadence(directory: URL) async throws {
         let probe = Probe()
-        let store = try TranscriptStore(directory: directory.appendingPathComponent("housekeeping"))
+        let store = try TranscriptStore(directory: directory.appendingPathComponent("housekeeping"), key: .scratch)
         let microphone = ConstantMicrophone(seconds: 0.2, value: 0)
         var dependencies = SpeechServiceDependencies(infer: { _, job, _ in
             probe.chunks.append(AudioClock.seconds(samples: job.samples.count))

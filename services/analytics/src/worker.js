@@ -15,7 +15,8 @@ const VERSION = /^\d{1,4}(\.\d{1,4}){0,3}$/;
 const ARCH = new Set(["arm64", "x86_64"]);
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-/// The report, or a reason it was refused. `today` is the server's UTC date as yyyy-mm-dd.
+/// The report with only the counters this Worker knows, or a reason it was refused. `today` is the server's UTC date as
+/// yyyy-mm-dd.
 export function validate(body, today) {
     if (typeof body !== "object" || body === null || Array.isArray(body)) return { error: "body must be an object" };
     const keys = Object.keys(body).sort().join(",");
@@ -27,22 +28,25 @@ export function validate(body, today) {
     if (!Array.isArray(body.days) || body.days.length === 0 || body.days.length > MAX_DAYS) return { error: "invalid days" };
     const oldest = shiftDay(today, -MAX_AGE_DAYS);
     const seen = new Set();
+    const days = [];
     for (const entry of body.days) {
         if (typeof entry !== "object" || entry === null || Object.keys(entry).sort().join(",") !== "counters,day") return { error: "invalid day" };
         // A day is reported once it has finished on the Mac. Local midnight can be up to 14 hours ahead of UTC.
         if (typeof entry.day !== "string" || !DAY.test(entry.day) || entry.day < oldest || entry.day > today || seen.has(entry.day)) return { error: "invalid day" };
         seen.add(entry.day);
-        const counters = entry.counters;
-        if (typeof counters !== "object" || counters === null || Array.isArray(counters)) return { error: "invalid counters" };
-        const names = Object.keys(counters);
-        if (names.length > COUNTERS.size) return { error: "too many counters" };
-        for (const name of names) {
-            const count = counters[name];
-            if (!COUNTERS.has(name)) return { error: "unknown counter name" };
+        if (typeof entry.counters !== "object" || entry.counters === null || Array.isArray(entry.counters)) return { error: "invalid counters" };
+        const counters = {};
+        for (const [name, count] of Object.entries(entry.counters)) {
+            // A Jot release can add counters before this Worker is redeployed. Those names are dropped here, not stored
+            // and not a reason to refuse the day: Jot marks the report sent either way, so a refusal would lose the
+            // counters the Worker does know. The counter-pin test in Jot keeps the list current for the next deploy.
+            if (!COUNTERS.has(name)) continue;
             if (!Number.isInteger(count) || count < 0 || count > MAX_COUNT) return { error: "invalid count" };
+            counters[name] = count;
         }
+        days.push({ day: entry.day, counters });
     }
-    return { report: body };
+    return { report: { app: body.app, os: body.os, arch: body.arch, days } };
 }
 
 export function shiftDay(day, offset) {

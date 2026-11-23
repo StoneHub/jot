@@ -1,6 +1,6 @@
 # Cloud work
 
-Cloud sessions fix known issues and build features without the Mac. [AGENTS.md](../AGENTS.md) governs proportional checks and solo delivery: merge authorized work after the relevant checks available in the environment pass, and report native work that remains uncompiled or untested. No dedicated runner or GitHub App is needed for the optional local checker.
+Cloud sessions fix known issues and build features without the Mac. [AGENTS.md](../AGENTS.md) governs proportional checks and solo delivery: run the relevant portable checks, report native work that remains uncompiled or untested, and merge authorized work only after a Mac run of the local checker passes at the PR's head. No dedicated runner or GitHub App is needed for it.
 
 ## Start here
 
@@ -8,7 +8,7 @@ Cloud sessions fix known issues and build features without the Mac. [AGENTS.md](
 2. Run `python3 scripts/cloud-preflight.py`. Preserve existing changes and use the provisioned branch. Check the issue and any overlapping open PR with the host's GitHub tools. If the fix already exists, stop with that evidence.
 3. Make the change the issue needs. Expand scope only when a dependency requires it.
 4. Run the affected portable checks below and review your own diff: uncompiled Swift is only as good as that read. Widen checks for affected boundaries, failures or unresolved risk.
-5. Save authorized work remotely using the agreed integration owner and workflow, then report (see [Return](#return)). Use a PR when coordination needs one; native checks and Monroe's device use remain explicit follow-up evidence.
+5. Save authorized work remotely using the agreed integration owner and workflow, then report (see [Return](#return)). Use a PR: the Mac check at its head gates the merge, and Monroe's device use remains follow-up evidence.
 
 ## What Linux can and cannot prove
 
@@ -16,11 +16,11 @@ Cloud sessions fix known issues and build features without the Mac. [AGENTS.md](
 
 | Work | Cloud proof | Proved later on the Mac |
 | --- | --- | --- |
-| Python tooling, synthetic JSON scenarios, documentation | Portable checks | Native gate publication itself still needs Mac validation; nothing more for standalone documentation/tooling unless it feeds the app |
+| Python tooling, synthetic JSON scenarios, documentation | Portable checks | The Mac `local-pr-check` pass at the PR head, which for documentation runs only the portable gate (tooling that feeds the build or recovery checks selects those gates too) |
 | Swift logic, SwiftUI, AX/event taps, capture/speaker timing, Foundation Models quality | Careful source review; uncompiled | Build, tests, and Monroe's end-to-end use |
 | Signing, installation, updater swap, shell integration | None | Local delivery under `AGENTS.md` |
 
-A new, renamed or removed source file goes in `project.yml` only. `Jot.xcodeproj/project.pbxproj` is xcodegen output, and xcodegen assigns its own IDs, so a hand edit never matches what it generates and leaves the Mac check `INCOMPLETE` on a dirty tree. Say in the PR that the project needs regenerating; the Mac run commits the regenerated file to the PR branch before its final check.
+Make project changes in `project.yml` only. Most targets take every file in their folder; JotRecoveryChecks and JotLab list `Sources/Jot` files one by one, so a new file they use is listed there. `Jot.xcodeproj/project.pbxproj` is xcodegen output, and xcodegen assigns its own IDs, so a hand edit never matches what it generates and leaves the Mac check `INCOMPLETE` on a dirty tree. Say in the PR that the project needs regenerating; the Mac run commits the regenerated file to the PR branch before its final check.
 
 Portable checks follow the changed behavior. Documentation needs `git diff --check`; changed Python tooling runs its matching existing test file. For example, a local-checker change uses:
 
@@ -33,7 +33,7 @@ git diff --check
 
 ## Checking on the Mac
 
-When a Mac is available, a local agent can run the diagnostic gates a change needs in one go:
+A Mac agent runs the gates a change needs in one go. A `--post` run that passes at the PR's current head is the merge gate; `--post` records it on the PR as the `jot/local-pr-check` status and a report:
 
 ```sh
 python3 scripts/local-pr-check.py <PR> --dry-run   # show the gates the diff needs
@@ -49,8 +49,9 @@ The script fetches into its own worktree, `work/pr-<PR>`, and picks gates from t
 | Swift tests | package sources, `Tests/`, `Package.*`, or explicit `--filter` | only the requested filters; otherwise `swift test` |
 | App build | `Sources/`, `Resources/`, `project.yml`, `Jot.xcodeproj/`, `Package.*`, build/signing scripts | `scripts/build-install.py --build-only` (Debug; no install) |
 | Recovery checks | core/engine sources, runtime app owners, recovery/capture scripts and build inputs | build and run `JotRecoveryChecks` with a fresh `CFFIXED_USER_HOME` |
+| Accuracy | recognition, speaker, cleanup or lab sources, or `Package.resolved`; needs `JOT_LAB_SET` or `--lab-set` | `scripts/lab-accuracy-check.py`: `jot lab --set` at the merge base and at the head, compared with tolerances ([TUNING.md](TUNING.md#score-a-fixed-set)) |
 
-Presentation files select an app build without the generic recovery harness or package tests. Unknown app files retain recovery coverage. The selector's current file groups live in `scripts/local-pr-check.py`; widen the plan when a presentation edit changes runtime behavior. `--filter` runs only requested tests; `--all` selects every gate and the full suite once, including all portable tests/guards. `--skip <gate>` omits one. The verdict is `PASS` (exit 0), `FAIL` (1) or `INCOMPLETE` (3). A diagnostic `PASS` means only the selected gates passed. Logs and full reports stay in `work/pr-checks/`; optional `--post` sends a fixed summary and publishes the verdict as `jot/local-pr-check`, without raw logs, machine details or manual-check details. The script never installs or merges and does not automatically test interactive UI, Accessibility, physical Fn, installed-app, updater or live capture. Fix forward when `main` breaks.
+Presentation files select an app build without the generic recovery harness or package tests. Unknown app files retain recovery coverage. The selector's current file groups live in `scripts/local-pr-check.py`; widen the plan when a presentation edit changes runtime behavior. `--filter` runs only requested tests; `--all` selects every gate and the full suite once, including all portable tests/guards, and the accuracy gate when a set is named. `--skip <gate>` omits one. The verdict is `PASS` (exit 0), `FAIL` (1) or `INCOMPLETE` (3). A `PASS` means only the selected gates passed. Logs and full reports stay in `work/pr-checks/`; `--post` sends a fixed summary and publishes the verdict as `jot/local-pr-check`, without raw logs, machine details or manual-check details. The script never installs or merges and does not automatically test interactive UI, Accessibility, physical Fn, installed-app, updater or live capture. Delivery into real apps is the separate [insertion matrix](INSERTION-MATRIX.md), run before a release. Fix forward when `main` breaks.
 
 Base fetch failures stop validation rather than reuse stale refs. The checked worktree must remain clean at the exact head, with checks before/after each command and gate; live PR head/base changes invalidate the run. A cancelled, invalidated or uncertain publication rewrites the local report as `INCOMPLETE`. Public comments are sent only after terminal status verification when status publication is requested. A dirty `--current` checkout is diagnostic-only and yields `INCOMPLETE` if its checks otherwise pass. By default, a PR whose fork metadata is unavailable cannot execute checks. After reviewing its code, `--allow-fork` explicitly allows a fork or unknown-provenance diagnostic run; missing metadata still prevents publication. `--no-gh --dry-run` can inspect a plan without executing PR code.
 

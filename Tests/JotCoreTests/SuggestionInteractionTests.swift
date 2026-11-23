@@ -310,7 +310,7 @@ final class SuggestionInteractionTests: XCTestCase {
     func testStoreContextUsesTimeWindowLatestSessionAndRevalidatesEditsAndDeletion() throws {
         let directory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let store = try TranscriptStore(directory: directory), now = Date(timeIntervalSince1970: 10_000)
+        let store = try TranscriptStore(directory: directory, key: .scratch), now = Date(timeIntervalSince1970: 10_000)
         func row(_ id: String, session: String, age: Double, mode: String) -> Transcript {
             Transcript(id: id, sessionID: session, startedAt: now.addingTimeInterval(-age), startSeconds: 0, endSeconds: 1,
                        text: "Synthetic " + id, speakerID: "speaker-1", mode: mode)

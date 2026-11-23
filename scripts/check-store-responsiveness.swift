@@ -1,7 +1,6 @@
 import Foundation
 import JotCore
 import JotEngine
-import SQLite3
 
 extension RecoveryFlowChecks {
     private static func isSignaled(_ semaphore: DispatchSemaphore) -> Bool {
@@ -13,7 +12,7 @@ extension RecoveryFlowChecks {
     /// accept an earlier session's late snapshot.
     @MainActor static func checkLibraryReadsStayResponsive(directory: URL) async throws {
         let folder = directory.appendingPathComponent("large-history", isDirectory: true)
-        let store = try TranscriptStore(directory: folder)
+        let store = try TranscriptStore(directory: folder, key: .scratch)
         let service = SpeechService()
         service.beginRecoveryVerification(store: store, startedAt: Date(timeIntervalSince1970: 1_800_000_000))
         defer { service.shutdown() }
@@ -86,7 +85,7 @@ extension RecoveryFlowChecks {
     @MainActor static func checkDeletionFailurePreservesLateRecognition(directory: URL) async throws {
         for deletionFails in [true, false] {
             let folder = directory.appendingPathComponent(deletionFails ? "delete-fails" : "delete-succeeds")
-            let store = try TranscriptStore(directory: folder)
+            let store = try TranscriptStore(directory: folder, key: .scratch)
             let gate = CleanupGate()
             gate.close()
             let service = SpeechService(dependencies: .init(
@@ -109,13 +108,9 @@ extension RecoveryFlowChecks {
                 startedAt: Date(timeIntervalSince1970: 1_800_000_000),
                 startSeconds: 0, endSeconds: 0.5, text: "existing row", mode: "ambient"))
             if deletionFails {
-                var db: OpaquePointer?
-                let database = folder.appendingPathComponent("transcripts.sqlite3").path
-                precondition(sqlite3_open(database, &db) == SQLITE_OK, "Could not open synthetic delete store")
-                defer { sqlite3_close(db) }
                 let sql = "CREATE TRIGGER block_session_delete BEFORE DELETE ON transcripts " +
                     "WHEN old.session_id = '\(session)' BEGIN SELECT RAISE(ABORT, 'synthetic delete failure'); END"
-                precondition(sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK, "Could not install synthetic delete failure")
+                do { try StoreCheckAccess.execute(sql, in: folder, key: .scratch) } catch { preconditionFailure("Could not install synthetic delete failure: \(error)") }
             }
             service.ingestRecoveryVerification(samples: Array(repeating: 1, count: 48_000))
             service.flushRecoveryVerification()

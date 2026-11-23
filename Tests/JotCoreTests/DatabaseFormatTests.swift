@@ -1,8 +1,8 @@
 import XCTest
-import SQLite3
+import SQLCipher
 @testable import JotCore
 
-/// Supported formats open with every row; unsupported databases are refused and their history is preserved.
+/// Supported formats open with every row; unsupported databases are refused and their history is preserved. The fixtures are the plaintext files earlier builds wrote; opening one encrypts it in place, so a dump keys the file once its header is no longer SQLite's.
 final class DatabaseFormatTests: XCTestCase {
     private var directory: URL!
     override func setUpWithError() throws {
@@ -52,11 +52,15 @@ final class DatabaseFormatTests: XCTestCase {
         }
     }
 
-    /// Every object in the file, every row of every table, and the format, as text.
+    /// Every object in the file, every row of every table, and the format, as text. Keyed for a file the store has encrypted; plain for one it has not touched.
     private func dump(_ url: URL? = nil) throws -> [String] {
         var db: OpaquePointer?
         defer { sqlite3_close(db) }
-        guard sqlite3_open((url ?? databaseURL).path, &db) == SQLITE_OK else { throw StoreError.database("open failed") }
+        let path = (url ?? databaseURL).path
+        guard sqlite3_open(path, &db) == SQLITE_OK else { throw StoreError.database("open failed") }
+        if try !StoreEncryption.isPlaintext(URL(fileURLWithPath: path)) {
+            guard sqlite3_exec(db, StoreKey.scratch.keyStatement, nil, nil, nil) == SQLITE_OK else { throw StoreError.database("key failed") }
+        }
         func rows(_ sql: String) throws -> [String] {
             var stmt: OpaquePointer?
             defer { sqlite3_finalize(stmt) }
@@ -88,7 +92,7 @@ final class DatabaseFormatTests: XCTestCase {
         let before = try dump()
         XCTAssertEqual(before.first, "8")
         do {
-            let store = try TranscriptStore(directory: directory)
+            let store = try TranscriptStore(directory: directory, key: .scratch)
             let pass = try SpeakerPassStore(sharing: store)
             let people = try PeopleStore(sharing: store)
             XCTAssertEqual(try store.session(id: "s1").map(\.text), ["Hello there.", "general kenobi"])
@@ -108,8 +112,11 @@ final class DatabaseFormatTests: XCTestCase {
             XCTAssertEqual(try people.list().first?.sampleCount, 3)
         }
         let after = try dump()
-        XCTAssertEqual(Set(before).subtracting(after), [], "Opening preserves every existing object, source row, feed sequence and format")
-        _ = try TranscriptStore(directory: directory)
+        XCTAssertEqual(after.first, "9", "The file is now encrypted, which is what format 9 means")
+        XCTAssertFalse(try StoreEncryption.isPlaintext(databaseURL))
+        XCTAssertEqual(Set(before.dropFirst()).subtracting(after), [], "Opening preserves every existing object, source row and feed sequence")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: databaseURL.path + StoreEncryption.workSuffix), "The working copy is gone once it has replaced the plaintext file")
+        _ = try TranscriptStore(directory: directory, key: .scratch)
         XCTAssertEqual(try dump(), after, "Reopening adds no metadata twice and changes no source rows")
     }
 
@@ -131,7 +138,7 @@ final class DatabaseFormatTests: XCTestCase {
         let before = try dump()
         XCTAssertEqual(before.first, "7")
         do {
-            let store = try TranscriptStore(directory: directory)
+            let store = try TranscriptStore(directory: directory, key: .scratch)
             let pass = try SpeakerPassStore(sharing: store)
             let people = try PeopleStore(sharing: store)
             XCTAssertEqual(try store.session(id: "s1").map(\.text), ["Hello there.", "general kenobi"])
@@ -147,27 +154,48 @@ final class DatabaseFormatTests: XCTestCase {
             XCTAssertEqual(try people.list().map(\.name), ["Ada"])
         }
         let after = try dump()
-        XCTAssertEqual(after.first, "8")
+        XCTAssertEqual(after.first, "9")
         XCTAssertEqual(Set(before.dropFirst()).subtracting(after), [], "Every object and row 0.2.6 wrote is still there, unchanged")
-        _ = try TranscriptStore(directory: directory)
+        _ = try TranscriptStore(directory: directory, key: .scratch)
         XCTAssertEqual(try dump(), after, "Reopening changes nothing and enqueues no row twice")
     }
 
     func testNewDatabasePreservesTheFormerSchemaAndAddsFeedMetadata() throws {
         let former = directory.appendingPathComponent("former.sqlite3")
         writeFormerDatabase(version: 8, rows: "", at: former)
-        _ = try TranscriptStore(directory: directory)
-        XCTAssertEqual(Set(try dump(former)).subtracting(try dump()), [], "The source schema and original live feed remain intact")
+        _ = try TranscriptStore(directory: directory, key: .scratch)
+        XCTAssertEqual(Set(try dump(former).dropFirst()).subtracting(try dump()), [], "The source schema and original live feed remain intact")
     }
 
+    /// A plaintext file cannot carry format 9 or later: nothing of this line wrote one, so it is refused like any unknown format.
     func testANewerFormatIsRefusedAndLeftAsItIs() throws {
-        writeFormerDatabase(version: 9)
-        let before = try dump()
-        XCTAssertThrowsError(try TranscriptStore(directory: directory)) { error in
-            XCTAssertTrue(error.localizedDescription.contains("format 9"), error.localizedDescription)
+        for version in [9, 10] {
+            try FileManager.default.removeItem(at: directory)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            writeFormerDatabase(version: version)
+            let before = try dump()
+            XCTAssertThrowsError(try TranscriptStore(directory: directory, key: .scratch)) { error in
+                XCTAssertTrue(error.localizedDescription.contains("format \(version)"), error.localizedDescription)
+            }
+            XCTAssertEqual(try dump(), before, "A database written by a newer Jot is never deleted by an older one")
+            XCTAssertTrue(try StoreEncryption.isPlaintext(databaseURL), "Refusal encrypts nothing")
+            XCTAssertEqual(try dump().first, "\(version)")
         }
-        XCTAssertEqual(try dump(), before, "A database written by a newer Jot is never deleted by an older one")
-        XCTAssertEqual(try dump().first, "9")
+    }
+
+    /// An encrypted file of a later format is refused the same way, and stays readable with its key.
+    func testANewerEncryptedFormatIsRefusedAndLeftAsItIs() throws {
+        _ = try TranscriptStore(directory: directory, key: .scratch)
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open_scratch(databaseURL.path, &db), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(db, "PRAGMA user_version=10", nil, nil, nil), SQLITE_OK)
+        sqlite3_close(db)
+        let before = try dump()
+        XCTAssertEqual(before.first, "10")
+        XCTAssertThrowsError(try TranscriptStore(directory: directory, key: .scratch)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("format 10"), error.localizedDescription)
+        }
+        XCTAssertEqual(try dump(), before)
     }
 
     func testUnsupportedFormatsAreRefusedWithoutChangingHistoryOrNeighbors() throws {
@@ -192,7 +220,7 @@ final class DatabaseFormatTests: XCTestCase {
             let permissions = try FileManager.default.attributesOfItem(atPath: databaseURL.path)[.posixPermissions] as? NSNumber
             let bytes = try Data(contentsOf: databaseURL)
             let names = Set(try FileManager.default.subpathsOfDirectory(atPath: directory.path))
-            XCTAssertThrowsError(try TranscriptStore(directory: directory)) { error in
+            XCTAssertThrowsError(try TranscriptStore(directory: directory, key: .scratch)) { error in
                 XCTAssertTrue(error.localizedDescription.contains("format \(version)"), error.localizedDescription)
                 XCTAssertTrue(error.localizedDescription.contains("preserved"), error.localizedDescription)
             }
@@ -217,7 +245,7 @@ final class DatabaseFormatTests: XCTestCase {
         let mainBytes = try Data(contentsOf: databaseURL)
         let walBytes = try Data(contentsOf: wal)
         XCTAssertFalse(walBytes.isEmpty)
-        XCTAssertThrowsError(try TranscriptStore(directory: directory)) { error in
+        XCTAssertThrowsError(try TranscriptStore(directory: directory, key: .scratch)) { error in
             XCTAssertTrue(error.localizedDescription.contains("format 0"), "Read the current format from WAL: \(error.localizedDescription)")
         }
         XCTAssertEqual(try Data(contentsOf: databaseURL), mainBytes)
@@ -230,7 +258,7 @@ final class DatabaseFormatTests: XCTestCase {
     func testAFileThatCannotBeReadIsNeverDeleted() throws {
         let garbage = Data("not a database, but maybe someone's history".utf8)
         try garbage.write(to: databaseURL)
-        XCTAssertThrowsError(try TranscriptStore(directory: directory))
+        XCTAssertThrowsError(try TranscriptStore(directory: directory, key: .scratch))
         XCTAssertEqual(try Data(contentsOf: databaseURL), garbage)
         try FileManager.default.removeItem(at: databaseURL)
 
@@ -240,7 +268,7 @@ final class DatabaseFormatTests: XCTestCase {
         var holder: OpaquePointer?
         XCTAssertEqual(sqlite3_open(databaseURL.path, &holder), SQLITE_OK)
         XCTAssertEqual(sqlite3_exec(holder, "PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE", nil, nil, nil), SQLITE_OK, String(cString: sqlite3_errmsg(holder)))
-        XCTAssertThrowsError(try TranscriptStore(directory: directory))
+        XCTAssertThrowsError(try TranscriptStore(directory: directory, key: .scratch))
         XCTAssertEqual(sqlite3_exec(holder, "ROLLBACK", nil, nil, nil), SQLITE_OK)
         sqlite3_close(holder)
         XCTAssertEqual(try dump(), before, "A store that could not read the format deleted nothing")

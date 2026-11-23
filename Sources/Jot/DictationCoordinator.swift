@@ -182,8 +182,8 @@ final class DictationCoordinator {
     }
 
     /// Lost or dropped audio inside a hold marks the attempt partial; outside a hold there is nothing to mark. Release drains
-    /// capture and queues the held tail as a final block, which is never dropped, so a gap reported while the attempt is
-    /// pending is in audio after the release.
+    /// capture and queues the held tail as a final block before the hold ends; only a full recognition backlog withholds it,
+    /// and that marks the gap here first. A gap reported while the attempt is pending is in audio after the release.
     func markGap(_ recoveryNotice: String) {
         guard isActive else { return }
         attemptHadGap = true
@@ -266,7 +266,9 @@ final class DictationCoordinator {
         }
         guard let started = currentAttempt, started.id == id else { return }
         timing.holdSeconds = max(0, (started.endedAt ?? started.startedAt).timeIntervalSince(started.startedAt))
-        await transcriber.waitUntilProcessed(sessionID: started.sessionID, through: throughOffset)
+        // A stalled recognizer keeps the rest of the hold queued for a restart; what it answered so far is saved for review, as after a gap.
+        let stalled = !(await transcriber.waitUntilProcessed(sessionID: started.sessionID, through: throughOffset))
+        if stalled { attemptHadGap = true }
         timing.recognitionSeconds = timing.sinceRelease
         guard await isCurrentAfterDeletion(id, session: started.sessionID),
               var attempt = currentAttempt, attempt.id == id else { return }
@@ -299,7 +301,10 @@ final class DictationCoordinator {
                 try await save(attempt)
                 guard await isCurrentAfterDeletion(id, session: started.sessionID) else { return }
                 currentAttempt = attempt
-                if attemptHadGap {
+                if stalled {
+                    setRecoveryNotice("Recognition stalled; the words recognized before it stalled were saved. They were not inserted automatically.")
+                    setNotice("Dictation was not finished: recognition stalled. Choose Unload Models, then Resume, to restart it.")
+                } else if attemptHadGap {
                     setRecoveryNotice("Partial dictation was saved after an audio gap. It was not inserted automatically.")
                     setNotice("Dictation has an audio gap; review the saved text before retrying.")
                 } else {

@@ -19,6 +19,8 @@ public struct PhraseCleanup {
     public var limits = Limits()
     private var pending: [Transcript] = []
     public var pendingCount: Int { pending.count }
+    /// The session whose rows wait for the rest of their phrase; nil when none do.
+    public var pendingSessionID: String? { pending.first?.sessionID }
     public init() {}
 
     public mutating func append(_ rows: [Transcript], final: Bool = false) -> [Phrase] {

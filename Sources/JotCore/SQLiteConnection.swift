@@ -1,7 +1,8 @@
 import Foundation
-import SQLite3
+import SQLCipher
 
 /// One connection to Jot's database file and the statement helpers TranscriptStore, SpeakerPassStore and PeopleStore share. WAL mode lets several connections use the file at once. Each connection serializes its own use through `locked`.
+/// The key goes first on every connection: SQLCipher reads nothing before it, and a wrong one fails on the first read with "file is not a database". A nil key opens a plaintext file, which only the one-time migration does.
 final class SQLiteConnection: @unchecked Sendable {
     private let lock = NSLock()
     private var handle: OpaquePointer?
@@ -9,7 +10,7 @@ final class SQLiteConnection: @unchecked Sendable {
 
     /// Mutable connections create a user-only file and enable WAL. Inspection connections
     /// read the current database, including committed WAL frames, without writable pragmas.
-    init(url: URL, readOnly: Bool = false) throws {
+    init(url: URL, key: StoreKey?, readOnly: Bool = false) throws {
         var db: OpaquePointer?
         let access = readOnly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
         guard sqlite3_open_v2(url.path, &db, access | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK, let db else {
@@ -20,6 +21,7 @@ final class SQLiteConnection: @unchecked Sendable {
         handle = db
         do {
             sqlite3_busy_timeout(db, 5_000)
+            if let key { try execute(key.keyStatement) }
             if !readOnly {
                 try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
                 try execute("PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON")

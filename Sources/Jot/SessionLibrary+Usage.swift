@@ -11,6 +11,14 @@ extension SessionLibrary {
         _ = storeExecutor.submit { try? store.countUsage(counters, at: date) }
     }
 
+    /// Counts one socket call for `jot clients`, in order with the store's other writes, without waiting. A failed
+    /// count is dropped: the log never holds up or fails a request.
+    func recordClientCall(_ call: ClientCall) {
+        guard let store else { return }
+        let date = Date()
+        _ = storeExecutor.submit { try? store.recordClientCall(call, at: date) }
+    }
+
     /// Starts the usage counters over, after any counts already submitted. Saved history is unchanged.
     func resetUsage() async throws {
         guard let store else { throw JotError.message("Saved history is unavailable.") }

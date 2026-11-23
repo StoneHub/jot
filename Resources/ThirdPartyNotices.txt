@@ -4,6 +4,51 @@ FluidAudio revision: 5c19d5e12320e22bbfb7a1877b089d2665a69add
 Source: https://github.com/FluidInference/FluidAudio
 
 
+Models
+============================================================
+Jot does not ship model files. When Jot prepares its models it downloads
+FluidAudio's Core ML conversions from Hugging Face. The Apple Intelligence
+features use Apple's on-device Foundation Models framework, which is part of
+macOS and is not downloaded by Jot. Each model
+stays under its authors' terms; Jot does not relicense any of them. The
+licenses below are the ones its authors state on the pages named.
+
+Parakeet TDT 0.6b v3 (speech to text)
+- Authors: NVIDIA
+- License: Creative Commons Attribution 4.0 (CC BY 4.0)
+- Source: https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3
+- Downloaded as: https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml
+
+Streaming Sortformer, 4 speakers (speaker turns while listening)
+- Authors: NVIDIA
+- License: Creative Commons Attribution 4.0 (CC BY 4.0)
+- Source: https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2
+- Downloaded as: https://huggingface.co/FluidInference/diar-streaming-sortformer-coreml
+
+Silero VAD (speech detection)
+- Authors: Silero Team
+- License: MIT
+- Source: https://github.com/snakers4/silero-vad
+- Downloaded as: https://huggingface.co/FluidInference/silero-vad-coreml
+
+pyannote segmentation 3.0 (speaker turns after a session ends)
+- Authors: pyannote (Hervé Bredin and contributors)
+- License: MIT
+- Source: https://huggingface.co/pyannote/segmentation-3.0
+- Downloaded as: https://huggingface.co/FluidInference/speaker-diarization-coreml
+
+WeSpeaker ResNet34-LM speaker embedding (telling voices apart)
+- Authors: WeSpeaker (Hongji Wang and contributors); packaged by pyannote
+- License: Creative Commons Attribution 4.0 (CC BY 4.0) for the VoxCeleb
+  weights; the WeSpeaker code is Apache License 2.0
+- Source: https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM
+  and https://github.com/wenet-e2e/wespeaker
+- Downloaded as: https://huggingface.co/FluidInference/speaker-diarization-coreml
+
+CC BY 4.0 full text: https://creativecommons.org/licenses/by/4.0/legalcode
+MIT full text: https://opensource.org/license/mit
+
+
 LICENSE
 ============================================================
                                  Apache License
@@ -480,3 +525,72 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
+
+swift-sqlcipher revision: cf5c89ad63146db3a4258a1e26da4d2b3fa4a087 (1.9.0)
+Source: https://github.com/skiptools/swift-sqlcipher
+Packages SQLite 3.53.0 with SQLCipher 4.19.0 and LibTomCrypt as C sources; Jot's transcript database is encrypted with it.
+
+
+LICENSE (swift-sqlcipher)
+============================================================
+(The MIT License)
+
+Copyright (c) 2023-2025 Skip.tools (<support@skip.tools>)
+Copyright (c) 2014-2015 Stephen Celis (<stephen@stephencelis.com>)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+LICENSE (SQLCipher)
+============================================================
+Copyright (c) 2008-2023, ZETETIC LLC
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of the ZETETIC LLC nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY ZETETIC LLC ''AS IS'' AND ANY
+EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL ZETETIC LLC BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+LibTomCrypt
+============================================================
+LibTomCrypt, modular cryptographic library -- Tom St Denis.
+SPDX-License-Identifier: Unlicense (public domain). https://www.libtom.net/LibTomCrypt/
+
+
+SQLite
+============================================================
+SQLite is in the public domain. https://sqlite.org/copyright.html

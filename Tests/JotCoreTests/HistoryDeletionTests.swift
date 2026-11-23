@@ -1,5 +1,5 @@
 import XCTest
-import SQLite3
+import SQLCipher
 @testable import JotCore
 
 final class HistoryDeletionTests: XCTestCase {
@@ -13,7 +13,7 @@ final class HistoryDeletionTests: XCTestCase {
 
     func testClearRemovesEveryDictationAndKeepsSessions() throws {
         do {
-            let store = try TranscriptStore(directory: directory)
+            let store = try TranscriptStore(directory: directory, key: .scratch)
             for index in 0..<450 { try store.append(row("\(index)", session: "d\(index)", start: Double(index), mode: "dictation")) }
             try store.appendEvent(CaptureEvent(sessionID: "d1", kind: "processing_error", detail: "failed"))
             try store.append(row("kept-ambient"))
@@ -24,7 +24,7 @@ final class HistoryDeletionTests: XCTestCase {
             XCTAssertEqual(try store.metrics().transcriptCount, 1)
             XCTAssertEqual(try store.events().map(\.sessionID), ["a"])
         }
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         XCTAssertEqual(try store.sessions().first?.title, "Old meeting")
         XCTAssertEqual(try store.read(id: "kept-ambient")?.speakerLabel, "Old speaker")
         XCTAssertTrue(try store.search("hello").allSatisfy { $0.mode == "ambient" })
@@ -32,7 +32,7 @@ final class HistoryDeletionTests: XCTestCase {
     }
 
     func testRecentAndSearchCanReadOneKindOfRow() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(row("amb")); try store.append(row("dict", session: "d", start: 5, mode: "dictation"))
         XCTAssertEqual(try store.recent(mode: "dictation").map(\.id), ["dict"])
         XCTAssertEqual(try store.recent(mode: "ambient").map(\.id), ["amb"])
@@ -42,7 +42,7 @@ final class HistoryDeletionTests: XCTestCase {
     }
 
     func testSessionDeletionKeepsOtherSessionsAndRemovesRelatedMetadata() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         for session in ["a", "b"] {
             try store.append(row(session, session: session))
             try store.setTitle(sessionID: session, title: session)
@@ -59,7 +59,7 @@ final class HistoryDeletionTests: XCTestCase {
     }
 
     func testDeletingGroupedCardDeletesExactlyItsSourceRows() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         let source = [row("one"), row("two", start: 1.2), row("hidden", start: 2.3, text: "uh"), row("other", session: "b", start: 20)]
         for item in source { try store.append(item) }
         let groups = TranscriptGrouping.historyGroups(source, tuning: .init())
@@ -73,11 +73,11 @@ final class HistoryDeletionTests: XCTestCase {
     }
 
     func testFailedDeletionRollsBackAllTables() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(row("kept")); try store.append(row("gone", session: "d", mode: "dictation"))
         try store.setTitle(sessionID: "a", title: "Keep with transcript")
         var db: OpaquePointer?
-        XCTAssertEqual(sqlite3_open(directory.appendingPathComponent("transcripts.sqlite3").path, &db), SQLITE_OK)
+        XCTAssertEqual(sqlite3_open_scratch(directory.appendingPathComponent("transcripts.sqlite3").path, &db), SQLITE_OK)
         defer { sqlite3_close(db) }
         XCTAssertEqual(sqlite3_exec(db, "CREATE TRIGGER reject_transcript_delete BEFORE DELETE ON transcripts BEGIN SELECT RAISE(ABORT, 'test failure'); END", nil, nil, nil), SQLITE_OK)
         XCTAssertThrowsError(try store.clearHistory())
@@ -88,11 +88,11 @@ final class HistoryDeletionTests: XCTestCase {
     func testFailedAttemptDeletionRollsBackAndStoreStillCloses() throws {
         let path = directory.appendingPathComponent("transcripts.sqlite3").path
         do {
-            let store = try TranscriptStore(directory: directory)
+            let store = try TranscriptStore(directory: directory, key: .scratch)
             try store.append(row("dictated", mode: "dictation"))
             try store.saveDictationAttempt(DictationAttempt(id: "dictated", sessionID: "a", startedAt: Date(timeIntervalSince1970: 100), text: "hello", state: .deliveryFailed))
             var db: OpaquePointer?
-            XCTAssertEqual(sqlite3_open(path, &db), SQLITE_OK)
+            XCTAssertEqual(sqlite3_open_scratch(path, &db), SQLITE_OK)
             XCTAssertEqual(sqlite3_exec(db, "CREATE TRIGGER reject_attempt_delete BEFORE DELETE ON dictation_attempts BEGIN SELECT RAISE(ABORT, 'test failure'); END", nil, nil, nil), SQLITE_OK)
             XCTAssertThrowsError(try store.deleteSession(id: "a"))
             XCTAssertThrowsError(try store.deleteTranscripts(ids: ["dictated"]))
@@ -106,13 +106,13 @@ final class HistoryDeletionTests: XCTestCase {
         // Leaving WAL mode needs the only open connection. A statement left unfinalized
         // makes the store's close fail, which keeps its connection open and this busy.
         var db: OpaquePointer?
-        XCTAssertEqual(sqlite3_open(path, &db), SQLITE_OK)
+        XCTAssertEqual(sqlite3_open_scratch(path, &db), SQLITE_OK)
         defer { sqlite3_close(db) }
         XCTAssertEqual(sqlite3_exec(db, "PRAGMA journal_mode=DELETE", nil, nil, nil), SQLITE_OK)
     }
 
     func testLastRowDeletionCleansMetadataButPartialDeletionKeepsIt() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(row("one")); try store.append(row("two", start: 10))
         try store.setTitle(sessionID: "a", title: "Meeting")
         try store.label(sessionID: "a", speakerID: "speaker-1", name: "Person")

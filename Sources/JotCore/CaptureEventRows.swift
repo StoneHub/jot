@@ -1,5 +1,5 @@
 import Foundation
-import SQLite3
+import SQLCipher
 
 /// Capture lifecycle events, kept per session. They carry metadata only, never transcript text or audio.
 /// `TranscriptStore` calls these with its connection and passes an already clamped limit.

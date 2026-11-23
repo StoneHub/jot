@@ -1,5 +1,5 @@
 import Foundation
-import SQLite3
+import SQLCipher
 
 /// Text-free usage counts, one row per local day and counter name. Deleting history leaves them: they count what
 /// happened, not what is retained. Rows older than `retainedDays` are pruned on write.

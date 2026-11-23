@@ -14,7 +14,7 @@ final class TranscriptStoreTests: XCTestCase {
 
     func testSpeakerLabelsAreSessionScopedAndSurviveReopening() throws {
         do {
-            let store = try TranscriptStore(directory: directory)
+            let store = try TranscriptStore(directory: directory, key: .scratch)
             try store.append(transcript("a"))
             try store.append(transcript("b", session: "session-b"))
             try store.label(sessionID: "session-a", speakerID: "speaker-1", name: "Gina")
@@ -22,13 +22,13 @@ final class TranscriptStoreTests: XCTestCase {
             XCTAssertNil(try store.read(id: "b")?.speakerLabel)
             XCTAssertEqual(try store.metrics().sessionCount, 2)
         }
-        let reopened = try TranscriptStore(directory: directory)
+        let reopened = try TranscriptStore(directory: directory, key: .scratch)
         XCTAssertEqual(try reopened.read(id: "a")?.speakerLabel, "Gina")
         XCTAssertNil(try reopened.read(id: "b")?.speakerLabel)
     }
 
     func testLiteralSearchDoesNotTreatUserTextAsSQLOrWildcards() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(transcript("a", text: "100% done_a\\b isn't a command"))
         try store.append(transcript("b", text: "1000 doneZa/b"))
         XCTAssertEqual(try store.search("% done_").map(\.id), ["a"])
@@ -39,7 +39,7 @@ final class TranscriptStoreTests: XCTestCase {
     }
 
     func testPaginationIsBoundedAndOrdersSegmentsChronologically() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         for index in 0..<205 { try store.append(transcript(String(index), seconds: Double(index))) }
         XCTAssertEqual(try store.recent(limit: Int.max).count, 200)
         XCTAssertEqual(try store.recent(limit: 2, offset: 2).map(\.id), ["202", "201"])
@@ -53,7 +53,7 @@ final class TranscriptStoreTests: XCTestCase {
     }
 
     func testSessionReadsRowsInSpokenOrderWithADictationHeldDuringIt() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(transcript("before", seconds: 5))
         try store.append(transcript("after", seconds: 20))
         // A dictation row keeps its own start time and an offset of zero.
@@ -64,7 +64,7 @@ final class TranscriptStoreTests: XCTestCase {
     }
 
     func testSessionReadsEveryRowPastTheListLimit() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         let ids = (0..<250).map { String(format: "row-%03d", $0) }
         // Saved last row first, so the order comes from the read.
         for (index, id) in ids.enumerated().reversed() {
@@ -74,7 +74,7 @@ final class TranscriptStoreTests: XCTestCase {
     }
 
     func testSessionSummaryFindsOneAmbientSessionWithoutTheListLimit() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(transcript("a1", session: "session-a"))
         try store.append(transcript("a2", session: "session-a", seconds: 5))
         try store.append(transcript("b", session: "session-b"))
@@ -91,7 +91,7 @@ final class TranscriptStoreTests: XCTestCase {
     }
 
     func testInvalidTranscriptRejectedAndDirectoryRestricted() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         var value = transcript("bad"); value.endSeconds = -1
         XCTAssertThrowsError(try store.append(value))
         value = transcript("bad"); value.mode = "unknown"
@@ -101,7 +101,7 @@ final class TranscriptStoreTests: XCTestCase {
     }
 
     func testRecentUsesWallClockSegmentTimeAcrossOverlappingSessions() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(transcript("late-ambient", seconds: 100))
         var dictation = transcript("earlier-dictation", session: "dictation-session")
         dictation.startedAt = Date(timeIntervalSince1970: 150)
@@ -115,18 +115,18 @@ final class TranscriptStoreTests: XCTestCase {
         try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: real) }
         try FileManager.default.createSymbolicLink(at: directory, withDestinationURL: real)
-        XCTAssertThrowsError(try TranscriptStore(directory: directory))
+        XCTAssertThrowsError(try TranscriptStore(directory: directory, key: .scratch))
     }
 
     func testCaptureEventsPersistWithoutTranscriptsAndFilterSessions() throws {
         do {
-            let store = try TranscriptStore(directory: directory)
+            let store = try TranscriptStore(directory: directory, key: .scratch)
             try store.appendEvent(CaptureEvent(id: "start", sessionID: "a", timestamp: Date(timeIntervalSince1970: 100), kind: "start", detail: "Ambient capture started"))
             try store.appendEvent(CaptureEvent(id: "gap", sessionID: "a", timestamp: Date(timeIntervalSince1970: 110), kind: "overflow", detail: "Capture queue dropped a segment", durationSeconds: 3.5))
             try store.appendEvent(CaptureEvent(id: "sleep", sessionID: "b", timestamp: Date(timeIntervalSince1970: 120), kind: "sleep", detail: "Capture paused for sleep"))
             XCTAssertEqual(try store.metrics().transcriptCount, 0)
         }
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         XCTAssertEqual(try store.events().map(\.id), ["sleep", "gap", "start"])
         let events = try store.events(sessionID: "a")
         XCTAssertEqual(events.map(\.id), ["gap", "start"])
@@ -137,7 +137,7 @@ final class TranscriptStoreTests: XCTestCase {
     }
 
     func testCaptureEventsBoundedAndInvalidDurationsRejected() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         for index in 0..<205 {
             try store.appendEvent(CaptureEvent(id: String(index), sessionID: "a", timestamp: Date(timeIntervalSince1970: Double(index)), kind: "pause", detail: "Capture paused"))
         }

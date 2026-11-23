@@ -24,6 +24,10 @@ public enum UsageCounter: Sendable, Hashable, CaseIterable {
     case typoFixRequested
     /// How that press ended.
     case typoFix(TypoFixOutcome)
+    /// A double-tap of Fn asked the model to check a field's typos before a suggestion.
+    case typoFixPreviewRequested
+    /// How that check ended.
+    case typoFixPreview(TypoFixPreview.Outcome)
     /// For a completed hold, how long from releasing the key until its text was in the field.
     case dictationLatency(Latency)
     /// Start meeting and End meeting: how each went.
@@ -107,6 +111,7 @@ public enum UsageCounter: Sendable, Hashable, CaseIterable {
     /// Every counter, in a fixed order. The analytics Worker allowlists exactly these names (services/analytics/src/counters.js).
     public static var allCases: [UsageCounter] {
         let typoFixCounters: [UsageCounter] = [.typoFixRequested] + TypoFixOutcome.allCases.map(UsageCounter.typoFix)
+            + [.typoFixPreviewRequested] + TypoFixPreview.Outcome.allCases.map(UsageCounter.typoFixPreview)
         return PerformanceJob.Outcome.allCases.map(UsageCounter.dictation) + Insertion.allCases.map(UsageCounter.insertion)
             + CleanupResult.Outcome.allCases.map(UsageCounter.dictationCleanup)
             + [.liveCleanup(applied: true), .liveCleanup(applied: false), .savedDictationReviewed, .savedDictationCopied, .suggestionRequested]
@@ -141,6 +146,8 @@ public enum UsageCounter: Sendable, Hashable, CaseIterable {
         case .suggestionAction(let action): return "suggestion.action.\(action.rawValue)"
         case .typoFixRequested: return "typoFix.requested"
         case .typoFix(let outcome): return "typoFix.outcome.\(outcome.rawValue)"
+        case .typoFixPreviewRequested: return "typoFix.preview.requested"
+        case .typoFixPreview(let outcome): return "typoFix.preview.\(outcome.rawValue)"
         // Not under "dictation.": every "dictation." name is one hold, and Activity and the readout sum them as holds.
         case .dictationLatency(let latency): return "dictationLatency.\(latency.rawValue)"
         case .meeting(let meeting): return "meeting.\(meeting.rawValue)"

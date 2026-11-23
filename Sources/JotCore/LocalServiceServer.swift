@@ -9,6 +9,8 @@ import os
 public final class LocalServiceServer: @unchecked Sendable {
     public typealias Handler = @Sendable (Data) async -> Data
     public typealias PeerPredicate = @Sendable (String) -> Bool
+    /// Sees every request whose method parsed, refused ones included, before it is handled. Must not block.
+    public typealias Observer = @Sendable (ClientCall) -> Void
     /// What the Vorssaint helper may call: text-free controls, the switch's actions and the transcript preview.
     public static let helperMethods = Set([LocalMethod.speechControls, .speechPreview, .speechPause, .speechResume,
                                            .speechMeetingStart, .speechMeetingEnd].map(\.rawValue))
@@ -18,15 +20,16 @@ public final class LocalServiceServer: @unchecked Sendable {
     private let socketURL: URL
     private let handler: Handler
     private let isHelper: PeerPredicate
+    private let observer: Observer?
     private let lock = NSLock()
     private var listener: Int32 = -1
     private var clients: Set<Int32> = []
     private var inode: ino_t?
     private var generation = UUID()
 
-    /// `isHelper` receives each peer's executable path; it defaults to matching this app's bundled helper.
-    public init(socketURL: URL = JotPaths.socketURL, isHelper: PeerPredicate? = nil, handler: @escaping Handler) {
-        self.socketURL = socketURL; self.handler = handler
+    /// `isHelper` receives each peer's executable path; it defaults to matching this app's bundled helper. `observer` is told of each call, for the client log.
+    public init(socketURL: URL = JotPaths.socketURL, isHelper: PeerPredicate? = nil, observer: Observer? = nil, handler: @escaping Handler) {
+        self.socketURL = socketURL; self.handler = handler; self.observer = observer
         self.isHelper = isHelper ?? Self.bundledHelper(in: Bundle.main.bundleURL)
     }
 
@@ -123,16 +126,18 @@ public final class LocalServiceServer: @unchecked Sendable {
             lock.unlock()
             guard allowed else { close(client); continue }
             // An unnamed peer keeps full access: UID is the trust boundary, and failing closed would also lock out the jot CLI.
-            let restricted = LocalSocket.peerExecutablePath(client).map(isHelper) ?? false
-            DispatchQueue.global(qos: .utility).async { [weak self] in self?.serve(client, restricted: restricted) }
+            let peer = LocalSocket.peer(client)
+            let restricted = peer?.executablePath.map(isHelper) ?? false
+            DispatchQueue.global(qos: .utility).async { [weak self] in self?.serve(client, peer: peer, restricted: restricted) }
         }
     }
 
-    private func serve(_ fd: Int32, restricted: Bool) {
+    private func serve(_ fd: Int32, peer: (pid: pid_t, executablePath: String?)?, restricted: Bool) {
         defer { lock.lock(); clients.remove(fd); close(fd); lock.unlock() }
         do {
             let request = try LocalSocket.receiveLine(fd, limit: LocalSocket.maxRequestBytes)
             guard let object = try JSONSerialization.jsonObject(with: request) as? [String: Any], let method = object["method"] as? String, object["params"] == nil || object["params"] is [String: Any] else { throw LocalServiceError.invalid("Expected JSON object with method and params") }
+            observer?(ClientCall(pid: peer?.pid ?? 0, executablePath: peer?.executablePath, method: method))
             guard !restricted || Self.helperMethods.contains(method) else { throw LocalServiceError.invalid("The Vorssaint helper cannot call \(method)") }
             guard restricted || !Self.helperOnlyMethods.contains(method) else { throw LocalServiceError.invalid("Only Jot's Vorssaint helper can call \(method)") }
             let box = ResponseBox()

@@ -1,5 +1,5 @@
 import Foundation
-import SQLite3
+import SQLCipher
 
 /// Word timing and probabilities for each transcript row, the input to regrouping and the speaker pass.
 /// `TranscriptStore` calls these with its connection; a relabel split reuses `validate` and `insert` inside its own transaction.

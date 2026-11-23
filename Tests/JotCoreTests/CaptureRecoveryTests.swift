@@ -1,5 +1,5 @@
 import XCTest
-import SQLite3
+import SQLCipher
 @testable import JotCore
 
 final class CaptureRecoveryTests: XCTestCase {
@@ -28,7 +28,7 @@ final class CaptureRecoveryTests: XCTestCase {
     }
 
     func testSavedReviewNeverSubstitutesAmbientSpeechOrDeliveredAttempts() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(Transcript(sessionID: "room", startedAt: Date(), startSeconds: 0,
                                     endSeconds: 2, text: "room speech", mode: "ambient"))
         try store.saveDictationAttempt(DictationAttempt(sessionID: "room", startedAt: Date(),
@@ -46,8 +46,8 @@ final class CaptureRecoveryTests: XCTestCase {
             endedAt: Date(timeIntervalSince1970: 105), text: "recover me", state: .deliveryUnverified,
             hasGap: true,
             updatedAt: Date(timeIntervalSince1970: 106))
-        do { try TranscriptStore(directory: directory).saveDictationAttempt(attempt) }
-        var reopened = try TranscriptStore(directory: directory)
+        do { try TranscriptStore(directory: directory, key: .scratch).saveDictationAttempt(attempt) }
+        var reopened = try TranscriptStore(directory: directory, key: .scratch)
         XCTAssertEqual(try reopened.latestRecoverableDictationAttempt(), attempt)
         try reopened.deleteSession(id: "session")
         XCTAssertNil(try reopened.latestRecoverableDictationAttempt())
@@ -55,12 +55,12 @@ final class CaptureRecoveryTests: XCTestCase {
         try reopened.saveDictationAttempt(attempt)
         try reopened.clearHistory()
         XCTAssertNil(try reopened.latestRecoverableDictationAttempt())
-        reopened = try TranscriptStore(directory: directory)
+        reopened = try TranscriptStore(directory: directory, key: .scratch)
         XCTAssertNil(try reopened.latestRecoverableDictationAttempt())
     }
 
     func testRecoveryWindowUsesWordEvidenceAtBothEdges() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         let row = Transcript(id: "row", sessionID: "session", startedAt: Date(timeIntervalSince1970: 100),
             startSeconds: 0, endSeconds: 6, text: "zero one two three", mode: "ambient")
         try store.append(row)
@@ -81,7 +81,7 @@ final class CaptureRecoveryTests: XCTestCase {
     }
 
     func testNewestUnverifiedAttemptTakesPriorityOverOlderFailedAttempt() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         let older = DictationAttempt(sessionID: "session", startedAt: Date(timeIntervalSince1970: 100),
             text: "older failed", state: .deliveryFailed, updatedAt: Date(timeIntervalSince1970: 101))
         let newer = DictationAttempt(sessionID: "session", startedAt: Date(timeIntervalSince1970: 102),
@@ -92,7 +92,7 @@ final class CaptureRecoveryTests: XCTestCase {
     }
 
     func testRecoveryWindowIncludesWholeLegacyRowRatherThanOmittingEdges() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(Transcript(id: "old", sessionID: "session", startedAt: Date(timeIntervalSince1970: 100),
             startSeconds: 0, endSeconds: 3, text: "legacy whole row", mode: "ambient"))
         XCTAssertEqual(try store.recoveryText(from: Date(timeIntervalSince1970: 102.9),
@@ -100,7 +100,7 @@ final class CaptureRecoveryTests: XCTestCase {
     }
 
     func testDeletingDictationTranscriptAlsoDeletesItsRecoveryAttempt() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         let attempt = DictationAttempt(id: "attempt", sessionID: "session", startedAt: Date(timeIntervalSince1970: 100),
             endedAt: Date(timeIntervalSince1970: 101), text: "private words", state: .deliveryFailed,
             updatedAt: Date(timeIntervalSince1970: 102))
@@ -113,7 +113,7 @@ final class CaptureRecoveryTests: XCTestCase {
     }
 
     func testDeletingBlankTapRemovesItsPersistedAttempt() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.saveDictationAttempt(DictationAttempt(id: "blank", sessionID: "session",
             startedAt: Date(timeIntervalSince1970: 100), state: .capturing,
             updatedAt: Date(timeIntervalSince1970: 101)))
@@ -121,7 +121,7 @@ final class CaptureRecoveryTests: XCTestCase {
 
         var database: OpaquePointer?
         var statement: OpaquePointer?
-        XCTAssertEqual(sqlite3_open(directory.appendingPathComponent("transcripts.sqlite3").path, &database), SQLITE_OK)
+        XCTAssertEqual(sqlite3_open_scratch(directory.appendingPathComponent("transcripts.sqlite3").path, &database), SQLITE_OK)
         XCTAssertEqual(sqlite3_prepare_v2(database, "SELECT COUNT(*) FROM dictation_attempts WHERE id='blank'", -1, &statement, nil), SQLITE_OK)
         XCTAssertEqual(sqlite3_step(statement), SQLITE_ROW)
         XCTAssertEqual(sqlite3_column_int(statement, 0), 0)
@@ -130,7 +130,7 @@ final class CaptureRecoveryTests: XCTestCase {
     }
 
     func testInterruptedRecognizedAttemptBecomesFailedRecoveryOnReopen() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.saveDictationAttempt(DictationAttempt(id: "interrupted", sessionID: "session",
             startedAt: Date(timeIntervalSince1970: 100), text: "already recognized", state: .capturing,
             updatedAt: Date(timeIntervalSince1970: 105)))

@@ -138,7 +138,7 @@ final class RecognitionCommitWindowTests: XCTestCase {
         let short = [Float](repeating: 0.5, count: AudioClock.samples(seconds: 0.2))
         let plan = window.plan(sessionID: "a", offset: 10, newSamples: short, isFinal: true)
         XCTAssertTrue(plan.samples == short && abs(plan.commitEnd - 10.2) < 1e-9, "A short final plan did not cover only its own audio")
-        let audio = SpeechPipeline.recognitionAudio(plan.samples)
+        let audio = ParakeetEngine.recognitionAudio(plan.samples)
         XCTAssertTrue(audio.count == minimum && Array(audio.prefix(short.count)) == short && audio.dropFirst(short.count).allSatisfy { $0 == 0 },
             "Short recognition audio was not padded with trailing silence to the recognizer's minimum")
         let words = window.newWords(from: [
@@ -147,6 +147,6 @@ final class RecognitionCommitWindowTests: XCTestCase {
         ], for: plan)
         XCTAssertTrue(words.map(\.word) == ["Yes"] && words[0].startTime == 0.04, "A word decoded in the padding was committed, or a real word moved")
         let long = [Float](repeating: 0.5, count: minimum)
-        XCTAssertTrue(SpeechPipeline.recognitionAudio(long) == long, "Audio at the recognizer's minimum was changed")
+        XCTAssertTrue(ParakeetEngine.recognitionAudio(long) == long, "Audio at the recognizer's minimum was changed")
     }
 }

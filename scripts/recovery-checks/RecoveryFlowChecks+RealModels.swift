@@ -6,7 +6,7 @@ extension RecoveryFlowChecks {
     @MainActor static func checkPhraseCleanupModel() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("jot-phrase-model-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         let probe = Probe()
         let fragments = ["I think uh", "we could get", "faster output to the live view."]
         let service = SpeechService(dependencies: .init(infer: { _, job, _ in
@@ -54,7 +54,7 @@ extension RecoveryFlowChecks {
         let samples = source + source
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("jot-real-recovery-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         let probe = Probe()
         probe.deliveryFails = false
         let service = SpeechService(dependencies: .init(

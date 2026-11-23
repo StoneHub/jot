@@ -1,5 +1,5 @@
 import Foundation
-import SQLite3
+import SQLCipher
 
 /// One remembered voice: a name and the running average of the speaker-pass embeddings saved for it.
 public struct Person: Sendable, Equatable, Identifiable {

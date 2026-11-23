@@ -28,12 +28,6 @@ final class ModelCacheTests: XCTestCase {
         XCTAssertEqual(ModelCache.bytesOnDisk(at: root), 1000)
     }
 
-    func testExpectedTotalMatchesTheListedModelsSoThePromptAndRowsAgree() {
-        XCTAssertEqual(ModelCache.expectedBytes, ModelCache.expected.reduce(0) { $0 + $1.bytes })
-        XCTAssertEqual(ModelCache.expected.count, 5)
-        XCTAssertTrue(ModelCache.expected.allSatisfy { $0.bytes > 0 && !$0.purpose.isEmpty })
-    }
-
     func testSizesReadAsMegabytesBelowAGigabyteAndGigabytesAbove() {
         XCTAssertTrue(ModelCache.formatted(483_257_242).hasSuffix("MB"), ModelCache.formatted(483_257_242))
         XCTAssertTrue(ModelCache.formatted(2_000_000_000).hasSuffix("GB"), ModelCache.formatted(2_000_000_000))

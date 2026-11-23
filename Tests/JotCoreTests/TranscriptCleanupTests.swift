@@ -33,7 +33,7 @@ final class TranscriptCleanupTests: XCTestCase {
     func testLiveParagraphReplacesRawTextWithoutAddingRowsOrChangingIdentity() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         let start = Date()
         let first = Transcript(id: "first", sessionID: "live", startedAt: start, startSeconds: 0, endSeconds: 1,
                                text: "um hello", speakerID: "speaker-1", mode: "ambient")
@@ -185,11 +185,11 @@ final class TranscriptCleanupTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         let source = Transcript(id: "source", sessionID: "session", startedAt: Date(), startSeconds: 0, endSeconds: 1, text: "um hello", mode: "ambient")
         do {
-            let store = try TranscriptStore(directory: directory)
+            let store = try TranscriptStore(directory: directory, key: .scratch)
             try store.append(source)
             try store.setReadablePhrase(["Hello."], for: [source])
         }
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         XCTAssertEqual(try store.read(id: source.id)?.text, "Hello.")
         XCTAssertEqual(try store.search("Hello.").count, 1)
         XCTAssertEqual(try store.session(id: "session").first?.text, "Hello.")

@@ -1,5 +1,5 @@
 import XCTest
-import SQLite3
+import SQLCipher
 @testable import JotCore
 
 final class WordEvidenceTests: XCTestCase {
@@ -20,20 +20,20 @@ final class WordEvidenceTests: XCTestCase {
     private func count(_ sql: String) throws -> Int {
         var db: OpaquePointer?; var stmt: OpaquePointer?
         defer { sqlite3_finalize(stmt); sqlite3_close(db) }
-        guard sqlite3_open(directory.appendingPathComponent("transcripts.sqlite3").path, &db) == SQLITE_OK,
+        guard sqlite3_open_scratch(directory.appendingPathComponent("transcripts.sqlite3").path, &db) == SQLITE_OK,
               sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, sqlite3_step(stmt) == SQLITE_ROW else { throw StoreError.database("query failed") }
         return Int(sqlite3_column_int64(stmt, 0))
     }
 
     func testWordsRoundTripInTimeOrderAndSurviveReopening() throws {
         do {
-            let store = try TranscriptStore(directory: directory)
+            let store = try TranscriptStore(directory: directory, key: .scratch)
             try store.append(row("t1", start: 0, end: 2)); try store.append(row("t2", start: 2.5, end: 4))
             try store.appendWords([word("t2", 0, "again", 2.5, 3, [0.1, 0.8, 0.05, 0.05]), word("t2", 1, "please", 3, 4, []),
                                    word("t1", 0, "hello", 0, 1), word("t1", 1, "there", 1.2, 2)])
             XCTAssertEqual(try words(store, row: "t1").map(\.word), ["hello", "there"])
         }
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         let words = try store.words(sessionID: "a")
         XCTAssertEqual(words.map(\.word), ["hello", "there", "again", "please"])
         XCTAssertEqual(words.map(\.position), [0, 1, 0, 1])
@@ -41,11 +41,11 @@ final class WordEvidenceTests: XCTestCase {
         XCTAssertEqual(words[3].probabilities, [], "Missing diarizer frames are stored as NULL and read back as no evidence")
         XCTAssertEqual(words[1].startSeconds, 1.2)
         XCTAssertTrue(try store.words(sessionID: "other").isEmpty)
-        XCTAssertEqual(try count("PRAGMA user_version"), 8)
+        XCTAssertEqual(try count("PRAGMA user_version"), Int(TranscriptStore.format))
     }
 
     func testInvalidWordBatchesAreRefusedWhole() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(row("t1"))
         let good = word("t1", 0, "hello", 1, 2)
         XCTAssertThrowsError(try store.appendWords([good, word("t1", 1, "x", 2, 1.5)]), "end before start")
@@ -62,7 +62,7 @@ final class WordEvidenceTests: XCTestCase {
     }
 
     func testDeletingRowsRemovesTheirWordsWithoutOrphans() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(row("a1", session: "a")); try store.append(row("a2", session: "a", start: 3, end: 4))
         try store.append(row("b1", session: "b"))
         var dictation = row("d1", session: "d"); dictation.mode = "dictation"; try store.append(dictation)
@@ -78,7 +78,7 @@ final class WordEvidenceTests: XCTestCase {
     }
 
     func testRelabelSessionKeepsCleanedTextAndRowIDs() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(row("t1", start: 0, end: 1, text: "First person"))
         try store.append(row("t2", start: 1, end: 3, text: "so we should ship it"))
         try store.append(row("other", session: "b"))
@@ -126,7 +126,7 @@ final class WordEvidenceTests: XCTestCase {
     }
 
     func testRelabelSessionLeavesSessionsWithoutWordsAndDeletedSessionsAlone() throws {
-        let store = try TranscriptStore(directory: directory)
+        let store = try TranscriptStore(directory: directory, key: .scratch)
         try store.append(row("old", session: "c", text: "recorded before words were kept"))
         let noWords: ([StoredWord]) -> [String?] = { _ in
             XCTFail("No words to relabel")
