@@ -25,10 +25,10 @@ final class KeyboardTextEvents: @unchecked Sendable {
     }
 
     @MainActor
-    func dispatch(validating: () throws -> Void) async throws {
+    func dispatch(validating: () async throws -> Void) async throws {
         for (down, up) in events {
             await Task.yield()
-            try validating()
+            try await validating()
             down.post(tap: .cghidEventTap)
             up.post(tap: .cghidEventTap)
         }
