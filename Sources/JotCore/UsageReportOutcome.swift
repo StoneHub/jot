@@ -9,7 +9,8 @@ public struct UsageReportOutcome: Codable, Sendable, Equatable {
         case sent
         /// The Worker refused the report (a 4xx other than 429). The days are marked as sent, since they would be refused again.
         case refused
-        /// No answer, a server error or a rate limit. Nothing is marked, so the days are tried again later.
+        /// No answer, a server error, a rate limit or any other non-2xx, non-4xx status. Nothing is marked, so the days are
+        /// tried again later.
         case failed
         /// Finished days were due but none had counts, so they were marked without a request.
         case nothingToSend
@@ -24,7 +25,7 @@ public struct UsageReportOutcome: Codable, Sendable, Equatable {
     /// The days the report carried, oldest first; empty when no request was made.
     public let days: [String]
     public let httpStatus: Int?
-    /// The Worker's reason for a refusal ("invalid count"), or why a request failed. At most `maximumDetail` characters.
+    /// The answering server's reason for a refusal (the Worker's is short, such as "invalid count"), or why a request failed. At most `maximumDetail` characters.
     public let detail: String?
 
     public static let maximumDetail = 80
@@ -41,8 +42,8 @@ public struct UsageReportOutcome: Codable, Sendable, Equatable {
     /// refused with the Worker's reason from `body`.
     public static func answer(_ status: Int, body: Data, days: [String], at: Date) -> UsageReportOutcome {
         let result: Result = (200..<300).contains(status) ? .sent : (400..<500).contains(status) && status != 429 ? .refused : .failed
-        let reason = result == .sent ? nil : String(decoding: body.prefix(4 * maximumDetail), as: UTF8.self)
-        return UsageReportOutcome(at: at, result: result, days: days, httpStatus: status, detail: reason?.isEmpty == false ? reason : nil)
+        let reason = result == .sent ? "" : clean(String(decoding: body.prefix(4 * maximumDetail), as: UTF8.self))
+        return UsageReportOutcome(at: at, result: result, days: days, httpStatus: status, detail: reason.isEmpty ? nil : reason)
     }
 
     /// Whether the reporter marks the report's days as done: everything except a failure, which is retried.

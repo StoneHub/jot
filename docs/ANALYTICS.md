@@ -40,7 +40,7 @@ Reports go to `UsageReport.endpoint` (`Sources/JotCore/UsageReport.swift`), the 
  "last": {"at": "2026-11-26T14:02:11Z", "result": "sent", "days": ["2026-11-25"], "httpStatus": 204}}
 ```
 
-`result` is `sent`, `refused` (the Worker turned the report down; `detail` gives its reason and the days are not retried), `failed` (no answer, a server error or a rate limit; tried again in six hours), `nothingToSend` (the finished days had no counts), `sharingOff` or `firstRun`. A day that is already reported leaves the last result as it was. Each result is also written to the system log:
+`result` is `sent`, `refused` (a 4xx answer; `detail` gives the first 80 characters of the reason, usually the Worker's, and the days are not retried), `failed` (no answer, a server error, a rate limit or any other non-2xx answer; tried again in six hours), `nothingToSend` (the finished days had no counts), `sharingOff` or `firstRun`. A day that is already reported leaves the last result as it was. Each result is also written to the system log:
 
 ```sh
 log show --last 2d --predicate 'subsystem == "space.jot.app" AND category == "usage-report"'

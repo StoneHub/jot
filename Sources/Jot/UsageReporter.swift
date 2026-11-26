@@ -106,7 +106,7 @@ final class UsageReporter {
             record(UsageReportOutcome(at: now, result: .failed, days: days, detail: "network error \(code)"))
             return
         }
-        // A refused report would be refused again, so it is marked like an accepted one. Server errors and rate limits retry later.
+        // A refused report would be refused again, so it is marked like an accepted one. Anything else that is not 2xx retries later.
         if outcome.marksDays { markThroughYesterday() }
         record(outcome)
     }
