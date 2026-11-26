@@ -58,8 +58,19 @@ extension SpeechService {
         result["tuningAudio"] = try await readOffMain { TuningAudio.summary(in: tuningAudio) }
         result["storageWorkPending"] = storeExecutor.pendingCount
         result["speakerPassPending"] = speakers.hasPendingPasses
+        result["usageReport"] = try usageReportStatus()
         assert(StatusReport.conforms(result), "speech.status keys drifted from StatusReport")
         return result
+    }
+
+    /// Whether anonymous usage sharing is on, the newest day marked as reported, and what the last report did, so
+    /// a person or agent can tell whether analytics reach the Worker (docs/ANALYTICS.md).
+    private func usageReportStatus() throws -> [String: Any] {
+        let defaults = settings.defaults
+        let last = UsageReportOutcome.decoded(defaults.data(forKey: JotDefaultsKey.usageLastReport))
+        return ["sharing": settings.bool(JotDefaultsKey.shareUsage) && UsageReport.endpoint != nil,
+                "reportedThrough": defaults.string(forKey: JotDefaultsKey.usageReportedThrough) ?? NSNull(),
+                "last": try last.map { try object($0) } ?? NSNull()]
     }
 
     /// `transcripts.wait` requests in progress, held to `TranscriptWait.maximumWaiters`.
