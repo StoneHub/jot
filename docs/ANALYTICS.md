@@ -30,3 +30,20 @@ Transcript text, audio, cleaned text, suggestions, field contents, app names or 
 Sharing is on by default. Setup says so, and **Settings → Privacy → Share anonymous usage counts** turns it off (`jot settings set shareUsage false` does the same). Days that finish while it is off are never sent, even after it is turned back on. The first run after installing only marks yesterday as done, so a new install's first report is the next day's. Turning sharing off leaves the counters on the Mac for Activity.
 
 Reports go to `UsageReport.endpoint` (`Sources/JotCore/UsageReport.swift`), the Worker deployed from `services/analytics` at `https://jot-analytics.monroesawesome.workers.dev/v1/usage`. Setting it to nil stops all sending.
+
+## Checking that reports arrive
+
+`jot status` shows `usageReport`:
+
+```json
+{"sharing": true, "reportedThrough": "2026-11-25",
+ "last": {"at": "2026-11-26T14:02:11Z", "result": "sent", "days": ["2026-11-25"], "httpStatus": 204}}
+```
+
+`result` is `sent`, `refused` (a 4xx answer; `detail` gives the first 80 characters of the reason, usually the Worker's, and the days are not retried), `failed` (no answer, a server error, a rate limit or any other non-2xx answer; tried again in six hours), `nothingToSend` (the finished days had no counts), `sharingOff` or `firstRun`. A day that is already reported leaves the last result as it was. Each result is also written to the system log:
+
+```sh
+log show --last 2d --predicate 'subsystem == "space.jot.app" AND category == "usage-report"'
+```
+
+Debug builds share the installed app's settings and history and report the same version number, so a debug build that runs also sends that Mac's days.

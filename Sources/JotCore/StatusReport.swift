@@ -11,7 +11,7 @@ public enum StatusReport {
         "ambientRequested", "ambientEnabled", "keepMacAwakeWhileListening", "keepAwakeActive",
         "inferenceRunning", "speakerPassRunning", "speakerPassPending", "speakerSlots", "suggestions", "typoFix", "transcriptionCleanup",
         "droppedAudioSeconds", "queuedAudioSeconds", "processingLagSeconds", "lastInferenceSeconds", "processedAudioSeconds",
-        "audioRetention", "transcriptPolicy", "resources", "tuning", "tuningAudio", "storageWorkPending",
+        "audioRetention", "transcriptPolicy", "resources", "tuning", "tuningAudio", "storageWorkPending", "usageReport",
     ]).union(aliases.keys)
     /// Keys present only once there is something to report: a delivery, heard audio, a transcript, or open history.
     public static let optionalKeys: Set<String> = ["lastDelivery", "lastAudioAt", "lastTranscriptAt", "storage"]

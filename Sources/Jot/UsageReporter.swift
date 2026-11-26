@@ -1,11 +1,13 @@
 import Foundation
 import JotCore
+import OSLog
 
 /// Sends finished days' usage counters to Jot's analytics Worker every few hours, while sharing is on and the Worker is
 /// deployed (`UsageReport.endpoint`). A day is sent once. Days that finish while sharing is off are marked as skipped,
 /// so turning it back on never sends them, and the first run after install only sets that mark.
 @MainActor
 final class UsageReporter {
+    private static let log = Logger(subsystem: "space.jot.app", category: "usage-report")
     private let library: SessionLibrary
     private let settings: JotSettings
     private var loop: Task<Void, Never>?
@@ -46,7 +48,7 @@ final class UsageReporter {
     }
 
     private func report() async {
-        guard !running, let store = library.store else { return }
+        guard !running else { return }
         running = true
         defer { running = false }
         let defaults = settings.defaults
@@ -56,27 +58,63 @@ final class UsageReporter {
         let today = TranscriptStore.usageDay(now, calendar: calendar)
         let yesterday = TranscriptStore.usageDay(yesterdayDate, calendar: calendar)
         let markThroughYesterday = { defaults.set(yesterday, forKey: JotDefaultsKey.usageReportedThrough) }
-        guard let reportedThrough = defaults.string(forKey: JotDefaultsKey.usageReportedThrough),
-              settings.bool(JotDefaultsKey.shareUsage), let endpoint = UsageReport.endpoint else {
+        guard let reportedThrough = defaults.string(forKey: JotDefaultsKey.usageReportedThrough) else {
             markThroughYesterday()
+            record(UsageReportOutcome(at: now, result: .firstRun))
             return
         }
         guard reportedThrough < yesterday else { return }
+        guard settings.bool(JotDefaultsKey.shareUsage), let endpoint = UsageReport.endpoint else {
+            markThroughYesterday()
+            record(UsageReportOutcome(at: now, result: .sharingOff))
+            return
+        }
+        guard let store = library.store else {
+            record(UsageReportOutcome(at: now, result: .failed, detail: "history is not open"))
+            return
+        }
         let first = max(reportedThrough, TranscriptStore.usageDay(oldestDate, calendar: calendar))
-        guard let counts = try? await library.storeExecutor.perform({ try store.usageCounts(from: first, through: yesterday) }) else { return }
+        let counts: [String: [String: Int]]
+        do {
+            counts = try await library.storeExecutor.perform { try store.usageCounts(from: first, through: yesterday) }
+        } catch {
+            record(UsageReportOutcome(at: now, result: .failed, detail: "could not read usage counts"))
+            return
+        }
         guard let report = UsageReport.due(counts: counts, today: today, reportedThrough: reportedThrough,
                                            app: JotVersion.current, os: UsageReport.osVersion, arch: UsageReport.arch),
               let body = try? JSONEncoder().encode(report) else {
             markThroughYesterday()
+            record(UsageReportOutcome(at: now, result: .nothingToSend))
             return
         }
+        let days = report.days.map(\.day)
         var request = URLRequest(url: endpoint, timeoutInterval: 20)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = body
-        guard let result = try? await session.data(for: request),
-              let status = (result.1 as? HTTPURLResponse)?.statusCode else { return }
-        // A refused report would be refused again, so it is marked like an accepted one. Server errors and rate limits retry later.
-        if (200..<500).contains(status), status != 429 { markThroughYesterday() }
+        let outcome: UsageReportOutcome
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let status = (response as? HTTPURLResponse)?.statusCode else {
+                record(UsageReportOutcome(at: now, result: .failed, days: days, detail: "no HTTP response"))
+                return
+            }
+            outcome = UsageReportOutcome.answer(status, body: data, days: days, at: now)
+        } catch {
+            let code = (error as? URLError)?.code.rawValue ?? 0
+            record(UsageReportOutcome(at: now, result: .failed, days: days, detail: "network error \(code)"))
+            return
+        }
+        // A refused report would be refused again, so it is marked like an accepted one. Anything else that is not 2xx retries later.
+        if outcome.marksDays { markThroughYesterday() }
+        record(outcome)
+    }
+
+    /// Keeps the outcome for `jot status` and writes it to the system log
+    /// (`log show --predicate 'subsystem == "space.jot.app" AND category == "usage-report"'`).
+    private func record(_ outcome: UsageReportOutcome) {
+        if let data = outcome.encoded() { settings.defaults.set(data, forKey: JotDefaultsKey.usageLastReport) }
+        Self.log.notice("usage report \(outcome.summary, privacy: .public)")
     }
 }
