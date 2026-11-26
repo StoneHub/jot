@@ -93,7 +93,8 @@ final class DictationInput {
     private var targetCaptureFailures = 0
     private var lastShortcutError: String?
     /// Why the last captured field was let go before or during delivery, as a fixed phrase; never field contents.
-    private(set) var lastTargetLoss: String?
+    /// Set here and by `released()` in DictationInput+Delivery.swift, so the setter is module-wide.
+    var lastTargetLoss: String?
     /// What the latest focus read found, kept for `lastTargetLoss` when that read lets the field go.
     private var focusFinding = ""
     /// Kept after a later press succeeds, so a rejection in one app survives a success in another.
