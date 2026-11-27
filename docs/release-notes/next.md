@@ -1,5 +1,7 @@
 # Jot (next release)
 
+**Back up `~/Library/Application Support/Jot` before updating.** The first launch of this version encrypts your saved history in place, once, and earlier versions of Jot cannot open it afterwards, so going back to an older build needs that copy.
+
 Double-tapping Fn in a field with text now checks typos first when Fix typos and suggestions are both on. The card lists each fix, Tab applies them, and double-tapping Fn again asks for a suggestion, whether you applied the fixes or not. A blank field, a selection, a long draft, or a field with no typos goes straight to a suggestion as before, and holding Fn still dictates. ⌃⌥Space still fixes typos at once without a preview.
 
 Saved history is now encrypted on disk. Transcripts, cleaned text, speaker names, remembered voices and the rest of Jot's database are encrypted with SQLCipher under a key that stays in your login keychain, so a backup or a copy of the Jot folder is unreadable without it. The first launch converts the existing history in place, once, keeping every row. Nothing changes for you or your agents: Jot, `jot` and the MCP server read history as before, with nothing to type. **General → Privacy → History key** shows the key for opening this history on another Mac, and takes a key from another Mac when a copied history will not open. Session audio kept for a speaker pass or for tuning is not encrypted. Earlier versions of Jot cannot open the converted history.
